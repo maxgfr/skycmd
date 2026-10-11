@@ -1,4 +1,4 @@
-//! Types shared by the three games: step outcomes, question specs with paraphrases, and the
+//! Types shared by the games: step outcomes, question specs with paraphrases, and the
 //! object-safe [`DecisionGame`] interface used by the rollout harness and the generator.
 
 use serde::Serialize;
@@ -25,6 +25,14 @@ pub enum Event {
     Aborted,
     /// Step budget exhausted.
     Timeout,
+    /// Doom: a monster was killed.
+    Kill,
+    /// Doom: the player took damage.
+    Hurt,
+    /// Doom: an item was picked up.
+    Pickup,
+    /// Doom: the player died.
+    Died,
 }
 
 /// Extra information about a step.
@@ -155,8 +163,10 @@ impl QuestionSpec {
 /// Summary of the current episode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 pub struct EpisodeStats {
-    /// Flappy: pipes passed. Rescue: hikers rescued. Dodge: obstacles passed.
+    /// Flappy: pipes passed. Rescue: hikers rescued. Dodge: obstacles passed. Doom: kills.
     pub score: f32,
+    /// Doom: the best possible score (monsters on the level); 0 for open-ended games.
+    pub max_score: f32,
     /// Mission completed (rescue: all hikers home; dodge: finish line reached).
     pub success: bool,
     pub crashed: bool,
@@ -183,6 +193,11 @@ pub trait DecisionGame {
     /// Applies a decision: `choice` indexes the primary question's canonical options, `abort`
     /// is the answer to an abort question (ignored by games without one). Advances one tick.
     fn apply(&mut self, choice: usize, abort: bool) -> StepOutcome;
+    /// Applies a human's action on any tick (games with a decision cadence let a human act
+    /// faster than the agent). Defaults to [`apply`](Self::apply).
+    fn apply_human(&mut self, choice: usize) -> StepOutcome {
+        self.apply(choice, false)
+    }
     /// Advances one tick, holding the last decision.
     fn tick(&mut self) -> StepOutcome;
     fn stats(&self) -> EpisodeStats;

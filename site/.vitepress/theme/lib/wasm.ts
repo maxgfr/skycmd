@@ -37,6 +37,7 @@ export interface SkyWeb {
   Engine: new (bytes: Uint8Array) => WasmEngine
   GameSession: new (kind: string, seed: number) => WasmSession
   bench(engine: WasmEngine, n: number): string
+  benchGame(engine: WasmEngine, game: string, n: number): string
   version(): string
 }
 
@@ -81,13 +82,22 @@ export interface OptionProb {
   p: number
 }
 
+export interface Secondary {
+  id: string
+  type: string
+  value: number
+  max: number
+  probs: OptionProb[]
+}
+
 export interface StepReport {
   policy?: 'model' | 'oracle'
   decided?: boolean
   action?: string
   executed: string
   probs?: OptionProb[]
-  secondary?: { id: string; type: string; value: number; max: number; probs: OptionProb[] } | null
+  secondary?: Secondary | null
+  others?: Secondary[]
   info?: DecisionInfo | null
   vetoed: boolean
   micros?: number

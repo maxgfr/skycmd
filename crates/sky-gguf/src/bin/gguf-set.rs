@@ -14,7 +14,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut updates: Vec<(String, f32)> = Vec::new();
     for kv in &args[2..] {
-        let (k, v) = kv.split_once('=').ok_or_else(|| format!("expected key=value, got {kv}"))?;
+        let (k, v) = kv
+            .split_once('=')
+            .ok_or_else(|| format!("expected key=value, got {kv}"))?;
         updates.push((k.to_string(), v.parse()?));
     }
     let bytes = std::fs::read(&args[0])?;

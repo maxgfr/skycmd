@@ -117,3 +117,22 @@ Reading:
 - Early exit at the first exit halves the per-question cost again (pico: 67 → 28 µs native).
 - Ternary storage cuts the file 7x (pico 1.2 MB → 176 KB, nano 5.9 MB → 684 KB). The packed add/sub kernels cost three vector ops (XOR, AND, ADD) per 4 weights against one FMA, and these matrices fit in L1, so the f32 path is 2-3x faster per product and 1.6-2.2x faster per decision on both NEON and SIMD128. `TernaryCompute::Auto` therefore expands ternary weights to f32 at load on every platform: the download stays small, the compute is f32. `--ternary-compute packed` (native) / `Engine.withOptions(bytes, true, true)` (WASM) keep the packed kernels.
 - Accuracy: the s2 engine matches the mlx-rs graph of `sky-train s2-golden` within 4e-6 on every exit probability (f32 and ternary files, packed and f32 compute; tolerances 1e-4 / 1e-3).
+
+## Doom-like game (`scripts/train-doom.sh`)
+
+`sky-arena --exit-threshold 0.95`, 50 episodes per game, seed 7, Apple M5 shared with other training jobs (latencies are upper bounds). Doom: completion of easy levels, kill rate (kills / monsters), deaths, mean ticks at 35 Hz. The model is s2-nano-g2 fine-tuned fully ternary for 2 rounds (oracle data, then one DAgger round over the four games). Chapter 18 of the tutorial has the details.
+
+| game | metric | oracle | s2-nano-doom | s2-nano-g2 (base) | s2-nano |
+|---|---|---:|---:|---:|---:|
+| Doom | completion / kill rate / deaths | 1.00 / 0.75 / 0 | 1.00 / 0.75 / 0 | 0.00 / 0.00 / 0 | not trained on doom |
+| Doom (100 episodes, seed 2026) | completion / kill rate / deaths | 1.00 / 0.69 / 0 | 1.00 / 0.69 / 0 | | |
+| Flappy Drone | mean pipes (crashes), cap 200 | 200 (0) | 197.6 (2) | 196.2 (1) | 30.6 (50) |
+| Rescue Run | completion | 1.00 | 1.00 | 1.00 | 1.00 |
+| Obstacle Dodge | completion | 0.78 | 0.72 | 0.74 | 0.58 |
+
+The Doom model is 1,532,033 parameters and 702 KB as a ternary GGUF. A doom state is about 38 tokens and closed-loop play stays at full depth (3.99 of 4 layers on average).
+
+| doom decision | native (`sky-arena`, action question) | WASM (`bench-node.mjs --game doom`, 3 questions + physics) |
+|---|---:|---:|
+| s2-nano-doom, τ = 0.95 | 1,055 µs p50 / 1,406 µs p95 | 1,830 µs median / 2,030 µs p95 |
+

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The /play/ page: three games, AI or human control, model selector and a live HUD.
+// The /play/ page: four games, AI or human control, model selector and a live HUD.
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { GameRunner, newHud, type GameKind, type Hud, type Mode } from '../lib/runner'
 import {
@@ -33,18 +33,30 @@ const GAMES: { kind: GameKind; title: string; blurb: string }[] = [
     title: 'Obstacle Dodge',
     blurb: 'Pick a maneuver every 6 frames: over, around, brake or continue, and abort in front of an impassable obstacle. A coded reflex vetoes unsafe maneuvers.',
   },
+  {
+    kind: 'doom',
+    title: 'Doom-like (Freedoom assets)',
+    blurb: 'A Doom-like shooter at 35 ticks per second with Freedoom art. Every 4 ticks the model reads 14 measured numbers (enemy bearing, aim, walls, A* waypoint, incoming fireball) and picks one of 8 actions. A coded reflex sidesteps known fireballs and never fires an empty weapon. Not id Software\'s Doom: the levels, code and rules are our own.',
+  },
 ]
 
 const SECONDARY_LABEL: Record<GameKind, string> = {
   flappy: 'Danger: crash within 0.5 s if gliding',
   rescue: 'Battery risk (0 negligible … 4 critical)',
   dodge: 'Abort: no safe way past the obstacle',
+  doom: 'Danger: hit within 1 s if nothing changes',
+}
+
+/** Labels of the questions after the secondary one. */
+const OTHER_LABEL: Record<string, string> = {
+  threat: 'Threat (0 none … 4 critical)',
 }
 
 const HELP: Record<GameKind, string> = {
   flappy: 'Tap the game, press Space or ↑ to thrust.',
   rescue: 'Arrow keys / WASD or swipe to move, H to hover, R to return home.',
   dodge: '↑ over, ← → around, ↓ brake, Space continue, A abort.',
+  doom: 'W / S or ↑ / ↓ move, A / D strafe, ← / → turn, Space shoot, E use (doors, exit switch).',
 }
 
 const HUMAN_BUTTONS: Record<GameKind, { key: string; label: string }[]> = {
@@ -64,6 +76,16 @@ const HUMAN_BUTTONS: Record<GameKind, { key: string; label: string }[]> = {
     { key: 'continue', label: 'Continue' },
     { key: 'abort', label: 'Abort' },
   ],
+  doom: [
+    { key: 'strafe_left', label: '⇠ Strafe' },
+    { key: 'forward', label: '↑ Fwd' },
+    { key: 'strafe_right', label: 'Strafe ⇢' },
+    { key: 'turn_left', label: '↶ Turn' },
+    { key: 'back', label: '↓ Back' },
+    { key: 'turn_right', label: 'Turn ↷' },
+    { key: 'shoot', label: 'Shoot' },
+    { key: 'use', label: 'Use' },
+  ],
 }
 
 const ORACLE = '__oracle__'
@@ -80,6 +102,7 @@ const TAU_CHOICES: { value: string; label: string }[] = [
 const kind = ref<GameKind>('flappy')
 const mode = ref<Mode>('ai')
 const veto = ref(true)
+const minimap = ref(true)
 const models = ref<ModelEntry[]>([])
 const selected = ref<string>(ORACLE)
 const tau = ref('auto')
@@ -128,6 +151,7 @@ function makeRunner() {
     mode: mode.value,
     bestKey: bestKey(kind.value, mode.value),
     autoResetMs: 1000,
+    minimap: minimap.value,
     onHud: (h) => {
       now.value = performance.now()
       hud.value = { ...h, probs: h.probs.slice() }
@@ -185,10 +209,26 @@ function setKind(k: GameKind) {
 
 function press(key: string) {
   if (mode.value !== 'human') mode.value = 'human'
-  runner?.input(key)
+  if (kind.value === 'doom') runner?.hold(key, true)
+  else runner?.input(key)
 }
 
-watch(kind, () => makeRunner())
+function release(key: string) {
+  if (kind.value === 'doom') runner?.hold(key, false)
+}
+
+/** Doom: the model trained on the Doom-like game, when the manifest has one. */
+function preferModelFor(k: GameKind) {
+  if (k !== 'doom') return
+  const m = models.value.find((e) => e.name.includes('doom'))
+  if (m) selected.value = m.file
+}
+
+watch(kind, (k) => {
+  makeRunner()
+  preferModelFor(k)
+})
+watch(minimap, (v) => runner?.setMinimap(v))
 watch(mode, (m) => {
   // Each mode keeps its own high score.
   makeRunner()
@@ -220,16 +260,42 @@ const KEYMAP: Record<GameKind, Record<string, string>> = {
     ' ': 'continue',
     a: 'abort',
   },
+  doom: {
+    w: 'forward',
+    ArrowUp: 'forward',
+    s: 'back',
+    ArrowDown: 'back',
+    a: 'strafe_left',
+    d: 'strafe_right',
+    ArrowLeft: 'turn_left',
+    ArrowRight: 'turn_right',
+    q: 'turn_left',
+    ' ': 'shoot',
+    Control: 'shoot',
+    e: 'use',
+  },
+}
+
+function keyOf(e: KeyboardEvent): string | undefined {
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return undefined
+  return KEYMAP[kind.value][e.key.length === 1 ? e.key.toLowerCase() : e.key]
 }
 
 function onKey(e: KeyboardEvent) {
   if (mode.value !== 'human') return
-  const t = e.target as HTMLElement | null
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
-  const key = KEYMAP[kind.value][e.key.length === 1 ? e.key.toLowerCase() : e.key]
+  const key = keyOf(e)
   if (!key) return
   e.preventDefault()
-  if (!e.repeat || kind.value !== 'flappy') runner?.input(key)
+  if (kind.value === 'doom') {
+    if (!e.repeat) runner?.hold(key, true)
+  } else if (!e.repeat || kind.value !== 'flappy') runner?.input(key)
+}
+
+function onKeyUp(e: KeyboardEvent) {
+  if (mode.value !== 'human' || kind.value !== 'doom') return
+  const key = keyOf(e)
+  if (key) runner?.hold(key, false)
 }
 
 // Touch: tap = thrust (flappy), swipe = move (rescue).
@@ -243,7 +309,7 @@ function onPointerUp(e: PointerEvent) {
   const dx = e.clientX - touchStart.x
   const dy = e.clientY - touchStart.y
   touchStart = null
-  if (mode.value !== 'human' || kind.value === 'flappy') return
+  if (mode.value !== 'human' || kind.value === 'flappy' || kind.value === 'doom') return
   if (Math.hypot(dx, dy) < 24) {
     if (runner && hud.value.done) runner.input('hover')
     return
@@ -257,8 +323,9 @@ function onPointerUp(e: PointerEvent) {
 
 onMounted(async () => {
   const q = new URLSearchParams(window.location.search).get('game')
-  if (q === 'flappy' || q === 'rescue' || q === 'dodge') kind.value = q
+  if (q === 'flappy' || q === 'rescue' || q === 'dodge' || q === 'doom') kind.value = q
   window.addEventListener('keydown', onKey)
+  window.addEventListener('keyup', onKeyUp)
   try {
     mod = await loadWasm()
   } catch (e) {
@@ -270,10 +337,12 @@ onMounted(async () => {
   status.value = ''
   makeRunner()
   if (models.value.length) selected.value = models.value[0].file
+  preferModelFor(kind.value)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('keyup', onKeyUp)
   runner?.destroy()
   runner = null
 })
@@ -326,6 +395,10 @@ function pct(p: number) {
       <label v-if="kind !== 'flappy'" class="check">
         <input v-model="veto" type="checkbox" />
         <span>Safety reflex</span>
+      </label>
+      <label v-if="kind === 'doom'" class="check">
+        <input v-model="minimap" type="checkbox" />
+        <span>Minimap</span>
       </label>
       <button type="button" class="ghost" @click="runner?.reset()">Restart</button>
     </div>
@@ -384,7 +457,7 @@ function pct(p: number) {
             <div class="drow">
               <span class="dl">state encoding</span>
               <span class="tag" :class="{ ok: info.state_reused }">{{ info.state_reused ? 'shared' : 'single' }}</span>
-              <span class="dv">{{ info.state_reused ? '2 questions' : '1 question' }}</span>
+              <span class="dv">{{ info.state_reused ? `${questions.length} questions` : '1 question' }}</span>
             </div>
           </template>
           <template v-else>
@@ -427,6 +500,13 @@ function pct(p: number) {
               <template v-else>expected level {{ hud.secondary.value.toFixed(2) }} / {{ hud.secondary.max }}</template>
             </div>
           </div>
+          <div v-for="o in hud.others" :key="o.id" class="secondary">
+            <div class="qtitle">{{ OTHER_LABEL[o.id] ?? o.id }}</div>
+            <div class="gauge" :class="{ warn: o.value / (o.max || 1) > 0.5 }">
+              <span class="gf" :style="{ width: `${Math.round((100 * o.value) / (o.max || 1))}%` }" />
+            </div>
+            <div class="gv">expected level {{ o.value.toFixed(2) }} / {{ o.max }}</div>
+          </div>
         </template>
 
         <div v-if="mode === 'human'" class="controls">
@@ -438,6 +518,9 @@ function pct(p: number) {
               type="button"
               :class="['ctl', b.key]"
               @pointerdown.prevent="press(b.key)"
+              @pointerup.prevent="release(b.key)"
+              @pointerleave="release(b.key)"
+              @pointercancel="release(b.key)"
             >
               {{ b.label }}
             </button>
@@ -588,6 +671,11 @@ function pct(p: number) {
 .stage.dodge {
   aspect-ratio: 16 / 10;
   width: min(100%, calc(72vh * 1.6));
+}
+.stage.doom {
+  aspect-ratio: 16 / 10;
+  width: min(100%, calc(72vh * 1.6));
+  background: #000;
 }
 .canvas {
   display: block;
@@ -865,6 +953,13 @@ function pct(p: number) {
   font-size: 16px;
 }
 .ctl.abort {
+  color: var(--vp-c-danger-1);
+}
+.buttons.doom {
+  grid-template-columns: repeat(3, 1fr);
+}
+.buttons.doom .shoot {
+  grid-column: span 2;
   color: var(--vp-c-danger-1);
 }
 .foot {

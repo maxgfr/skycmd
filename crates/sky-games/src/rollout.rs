@@ -1,13 +1,13 @@
 //! Rollout harness: plays a game with a [`Policy`] and reports metrics.
 
 use crate::common::{argmax, DecisionGame};
-use crate::{dodge, flappy, rescue};
+use crate::{dodge, doom, flappy, rescue};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 
 /// Names of the games, in a stable order.
-pub const GAMES: [&str; 3] = [flappy::NAME, rescue::NAME, dodge::NAME];
+pub const GAMES: [&str; 4] = [flappy::NAME, rescue::NAME, dodge::NAME, doom::NAME];
 
 /// Creates a game by name.
 pub fn make_game(name: &str, seed: u64) -> Option<Box<dyn DecisionGame>> {
@@ -15,6 +15,7 @@ pub fn make_game(name: &str, seed: u64) -> Option<Box<dyn DecisionGame>> {
         flappy::NAME => Some(Box::new(flappy::Flappy::new(seed))),
         rescue::NAME => Some(Box::new(rescue::Rescue::new(seed))),
         dodge::NAME => Some(Box::new(dodge::Dodge::new(seed))),
+        doom::NAME => Some(Box::new(doom::Doom::new(seed))),
         _ => None,
     }
 }
@@ -101,11 +102,15 @@ pub struct Metrics {
     pub game: String,
     pub episodes: usize,
     /// Flappy: mean pipes passed. Rescue: mean hikers rescued. Dodge: mean obstacles passed.
+    /// Doom: mean kills.
     pub mean_score: f32,
+    /// Doom: kills over monsters, summed over the episodes.
+    pub kill_rate: f32,
     /// Rescue: fraction of hikers rescued.
     pub rescue_rate: f32,
-    /// Fraction of episodes that completed the mission (rescue, dodge).
+    /// Fraction of episodes that completed the mission (rescue, dodge, doom: exit reached).
     pub completion_rate: f32,
+    /// Crashes (doom: deaths).
     pub crashes: u32,
     pub vetoes: u32,
     pub aborts: u32,
@@ -155,6 +160,7 @@ pub fn evaluate_with(
         ..Metrics::default()
     };
     let (mut score, mut steps, mut completed) = (0.0f64, 0.0f64, 0usize);
+    let mut max_score = 0.0f64;
     for ep in 0..episodes {
         if ep > 0 {
             g.reset();
@@ -179,6 +185,7 @@ pub fn evaluate_with(
         }
         let s = g.stats();
         score += s.score as f64;
+        max_score += s.max_score as f64;
         steps += s.steps as f64;
         completed += s.success as usize;
         m.crashes += s.crashed as u32;
@@ -192,6 +199,9 @@ pub fn evaluate_with(
     m.completion_rate = (completed as f64 / n) as f32;
     if game == rescue::NAME {
         m.rescue_rate = m.mean_score / rescue::N_HIKERS as f32;
+    }
+    if max_score > 0.0 {
+        m.kill_rate = (score / max_score) as f32;
     }
     m
 }

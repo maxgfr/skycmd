@@ -61,7 +61,8 @@ pub struct OptionProb {
     pub p: f32,
 }
 
-/// Answer to the secondary question (flappy `danger`, rescue `risk`, dodge `abort`).
+/// Answer to a secondary question (flappy `danger`, rescue `risk`, dodge `abort`, doom `danger`
+/// and `threat`).
 #[derive(Debug, Clone, Serialize)]
 pub struct Secondary {
     pub id: &'static str,
@@ -129,6 +130,8 @@ pub struct AiStep {
     pub executed: String,
     pub probs: Vec<OptionProb>,
     pub secondary: Option<Secondary>,
+    /// Answers to the questions after the secondary one (doom: `threat`).
+    pub others: Vec<Secondary>,
     /// How the model answered (exit, layers used, cache hits); `None` for the oracle.
     pub info: Option<DecisionInfo>,
     /// True when the coded safety reflex replaced the requested action on this frame.
@@ -159,6 +162,7 @@ struct Held {
     action: &'static str,
     probs: Vec<OptionProb>,
     secondary: Option<Secondary>,
+    others: Vec<Secondary>,
     info: Option<DecisionInfo>,
     state_text: String,
 }
@@ -175,7 +179,7 @@ pub struct Session {
 }
 
 impl Session {
-    /// A new session of `kind` (`flappy`, `rescue` or `dodge`).
+    /// A new session of `kind` (`flappy`, `rescue`, `dodge` or `doom`).
     pub fn new(kind: &str, seed: u64) -> Result<Session, String> {
         let kind = GAMES
             .iter()
@@ -292,10 +296,14 @@ impl Session {
     }
 
     /// One frame driven by a human. An empty key (or `none`) holds: flappy glides, rescue
-    /// hovers, dodge keeps its maneuver. The reflex still applies.
+    /// hovers, dodge keeps its maneuver, doom stands still. A human may act on every frame,
+    /// even in games where the agent decides every few frames. The reflex still applies.
     pub fn step_human(&mut self, key: &str) -> Result<HumanStep, String> {
         let key = key.trim();
-        let outcome = if key.is_empty() || key == "none" {
+        let outcome = if (key.is_empty() || key == "none") && self.kind == sky_games::doom::NAME {
+            // Releasing the keys stops the player (doom holds actions only for the agent).
+            self.game.apply_human(usize::MAX)
+        } else if key.is_empty() || key == "none" {
             self.game.tick()
         } else if self.kind == sky_games::dodge::NAME && key == "abort" {
             self.game.apply(0, true)
@@ -311,7 +319,7 @@ impl Session {
                         self.action_keys()
                     )
                 })?;
-            self.game.apply(i, false)
+            self.game.apply_human(i)
         };
         let shown = if key.is_empty() { "none" } else { key };
         Ok(HumanStep {
@@ -353,8 +361,8 @@ impl Session {
             .collect()
     }
 
-    fn secondary(&self, p: &[f32]) -> Option<Secondary> {
-        let q = self.questions.get(1)?;
+    fn secondary(&self, qi: usize, p: &[f32]) -> Option<Secondary> {
+        let q = self.questions.get(qi)?;
         let (value, max) = match q.qtype {
             QType::Noul => (p[1], 1.0),
             QType::Score => (
@@ -368,7 +376,7 @@ impl Session {
             qtype: q.qtype.name(),
             value,
             max,
-            probs: self.option_probs(1, p),
+            probs: self.option_probs(qi, p),
         })
     }
 
@@ -387,6 +395,7 @@ impl Session {
                 executed: "none".into(),
                 probs: held.as_ref().map(|h| h.probs.clone()).unwrap_or_default(),
                 secondary: held.as_ref().and_then(|h| h.secondary.clone()),
+                others: held.as_ref().map(|h| h.others.clone()).unwrap_or_default(),
                 info: held.as_ref().and_then(|h| h.info.clone()),
                 vetoed: false,
                 micros: now_us() - t0,
@@ -415,6 +424,11 @@ impl Session {
             } else {
                 None
             };
+            let mut others = Vec::new();
+            for qi in 2..self.questions.len() {
+                let p = self.ask(&mut policy, &oracle, qi, &state, &mut stats)?;
+                others.extend(self.secondary(qi, &p));
+            }
             let info = match &policy {
                 Policy::Model(m) => Some(DecisionInfo::from_stats(m, &stats)),
                 Policy::Oracle => None,
@@ -430,7 +444,8 @@ impl Session {
                     self.questions[0].keys[choice]
                 },
                 probs: self.option_probs(0, &p0),
-                secondary: p1.as_deref().and_then(|p| self.secondary(p)),
+                secondary: p1.as_deref().and_then(|p| self.secondary(1, p)),
+                others,
                 info,
                 state_text: state,
             });
@@ -442,6 +457,7 @@ impl Session {
             action: "none",
             probs: Vec::new(),
             secondary: None,
+            others: Vec::new(),
             info: None,
             state_text: String::new(),
         });
@@ -458,6 +474,7 @@ impl Session {
             executed,
             probs: held.probs,
             secondary: held.secondary,
+            others: held.others,
             info: held.info,
             vetoed,
             micros,
@@ -481,8 +498,15 @@ const BENCH_BATCH: usize = 10;
 /// forwards_per_decision, mean_layers_used, max_layers, static_hit_rate, state_reuse_rate, game}`
 /// (`mean_layers_used` and `max_layers` are null for s1).
 pub fn bench(model: &mut Model, n: usize) -> Result<Value, String> {
+    bench_game(model, sky_games::flappy::NAME, n)
+}
+
+/// [`bench`] on any game: each decision answers every question of the game and steps the
+/// physics (frames that only hold a decision are not timed separately but add their physics
+/// time to the next batch).
+pub fn bench_game(model: &mut Model, game: &str, n: usize) -> Result<Value, String> {
     let n = n.max(1);
-    let mut s = Session::new(sky_games::flappy::NAME, 0x5eed)?;
+    let mut s = Session::new(game, 0x5eed)?;
     // Warm-up: fills the prefix / static and BPE caches.
     for _ in 0..8 {
         s.step_ai(Policy::Model(model))?;
@@ -519,7 +543,7 @@ pub fn bench(model: &mut Model, n: usize) -> Result<Value, String> {
     let (median, p95, _) = summarize(&samples);
     let s2 = model.arch() == Arch::S2;
     Ok(json!({
-        "game": sky_games::flappy::NAME,
+        "game": s.kind(),
         "name": model.name(),
         "family": if s2 { "s2" } else { "s1" },
         "params": model.n_params(),

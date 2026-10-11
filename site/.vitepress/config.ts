@@ -18,6 +18,7 @@ const chapters: [string, string][] = [
   ['15-wiring-the-games', '15 Wiring the games'],
   ['16-llama-cpp-and-wllama', '16 Bonus: llama.cpp /v1/systemone and wllama'],
   ['17-scaling-and-troubleshooting', '17 Scaling up and troubleshooting'],
+  ['18-doom', '18 A Doom-like shooter'],
 ]
 
 const groups: [string, number, number][] = [
@@ -25,6 +26,7 @@ const groups: [string, number, number][] = [
   ['Data', 4, 7],
   ['Model and training', 7, 12],
   ['Shipping', 12, 17],
+  ['Going further', 17, 18],
 ]
 
 export default defineConfig({

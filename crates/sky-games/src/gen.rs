@@ -4,13 +4,14 @@
 
 use crate::common::{argmax, mix_seed, DecisionGame, QuestionSpec};
 use crate::rollout::make_game;
-use crate::{dodge, flappy, rescue};
+use crate::{dodge, doom, flappy, rescue};
 pub use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use sky_schema::{render_choice, render_noul, render_score, DecisionRecord, QType, Split};
 
-/// Share of samples asking the secondary question.
+/// Share of samples asking a secondary question (split evenly between them when a game has
+/// several, like doom's `danger` and `threat`).
 pub const SECONDARY_SHARE: f64 = 0.3;
 /// Share of samples rendered in French.
 pub const FRENCH_SHARE: f64 = 0.3;
@@ -152,14 +153,17 @@ fn noisy_action(game: &str, rng: &mut SmallRng) -> (usize, bool) {
     match game {
         flappy::NAME => (usize::from(!rng.gen_bool(0.25)), false),
         rescue::NAME => (rng.gen_range(0..7), false),
+        doom::NAME => (rng.gen_range(0..8), false),
         _ => (rng.gen_range(0..4), rng.gen_bool(0.01)),
     }
 }
 
-/// Base keep rate of a decision (consecutive flappy frames are strongly correlated).
+/// Base keep rate of a decision (consecutive flappy frames, and doom decisions 4 ticks apart,
+/// are strongly correlated).
 fn base_keep(game: &str) -> f32 {
     match game {
         flappy::NAME => 0.5,
+        doom::NAME => 0.6,
         _ => 1.0,
     }
 }
@@ -258,7 +262,11 @@ pub fn generate_with_actor(
                 // Quota: the secondary question gets SECONDARY_SHARE of the emitted records.
                 let secondary_due =
                     (secondary as f64) < SECONDARY_SHARE * (stats.records + 1) as f64;
-                let qi = usize::from(questions.len() > 1 && secondary_due);
+                let qi = if questions.len() > 1 && secondary_due {
+                    1 + secondary % (questions.len() - 1)
+                } else {
+                    0
+                };
                 let label = argmax(&targets[qi]);
                 seen[qi][label] += 1.0;
                 if rng.gen::<f32>() >= base_keep(game) * balance_keep(&seen[qi], label) {
@@ -277,7 +285,7 @@ pub fn generate_with_actor(
                 stats.records += 1;
                 stats.splits[split as usize] += 1;
                 stats.labels[qi].2[label] += 1;
-                secondary += qi;
+                secondary += usize::from(qi > 0);
                 emit(rec);
             },
         );

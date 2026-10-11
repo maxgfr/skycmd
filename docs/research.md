@@ -70,3 +70,20 @@ Licenses and row counts are in [`DATA_LICENSES.md`](../DATA_LICENSES.md).
   - It has `fast::scaled_dot_product_attention`, `fast::rope`, `fast::layer_norm`, `nn::value_and_grad` and `compile_with_state`.
   - It has no Muon and no transformer training example.
 - MLX 0.32.3 was released 2026-09-29. Building it from source needs Xcode's Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`).
+
+## Doom / ViZDoom datasets on the Hugging Face Hub (checked 2026-10)
+Searched datasets for doom, vizdoom, freedoom, deathmatch, sample-factory, gamengen and the scenario names (health gathering, defend the center, my way home, deadly corridor); most `doom` hits are unrelated (lyrics, p(doom) sets, images). About 70 game datasets were opened (card metadata, README, dataset-viewer rows or small metadata files). Each one is listed in `DATA_LICENSES.md` under Rejected.
+
+| dataset | license | content | verdict |
+|---|---|---|---|
+| `Yunncheng/gamewam-vizdoom` | Apache-2.0 | 50k Sample-Factory APPO rollouts in 4 combat scenarios (1.88 TB, at most about 4 GB without the video); position x/y, angle, health and a 9-dim action at 35 Hz, decision every 4 tics | rejected: no enemies, projectiles, ammo or walls; RL policy, not an oracle |
+| `RohanNaga/doom-dense-arnold` (+ `-latents`) | CC-BY-4.0 | per-tic Arnold deathmatch recordings (about 3 TB): frames, health, ammo, kills, frags, position, angle, controls | rejected: no enemy or projectile data; RL policy |
+| `liguang0115/overseer-doom` | Apache-2.0 | GZDoom traversals of Freedoom maps by an exploration controller: video, pose and controls per tic, monster alive count | rejected: navigation only, no combat state |
+| `anakin87/doom-defend-the-center-100k-oracle` | Apache-2.0 | 100k frames labelled by a privileged oracle (turn L/N/R, shoot) | rejected: the oracle's privileged state is not stored, RGB only |
+| `charrywhite/VizDoom_withpos` | none | frames, PPO actions, health, enemy count and nearest-enemy offset, projectile count, took-damage, pose | rejected: no license |
+| `p-doom/doom-dataset`, `chrisxx/doom-2players-*`, `chrisxx/doom-actions-gemini`, `Masao-Taketani/vizdoom-inference-*`, `lucrbrtv/doom-e1-*` | CC0 / MIT / Apache-2.0 / Unlicense | frames or latents with actions (and rewards), RL agents, humans or inverse-dynamics guesses; `lucrbrtv` shows id Software's DOOM (1993) | rejected: pixels only |
+| GameNGen-style rollouts (`arnaudstiegler/*`, `johnrobinsn/*`, `P-H-B-D-a16z/*`, `indweller/doomppo`, `xingzhaohu/vizdoom-ppo-dataset`, `blanchon/doom_parquet`, ...) | none, `other`, or MIT for one repo | frames, PPO or random actions, health | rejected: pixels plus health only, mostly unlicensed |
+| VLM / LLM sets (`talha1503/*`, `pufanyi/ViZDoom*`, `CV-Mistral-Hackathon/doom-*`) | none | frames or ASCII screens with prompts and actions from a teacher policy or a model | rejected: no license, model outputs or undocumented labels |
+| Sample-Factory models (`edbeeching/doom_*`, `andrewzhang505/sample-factory-2-doom-*`, about 1,000 `vizdoom` models) | none declared on the ones opened | checkpoints and one `replay.mp4` | noted only: the replays are video |
+
+None of these can produce our records honestly. Our state text needs the bearing and distance of the nearest visible enemy, incoming projectiles, wall distances, doors and the next A* waypoint on a grid map, and no Hub dataset stores more than pose, health, ammo and a few counters next to the pixels. Their actions also come from reward-trained policies, humans or VLMs, while our labels come from an oracle with full simulator access. The permissive sets with game variables (`gamewam-vizdoom`, `doom-dense-arnold`) could at most give an action-frequency prior by health or ammo bin, and the procedural oracle already produces unlimited exact labels, so the Doom data stays fully generated (`sky-games-gen --game doom`, `sky-arena --dagger`).

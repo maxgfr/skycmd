@@ -1,7 +1,7 @@
 //! Plays every game with a decision model, natively, and prints game metrics and latency.
 //!
 //! ```text
-//! sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game flappy|rescue|dodge|all] [--json out.json]
+//! sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game flappy|rescue|dodge|doom|all] [--json out.json]
 //!           [--exit-threshold T]   # s2: override the early-exit threshold (1.0 = full depth)
 //! sky-arena <model> --dagger N --out data/dagger   # N oracle-labelled records per game, from the model's own play
 //! ```
@@ -11,11 +11,9 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use sky_games::make_game;
 use sky_games::rollout::{evaluate_with, EvalOptions, Metrics, OraclePolicy, Policy};
+use sky_games::{make_game, GAMES};
 use sky_infer::{Engine, EngineOptions, QType};
-
-const GAMES: [&str; 3] = ["flappy", "rescue", "dodge"];
 
 /// A [`Policy`] backed by the System One engine: it sees only the text state, like the browser.
 struct EnginePolicy {
@@ -151,7 +149,7 @@ fn percentile(sorted: &[f64], q: f64) -> f64 {
 
 fn metrics_json(m: &Metrics) -> serde_json::Value {
     serde_json::json!({
-        "episodes": m.episodes, "mean_score": m.mean_score, "rescue_rate": m.rescue_rate,
+        "episodes": m.episodes, "mean_score": m.mean_score, "rescue_rate": m.rescue_rate, "kill_rate": m.kill_rate,
         "completion_rate": m.completion_rate, "crashes": m.crashes, "vetoes": m.vetoes,
         "aborts": m.aborts, "safe_aborts": m.safe_aborts, "mean_steps": m.mean_steps,
     })
@@ -166,7 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .cloned()
     };
     let Some(model) = args.first().filter(|a| !a.starts_with("--")) else {
-        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all] [--json out.json] [--max-pipes N] [--exit-threshold T]");
+        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T]");
         std::process::exit(2);
     };
     let episodes: usize = flag("--episodes").map_or(Ok(100), |v| v.parse())?;
@@ -176,7 +174,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let games: Vec<&str> = GAMES
         .iter()
         .copied()
-        .filter(|g| game_arg == "all" || game_arg == *g)
+        .filter(|g| game_arg == "all" || game_arg.split(',').any(|a| a == *g))
         .collect();
 
     let exit_threshold: Option<f32> = flag("--exit-threshold").map(|v| v.parse()).transpose()?;
@@ -218,8 +216,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let depth = mean_layers.map_or(String::new(), |l| {
             format!(", mean layers {l:.2}, exits {:?}", policy.exits)
         });
+        let extra = if game == "doom" {
+            format!(
+                " kills {:.2} (oracle {:.2}) completion oracle {:.2} mean ticks {:.0} (oracle {:.0})",
+                m.kill_rate, oracle.kill_rate, oracle.completion_rate, m.mean_steps, oracle.mean_steps
+            )
+        } else {
+            String::new()
+        };
         println!(
-            "{game:7} model: score {:7.2} rescue {:.2} completion {:.2} crashes {:4} vetoes {:4} | oracle score {:7.2} | {} decisions, p50 {:.0} µs, p95 {:.0} µs{depth}",
+            "{game:7} model: score {:7.2} rescue {:.2} completion {:.2} crashes {:4} vetoes {:4} | oracle score {:7.2} | {} decisions, p50 {:.0} µs, p95 {:.0} µs{depth}{extra}",
             m.mean_score, m.rescue_rate, m.completion_rate, m.crashes, m.vetoes, oracle.mean_score, lat.len(), p50, p95
         );
         report.insert(

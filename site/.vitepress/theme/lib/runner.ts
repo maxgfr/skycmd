@@ -1,5 +1,6 @@
-// Drives one game session on a canvas: fixed 60 Hz physics (flappy, dodge) or timed grid steps
-// (rescue), AI or human control, rendering with requestAnimationFrame, and a HUD state object.
+// Drives one game session on a canvas: fixed 60 Hz physics (flappy, dodge), Doom's 35 Hz tick
+// (doom) or timed grid steps (rescue), AI or human control, rendering with
+// requestAnimationFrame, and a HUD state object.
 //
 // The wasm module runs on the main thread: a full AI frame (state text, tokenization, two
 // forward passes, safety reflex, physics) measures ~0.7 ms with s1-pico in V8 (s2 models encode
@@ -20,8 +21,9 @@ import {
   type FxState,
   type RescueView,
 } from './render'
+import { drawDoom, loadDoomAssets, newDoomFx, type DoomAssets, type DoomFx, type DoomView } from './doom-render'
 
-export type GameKind = 'flappy' | 'rescue' | 'dodge'
+export type GameKind = 'flappy' | 'rescue' | 'dodge' | 'doom'
 export type Mode = 'ai' | 'human'
 
 export interface Hud {
@@ -34,6 +36,8 @@ export interface Hud {
   action: string
   executed: string
   secondary: StepReport['secondary']
+  /** Answers to the questions after the secondary one (doom: threat). */
+  others: NonNullable<StepReport['others']>
   vetoCount: number
   vetoAt: number
   score: number
@@ -60,6 +64,7 @@ export function newHud(): Hud {
     action: '',
     executed: '',
     secondary: null,
+    others: [],
     vetoCount: 0,
     vetoAt: 0,
     score: 0,
@@ -77,7 +82,15 @@ export function newHud(): Hud {
 const DEPTH_WINDOW = 120
 
 /** Per-decision time budget before the runner starts deciding every N frames. */
-const BUDGET_US: Record<GameKind, number> = { flappy: 6000, dodge: 12000, rescue: 60000 }
+const BUDGET_US: Record<GameKind, number> = { flappy: 6000, dodge: 12000, rescue: 60000, doom: 20000 }
+/** Doom: Doom's own tick rate (the agent decides every 4 ticks inside the session). */
+const DOOM_HZ = 35
+
+/** Doom human controls: held keys, combined into one action per tick. */
+const DOOM_MOVE = ['forward', 'back', 'strafe_left', 'strafe_right'] as const
+const DOOM_TURN = ['turn_left', 'turn_right'] as const
+
+let doomAssets: Promise<DoomAssets> | null = null
 /** Rescue: grid steps per second in AI mode. */
 const RESCUE_AI_RATE = 5
 
@@ -90,6 +103,8 @@ export interface RunnerOptions {
   showScore?: boolean
   /** localStorage key for the high score (omit to disable). */
   bestKey?: string
+  /** Doom: draw the minimap. */
+  minimap?: boolean
   onHud?: (hud: Hud) => void
 }
 
@@ -112,6 +127,10 @@ export class GameRunner {
   private running = false
   private layers: number[] = []
   private hits: number[] = []
+  private held = new Set<string>()
+  private doomFx: DoomFx = newDoomFx()
+  private doomTex: DoomAssets | null = null
+  private doomTick = 0
 
   constructor(
     private mod: SkyWeb,
@@ -123,6 +142,41 @@ export class GameRunner {
     this.session = new mod.GameSession(opts.kind, opts.seed ?? Math.floor(Math.random() * 1e9))
     this.hud.best = opts.bestKey ? readNumber(opts.bestKey) : 0
     this.hud.policy = 'oracle (no model loaded)'
+    if (this.kind === 'doom') {
+      doomAssets ??= loadDoomAssets()
+      doomAssets.then((a) => (this.doomTex = a)).catch(() => {})
+    }
+  }
+
+  /** Doom: show or hide the minimap. */
+  setMinimap(on: boolean) {
+    this.opts.minimap = on
+  }
+
+  /** Doom human control: a key is held (`down`) or released. `use` fires once per press. */
+  hold(key: string, down: boolean) {
+    if (this.session.done()) {
+      if (down && this.mode === 'human' && performance.now() - this.doneAt > 400) this.reset()
+      return
+    }
+    if (key === 'use') {
+      if (down) this.queue.push('use')
+      return
+    }
+    if (down) this.held.add(key)
+    else this.held.delete(key)
+  }
+
+  /** The doom action of this tick from the held keys: shoot, then alternate move and turn. */
+  private doomKey(): string {
+    const q = this.queue.shift()
+    if (q) return q
+    if (this.held.has('shoot')) return 'shoot'
+    const move = DOOM_MOVE.find((k) => this.held.has(k))
+    const turn = DOOM_TURN.find((k) => this.held.has(k))
+    this.doomTick++
+    if (move && turn) return this.doomTick % 2 ? move : turn
+    return move ?? turn ?? ''
   }
 
   /** Uses a model, or the game's oracle when `engine` is null. */
@@ -141,6 +195,7 @@ export class GameRunner {
   setMode(mode: Mode) {
     this.mode = mode
     this.queue = []
+    this.held.clear()
     this.heldKey = 'continue'
   }
 
@@ -163,6 +218,7 @@ export class GameRunner {
     this.doneAt = 0
     this.acc = 0
     this.queue = []
+    this.held.clear()
     this.heldKey = 'continue'
     this.fx.tween = 1
     this.hud.done = false
@@ -206,7 +262,10 @@ export class GameRunner {
     const theme = currentTheme()
     if (this.kind === 'flappy') drawFlappy(ctx, w, h, snap.view as FlappyView, this.fx, theme, { showScore: this.opts.showScore })
     else if (this.kind === 'rescue') drawRescue(ctx, w, h, snap.view as RescueView, this.fx, theme)
-    else drawDodge(ctx, w, h, snap.view as DodgeView, this.fx, theme)
+    else if (this.kind === 'doom') {
+      this.doomFx.t = this.fx.t
+      drawDoom(ctx, w, h, snap.view as DoomView, this.doomTex, this.doomFx, { minimap: this.opts.minimap ?? true })
+    } else drawDodge(ctx, w, h, snap.view as DodgeView, this.fx, theme)
   }
 
   private stepAi(now: number) {
@@ -218,6 +277,7 @@ export class GameRunner {
       this.hud.probs = r.probs ?? []
       this.hud.action = r.action ?? ''
       this.hud.secondary = r.secondary ?? null
+      this.hud.others = r.others ?? []
       this.hud.stateText = r.state_text ?? ''
       this.hud.info = r.info ?? null
       if (r.info) this.trackDepth(r.info)
@@ -293,12 +353,14 @@ export class GameRunner {
         }
         this.fx.tween = Math.min(1, this.fx.tween + dt / 0.16)
       } else {
-        let n = Math.floor(this.acc * 60)
-        this.acc -= n / 60
+        const hz = this.kind === 'doom' ? DOOM_HZ : 60
+        let n = Math.floor(this.acc * hz)
+        this.acc -= n / hz
         if (n > 4) n = 4 // drop the backlog after a stall instead of fast-forwarding
         for (let i = 0; i < n && !this.session.done(); i++) {
           if (this.mode === 'ai') this.stepAi(now)
           else if (this.kind === 'flappy') this.stepHuman(this.queue.shift() ?? '', now)
+          else if (this.kind === 'doom') this.stepHuman(this.doomKey(), now)
           else this.stepHuman(this.heldKey, now)
         }
       }

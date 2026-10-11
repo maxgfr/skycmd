@@ -42,3 +42,7 @@ GLM teacher (z.ai) ─────┘   (records)  (mlx-rs)                  └
 15. [Wiring the games](./15-wiring-the-games)
 16. [Bonus: llama.cpp /v1/systemone and wllama](./16-llama-cpp-and-wllama)
 17. [Scaling up and troubleshooting](./17-scaling-and-troubleshooting)
+
+## Going further
+
+18. [A Doom-like shooter](./18-doom)

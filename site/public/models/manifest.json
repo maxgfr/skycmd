@@ -14,5 +14,13 @@
     "params": 1532033,
     "bytes": 701568,
     "file": "s2-nano.gguf"
+  },
+  {
+    "name": "s2-nano-doom",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "params": 1532033,
+    "bytes": 701568,
+    "file": "s2-nano-doom.gguf"
   }
 ]

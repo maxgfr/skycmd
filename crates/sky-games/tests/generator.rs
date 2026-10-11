@@ -18,7 +18,8 @@ fn records_validate_and_targets_sum_to_one() {
             assert_eq!(r.src, format!("game:{game}"));
             let sum: f32 = r.target.iter().sum();
             assert!((sum - 1.0).abs() < 1e-4, "{game}: {sum}");
-            assert!(r.state.split_whitespace().count() <= 24);
+            let budget = if game == "doom" { 30 } else { 24 };
+            assert!(r.state.split_whitespace().count() <= budget);
             // JSONL round trip.
             let line = serde_json::to_string(r).unwrap();
             assert!(!line.contains('\n'));

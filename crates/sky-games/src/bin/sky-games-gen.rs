@@ -1,4 +1,4 @@
-//! `sky-games-gen --game {flappy,rescue,dodge,all} --n N --seed S [--out PATH]`
+//! `sky-games-gen --game {flappy,rescue,dodge,doom,all} --n N --seed S [--out PATH]`
 //!
 //! Writes decision records as JSONL. With a single game, `--out` is the output file (default
 //! `data/games/<game>.jsonl`); with `all`, it is the output directory (default `data/games`)
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str =
-    "usage: sky-games-gen --game {flappy,rescue,dodge,all} --n N --seed S [--out PATH]";
+    "usage: sky-games-gen --game {flappy,rescue,dodge,doom,all} --n N --seed S [--out PATH]";
 
 struct Args {
     game: String,
@@ -46,7 +46,7 @@ fn parse_args() -> Result<Args, String> {
     }
     if args.game != "all" && !GAMES.contains(&args.game.as_str()) {
         return Err(format!(
-            "--game must be one of flappy, rescue, dodge, all\n{USAGE}"
+            "--game must be one of flappy, rescue, dodge, doom, all\n{USAGE}"
         ));
     }
     Ok(args)

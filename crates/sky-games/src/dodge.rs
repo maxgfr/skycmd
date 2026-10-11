@@ -732,6 +732,7 @@ impl DecisionGame for Dodge {
     fn stats(&self) -> EpisodeStats {
         EpisodeStats {
             score: self.next as f32,
+            max_score: 0.0,
             success: self.finished,
             crashed: self.crashed,
             aborted: self.aborted,

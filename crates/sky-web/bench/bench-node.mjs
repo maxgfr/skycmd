@@ -1,9 +1,10 @@
 // WASM latency benchmark in Node: loads the browser module (site/public/pkg, built by
 // scripts/build-wasm.sh) and runs `bench()` (Flappy Drone decisions: both questions on the same
-// state + physics, timed in batches of 10) for every model given on the command line.
+// state + physics, timed in batches of 10) for every model given on the command line. With
+// `--game G`, `benchGame()` times that game instead (doom: the three questions on one state).
 //
 //   node crates/sky-web/bench/bench-node.mjs [--n 2000] [--repeat 5] [--no-static-cache] [--packed]
-//        [--exit-threshold T] model.gguf...
+//        [--exit-threshold T] [--game flappy|rescue|dodge|doom] model.gguf...
 //
 // Prints one JSON line per model: the median over `--repeat` runs of the bench median, plus the
 // depth and cache statistics reported by `bench()`.
@@ -20,6 +21,7 @@ let repeat = 5
 let staticCache = true
 let packed = false
 let tau
+let game
 const models = []
 for (let i = 0; i < args.length; i++) {
   const a = args[i]
@@ -28,10 +30,11 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--no-static-cache') staticCache = false
   else if (a === '--packed') packed = true
   else if (a === '--exit-threshold') tau = Number(args[++i])
+  else if (a === '--game') game = args[++i]
   else models.push(a)
 }
 if (!models.length) {
-  console.error('usage: bench-node.mjs [--n N] [--repeat R] [--no-static-cache] [--packed] [--exit-threshold T] model.gguf...')
+  console.error('usage: bench-node.mjs [--n N] [--repeat R] [--no-static-cache] [--packed] [--exit-threshold T] [--game G] model.gguf...')
   process.exit(2)
 }
 
@@ -46,13 +49,15 @@ const median = (xs) => {
 for (const path of models) {
   const engine = mod.Engine.withOptions(new Uint8Array(readFileSync(path)), staticCache, packed)
   if (tau !== undefined) engine.setExitThreshold(tau)
-  mod.bench(engine, 200) // warm-up (JIT, caches)
+  const run = (k) => (game ? mod.benchGame(engine, game, k) : mod.bench(engine, k))
+  run(200) // warm-up (JIT, caches)
   const runs = []
-  for (let r = 0; r < repeat; r++) runs.push(JSON.parse(mod.bench(engine, n)))
+  for (let r = 0; r < repeat; r++) runs.push(JSON.parse(run(n)))
   const last = runs[runs.length - 1]
   console.log(
     JSON.stringify({
       model: basename(path),
+      game: last.game,
       family: last.family,
       params: last.params,
       file_bytes: last.file_bytes,

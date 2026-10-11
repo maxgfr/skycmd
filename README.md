@@ -40,6 +40,8 @@ For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M
 ## The rule: the model proposes, the code decides
 The games are civil drone scenarios: Flappy Drone, Rescue Run and Obstacle Dodge. In each one the model only *advises*, and coded rules (geofence, ceiling, battery, collision reflex) always keep a veto. This is a demo and a tutorial, not flight software. The model never touches a control loop.
 
+A fourth game is a Doom-like first-person shooter on a grid, drawn with [Freedoom](https://github.com/freedoom/freedoom) art (BSD-3-Clause; no id Software assets). The same kind of model plays it from 14 measured numbers every 4 ticks, with a coded reflex against fireballs and empty weapons ([chapter 18](https://maxgfr.github.io/skycmd/tutorial/18-doom), `scripts/train-doom.sh`).
+
 ## Repository
 | crate | what it does |
 |---|---|

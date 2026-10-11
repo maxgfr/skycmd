@@ -114,7 +114,7 @@ impl Engine {
     }
 }
 
-/// A game (`flappy`, `rescue` or `dodge`) stepped by a human, the model or the oracle.
+/// A game (`flappy`, `rescue`, `dodge` or `doom`) stepped by a human, the model or the oracle.
 #[wasm_bindgen]
 pub struct GameSession {
     inner: Session,
@@ -144,7 +144,8 @@ impl GameSession {
     }
 
     /// One AI frame with the model. Returns `{policy, decided, action, executed, probs:
-    /// [{key, p}], secondary: {id, type, value, max, probs}, info: {family, exit, n_exits,
+    /// [{key, p}], secondary: {id, type, value, max, probs}, others: [same as secondary],
+    /// info: {family, exit, n_exits,
     /// layers_used, mean_layers, max_layers, static_hit, state_reused}, vetoed, micros,
     /// state_text, event, reward, done, score}` as JSON.
     pub fn step_ai(&mut self, engine: &mut Engine) -> Result<String, JsError> {
@@ -233,6 +234,14 @@ impl GameSession {
 #[wasm_bindgen]
 pub fn bench(engine: &mut Engine, n: u32) -> Result<String, JsError> {
     session::bench(&mut engine.inner, n as usize)
+        .map(|v| v.to_string())
+        .map_err(|e| JsError::new(&e))
+}
+
+/// Like [`bench`] on any game (`flappy`, `rescue`, `dodge`, `doom`).
+#[wasm_bindgen(js_name = benchGame)]
+pub fn bench_game(engine: &mut Engine, game: &str, n: u32) -> Result<String, JsError> {
+    session::bench_game(&mut engine.inner, game, n as usize)
         .map(|v| v.to_string())
         .map_err(|e| JsError::new(&e))
 }

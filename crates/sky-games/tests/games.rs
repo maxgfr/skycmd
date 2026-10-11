@@ -59,6 +59,16 @@ fn reset_draws_a_new_course_deterministically() {
     }
 }
 
+/// Pieces allowed in a state text: 24 for the 2D games, 30 for doom (14 measured quantities:
+/// enemy, aim, walls, waypoint and projectile, still well inside the 64-token state budget).
+fn piece_budget(game: &str) -> usize {
+    if game == "doom" {
+        30
+    } else {
+        24
+    }
+}
+
 #[test]
 fn state_text_fits_token_budget() {
     for game in GAMES {
@@ -67,7 +77,7 @@ fn state_text_fits_token_budget() {
         for t in &texts {
             let pieces: Vec<&str> = t.split_whitespace().collect();
             assert!(
-                pieces.len() <= 24,
+                pieces.len() <= piece_budget(game),
                 "{game}: {} pieces in {t:?}",
                 pieces.len()
             );
@@ -85,7 +95,7 @@ fn questions_and_oracle_shapes_agree() {
     for game in GAMES {
         let g = make_game(game, 1).unwrap();
         let qs = g.questions();
-        assert_eq!(qs.len(), 2, "{game}");
+        assert_eq!(qs.len(), if game == "doom" { 3 } else { 2 }, "{game}");
         let targets = g.oracle();
         assert_eq!(targets.len(), qs.len());
         for (q, t) in qs.iter().zip(&targets) {
@@ -237,6 +247,9 @@ fn snapshots_serialize() {
     assert_eq!(r.hikers.len(), 3);
     let d = Dodge::new(1).snapshot();
     assert_eq!(d.obstacles.len(), dodge::N_OBSTACLES);
+    let m = Doom::new(1).snapshot();
+    assert_eq!(m.cells.len(), m.width * m.height);
+    assert!(m.monsters > 0 && m.sprites.len() >= m.monsters as usize);
     for game in GAMES {
         let v = make_game(game, 1).unwrap().snapshot_json();
         assert!(v.is_object());
@@ -257,4 +270,28 @@ fn dodge_veto_is_reported_in_step_info() {
     }
     assert!(fired);
     assert!(!g.crashed || g.vetoes > 0);
+}
+
+/// Doom gates on easy levels: the oracle completes at least 90% of 100 seeded levels with no
+/// death; random play completes none (release builds only: the oracle simulates ahead).
+#[test]
+#[cfg_attr(debug_assertions, ignore = "slow in debug builds, runs with --release")]
+fn doom_oracle_clears_easy_levels() {
+    let o = evaluate("doom", &mut OraclePolicy::default(), 100, 2026);
+    assert!(o.completion_rate >= 0.9, "{o:?}");
+    assert_eq!(o.crashes, 0, "the oracle died: {o:?}");
+    let r = evaluate("doom", &mut RandomPolicy::new(5), 100, 2026);
+    assert_eq!(r.completion_rate, 0.0, "{r:?}");
+    assert!(
+        o.kill_rate > r.kill_rate + 0.3,
+        "oracle {o:?} vs random {r:?}"
+    );
+}
+
+#[test]
+fn doom_oracle_beats_random_quickly() {
+    let o = evaluate("doom", &mut OraclePolicy::default(), 4, 11);
+    let r = evaluate("doom", &mut RandomPolicy::new(1), 4, 11);
+    assert!(o.completion_rate >= 0.75, "{o:?}");
+    assert_eq!(r.completion_rate, 0.0, "{r:?}");
 }
