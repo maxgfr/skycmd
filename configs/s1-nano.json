@@ -1,0 +1,41 @@
+{
+  "name": "s1-nano",
+  "architectures": [
+    "ModernBertForMaskedLM"
+  ],
+  "model_type": "modernbert",
+  "vocab_size": 2048,
+  "hidden_size": 128,
+  "num_hidden_layers": 4,
+  "num_attention_heads": 2,
+  "intermediate_size": 256,
+  "global_attn_every_n_layers": 3,
+  "local_attention": 128,
+  "global_rope_theta": 160000.0,
+  "local_rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "layer_norm_eps": 1e-05,
+  "norm_bias": false,
+  "attention_bias": false,
+  "mlp_bias": false,
+  "hidden_activation": "gelu",
+  "max_position_embeddings": 256,
+  "pad_token_id": 0,
+  "cls_token_id": 2,
+  "sep_token_id": 3,
+  "bos_token_id": 2,
+  "eos_token_id": 3,
+  "initializer_range": 0.02,
+  "initializer_cutoff_factor": 2.0,
+  "rl_agent": {
+    "head_layers": 1,
+    "max_len": 256,
+    "head_max_len": 96,
+    "temperature": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "temperature_by_options": {}
+  }
+}

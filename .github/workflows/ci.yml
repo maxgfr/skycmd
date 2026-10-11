@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  # Everything except sky-train, which links mlx-rs and needs macOS + Metal.
+  # The golden tests of sky-infer skip themselves when models-src/oscar (gitignored) is absent.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy --workspace --exclude sky-train --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --exclude sky-train --release
+
+  # sky-train builds against MLX/Metal. Hosted macOS runners are virtual machines without Metal
+  # GPU access, so the crate is compiled and linted here, and its tests are allowed to fail;
+  # run them locally on Apple Silicon (see tutorial chapter 02).
+  sky-train:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy -p sky-train --all-targets -- -D warnings
+      - name: Tests (best effort without a GPU)
+        continue-on-error: true
+        run: cargo test -p sky-train --release
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target/sky-web-wasm"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - name: Build the browser module
+        run: scripts/build-wasm.sh
+      - name: Check the output
+        run: test -s site/public/pkg/sky_web_bg.wasm && test -s site/public/pkg/sky_web.js

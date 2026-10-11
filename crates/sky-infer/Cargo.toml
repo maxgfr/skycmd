@@ -1,0 +1,37 @@
+[package]
+name = "sky-infer"
+description = "Tiny inference engine for Laya-format (ModernBERT + decision head) System One models, native and wasm32"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["json"]
+# JSON request/response (System One shape) through serde_json.
+json = ["dep:serde_json"]
+# Fill `micros` in responses and expose `Engine::last_micros`.
+timing = []
+# wasm-bindgen API (`SkyEngine`).
+wasm = ["json", "dep:wasm-bindgen", "dep:js-sys"]
+
+[dependencies]
+sky-gguf = { path = "../sky-gguf" }
+unicode-normalization = { version = "0.1.25", default-features = false }
+serde_json = { version = "1.0.145", optional = true, features = ["preserve_order", "float_roundtrip", "arbitrary_precision"] }
+wasm-bindgen = { version = "0.2.117", optional = true }
+js-sys = { version = "0.3.94", optional = true }
+
+[[bin]]
+name = "sky-convert"
+path = "src/bin/sky-convert.rs"
+
+[[bin]]
+name = "sky-bench"
+path = "src/bin/sky-bench.rs"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3", "--enable-simd", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals"]

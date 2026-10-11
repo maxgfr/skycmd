@@ -1,0 +1,73 @@
+/* skycmd theme: sky blue brand, system fonts (no external font requests). */
+:root {
+  --vp-c-brand-1: #0284c7;
+  --vp-c-brand-2: #0369a1;
+  --vp-c-brand-3: #0ea5e9;
+  --vp-c-brand-soft: rgba(14, 165, 233, 0.14);
+  --vp-font-family-base: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+  --vp-font-family-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #0ea5e9 10%, #6366f1 90%);
+}
+
+.dark {
+  --vp-c-brand-1: #38bdf8;
+  --vp-c-brand-2: #0ea5e9;
+  --vp-c-brand-3: #0284c7;
+  --vp-c-brand-soft: rgba(56, 189, 248, 0.16);
+}
+
+/* The hero image slot hosts the live canvas: center it and drop the default glow. */
+.VPHero .image-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100% !important;
+  height: auto !important;
+  transform: none !important;
+}
+.VPHero .image-bg {
+  opacity: 0.35;
+}
+@media (min-width: 960px) {
+  .VPHero .image {
+    margin: 0 !important;
+  }
+}
+
+.home-section {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+@media (min-width: 640px) {
+  .home-section {
+    padding: 0 48px;
+  }
+}
+
+.links-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.links-row a {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-divider);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.links-row a:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+/* Play and Bench pages use the full width for the canvas and the table. */
+.wide-page .VPDoc .container,
+.wide-page .VPDoc .content,
+.wide-page .VPDoc .content-container {
+  max-width: 1240px !important;
+}

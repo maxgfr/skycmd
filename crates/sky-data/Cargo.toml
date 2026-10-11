@@ -1,0 +1,27 @@
+[package]
+name = "sky-data"
+description = "Hugging Face data pipeline, tokenizer training and GLM teacher client for skycmd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "sky-data"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.152", features = ["preserve_order"] }
+ureq = { version = "3.4.2", features = ["json"] }
+parquet = { version = "60.0.0", default-features = false, features = ["snap", "zstd", "flate2", "flate2-rust_backend", "lz4", "json"] }
+bytes = "1.12.1"
+zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
+tokenizers = { version = "0.23.2", default-features = false, features = ["onig"] }
+
+[dev-dependencies]

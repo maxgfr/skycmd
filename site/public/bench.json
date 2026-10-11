@@ -1,0 +1,20 @@
+{
+  "generated": "2026-10-11",
+  "note": "accuracy/NLL/ECE: held-out test split (runs/<model>/report.md); native_us: sky-bench median per decision on the build machine; null = not measured yet",
+  "models": [
+    {
+      "name": "s1-pico",
+      "params": 202305,
+      "bytes": 545280,
+      "accuracy": 0.7813,
+      "games_accuracy": 0.8806,
+      "flappy_accuracy": 0.8245,
+      "rescue_accuracy": 0.8751,
+      "dodge_accuracy": 0.9442,
+      "nll": 0.6449,
+      "ece": 0.0738,
+      "native_us": 174.5,
+      "wasm_us": null
+    }
+  ]
+}

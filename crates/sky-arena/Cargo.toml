@@ -1,0 +1,12 @@
+[package]
+name = "sky-arena"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Plays the skycmd games with a decision model and reports game metrics and latency"
+
+[dependencies]
+sky-games = { path = "../sky-games" }
+sky-infer = { path = "../sky-infer" }
+sky-schema = { path = "../sky-schema" }
+serde_json = "1"

@@ -1,0 +1,13 @@
+[package]
+name = "sky-gguf"
+description = "Zero-copy GGUF v3 reader and writer with F32/F16/BF16/Q8_0 support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[[bin]]
+name = "gguf-inspect"
+path = "src/bin/gguf-inspect.rs"

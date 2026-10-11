@@ -1,0 +1,8 @@
+[
+  {
+    "name": "s1-pico",
+    "file": "s1-pico.gguf",
+    "params": 202305,
+    "bytes": 545280
+  }
+]

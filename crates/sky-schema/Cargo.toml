@@ -1,0 +1,12 @@
+[package]
+name = "sky-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "System One request/response types, decision records and the drone command-plan schema with its safety validator"
+
+[dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["preserve_order"] }
+indexmap = { version = "2.9.0", features = ["serde"] }
