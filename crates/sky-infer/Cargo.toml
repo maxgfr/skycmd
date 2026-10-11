@@ -17,6 +17,8 @@ json = ["dep:serde_json"]
 timing = []
 # wasm-bindgen API (`SkyEngine`).
 wasm = ["json", "dep:wasm-bindgen", "dep:js-sys"]
+# wasm: also export `kernelBench` (product kernels on the ladder shapes, for bench/kernels-node.mjs).
+wasm-bench = ["wasm"]
 
 [dependencies]
 sky-gguf = { path = "../sky-gguf" }

@@ -92,11 +92,15 @@ pub fn features(v: f32, out: &mut [f32; NUM_FEATURES]) {
         v.signum() * v.abs().ln_1p()
     };
     out[0] = u;
+    // The angles are rounded to f32 like the training graph: since ω_k = 2^k ω_0 exactly,
+    // a_k = 2^k a_0 exactly, so sin / cos of a_0 in f64 and 7 double-angle steps (error ~1e-14)
+    // give the correctly rounded f32 values of all 8 frequencies for one sin / cos call.
+    let a0 = (u * omega(0)) as f64;
+    let (mut s, mut c) = a0.sin_cos();
     for k in 0..NUM_FREQS {
-        // the angle is rounded to f32 like the training graph, then sin / cos are correctly rounded
-        let a = (u * omega(k)) as f64;
-        out[1 + k] = a.sin() as f32;
-        out[1 + NUM_FREQS + k] = a.cos() as f32;
+        out[1 + k] = s as f32;
+        out[1 + NUM_FREQS + k] = c as f32;
+        (s, c) = (2.0 * s * c, (c - s) * (c + s));
     }
 }
 
@@ -139,5 +143,23 @@ mod tests {
         features(-(std::f32::consts::E - 1.0), &mut f);
         assert!((f[0] + 1.0).abs() < 1e-6);
         assert!((f[1] - (-std::f32::consts::PI / 8.0).sin()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn double_angle_features_match_direct_sin_cos() {
+        let mut f = [0.0; NUM_FEATURES];
+        let mut worst = 0.0f32;
+        for i in -4000..4000 {
+            let v = i as f32 * 0.37 + if i % 3 == 0 { 0.0 } else { 0.125 };
+            features(v, &mut f);
+            let u = f[0];
+            for k in 0..NUM_FREQS {
+                let a = (u * omega(k)) as f64;
+                worst = worst
+                    .max((f[1 + k] - a.sin() as f32).abs())
+                    .max((f[1 + NUM_FREQS + k] - a.cos() as f32).abs());
+            }
+        }
+        assert!(worst <= 1.2e-7, "{worst}");
     }
 }

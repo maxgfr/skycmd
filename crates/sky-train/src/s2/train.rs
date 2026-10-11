@@ -73,13 +73,20 @@ pub struct S2Session {
     /// Weight of the number MSE in the numeric MLM loss.
     pub num_weight: f32,
     mlm_fn: Option<CompiledGrad>,
-    dec_fn: [Option<CompiledGrad>; 2],
+    /// Compiled decision graphs keyed by QAT (the exit weights are an input).
+    dec_fn: BTreeMap<bool, CompiledGrad>,
+    /// Compiled temporal sequence graphs keyed by QAT.
+    seq_fn: BTreeMap<bool, CompiledGrad>,
 }
+
+/// Number of arrays [`dec_arrays`] produces per batch.
+const DEC_ARRAYS: usize = 15;
 
 fn mlm_arrays(b: &NumMlmBatch) -> Vec<Array> {
     vec![
         b.ids.clone(),
         b.values.clone(),
+        b.has.clone(),
         b.num_flag.clone(),
         b.valid.clone(),
         b.positions.clone(),
@@ -95,14 +102,15 @@ fn mlm_from(a: &[Array]) -> NumMlmBatch {
     NumMlmBatch {
         ids: a[0].clone(),
         values: a[1].clone(),
-        num_flag: a[2].clone(),
-        valid: a[3].clone(),
-        positions: a[4].clone(),
-        labels: a[5].clone(),
-        weights: a[6].clone(),
-        num_positions: a[7].clone(),
-        num_targets: a[8].clone(),
-        num_weights: a[9].clone(),
+        has: a[2].clone(),
+        num_flag: a[3].clone(),
+        valid: a[4].clone(),
+        positions: a[5].clone(),
+        labels: a[6].clone(),
+        weights: a[7].clone(),
+        num_positions: a[8].clone(),
+        num_targets: a[9].clone(),
+        num_weights: a[10].clone(),
         n_tokens: 0,
     }
 }
@@ -111,6 +119,7 @@ fn dec_arrays(b: &S2Batch) -> Vec<Array> {
     vec![
         b.st_ids.clone(),
         b.st_values.clone(),
+        b.st_has.clone(),
         b.st_seg.clone(),
         b.st_pos.clone(),
         b.marker_idx.clone(),
@@ -118,6 +127,7 @@ fn dec_arrays(b: &S2Batch) -> Vec<Array> {
         b.q_valid.clone(),
         b.ids.clone(),
         b.values.clone(),
+        b.has.clone(),
         b.valid.clone(),
         b.qtype.clone(),
         b.marker_mask.clone(),
@@ -129,17 +139,19 @@ fn dec_from(a: &[Array]) -> S2Batch {
     S2Batch {
         st_ids: a[0].clone(),
         st_values: a[1].clone(),
-        st_seg: a[2].clone(),
-        st_pos: a[3].clone(),
-        marker_idx: a[4].clone(),
-        q_idx: a[5].clone(),
-        q_valid: a[6].clone(),
-        ids: a[7].clone(),
-        values: a[8].clone(),
-        valid: a[9].clone(),
-        qtype: a[10].clone(),
-        marker_mask: a[11].clone(),
-        target: a[12].clone(),
+        st_has: a[2].clone(),
+        st_seg: a[3].clone(),
+        st_pos: a[4].clone(),
+        marker_idx: a[5].clone(),
+        q_idx: a[6].clone(),
+        q_valid: a[7].clone(),
+        ids: a[8].clone(),
+        values: a[9].clone(),
+        has: a[10].clone(),
+        valid: a[11].clone(),
+        qtype: a[12].clone(),
+        marker_mask: a[13].clone(),
+        target: a[14].clone(),
         n_tokens: 0,
         n_rows: 0,
     }
@@ -175,7 +187,8 @@ impl S2Session {
             compile: true,
             num_weight: model::NUM_LOSS_WEIGHT,
             mlm_fn: None,
-            dec_fn: [None, None],
+            dec_fn: BTreeMap::new(),
+            seq_fn: BTreeMap::new(),
         }
     }
 
@@ -217,24 +230,78 @@ impl S2Session {
         lr_scale: f32,
         qat: bool,
     ) -> Result<StepStats> {
+        self.decision_step_exits(batch, lr_scale, qat, None)
+    }
+
+    /// [`Self::decision_step`] supervising only the first `n_exits` exits
+    /// (stochastic depth: the state encoder stops at the last of them).
+    pub fn decision_step_exits(
+        &mut self,
+        batch: &S2Batch,
+        lr_scale: f32,
+        qat: bool,
+        n_exits: Option<usize>,
+    ) -> Result<StepStats> {
+        let n = n_exits
+            .unwrap_or(self.cfg.n_exits())
+            .clamp(1, self.cfg.n_exits());
+        let wv = model::exit_weight_vec(&self.cfg, Some(n));
         let (loss, grad_norm) = if self.compile {
-            let slot = usize::from(qat);
-            if self.dec_fn[slot].is_none() {
-                let cfg = self.cfg.clone();
-                self.dec_fn[slot] = Some(CompiledGrad::new(
-                    sorted_names(&self.params),
-                    move |p, b| model::decision_loss(p, &cfg, &dec_from(b), qat),
-                ));
-            }
-            let (loss, grads) = self.dec_fn[slot]
-                .as_mut()
-                .expect("compiled")
-                .call(&self.params, dec_arrays(batch))?;
+            let names = sorted_names(&self.params);
+            let cfg = self.cfg.clone();
+            let f = self.dec_fn.entry(qat).or_insert_with(|| {
+                CompiledGrad::new(names, move |p, b| {
+                    model::decision_loss_weighted(p, &cfg, &dec_from(b), qat, &b[15])
+                })
+            });
+            let mut inputs = dec_arrays(batch);
+            inputs.push(Array::from_slice(&wv, &[wv.len() as i32]));
+            let (loss, grads) = f.call(&self.params, inputs)?;
             apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?
         } else {
             let cfg = &self.cfg;
             train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
-                model::decision_loss(p, cfg, b, qat)
+                model::decision_loss_exits(p, cfg, b, qat, Some(n))
+            })?
+        };
+        self.state.step += 1;
+        Ok(StepStats {
+            loss,
+            grad_norm,
+            tokens: batch.n_tokens,
+        })
+    }
+
+    /// One temporal step (SPEC-S3 §7): `K` frames, frame 0 cold, later
+    /// frames warm from the detached previous latent, every exit supervised.
+    pub fn seq_step(
+        &mut self,
+        batch: &crate::s2::seq::SeqBatch,
+        lr_scale: f32,
+        qat: bool,
+    ) -> Result<StepStats> {
+        let wv = model::exit_weight_vec(&self.cfg, None);
+        let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+        let k = batch.frames.len();
+        let (loss, grad_norm) = if self.compile {
+            let names = sorted_names(&self.params);
+            let cfg = self.cfg.clone();
+            let f = self.seq_fn.entry(qat).or_insert_with(|| {
+                CompiledGrad::new(names, move |p, a| {
+                    let frames: Vec<S2Batch> =
+                        (0..k).map(|t| dec_from(&a[t * DEC_ARRAYS..])).collect();
+                    let o = k * DEC_ARRAYS;
+                    model::seq_loss(p, &cfg, &frames, &a[o], &a[o + 1], &a[o + 2], qat)
+                })
+            });
+            let mut inputs: Vec<Array> = batch.frames.iter().flat_map(dec_arrays).collect();
+            inputs.extend([batch.on.clone(), batch.src.clone(), wts]);
+            let (loss, grads) = f.call(&self.params, inputs)?;
+            apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?
+        } else {
+            let cfg = &self.cfg;
+            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+                model::seq_loss(p, cfg, &b.frames, &b.on, &b.src, &wts, qat)
             })?
         };
         self.state.step += 1;
@@ -296,7 +363,8 @@ impl S2Session {
             compile: true,
             num_weight: model::NUM_LOSS_WEIGHT,
             mlm_fn: None,
-            dec_fn: [None, None],
+            dec_fn: BTreeMap::new(),
+            seq_fn: BTreeMap::new(),
         })
     }
 }
@@ -703,6 +771,10 @@ pub struct S2PretrainArgs {
     pub compile: bool,
     /// Weight of the number MSE (SPEC: 0.5).
     pub num_weight: f32,
+    /// Numeric-curriculum decision records mixed in as MLM text (SPEC-S3 §3).
+    pub numeric: Option<PathBuf>,
+    /// Fraction of the MLM rows drawn from `numeric`.
+    pub numeric_weight: f64,
 }
 
 /// Mean validation (CE, MSE) of the numeric MLM.
@@ -734,6 +806,28 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
         a.max_tokens,
     )?;
     let rows = Rows::new(&corpus.corpus, a.seq, 0.01, a.val_batches * a.batch);
+    let fuse = cfg.fuse_numbers;
+    let numeric = match &a.numeric {
+        Some(path) => {
+            let recs = crate::decision::read_records(path)?;
+            let texts: Vec<String> = recs
+                .iter()
+                .filter(|r| r.split == "train")
+                .map(crate::s2::numeric::mlm_text)
+                .collect();
+            let c = NumCorpus::from_texts(&tok, &texts)?;
+            let r = Rows::new(&c.corpus, a.seq, 0.0, 0);
+            println!(
+                "numeric MLM: {} records, {} tokens, {} rows, weight {:.2}",
+                texts.len(),
+                c.corpus.tokens.len(),
+                r.train.len(),
+                a.numeric_weight
+            );
+            Some((c, r))
+        }
+        None => None,
+    };
     println!(
         "corpus: {} records, {} tokens ({} numbers) -> {} train / {} val rows of {} ({:.1}s)",
         corpus.corpus.n_records,
@@ -784,7 +878,10 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
         .chunks(a.batch)
         .take(a.val_batches)
         .map(|c| {
-            let rs: Vec<Stream> = c.iter().map(|&st| corpus.row(a.seq, st)).collect();
+            let rs: Vec<Stream> = c
+                .iter()
+                .map(|&st| data::maybe_fuse(corpus.row(a.seq, st), fuse))
+                .collect();
             mask_batch(&rs, s.cfg.vocab_size, 0.3, &mut vrng)
         })
         .collect();
@@ -798,8 +895,23 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
     while s.state.elapsed_secs < s.state.budget_secs {
         let lr_scale = wsd(s.state.elapsed_secs / s.state.budget_secs) as f32;
         let seed = s.state.seed;
-        let starts = s.state.cursor.next(&rows, seed, a.batch);
-        let rs: Vec<Stream> = starts.iter().map(|&st| corpus.row(a.seq, st)).collect();
+        let n_num = match &numeric {
+            Some(_) => (0..a.batch)
+                .filter(|_| s.state.rng.f64() < a.numeric_weight)
+                .count(),
+            None => 0,
+        };
+        let starts = s.state.cursor.next(&rows, seed, a.batch - n_num);
+        let mut rs: Vec<Stream> = starts
+            .iter()
+            .map(|&st| data::maybe_fuse(corpus.row(a.seq, st), fuse))
+            .collect();
+        if let Some((c, r)) = &numeric {
+            for _ in 0..n_num {
+                let st = r.train[s.state.rng.below(r.train.len())];
+                rs.push(data::maybe_fuse(c.row(a.seq, st), fuse));
+            }
+        }
         let batch = mask_batch(&rs, s.cfg.vocab_size, 0.3, &mut s.state.rng);
         let st = s.mlm_step(&batch, lr_scale)?;
         if !st.loss.is_finite() {
@@ -874,12 +986,26 @@ pub struct S2DecideArgs {
     pub opt: OptConfig,
     pub seed: u64,
     pub qat_frac: f64,
+    /// Stochastic depth (SPEC-S3 §3): with this probability a batch is
+    /// supervised only up to a random earlier exit, skipping the later loops.
+    pub loop_dropout: f64,
     pub log_every: u64,
     pub eval_every: u64,
     pub checkpoint_minutes: f64,
     pub val_max: usize,
     pub bf16: bool,
     pub compile: bool,
+    /// Sequence padding multiple of the training batches (16 as in s2; 32
+    /// also rounds the question count to 32 and the options to 4, so fewer
+    /// distinct shapes get compiled).
+    pub pad_to: usize,
+    /// SPEC-S3 §7 sequence records (`s2-seqgen` output); needs a
+    /// `temporal_carry` config.
+    pub seq_records: Option<PathBuf>,
+    /// Probability that a step is a temporal sequence step.
+    pub seq_frac: f64,
+    /// Probability that a warm frame's carry is dropped (cold start).
+    pub carry_drop: f64,
 }
 
 /// Validation summary of one model mode.
@@ -936,7 +1062,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     };
     let tok = load_tok(&tok_path, &cfg)?;
     let t_load = Instant::now();
-    let data = data::load(&a.records, &tok, cfg.max_head_tokens, cfg.max_state_tokens)?;
+    let data = data::load_cfg(&a.records, &tok, &cfg)?;
     let weights = source_weights(&data.groups, a.weights.as_deref())?;
     for (g, (name, w)) in data.groups.iter().zip(&weights).enumerate() {
         println!(
@@ -985,19 +1111,20 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             a.minutes * 60.0,
         );
         s.state.extra = json!({"batch": a.batch, "records": a.records, "weights": weights, "groups": data.groups,
-            "init": a.init, "tokenizer": tok_path, "qat_frac": a.qat_frac});
+            "init": a.init, "tokenizer": tok_path, "qat_frac": a.qat_frac, "loop_dropout": a.loop_dropout});
         s
     };
     s.state.budget_secs = a.minutes * 60.0;
     s.cfg.bf16 = a.bf16;
     s.compile = a.compile;
     println!(
-        "{}: {} parameters, batch {}, budget {:.1} min, QAT over the last {:.0}%",
+        "{}: {} parameters, batch {}, budget {:.1} min, QAT over the last {:.0}%, loop dropout {}",
         s.cfg.name,
         params::count(&s.params),
         a.batch,
         a.minutes,
-        a.qat_frac * 100.0
+        a.qat_frac * 100.0,
+        a.loop_dropout
     );
     let all_val = data.split("val");
     let val = subset(&all_val, a.val_max, a.seed);
@@ -1010,6 +1137,24 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     let (mut wl, mut wt, mut ws, mut wq, mut wtime) =
         (0.0f64, 0usize, 0u64, 0usize, Instant::now());
     let qat_start = 1.0 - a.qat_frac.clamp(0.0, 1.0);
+    let seqs = match &a.seq_records {
+        Some(path) => {
+            if !s.cfg.temporal_carry {
+                bail!("--seq-records needs a config with temporal_carry");
+            }
+            let sd = crate::s2::seq::load(path, &tok, &s.cfg)?;
+            println!(
+                "temporal sequences: {} train sequences of {} frames, {:.0}% of the steps, carry dropped with p = {}",
+                sd.train.len(),
+                sd.k,
+                a.seq_frac * 100.0,
+                a.carry_drop
+            );
+            Some(sd)
+        }
+        None => None,
+    };
+    let mut seq_loss_sum = (0.0f64, 0usize);
     while s.state.elapsed_secs < s.state.budget_secs {
         let frac = s.state.elapsed_secs / s.state.budget_secs;
         if !s.state.qat && a.qat_frac > 0.0 && frac >= qat_start {
@@ -1024,9 +1169,38 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             s.state.qat = true;
         }
         let lr_scale = wsd(frac) as f32;
-        let batch = data::sample_batch(&data, &weights, a.batch, &mut s.state.rng, 16);
         let qat = s.state.qat;
-        let st = s.decision_step(&batch, lr_scale, qat)?;
+        if let Some(sd) = &seqs {
+            if s.state.rng.f64() < a.seq_frac {
+                let n = (a.batch / sd.k).max(1);
+                let ne = s.cfg.n_exits();
+                let b = crate::s2::seq::sample(sd, ne, n, a.carry_drop, &mut s.state.rng, a.pad_to);
+                let st = s.seq_step(&b, lr_scale, qat)?;
+                if !st.loss.is_finite() {
+                    bail!("non-finite sequence loss at step {}", s.state.step);
+                }
+                seq_loss_sum = (seq_loss_sum.0 + st.loss as f64, seq_loss_sum.1 + 1);
+                s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
+                if seq_loss_sum.1.is_multiple_of(200) {
+                    let l = seq_loss_sum.0 / seq_loss_sum.1 as f64;
+                    println!(
+                        "step {:>6} sequence loss {l:.4} ({} sequence steps)",
+                        s.state.step, seq_loss_sum.1
+                    );
+                    log.write(&json!({"step": s.state.step, "seq_loss": l}))?;
+                    seq_loss_sum = (0.0, 0);
+                }
+                continue;
+            }
+        }
+        let batch = data::sample_batch(&data, &weights, a.batch, &mut s.state.rng, a.pad_to);
+        let n_exits = s.cfg.n_exits();
+        let used = if n_exits > 1 && a.loop_dropout > 0.0 && s.state.rng.f64() < a.loop_dropout {
+            Some(1 + s.state.rng.below(n_exits - 1))
+        } else {
+            None
+        };
+        let st = s.decision_step_exits(&batch, lr_scale, qat, used)?;
         if !st.loss.is_finite() {
             bail!("non-finite loss at step {}", s.state.step);
         }
@@ -1127,7 +1301,7 @@ mod tests {
         }
         let path = dir.path().join("syn.jsonl");
         std::fs::write(&path, lines.join("\n")).unwrap();
-        data::load(&[path], tok, cfg.max_head_tokens, cfg.max_state_tokens).unwrap()
+        data::load_cfg(&[path], tok, cfg).unwrap()
     }
 
     #[test]

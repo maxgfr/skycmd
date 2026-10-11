@@ -168,3 +168,63 @@ impl SkyEngine {
         }
     }
 }
+
+/// Product kernels on one matrix shape, for `bench/kernels-node.mjs` (feature `wasm-bench`):
+/// runs `iters` products of `rows` x `k` activations by an `n` x `k` ternary matrix with the
+/// kernel `kind` (`f32` panels, `int8` dot products, `lut1` / `lut2` lookup tables with one / two
+/// activation passes, `packed` add/sub) and returns a checksum. Time it from JS.
+#[cfg(feature = "wasm-bench")]
+#[wasm_bindgen(js_name = kernelBench)]
+pub fn kernel_bench(
+    kind: &str,
+    n: usize,
+    k: usize,
+    rows: usize,
+    iters: usize,
+) -> Result<f64, JsError> {
+    use crate::kernels::{I8Panels, I8Scratch, PanelMatrix};
+    use crate::lut::{LutMatrix, LutScratch};
+    use crate::ternary::TernaryMatrix;
+    let mut seed = 0x1234_5678_u64;
+    let mut rnd = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        ((seed >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0
+    };
+    let w: Vec<f32> = (0..n * k).map(|_| rnd()).collect();
+    let x: Vec<f32> = (0..rows * k).map(|_| rnd()).collect();
+    let t = TernaryMatrix::from_f32(&w, n, k);
+    let mut y = vec![0.0f32; rows * n];
+    match kind {
+        "f32" => {
+            let p = PanelMatrix::from_rows(&t.to_f32(), n, k);
+            for _ in 0..iters {
+                p.matmul(&x, k, rows, None, &mut y, n, false);
+            }
+        }
+        "int8" => {
+            let p = I8Panels::from_trits(&t.trits(), &t.scale, n, k);
+            let mut sc = I8Scratch::default();
+            for _ in 0..iters {
+                p.matmul(&x, rows, None, &mut y, false, &mut sc);
+            }
+        }
+        "lut1" | "lut2" => {
+            let passes = if kind == "lut1" { 1 } else { 2 };
+            let p = LutMatrix::from_trits(&t.trits(), &t.scale, n, k, passes)
+                .ok_or_else(|| JsError::new("k too large for the lookup tables"))?;
+            let mut sc = LutScratch::default();
+            for _ in 0..iters {
+                p.matmul(&x, rows, None, &mut y, false, &mut sc);
+            }
+        }
+        "packed" => {
+            for _ in 0..iters {
+                t.matmul(&x, rows, None, &mut y, false);
+            }
+        }
+        _ => return Err(JsError::new("kind: f32, int8, lut1, lut2 or packed")),
+    }
+    Ok(y.iter().map(|&v| v as f64).sum())
+}

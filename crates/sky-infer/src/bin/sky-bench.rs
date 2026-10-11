@@ -7,12 +7,14 @@
 //!   --format f32|f16|ternary   storage of a random s2 model (default f32)
 //!   --q8 | --q8-fast       s1: Q8_0 weights (two-pass / single-pass Q8_0 activations)
 //!   --no-calib             s1: no outlier calibration of the Q8_0 matrices
-//!   --ternary-compute auto|packed|f32   s2: kernels of the ternary matrices
+//!   --ternary-compute auto|packed|f32|int8|lut   s2: kernels of the ternary matrices
 //!   --exit-threshold T     s2: override τ (1.0 = full depth)
 //!   --no-static-cache      s2: encode the static stream every decision (no LRU)
-//!   --questions 1|2        questions per frame on the same state (2 = flappy action + danger)
+//!   --questions 1|2        questions per frame on the same state (2 = action + danger)
+//!   --game flappy|doom     Flappy Drone state (default) or Doom state, question and 8 actions
 //!   --iters N  --state TEXT  --options a,b,c  --json
-//! sky-bench --kernels      ternary add/sub vs f32 products on the s2 ladder shapes
+//! sky-bench --kernels      f32 tiled / f32 panel / int8 x ternary / ternary add-sub products on
+//!                          the ladder shapes
 //! ```
 //!
 //! The question and options stay the same while the state changes every iteration, as in a game
@@ -27,13 +29,40 @@ mod native {
     use sky_infer::{Arch, Engine, EngineOptions, QType, QuantizeSpec, TernaryCompute};
 
     const DANGER: &str = "Will the drone crash within half a second if it keeps gliding?";
+    const DOOM_INS: &str =
+        "Which action should the player take now to survive, clear the level and reach the exit?";
+    const DOOM_OPTS: [&str; 8] = [
+        "forward: move forward",
+        "turn_left: turn to the left",
+        "turn_right: turn to the right",
+        "strafe_left: sidestep to the left",
+        "strafe_right: sidestep to the right",
+        "shoot: fire the weapon at the crosshair",
+        "use: open the door or press the switch",
+        "back: step backward",
+    ];
+    const DOOM_DANGER: &str = "Will the player take damage in the next second if nothing changes?";
+
+    /// A Doom state of frame `i` (`Doom::state_text`: 14 `key value` pairs).
+    fn doom_state(i: usize) -> String {
+        format!(
+            "ea {} ed {} al {} en {} hp 8 am {} wf {} wl 2 wr 3 dr 0 gb {} gd 12 pb 0 pd 0",
+            (i % 7) as i32 - 3,
+            5 + i % 4,
+            i % 2,
+            1 + i % 3,
+            20 - i % 5,
+            6 + i % 3,
+            4 - (i % 9) as i32
+        )
+    }
     const DANGER_OPTS: [&str; 2] = [
         "false: no, the statement does not hold",
         "true: yes, the statement holds",
     ];
 
     fn usage() -> ! {
-        eprintln!("usage: sky-bench <model.gguf | laya_dir | --random NAME> [--format f32|f16|ternary] [--q8 | --q8-fast] [--no-calib] [--ternary-compute auto|packed|f32] [--exit-threshold T] [--no-static-cache] [--questions 1|2] [--iters N] [--state TEXT] [--options a,b,c] [--json] | --kernels");
+        eprintln!("usage: sky-bench <model.gguf | laya_dir | --random NAME> [--format f32|f16|ternary] [--q8 | --q8-fast] [--no-calib] [--ternary-compute auto|packed|f32|int8|lut] [--exit-threshold T] [--no-static-cache] [--questions 1|2] [--iters N] [--state TEXT] [--options a,b,c] [--json] | --kernels");
         std::process::exit(2);
     }
 
@@ -55,6 +84,7 @@ mod native {
         let mut static_cache = true;
         let mut questions = 1usize;
         let mut json = false;
+        let mut doom = false;
         let mut state = String::from("alt 12 vy -3 dx 40 gt 20 gb 35");
         let mut options = vec![
             "flap: push the bird up".to_string(),
@@ -83,6 +113,8 @@ mod native {
                         Some("auto") => TernaryCompute::Auto,
                         Some("packed") => TernaryCompute::Packed,
                         Some("f32") => TernaryCompute::F32,
+                        Some("int8") => TernaryCompute::Int8,
+                        Some("lut") => TernaryCompute::Lut,
                         _ => usage(),
                     }
                 }
@@ -102,6 +134,7 @@ mod native {
                         .clamp(1, 2)
                 }
                 "--json" => json = true,
+                "--game" => doom = args.next().as_deref() == Some("doom"),
                 "--iters" => iters = args.next().and_then(|v| v.parse().ok()).unwrap_or(iters),
                 "--state" => state = args.next().unwrap_or(state),
                 "--options" => {
@@ -165,15 +198,33 @@ mod native {
             );
         }
 
-        let ins = "Which action keeps the bird alive?";
+        let ins = if doom {
+            options = DOOM_OPTS.iter().map(|s| s.to_string()).collect();
+            DOOM_INS
+        } else {
+            "Which action keeps the bird alive?"
+        };
+        let shown = if doom {
+            doom_state(0)
+        } else {
+            format!("{state} t 0")
+        };
         let (ids, _) = engine.build_sequence(
             QType::Choice,
             ins,
             &options.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-            &state,
+            &shown,
         );
+        let state_tokens = engine
+            .s2_engine_mut()
+            .map(|e| e.state_tokens(&shown).0.len());
         if !json {
-            println!("sequence: {} tokens, {} options", ids.len(), options.len());
+            println!(
+                "sequence: {} tokens ({} state tokens), {} options",
+                ids.len(),
+                state_tokens.map_or("-".to_string(), |n| n.to_string()),
+                options.len()
+            );
         }
         let mut times = Vec::with_capacity(iters);
         let mut layers = Vec::with_capacity(iters);
@@ -181,7 +232,11 @@ mod native {
         let mut sink = 0.0f32;
         for i in 0..iters + 20 {
             // a slightly different state every frame
-            let s = format!("{state} t {}", i % 50);
+            let s = if doom {
+                doom_state(i)
+            } else {
+                format!("{state} t {}", i % 50)
+            };
             let t = Instant::now();
             let p = engine
                 .decide_raw(QType::Choice, ins, &options, &s)
@@ -189,7 +244,12 @@ mod native {
             let stats = engine.last_stats().cloned().unwrap_or_default();
             if questions > 1 {
                 let p = engine
-                    .decide_raw(QType::Noul, DANGER, &DANGER_OPTS, &s)
+                    .decide_raw(
+                        QType::Noul,
+                        if doom { DOOM_DANGER } else { DANGER },
+                        &DANGER_OPTS,
+                        &s,
+                    )
                     .expect("decision");
                 sink += p[1];
             }
@@ -241,7 +301,7 @@ mod native {
             return sky_infer::s2::random::random_gguf(&cfg, &tok, 1, format);
         }
         let Some(cfg) = sky_infer::convert::ladder_config(name) else {
-            eprintln!("unknown ladder configuration {name} (s1-pico, s1-nano, s1-micro, s2-pico, s2-nano, s2-micro)");
+            eprintln!("unknown ladder configuration {name} (s1-pico, s1-nano, s1-micro, s2-pico, s2-nano, s2-micro, s3-pico, s3-nano)");
             std::process::exit(2);
         };
         let tok = sky_infer::Tokenizer::from_tokenizer_json(include_str!(
@@ -251,18 +311,22 @@ mod native {
         sky_infer::convert::random_gguf(&cfg, &tok, 1, sky_gguf::GgmlType::F32)
     }
 
-    /// Ternary add/sub kernels vs f32 products on the matrix shapes of the s2 ladder, for a state
-    /// stream of 20 tokens and a fusion head of 2 markers.
+    /// f32 tiled products, f32 panel products and ternary add/sub kernels on the matrix shapes
+    /// of the ladder, for a state stream (20 tokens for s2, 9 value-fused tokens for s3) and a
+    /// fusion head of 2 markers.
     fn kernels() {
+        use sky_infer::kernels::{I8Panels, I8Scratch, PanelMatrix};
+        use sky_infer::lut::{LutMatrix, LutScratch};
         use sky_infer::ternary::TernaryMatrix;
         println!(
-            "| model | shape (n x k) | rows | f32 (us) | ternary packed (us) | packed / f32 |"
+            "| model | shape (n x k) | rows | f32 tiled (us) | f32 panels (us) | GMAC/s (panels) | int8 x ternary (us) | LUT 1 pass (us) | LUT 2 passes (us) | ternary packed (us) |"
         );
-        println!("|---|---|---:|---:|---:|---:|");
-        for name in ["s2-pico", "s2-nano", "s2-micro"] {
+        println!("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|");
+        for name in ["s2-pico", "s2-nano", "s2-micro", "s3-pico", "s3-nano"] {
             let cfg = sky_infer::s2::random::ladder_config(name).expect("ladder");
             let (d, ff) = (cfg.hidden_size, cfg.intermediate_size);
-            for &(n, k, rows) in &[(3 * d, d, 20), (2 * ff, d, 20), (d, ff, 20), (2 * d, d, 2)] {
+            let s = if cfg.fuse_numbers { 9 } else { 20 };
+            for &(n, k, rows) in &[(3 * d, d, s), (2 * ff, d, s), (d, ff, s), (2 * d, d, 2)] {
                 let mut seed = 0x1234_5678_u64;
                 let mut rnd = || {
                     seed ^= seed << 13;
@@ -274,11 +338,17 @@ mod native {
                 let x: Vec<f32> = (0..rows * k).map(|_| rnd()).collect();
                 let t = TernaryMatrix::from_f32(&w, n, k);
                 let wf = t.to_f32();
+                let pm = PanelMatrix::from_rows(&wf, n, k);
+                let i8p = I8Panels::from_trits(&t.trits(), &t.scale, n, k);
+                let mut sc = I8Scratch::default();
+                let lut1 = LutMatrix::from_trits(&t.trits(), &t.scale, n, k, 1).expect("k");
+                let lut2 = LutMatrix::from_trits(&t.trits(), &t.scale, n, k, 2).expect("k");
+                let mut lsc = LutScratch::default();
                 let mut y = vec![0.0; rows * n];
-                let reps = (2_000_000 / (n * k * rows)).max(20);
+                let reps = (400_000 / (n * k * rows)).max(10);
                 let time = |f: &mut dyn FnMut()| {
                     let mut best = f64::MAX;
-                    for _ in 0..5 {
+                    for _ in 0..40 {
                         let t0 = Instant::now();
                         for _ in 0..reps {
                             f();
@@ -291,13 +361,29 @@ mod native {
                     sky_infer::kernels::matmul_f32(&x, rows, k, &wf, n, None, &mut y, false);
                     std::hint::black_box(&y);
                 });
+                let tp = time(&mut || {
+                    pm.matmul(&x, k, rows, None, &mut y, n, false);
+                    std::hint::black_box(&y);
+                });
+                let ti = time(&mut || {
+                    i8p.matmul(&x, rows, None, &mut y, false, &mut sc);
+                    std::hint::black_box(&y);
+                });
+                let tl1 = time(&mut || {
+                    lut1.matmul(&x, rows, None, &mut y, false, &mut lsc);
+                    std::hint::black_box(&y);
+                });
+                let tl2 = time(&mut || {
+                    lut2.matmul(&x, rows, None, &mut y, false, &mut lsc);
+                    std::hint::black_box(&y);
+                });
                 let tt = time(&mut || {
                     t.matmul(&x, rows, None, &mut y, false);
                     std::hint::black_box(&y);
                 });
+                let gmacs = (n * k * rows) as f64 / tp / 1e3;
                 println!(
-                    "| {name} | {n} x {k} | {rows} | {tf:.2} | {tt:.2} | {:.2} |",
-                    tt / tf
+                    "| {name} | {n} x {k} | {rows} | {tf:.2} | {tp:.2} | {gmacs:.1} | {ti:.2} | {tl1:.2} | {tl2:.2} | {tt:.2} |"
                 );
             }
         }

@@ -19,12 +19,27 @@ pub struct S2Config {
     pub vocab_size: usize,
     pub hidden_size: usize,
     pub intermediate_size: usize,
+    /// Distinct state-encoder blocks (`state_block_count`).
     pub state_layers: usize,
     pub static_layers: usize,
     pub fusion_layers: usize,
-    /// Exit positions, 1-based block indices of the state encoder (ascending,
-    /// the last one equals `state_layers`).
+    /// Exit positions, 1-based block applications of the state encoder
+    /// (ascending, the last one equals `state_layers * state_loops`).
     pub exits: Vec<usize>,
+    /// Attention heads (`head_count`); `None` means `hidden_size / 64`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_count: Option<usize>,
+    /// SPEC-S3 §1: a `[NUM]` is merged into the preceding token, which then
+    /// carries the value (`has_value`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fuse_numbers: bool,
+    /// SPEC-S3 §2: the state blocks are applied in order `state_loops` times.
+    #[serde(default = "default_loops", skip_serializing_if = "is_one")]
+    pub state_loops: usize,
+    /// SPEC-S3 §7: the state encoder of a frame starts from the previous
+    /// frame's final latent through `carry_gate ⊙ LN(carry_norm)`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub temporal_carry: bool,
     #[serde(default = "default_max_state")]
     pub max_state_tokens: usize,
     #[serde(default = "default_max_head")]
@@ -45,6 +60,15 @@ pub struct S2Config {
     pub bf16: bool,
 }
 
+fn default_loops() -> usize {
+    1
+}
+fn is_one(x: &usize) -> bool {
+    *x == 1
+}
+fn is_false(x: &bool) -> bool {
+    !*x
+}
 fn default_max_state() -> usize {
     64
 }
@@ -83,11 +107,29 @@ impl S2Config {
     }
 
     pub fn validate(&self) -> Result<()> {
-        if self.hidden_size == 0 || !self.hidden_size.is_multiple_of(HEAD_DIM as usize) {
-            bail!(
-                "hidden_size {} is not a multiple of {HEAD_DIM}",
-                self.hidden_size
-            );
+        match self.head_count {
+            None if self.hidden_size == 0
+                || !self.hidden_size.is_multiple_of(HEAD_DIM as usize) =>
+            {
+                bail!(
+                    "hidden_size {} is not a multiple of {HEAD_DIM} (set head_count)",
+                    self.hidden_size
+                );
+            }
+            Some(h)
+                if h == 0
+                    || !self.hidden_size.is_multiple_of(h)
+                    || !(self.hidden_size / h).is_multiple_of(2) =>
+            {
+                bail!(
+                    "head_count {h} must divide hidden_size {} into even head dims",
+                    self.hidden_size
+                );
+            }
+            _ => {}
+        }
+        if self.state_loops == 0 {
+            bail!("state_loops must be >= 1");
         }
         if self.vocab_size <= NUM_ID as usize {
             bail!("vocab_size too small");
@@ -103,12 +145,12 @@ impl S2Config {
         if self.exits.is_empty()
             || self.exits.windows(2).any(|w| w[0] >= w[1])
             || self.exits[0] == 0
-            || *self.exits.last().unwrap() != self.state_layers
+            || *self.exits.last().unwrap() != self.depth()
         {
             bail!(
-                "exits {:?} must be ascending, >= 1 and end at state_layers {}",
+                "exits {:?} must be ascending, >= 1 and end at state_layers x state_loops = {}",
                 self.exits,
-                self.state_layers
+                self.depth()
             );
         }
         if self.max_state_tokens < 3 {
@@ -118,7 +160,18 @@ impl S2Config {
     }
 
     pub fn n_heads(&self) -> usize {
-        self.hidden_size / HEAD_DIM as usize
+        self.head_count
+            .unwrap_or(self.hidden_size / HEAD_DIM as usize)
+    }
+
+    /// `hidden_size / n_heads` (64 unless `head_count` says otherwise).
+    pub fn head_dim(&self) -> usize {
+        self.hidden_size / self.n_heads()
+    }
+
+    /// Effective state-encoder depth in block applications.
+    pub fn depth(&self) -> usize {
+        self.state_layers * self.state_loops
     }
 
     pub fn n_exits(&self) -> usize {
@@ -157,7 +210,7 @@ impl S2Config {
             .unwrap_or(1.0)
     }
 
-    /// Number of state blocks run before exit `e` (`layers_used`).
+    /// Number of state block applications run before exit `e` (`layers_used`).
     pub fn layers_at(&self, e: usize) -> usize {
         self.exits[e]
     }
@@ -173,6 +226,10 @@ impl S2Config {
             static_layers: 1,
             fusion_layers: 1,
             exits: vec![1, 2],
+            head_count: None,
+            fuse_numbers: false,
+            state_loops: 1,
+            temporal_carry: false,
             max_state_tokens: 24,
             max_head_tokens: 40,
             rope_theta: 10_000.0,
@@ -230,6 +287,79 @@ mod tests {
             assert_eq!((c.max_state_tokens, c.max_head_tokens), (64, 96));
             assert_eq!((c.rope_theta, c.norm_eps), (10_000.0, 1e-5));
         }
+    }
+
+    #[test]
+    fn s3_ladder_matches_spec_table() {
+        // name, d, heads, blocks, loops, static, fusion, ff, vocab, exits
+        for (name, d, h, b, l, sc, fu, ff, v, ex) in [
+            (
+                "s3-pico",
+                96,
+                1,
+                1,
+                4,
+                1,
+                2,
+                192,
+                1024,
+                &[1usize, 2, 3, 4][..],
+            ),
+            ("s3-nano", 128, 2, 2, 3, 2, 2, 256, 2048, &[2, 4, 6][..]),
+        ] {
+            let c = ladder(name);
+            assert_eq!(c.name, name);
+            assert_eq!((c.hidden_size, c.n_heads(), c.head_dim()), (d, h, d / h));
+            assert_eq!((c.state_layers, c.state_loops, c.depth()), (b, l, b * l));
+            assert_eq!((c.static_layers, c.fusion_layers), (sc, fu));
+            assert_eq!((c.intermediate_size, c.vocab_size), (ff, v));
+            assert_eq!(c.exits, ex);
+            assert!(c.fuse_numbers);
+            assert_eq!((c.max_state_tokens, c.max_head_tokens), (64, 96));
+        }
+        // s2 configs keep the defaults and serialize without the new keys.
+        let c = ladder("s2-pico");
+        assert_eq!(
+            (c.state_loops, c.fuse_numbers, c.head_count, c.head_dim()),
+            (1, false, None, 64)
+        );
+        let j = serde_json::to_value(&c).unwrap();
+        assert!(
+            j.get("state_loops").is_none()
+                && j.get("fuse_numbers").is_none()
+                && j.get("head_count").is_none()
+        );
+        // Exits must end at blocks x loops; head_count must divide d into even heads.
+        let bad = S2Config {
+            state_loops: 2,
+            ..S2Config::tiny(300)
+        };
+        assert!(bad.validate().is_err());
+        let ok = S2Config {
+            state_loops: 2,
+            exits: vec![2, 4],
+            ..S2Config::tiny(300)
+        };
+        assert!(ok.validate().is_ok());
+        assert!(S2Config {
+            hidden_size: 96,
+            ..S2Config::tiny(300)
+        }
+        .validate()
+        .is_err());
+        assert!(S2Config {
+            hidden_size: 96,
+            head_count: Some(1),
+            ..S2Config::tiny(300)
+        }
+        .validate()
+        .is_ok());
+        assert!(S2Config {
+            head_count: Some(3),
+            ..S2Config::tiny(300)
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]

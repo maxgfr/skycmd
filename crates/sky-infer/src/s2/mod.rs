@@ -1,6 +1,9 @@
 //! The `skycmd-s2` architecture (docs/SPEC-S2.md): a static stream (question + options, encoded
 //! once and cached), a question-agnostic state stream with early exits, a cross-attention fusion
 //! head, native numbers (`[NUM]` tokens with value features) and optional ternary weights.
+//! The s3 options of docs/SPEC-S3.md live in the same format: value-fused tokens
+//! (`fuse_numbers`), a looped weight-shared state encoder (`state_loops`), any `head_count` and
+//! the temporal carry of a stream's latent across frames (`temporal_carry`).
 //!
 //! * [`S2Config`]: hyper-parameters read from the GGUF keys `skycmd-s2.*`.
 //! * [`S2Model`]: weights and the forward pieces (static encoding, state layers, exits, fusion).
@@ -36,7 +39,18 @@ pub struct S2Config {
     /// `ff` of the encoder blocks (the fusion feed-forward is `2·d`).
     pub intermediate_size: usize,
     pub num_heads: usize,
+    /// Effective state-encoder depth: block applications `state_blocks × state_loops` (the depth
+    /// that exits and `layers_used` count).
     pub state_layers: usize,
+    /// Distinct state blocks `blk.0..blk.{B-1}` (GGUF `state_block_count`).
+    pub state_blocks: usize,
+    /// Times the state blocks are applied in sequence (GGUF `state_loops`, default 1; SPEC-S3 §2).
+    pub state_loops: usize,
+    /// Merge each `[NUM]` into the token before it (GGUF `fuse_numbers`, default false; SPEC-S3 §1).
+    pub fuse_numbers: bool,
+    /// Carry the final state latent of a stream's previous frame into the next one (GGUF
+    /// `temporal_carry`, default false; SPEC-S3 §7).
+    pub temporal_carry: bool,
     pub static_layers: usize,
     pub fusion_layers: usize,
     /// State-encoder depth (1-based block count) after which each exit sits, increasing; the
@@ -101,8 +115,14 @@ impl S2Config {
         if self.intermediate_size == 0 || self.intermediate_size > MAX_DIM {
             return bad("feed-forward size");
         }
-        if self.state_layers == 0 || self.state_layers > 256 || self.static_layers > 256 {
+        if self.state_blocks == 0 || self.state_blocks > 256 || self.static_layers > 256 {
             return bad("block counts");
+        }
+        if self.state_loops == 0 || self.state_loops > 256 {
+            return bad("state_loops");
+        }
+        if self.state_layers != self.state_blocks * self.state_loops {
+            return bad("state depth must be state_block_count x state_loops");
         }
         if self.fusion_layers > 256 {
             return bad("fusion block count");
@@ -112,7 +132,7 @@ impl S2Config {
             || self.exits[0] == 0
             || *self.exits.last().expect("non-empty") != self.state_layers
         {
-            return bad("exits must increase from 1 and end at state_block_count");
+            return bad("exits must increase from 1 and end at state_block_count x state_loops");
         }
         if self.num_features != crate::num::NUM_FEATURES {
             return bad("num_features must be 17");
@@ -145,6 +165,15 @@ impl S2Config {
             .map(|v| v.max(0) as usize)
             .collect();
         let d = req("embedding_length")?;
+        let state_blocks = req("state_block_count")?;
+        let state_loops = int("state_loops").unwrap_or(1);
+        let flag = |k: &str| {
+            g.get(&key(k))
+                .and_then(|v| v.as_bool().or_else(|| v.as_i64().map(|i| i != 0)))
+                .unwrap_or(false)
+        };
+        let fuse_numbers = flag("fuse_numbers");
+        let temporal_carry = flag("temporal_carry");
         let vocab_size = ["token_embd.weight", "token_embd.q8"]
             .iter()
             .find_map(|n| g.tensor(n))
@@ -169,7 +198,11 @@ impl S2Config {
             hidden_size: d,
             intermediate_size: req("feed_forward_length")?,
             num_heads: int("head_count").unwrap_or((d / 64).max(1)),
-            state_layers: req("state_block_count")?,
+            state_layers: state_blocks.saturating_mul(state_loops),
+            state_blocks,
+            state_loops,
+            fuse_numbers,
+            temporal_carry,
             static_layers: req("static_block_count")?,
             fusion_layers: req("fusion_block_count")?,
             exits,

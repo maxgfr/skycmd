@@ -59,64 +59,53 @@ Notes:
 
 ## Inference
 
-Latency of `sky-infer` (native) and of the browser module `sky-web` (WASM), measured on an Apple M5 (rustc 1.97.1, Node 24.10 / V8 for WASM) on a shared machine: every number is the best median of 3 interleaved rounds. s1 rows use the trained models (`site/public/models/s1-pico.gguf`, `models/s1-nano` converted to f16 GGUF). **s2 rows use random-init models of the ladder shapes** (`sky-convert --random s2-pico|s2-nano` with the real tokenizers `data/tok/tok-s2-{1024,2048}.json`) until trained ones exist in `models/s2-*`: their latency is representative, their answers are not. Random weights never reach the default τ, so s2 rows are given at full depth (τ = 1, worst case) and at the first exit (τ = 0, best case); a calibrated model lands in between.
+Latency of `sky-infer`, natively (`sky-bench`) and in WASM (`node crates/sky-infer/bench/bench-node.mjs`, the `SkyEngine` module built with `wasm-pack --target nodejs`; Node 24.10 / V8). Apple M5, rustc 1.97.1, on a machine shared with training jobs: each number is the best of 3 interleaved rounds of the median over 3000 (native) / 3×2000 (WASM) frames, median / p95 in µs per frame (one question). "before" is the engine of the last commit (`a6ab1fd`), rebuilt the same way.
 
-The state is a Flappy Drone state text (`vy -2 dx 35 up 20 dn -5 nxt -18 alt 32 t N`, a new state every frame); a frame answers the action question and, with 2 questions, the `danger` question on the same state. s1 re-encodes question + options + state for every question (only the tokenization of the prefix is cached); s2 encodes the static stream once (LRU cache), the state once per frame for both questions, and runs the fusion head per question.
+Frames: Flappy Drone state `vy -2 dx 35 up 20 dn -5 nxt -18 alt 32 t N` (a new state every frame; 9 tokens with value-fused numbers, 16 without) with the action question (2 options); Doom: `Doom::state_text` (14 `key value` pairs: 26 fused tokens for s3-pico, 38 for s2-nano-doom) with the 8-action question. The static stream (question + options) is cached unless stated. Models: `site/public/models/s1-pico.gguf`, `models/ship/s2-nano.gguf` (ternary), `site/public/models/s2-nano-doom.gguf` (ternary), the trained `models/s3-pico/skycmd-s3-pico-{ternary,f32}.gguf` (1 block × 4 loops, d 96, one 96-wide head, fused numbers), and a random-init s3-pico (`sky-convert --random s3-pico --tokenizer data/tok/tok-s2-1024.json`) at τ = 1 (4 block applications + last exit, worst case) and τ = 0 (first exit). Ternary files compute in f32 (`TernaryCompute::Auto`) unless stated.
 
-Native, `sky-bench <model> --questions 1|2 --iters 4000` (µs per frame, median / p95):
+| model | native before | native | WASM before (SIMD128) | WASM SIMD128 | WASM relaxed SIMD | mean depth |
+|---|---:|---:|---:|---:|---:|---:|
+| s1-pico | 189 / 213 | 176 / 198 | 323 / 345 | 301 / 330 | 211 / 247 | – |
+| s2-nano ternary | 417 / 452 | 272 / 284 | 634 / 642 | 459 / 477 | 378 / 388 | 4 / 4 |
+| s2-nano ternary, no static cache | 696 / 725 | 536 / 557 | 1162 / 1205 | 996 / 1034 | 790 / 821 | 4 / 4 |
+| **s3-pico ternary (trained)** | – | **25 / 26** | – | **44 / 45** | **37 / 39** | 1 / 4 |
+| s3-pico ternary (trained), `TernaryCompute::Int8` | – | 21 / 21 | – | – | – | 1 / 4 |
+| s3-pico ternary (trained), τ = 1 | – | 80 / 83 | – | 142 / 148 | 112 / 118 | 4 / 4 |
+| s3-pico ternary (trained), τ = 1, `Int8` | – | 63 / 64 | – | – | – | 4 / 4 |
+| s3-pico ternary (trained), no static cache | – | 126 / 130 | – | 253 / 258 | 199 / 208 | 1 / 4 |
+| s3-pico f32 (trained) | – | 25 / 26 | – | 44 / 45 | 37 / 41 | 1 / 4 |
+| s3-pico random f32, τ = 1 | – | 80 / 83 | – | 143 / 148 | 113 / 117 | 4 / 4 |
+| s3-pico random f32, τ = 0 | – | 25 / 28 | – | 44 / 45 | 38 / 39 | 1 / 4 |
+| Doom: s2-nano-doom ternary | – | 740 / 752 | 1601 / 1623 | 1282 / 1303 | 1002 / 1043 | 4 / 4 |
+| Doom: s3-pico ternary (trained) | – | 77 / 80 | – | 138 / 149 | 109 / 118 | 1.11 / 4 |
 
-| model | params | file | compute | 1 question | 2 questions (same state) |
-|---|---:|---:|---|---:|---:|
-| s1-pico (trained) | 202,305 | 533 KB (f16) | f32 | 188 / 208 | 407 / 443 |
-| s1-nano (trained) | 1,134,209 | 2.7 MB (f16) | f32 | 974 / 1007 | 1980 / 2066 |
-| s2-pico, full depth | 310,337 | 1.2 MB (f32) | f32 | 67 / 70 | 73 / 79 |
-| s2-pico, first exit (1 of 3 layers) | 310,337 | 1.2 MB (f32) | f32 | 28 / 31 | 34 / 37 |
-| s2-pico, full depth, no static cache | 310,337 | 1.2 MB (f32) | f32 | 164 / 173 | 313 / 322 |
-| s2-pico ternary, full depth | 310,337 | 176 KB (ternary) | f32 (dequantized at load) | 67 / 70 | 73 / 79 |
-| s2-pico ternary, full depth | 310,337 | 176 KB (ternary) | packed add/sub | 141 / 146 | 148 / 152 |
-| s2-nano, full depth | 1,532,033 | 5.9 MB (f32) | f32 | 306 / 316 | 338 / 353 |
-| s2-nano, first exit (1 of 4 layers) | 1,532,033 | 5.9 MB (f32) | f32 | 118 / 129 | 147 / 162 |
-| s2-nano, full depth, no static cache | 1,532,033 | 5.9 MB (f32) | f32 | 599 / 613 | 1015 / 1088 |
-| s2-nano ternary, full depth | 1,532,033 | 684 KB (ternary) | f32 (dequantized at load) | 298 / 313 | 329 / 349 |
-| s2-nano ternary, full depth | 1,532,033 | 684 KB (ternary) | packed add/sub | 667 / 701 | 706 / 724 |
+The old engine cannot load s3 files; the old `sky-bench` has no Doom preset. "WASM relaxed SIMD" is the same module built with `-C target-feature=+simd128,+relaxed-simd` (`f32x4.relaxed_madd`, fused on arm64): Chrome, Edge and Node run it, Safari does not, so a site would load it behind feature detection. `SkyEngine` has no option for the int8 path, hence no WASM row for it.
 
-WASM (SIMD128), `node crates/sky-web/bench/bench-node.mjs`: `bench()` of the play page, one Flappy Drone decision = both questions + the physics step, µs per decision (median / p95):
+What made it faster (s3-pico frame at the first exit: ~0.9 M multiply-adds, ~75% of the time in matrix products):
+- **Panel kernel for few rows** (`kernels::PanelMatrix`): f32 weights are repacked k-major in panels of 8 outputs, and an outer-product micro-kernel keeps 16-24 independent accumulators whatever the row count (balanced tiles of 3-5 rows x 2 panels, 2-3 rows x 3-4 panels; inputs loaded 4 at a time and broadcast by lane, `fmla v, v, v.s[l]` on NEON, a lane shuffle that V8 turns into `fmul` by element on wasm32; `relaxed_madd` behind `cfg(target_feature = "relaxed-simd")`). On 6-11 rows the 4 x 4 dot-product tiles fell to 30-43 GMAC/s (the remainder tiles are latency-bound); the panels hold 55-62 GMAC/s natively, about 80% of the M5's FMA peak, for every row count.
+- **Folded weights**: the first state-block projection of a frame reads `T = tok_embd · W_qkvᵀ` (vocab x 3d, 1.2 MB for s3-pico) and a 17-input correction for value tokens instead of a d-input product (exact up to rounding; not used on carried frames); the fusion keys and values of the state tokens are folded into the 2 option queries (`q·k_j = (W_kᵀq)·h_j + q·b_k`, `Σp_j v_j = W_v Σp_j h_j + b_v`), `2·n·d²` instead of `2·S·d²` multiply-adds per block; the first fusion block's queries and their attention over the cached question tokens are precomputed with the static stream and merged with the state keys by an online softmax.
+- **No allocation per frame**: the state encoding reuses the buffers of the evicted cache entry, attention over ≤ 32 tokens packs Q·Kᵀ and P·V into panel products, LayerNorm moments use SIMD partial sums (the scalar `f32` sum chain was 10% of a frame), 8-float copies avoid `memcpy` calls on wasm32, value features use one `sin_cos` and double-angle steps instead of 16 trigonometric calls.
+- Net effect on the same files: s2-nano 1.5x faster natively and 1.4x (SIMD128) / 1.7x (relaxed) in WASM, Doom s2-nano 1.25x / 1.6x in WASM; s3-pico answers a Flappy frame in 25 µs natively and 44 µs (SIMD128) / 37 µs (relaxed) in WASM, and a Doom frame in 77 / 138 / 109 µs.
+- **Target (≤ 30 µs per decision in WASM): not reached.** At the first exit a frame is still ~0.9 M multiply-adds; SIMD128 has no fused multiply-add (`fmul` + `fadd`: ~36 GMAC/s at most on this core, 31 reached), so ~30 µs is the floor of the products alone. Relaxed SIMD reaches 37 µs per decision. Natively the target is met (25 µs, 21 µs with `Int8`).
 
-| model | file | compute | static cache | µs / decision |
-|---|---:|---|---|---:|
-| s1-pico (trained) | 533 KB | f32 | prefix tokens | 694 / 730 |
-| s1-nano (trained) | 2.7 MB | f32 | prefix tokens | 3541 / 3619 |
-| s2-pico, full depth | 1.2 MB | f32 | on | 104 / 115 |
-| s2-pico, first exit | 1.2 MB | f32 | on | 51 / 53 |
-| s2-pico, full depth | 1.2 MB | f32 | off | 560 / 575 |
-| s2-pico ternary, full depth | 176 KB | f32 (dequantized) | on | 105 / 114 |
-| s2-pico ternary, full depth | 176 KB | packed add/sub | on | 166 / 179 |
-| s2-nano, full depth | 5.9 MB | f32 | on | 478 / 517 |
-| s2-nano, first exit | 5.9 MB | f32 | on | 196 / 209 |
-| s2-nano, full depth | 5.9 MB | f32 | off | 1746 / 1816 |
-| s2-nano ternary, full depth | 684 KB | f32 (dequantized) | on | 501 / 523 |
-| s2-nano ternary, full depth | 684 KB | packed add/sub | on | 788 / 822 |
+Ternary products on the s3 ladder shapes (µs per product; 9 rows = a 9-token state, 2 rows = the option markers). Native: `sky-bench --kernels`; WASM: `node crates/sky-infer/bench/kernels-node.mjs` (module built with `--features wasm-bench`):
 
-Ternary kernels vs f32 products on the s2 ladder shapes (`sky-bench --kernels`, native NEON, 20 rows = a state stream, 2 rows = the fusion markers; µs per product):
-
-| model | shape (n x k) | rows | f32 | ternary packed | packed / f32 |
-|---|---|---:|---:|---:|---:|
-| s2-pico | 192 x 64 | 20 | 4.42 | 12.71 | 2.88 |
-| s2-pico | 256 x 64 | 20 | 5.92 | 16.94 | 2.86 |
-| s2-pico | 64 x 128 | 20 | 2.91 | 8.07 | 2.77 |
-| s2-pico | 128 x 64 | 2 | 1.23 | 1.30 | 1.06 |
-| s2-nano | 384 x 128 | 20 | 17.42 | 48.33 | 2.77 |
-| s2-nano | 128 x 256 | 20 | 11.29 | 31.40 | 2.78 |
-| s2-nano | 256 x 128 | 2 | 3.60 | 4.94 | 1.37 |
-| s2-micro | 768 x 256 | 20 | 68.00 | 188.44 | 2.77 |
-| s2-micro | 512 x 256 | 2 | 12.89 | 20.88 | 1.62 |
+| shape (n x k), rows | native f32 panels | native int8 | native LUT 1 pass | native LUT 2 passes | native packed | WASM f32 | WASM LUT 1 / 2 passes | WASM packed | WASM relaxed f32 | WASM relaxed int8 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 288 x 96, 9 | 3.99 | 2.77 | 4.32 | 8.40 | 12.23 | 7.73 | 9.83 / 16.24 | 13.91 | 5.82 | 5.14 |
+| 384 x 96, 9 | 5.37 | 3.50 | 5.35 | 10.44 | 17.47 | 10.32 | 12.12 / 20.47 | 18.50 | 7.71 | 6.43 |
+| 96 x 192, 9 | 2.64 | 2.04 | 4.45 | 8.44 | 8.04 | 5.07 | 10.52 / 15.18 | 8.52 | 3.49 | 4.58 |
+| 192 x 96, 2 | 0.65 | 0.42 | 0.75 | 1.45 | 2.67 | 1.15 | 1.89 / 2.92 | 3.20 | 0.89 | 0.89 |
+| 384 x 128, 9 | 7.05 | 4.70 | 7.00 | 13.68 | 21.36 | 14.06 | 15.34 / 26.06 | 23.74 | 9.71 | 7.95 |
+| 512 x 128, 9 | 9.59 | 6.11 | 8.78 | 17.25 | 28.48 | 18.05 | 18.99 / 32.95 | 31.74 | 13.05 | 10.32 |
+| 128 x 256, 9 | 5.02 | 3.30 | 6.67 | 12.83 | 14.09 | 8.83 | 14.51 / 23.19 | 14.80 | 6.49 | 6.95 |
+| 256 x 128, 2 | 1.16 | 0.71 | 1.18 | 2.29 | 4.64 | 2.06 | 2.76 / 4.57 | 5.45 | 1.54 | 1.51 |
 
 Reading:
-- Per frame, s2-pico is 5.6x faster than s1-pico natively (73 vs 407 µs, full depth) and 6.7x faster in WASM (104 vs 694 µs): the question and options leave the per-frame path (static cache) and the second question costs only its fusion head (~6 µs) because the state encoding is shared.
-- Without the static cache, s2 loses most of its advantage (it encodes the static stream every question): the cache is what makes the architecture fast.
-- Early exit at the first exit halves the per-question cost again (pico: 67 → 28 µs native).
-- Ternary storage cuts the file 7x (pico 1.2 MB → 176 KB, nano 5.9 MB → 684 KB). The packed add/sub kernels cost three vector ops (XOR, AND, ADD) per 4 weights against one FMA, and these matrices fit in L1, so the f32 path is 2-3x faster per product and 1.6-2.2x faster per decision on both NEON and SIMD128. `TernaryCompute::Auto` therefore expands ternary weights to f32 at load on every platform: the download stays small, the compute is f32. `--ternary-compute packed` (native) / `Engine.withOptions(bytes, true, true)` (WASM) keep the packed kernels.
-- Accuracy: the s2 engine matches the mlx-rs graph of `sky-train s2-golden` within 4e-6 on every exit probability (f32 and ternary files, packed and f32 compute; tolerances 1e-4 / 1e-3).
+- **Lookup tables (SPEC-S3 §8)** (`lut::LutMatrix`, `TernaryCompute::Lut`: 2-bit weights as `p`/`n` masks per group of 4 inputs, int8 activations with one scale per row, 16-entry subset-sum tables kept as two byte planes, `vqtbl1q_u8` / `i8x16.swizzle` lookups, int16 accumulation). With one activation pass the probabilities of the golden models move by up to 4e-2, so `Lut` runs two passes (int8 + residual, ≤ 3.5e-4 on the s2/s3/s3t goldens). It beats the packed add/sub kernel but not the f32 panels: with one pass it takes 0.9-1.7x the f32 time natively (a tie on the 128-input matrices, slower elsewhere) and 1.05-2.1x in WASM; with the two passes needed for accuracy, 2-3x. These matrices are tiny and stay in L1, so the products are compute-bound, not memory-bound as in the LLM setting of T-MAC: 4 lookups plus 8 widening adds per 16 outputs x 4 inputs cost as much as 16 FMAs. `TernaryCompute::Auto` therefore keeps the f32 path on every platform; the file stays 2-bit.
+- **int8 dot products** (`TernaryCompute::Int8`, opt-in: `sdot` by lane on aarch64, `i32x4.relaxed_dot_i8x16_i7x16_add` in relaxed WASM, two activation passes `x ≈ s (q + e / 254)`) are the fastest path natively (1.3-1.6x per product, 21 vs 25 µs per decision) and in relaxed WASM on k ≤ 128, at ≤ 5.5e-4 deviation on the goldens. Without relaxed SIMD only a scalar fallback exists (10x slower).
+- The s3 options keep the s2 advantages: value-fused numbers nearly halve the state (9 vs 16 tokens for the Flappy state, 26 vs 38 for Doom), the shared static stream and early exit do the rest. A trained s3-pico answers Flappy frames at the first exit, so it costs one block application per frame; a Doom frame (26 tokens) costs 3x more.
+- Accuracy: the engine matches the mlx-rs graphs of `sky-train s2-golden` within 6.3e-6 (f32 and ternary files, f32 and packed compute) on `s2.json`, `s3.json` (fused numbers, 1 x 4 loops, head_dim 96) and `s3t.json` (temporal carry across frames).
 
 ## Doom-like game (`scripts/train-doom.sh`)
 
@@ -136,3 +125,92 @@ The Doom model is 1,532,033 parameters and 702 KB as a ternary GGUF. A doom stat
 |---|---:|---:|
 | s2-nano-doom, τ = 0.95 | 1,055 µs p50 / 1,406 µs p95 | 1,830 µs median / 2,030 µs p95 |
 
+
+## skycmd-s3 (s3-pico): value-fused, looped, ternary
+
+s3 = s2 + `fuse_numbers` (a `key value` pair is one token) + `state_loops` (one weight-shared state block applied 4 times, an exit after each loop) + `head_count` 1 (head_dim 96), see `docs/SPEC-S3.md`. Training and evaluation on an Apple M5 whose GPU was shared with another training job the whole time (doom), so step rates are lower than an idle machine gives.
+
+| model | params | ternary GGUF | state blocks x loops | exits | static / fusion | d / ff / vocab |
+|---|---:|---:|---|---|---|---|
+| s3-pico | 445,345 | 251 KB (f32: 1.8 MB) | 1 x 4 | [1, 2, 3, 4] | 1 / 2 | 96 / 192 / 1024 |
+| s3-nano (config only, not trained) | 1,204,353 | - | 2 x 3 | [2, 4, 6] | 2 / 2 | 128 / 256 / 2048 |
+| s2-nano (ship) | 1,532,033 | 702 KB | 4 x 1 | [1, 2, 4] | 2 / 2 | 128 / 256 / 2048 |
+| s1-pico (site) | 202,305 | 545 KB (f16) | - | - | - | 64 / - / 1024 |
+
+### s3 training runs (`scripts/train-s3.sh pico`, `scripts/specialize-s3.sh pico 3 8`)
+
+| phase | budget | steps | median throughput | result |
+|---|---|---:|---:|---|
+| s2-pretrain (web text + 10% numeric curriculum, fused rows) | 8 min | 4,814 x 128 x 128 | 167k tok/s | token CE 2.86 (val) |
+| s2-decide (games 0.6 / numeric 0.1 / decisions 0.3, QAT after 10%, loop dropout 0.25) | 15 min | 6,440 x 128 | 982 q/s | val 0.530 ternary; test GGUF 0.534 (decisions + games + numeric) |
+| DAgger r1 (games 0.5 / r1 0.35 / numeric 0.05 / decisions 0.1, QAT 100%) | 8 min | 4,683 | 1,398 q/s | val 0.555 |
+| DAgger r2 | 8 min | 5,136 | 1,495 q/s | val 0.561 |
+| DAgger r3 | 8 min | 5,313 | 1,516 q/s | val 0.574 |
+
+- Compiling one mlx graph per batch shape dominated the first decide attempt (~250 q/s, stopped after 4 min): loop dropout is now an exit-weight input (one graph for every dropout outcome, same gradients) and `--pad-to 32` buckets the batch shapes; 4-5x faster.
+- Numeric curriculum: val accuracy on `data/numeric` stays at 0.41-0.43 (chance is about 0.33 averaged over the six families), so the value channel learned little exact comparison in 15 min.
+
+### DAgger rounds (30 episodes per game, seed 7, full depth τ = 1, ternary GGUF in sky-arena)
+
+| model | flappy pipes (of 200) | crashes | rescue rate | dodge completion (oracle 0.867) | dodge vetoes |
+|---|---:|---:|---:|---:|---:|
+| s3-pico base | 145.3 | 14 | 0.08 | 0.567 | 9,137 |
+| round 1 | 5.4 | 30 | 1.00 | 0.667 | 4,205 |
+| round 2 | 200.0 | 0 | 1.00 | 0.833 | 1,030 |
+| round 3 | **200.0** | **0** | **1.00** | **0.867** | **14** |
+
+Round 3 meets the gate (200/200 pipes, rescue >= 95%, dodge completion >= 95% of the oracle with < 100 vetoes, 0 crashes).
+
+### Closed-loop exit calibration (`scripts/calibrate-exit.sh`, 20 episodes per game, same seed)
+
+| τ | flappy | rescue | dodge | mean layers (flappy / rescue / dodge) | accepted |
+|---|---|---|---|---|---|
+| 1.0 | 200, 0 crashes | 1.00 | 0.90, 4 vetoes | 4.00 / 4.00 / 4.00 | reference |
+| 0.5 | 200, 0 crashes | 1.00 | 0.90, 5 vetoes | 1.00 / 1.18 / 1.02 | no (one extra veto) |
+| **0.6** | 200, 0 crashes | 1.00 | 0.90, 4 vetoes | **1.44 / 1.48 / 1.05** | **yes: shipped** |
+
+`models/ship/s3-pico.gguf` = round 3 with `exit_threshold.{choice,score,noul} = 0.6`. Re-checked on 30 episodes at its own τ: 200/200 pipes, 0 crashes, rescue 1.00, dodge 0.867 with 14 vetoes (same as full depth), mean layers 1.44 / 1.52 / 1.05.
+
+### s3-pico vs s2-nano vs s1-pico
+
+Held-out accuracy: `test` split of `data/decisions` + `data/games` (30,050 questions; `s2-eval --gguf` for s2/s3 with the calibrated temperatures, `sky-train eval` on `runs/s1-pico` for s1). s3 was trained with the doom records that are now part of `data/games`; s2-nano and s1-pico were not, so the column without doom is the fair one.
+
+| model | test acc | acc without doom (25,319) | dodge / flappy / rescue (test) | doom (test) |
+|---|---:|---:|---|---:|
+| s3-pico (ship, τ 0.6) | 0.594 | 0.543 | 0.958 / 0.836 / 0.889 | 0.870 |
+| s2-nano (ship, τ 0.95) | 0.496 | 0.544 | 0.959 / 0.840 / 0.900 | 0.237 |
+| s1-pico (runs/s1-pico) | 0.428 | 0.479 | 0.944 / 0.743 / 0.875 | 0.152 |
+
+Closed loop, `sky-arena`, 30 episodes per game at each model's own τ (machine shared with a GPU training job during these runs, so p50 latencies are indicative):
+
+| model | flappy | rescue | dodge completion / vetoes | mean layers (flappy / rescue / dodge) | p50 µs per decision (flappy / rescue / dodge) |
+|---|---|---:|---|---|---|
+| s3-pico | 200, 0 crashes | 1.00 | 0.867 / 14 | 1.44 / 1.52 / 1.05 of 4 | 24 / 60 / 15 |
+| s2-nano | 200, 0 crashes | 1.00 | 0.867 / 25 | 3.43 / 3.16 / 3.28 of 4 | 249 / 528 / 163 |
+| s1-pico | 200, 0 crashes | 1.00 | 0.833 / 1,026 | - | 211 / 344 / 192 |
+
+Native `sky-bench <model> --questions 1|2 --iters 4000` (Flappy state, static cache on; median µs per frame):
+
+| model | 1 question | 2 questions | layers on this state |
+|---|---:|---:|---|
+| s3-pico ship (τ 0.6) | 27.5 | 35.0 | 1 of 4 (exit 0) |
+| s3-pico ship, τ = 1 | 95.0 | 103.1 | 4 of 4 |
+| s2-nano ship (τ 0.95) | 273.0 | 315.3 | 4 of 4 |
+| s2-nano ship, τ = 1 | 240.7 | 255.0 | 4 of 4 |
+| s1-pico site | 137.6 | 300.6 | - |
+
+Reading: s3-pico plays the three games as well as s2-nano (and better than s1-pico on dodge vetoes), ties it on held-out accuracy without doom, with 3.4x fewer parameters, a 2.8x smaller file, and about 10x less time per decision in closed loop: the fused state is ~half as many tokens and the calibrated τ answers at the first loop on most frames.
+
+### Temporal recursion (SPEC-S3 §7), experimental, not shipped
+
+`configs/s3-pico-temporal.json` (+ `carry_gate`, `carry_norm`: 445,537 params), 10 min fine-tune of round 3 on the round-3 data plus 50% sequence steps (`s2-seqgen`: 15,000 sequences x 4 frames per game, carry dropped with p = 0.3, every exit of every frame supervised). Cold val accuracy unchanged (0.573 vs 0.574). Closed loop with the mlx-rs player (`sky-train s2-play`, which reproduces sky-arena's metrics exactly on the same episodes), 5 episodes, flappy capped at 30 pipes:
+
+| τ | variant | flappy layers | rescue layers (cold / warm frames) | dodge layers | game metrics |
+|---|---|---:|---|---:|---|
+| 0.6 | temporal, carry on (warm frames) | 1.61 | 1.42 / 1.76 | 1.06 | 30/30, 1.00, 0.80 (17 vetoes) |
+| 0.6 | temporal, carry off | 1.45 | 1.56 | 1.09 | 30/30, 1.00, 0.80 (12 vetoes) |
+| 0.6 | round 3 (no temporal training) | 1.43 | 1.60 | 1.05 | 30/30, 1.00, 0.80 (2 vetoes) |
+| 0.9 | temporal, carry on | 2.21 | 2.37 / 2.46 | 1.52 | 20/20, 1.00, 0.67 |
+| 0.9 | temporal, carry off | 2.10 | 2.49 | 1.60 | 20/20, 1.00, 0.67 |
+
+The carry does not reduce depth: warm frames use as many layers as cold ones, within noise (exits stay bimodal, exit 0 or the last loop), and vetoes are slightly higher. Not shipped; `skycmd-s2.temporal_carry` stays off by default.

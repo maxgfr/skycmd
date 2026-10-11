@@ -3,6 +3,9 @@
 //! The reference outputs in tests/golden/oscar.json were produced once by
 //! tests/golden/make_golden.py (no Python runs here). The model files live in the gitignored
 //! models-src/oscar directory: the tests are skipped with a message when it is absent.
+//! Native only: the Laya checkpoint reader needs a file system.
+
+#![cfg(not(target_arch = "wasm32"))]
 
 use std::path::PathBuf;
 use std::sync::OnceLock;

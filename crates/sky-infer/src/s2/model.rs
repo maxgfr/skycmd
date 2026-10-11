@@ -1,13 +1,28 @@
 //! Weights and forward pieces of an s2 model (SPEC-S2 §3).
 //!
-//! The engine drives these pieces: [`S2Model::encode_static`] once per (question, options),
-//! [`S2Model::state_start`] / [`S2Model::state_advance`] / [`S2Model::exit_kv`] once per state,
-//! and [`S2Model::fusion`] once per question and exit.
+//! The engine drives these pieces: [`S2Model::encode_static`] (+ [`S2Model::prepare_fusion`])
+//! once per (question, options), [`S2Model::state_reset`] / [`S2Model::state_advance`] /
+//! [`S2Model::exit_kv`] once per state, and [`S2Model::fusion_cached`] once per question and exit.
+//!
+//! SPEC-S3 options: value-fused tokens (a `has_value` flag per token instead of `id == [NUM]`) and
+//! a looped state encoder (`state_loops` passes over the `state_blocks` shared blocks, with
+//! `loop_embd` added before every pass after the first and `blk.0.attn_norm_loop` as the input
+//! norm of block 0 from the second pass on).
+//!
+//! Hot-path layout: f32 matrices are repacked into k-major panels ([`PanelMatrix`]) for the small
+//! row counts of a frame; the state stream reuses preallocated buffers (no allocation per frame
+//! once warm); attention over a handful of tokens skips the tiled kernel; the first fusion block's
+//! queries and their attention over the cached question tokens are precomputed with the static
+//! stream (merged with the state keys by an online softmax).
 
 use sky_gguf::{GgmlType, Gguf};
 
 use super::S2Config;
-use crate::kernels::{self, Attention, AttnScratch, Rope};
+use crate::kernels::{
+    self, Attention, AttnPartial, AttnScratch, I8Panels, I8Scratch, KvSeg, PanelMatrix, Rope,
+    SelfAttnScratch,
+};
+use crate::lut::{LutMatrix, LutScratch};
 use crate::num::{self, NUM_FEATURES};
 use crate::prompt::MAX_OPTION_TOKENS;
 use crate::ternary::{self, TernaryMatrix};
@@ -19,8 +34,24 @@ pub const N_QTYPES: usize = 3;
 /// Weight storage of a linear layer.
 #[derive(Clone, Debug)]
 pub enum LinWeight {
+    /// Row-major `[n_out][n_in]` (as in the file).
     F32(Vec<f32>),
+    /// Repacked for small row counts (see [`S2Model::pack_panels`]).
+    Panel(PanelMatrix),
     Ternary(TernaryMatrix),
+    /// Ternary weights as int8 panels, computed with integer dot products on two-pass int8
+    /// activations ([`TernaryCompute::Int8`](super::TernaryCompute::Int8)).
+    I8(I8Panels),
+    /// Ternary weights as 2-bit lookup indices (SPEC-S3 §8,
+    /// [`TernaryCompute::Lut`](super::TernaryCompute::Lut)).
+    Lut(LutMatrix),
+}
+
+thread_local! {
+    /// Quantized activations of the int8 products (single-threaded engines: one per thread).
+    static I8_SCRATCH: std::cell::RefCell<I8Scratch> = std::cell::RefCell::new(I8Scratch::default());
+    /// Tables of the lookup products.
+    static LUT_SCRATCH: std::cell::RefCell<LutScratch> = std::cell::RefCell::new(LutScratch::default());
 }
 
 /// A linear layer `y = x W^T + b` with `W: [n_out][n_in]`.
@@ -47,12 +78,61 @@ impl Lin {
                 y,
                 accumulate,
             ),
+            LinWeight::Panel(p) => p.matmul(
+                x,
+                self.n_in,
+                rows,
+                self.b.as_deref(),
+                y,
+                self.n_out,
+                accumulate,
+            ),
             LinWeight::Ternary(t) => t.matmul(x, rows, self.b.as_deref(), y, accumulate),
+            LinWeight::Lut(m) => LUT_SCRATCH.with(|sc| {
+                m.matmul(
+                    x,
+                    rows,
+                    self.b.as_deref(),
+                    y,
+                    accumulate,
+                    &mut sc.borrow_mut(),
+                )
+            }),
+            LinWeight::I8(m) => I8_SCRATCH.with(|sc| {
+                m.matmul(
+                    x,
+                    rows,
+                    self.b.as_deref(),
+                    y,
+                    accumulate,
+                    &mut sc.borrow_mut(),
+                )
+            }),
         }
     }
 
     pub fn is_ternary(&self) -> bool {
-        matches!(self.w, LinWeight::Ternary(_))
+        matches!(
+            self.w,
+            LinWeight::Ternary(_) | LinWeight::I8(_) | LinWeight::Lut(_)
+        )
+    }
+
+    /// Ternary weights as lookup-table indices with two activation passes (see
+    /// [`LinWeight::Lut`]); matrices with more than [`crate::lut::MAX_K`] inputs stay packed.
+    pub fn ternary_to_lut(&mut self) {
+        if let LinWeight::Ternary(t) = &self.w {
+            if let Some(m) = LutMatrix::from_trits(&t.trits(), &t.scale, t.rows, t.cols, 2) {
+                self.w = LinWeight::Lut(m);
+            }
+        }
+    }
+
+    /// Ternary weights as int8 panels (see [`LinWeight::I8`]).
+    pub fn ternary_to_i8(&mut self) {
+        if let LinWeight::Ternary(t) = &self.w {
+            self.w = LinWeight::I8(I8Panels::from_trits(&t.trits(), &t.scale, t.rows, t.cols));
+        }
     }
 
     /// Replace ternary weights by their f32 values (same results up to rounding).
@@ -62,11 +142,40 @@ impl Lin {
         }
     }
 
-    /// The weights as f32 values.
+    /// Repack row-major f32 weights into panels (same results up to rounding).
+    pub fn pack_panels(&mut self) {
+        if let LinWeight::F32(w) = &self.w {
+            self.w = LinWeight::Panel(PanelMatrix::from_rows(w, self.n_out, self.n_in));
+        }
+    }
+
+    /// The weights as f32 values (row-major).
     pub fn weight_f32(&self) -> Vec<f32> {
         match &self.w {
             LinWeight::F32(w) => w.clone(),
+            LinWeight::Panel(p) => p.to_rows(),
             LinWeight::Ternary(t) => t.to_f32(),
+            LinWeight::Lut(m) => {
+                let mut w = vec![0.0; self.n_out * self.n_in];
+                for o in 0..m.n {
+                    for i in 0..m.k {
+                        let b = m.idx[(o / 16 * m.groups + i / 4) * 16 + o % 16];
+                        let t = ((b >> (i % 4)) & 1) as f32 - ((b >> (4 + i % 4)) & 1) as f32;
+                        w[o * m.k + i] = t * m.scale[o];
+                    }
+                }
+                w
+            }
+            LinWeight::I8(m) => {
+                let mut w = vec![0.0; self.n_out * self.n_in];
+                for o in 0..m.n {
+                    for i in 0..m.k {
+                        let b = m.data[(o / 4) * m.k16 * 4 + (i / 4) * 16 + (o % 4) * 4 + i % 4];
+                        w[o * m.k + i] = b as f32 * m.scale[o];
+                    }
+                }
+                w
+            }
         }
     }
 
@@ -128,6 +237,51 @@ pub struct FusionBlock {
     pub ffn_norm: Ln,
     pub up: Lin,
     pub down: Lin,
+    /// `attn_kv` folded into the queries for the state tokens (see [`Absorbed`]).
+    pub absorbed: Option<Absorbed>,
+}
+
+/// The first state block application has no input norm, so its `attn_qkv` is linear in the
+/// embedding `e = tok_embd[id] + has_value · (P φ(v) + b)`: `W e = T[id] + has_value · (U φ(v)
+/// + c)` with `T = tok_embd Wᵀ` (`[vocab][3d]`), `U = W P` (`[3d][17]`) and `c = W b`. A frame
+/// then costs 17 instead of `d` multiply-adds per output of its first projection.
+#[derive(Clone, Debug)]
+pub struct QkvTable {
+    /// `[vocab][3d]`
+    pub tok: Vec<f32>,
+    /// `W P` as a panel matrix (`3d` outputs, 17 inputs).
+    pub num: PanelMatrix,
+    /// `W b` (`3d`).
+    pub num_bias: Vec<f32>,
+}
+
+/// Inputs of a block whose `attn_qkv` comes from a [`QkvTable`].
+#[derive(Clone, Copy)]
+struct TableIn<'a> {
+    tb: &'a QkvTable,
+    ids: &'a [u32],
+    has_value: &'a [bool],
+    phi: &'a [f32],
+}
+
+/// Largest [`QkvTable::tok`] built (floats).
+const MAX_QKV_TABLE: usize = 1 << 21;
+
+/// The state-token keys and values of a fusion block folded into its few queries. With
+/// `h_j = LN_kv(H_e)_j`, `k_j = W_k h_j + b_k` and `v_j = W_v h_j + b_v`, for a query `q` of head
+/// `c`: `q · k_j = (W_kᵀ q) · h_j + q · b_k` and `Σ p_j v_j = W_v (Σ p_j h_j) + b_v Σ p_j`.
+/// For n option markers and S state tokens this costs `2·n·d²` multiply-adds per block instead
+/// of `2·S·d²` for projecting every state token (n = 2, S ≈ 9 for a game state).
+#[derive(Clone, Debug)]
+pub struct Absorbed {
+    /// Per head: `W_k[head rows]ᵀ` as a panel matrix (`d` outputs, `head_dim` inputs).
+    pub kt: Vec<PanelMatrix>,
+    /// Per head: `W_v[head rows]` (`head_dim` outputs, `d` inputs).
+    pub v: Vec<PanelMatrix>,
+    /// `b_k` (`d`).
+    pub bk: Vec<f32>,
+    /// `b_v` (`d`).
+    pub bv: Vec<f32>,
 }
 
 /// A loaded s2 model.
@@ -141,7 +295,16 @@ pub struct S2Model {
     pub type_emb: Vec<f32>,
     pub static_blocks: Vec<Block>,
     pub static_norm: Ln,
+    /// The `state_blocks` distinct state blocks (applied `state_loops` times).
     pub state_blocks: Vec<Block>,
+    /// `loop_embd.weight` `[state_loops][d]` (only when `state_loops > 1`).
+    pub loop_emb: Option<Vec<f32>>,
+    /// `blk.0.attn_norm_loop` (only when `state_loops > 1`).
+    pub attn_norm_loop: Option<Ln>,
+    /// `attn_qkv` of state block 0 precomputed on the embeddings (see [`QkvTable`]).
+    pub qkv_table: Option<QkvTable>,
+    /// `carry_gate.weight` and `carry_norm` (only with `temporal_carry`; SPEC-S3 §7).
+    pub carry: Option<(Vec<f32>, Ln)>,
     pub exit_norms: Vec<Ln>,
     pub fusion: Vec<FusionBlock>,
     pub cls_norm: Ln,
@@ -154,8 +317,11 @@ pub struct S2Model {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StaticTokens {
     pub ids: Vec<u32>,
-    /// Number values (0 for non-number tokens), aligned with `ids`.
+    /// Number values (0 for tokens without a value), aligned with `ids`.
     pub values: Vec<f32>,
+    /// Whether each token carries a value (`[NUM]`, or a value-fused token with
+    /// `fuse_numbers`). Empty means `id == [NUM]`.
+    pub has_value: Vec<bool>,
     /// Length of the question part `Q`.
     pub q_len: usize,
     /// `(start, len)` of every option in `ids` (the marker is at `start`).
@@ -171,21 +337,52 @@ pub struct StaticEnc {
     pub markers: Vec<f32>,
     /// Per fusion block: `attn_kv(LN_kv(q_tokens))`, `[q_len][2d]`.
     pub kv: Vec<Vec<f32>>,
+    /// Per fusion block and head: the same keys and values in panel layouts.
+    pub kv_panels: Vec<Vec<HeadPanels>>,
     pub n_tokens: usize,
+    /// Question-type dependent part, see [`S2Model::prepare_fusion`].
+    pub fusion0: Option<Fusion0>,
 }
 
-/// The (partially) encoded state stream of one state text.
+/// Static part of the first fusion block for one question type: its input `x0 = m_i +
+/// type_embd[t]`, its queries and their attention over the cached question tokens.
 #[derive(Clone, Debug)]
+pub struct Fusion0 {
+    pub qtype: usize,
+    /// `[n_options][d]`
+    pub x0: Vec<f32>,
+    /// `attn_q(LN_q(x0))`, `[n_options][d]`.
+    pub q0: Vec<f32>,
+    /// Attention of `q0` over the question tokens of fusion block 0.
+    pub prior: AttnPartial,
+}
+
+/// The (partially) encoded state stream of one state text. The buffers are sized for
+/// `max_state_tokens` once and reused by [`S2Model::state_reset`].
+#[derive(Clone, Debug, Default)]
 pub struct StateEnc {
     /// Number of tokens `S`.
     pub len: usize,
-    /// Hidden states after `layers_done` blocks, `[S][d]`.
+    /// Hidden states after `layers_done` block applications, `[S][d]`.
     pub x: Vec<f32>,
+    /// Block applications done (effective depth).
     pub layers_done: usize,
-    /// Per exit: `H_e` once the encoder went past it.
-    pub exit_h: Vec<Option<Vec<f32>>>,
+    /// Per exit: whether `exit_h` holds `H_e` (the encoder went past it).
+    pub exit_ready: Vec<bool>,
+    /// Per exit: `H_e`, `[S][d]`.
+    pub exit_h: Vec<Vec<f32>>,
+    /// Per exit: whether `exit_kv` holds the projected keys / values.
+    pub kv_ready: Vec<bool>,
     /// Per exit, per fusion block: `attn_kv(LN_kv(H_e))`, `[S][2d]`.
-    pub exit_kv: Vec<Option<Vec<Vec<f32>>>>,
+    pub exit_kv: Vec<Vec<Vec<f32>>>,
+    /// Token ids of the stream.
+    pub ids: Vec<u32>,
+    /// `has_value` of every token.
+    pub has_value: Vec<bool>,
+    /// `φ(v)` of every token (0 for tokens without a value), `[S][17]`.
+    pub phi: Vec<f32>,
+    /// The stream started from a carried latent (SPEC-S3 §7), not from the plain embeddings.
+    pub carried: bool,
 }
 
 /// Scratch buffers (grown on demand, then reused: a decision does not allocate once warm).
@@ -198,12 +395,22 @@ pub struct S2Workspace {
     act: Vec<f32>,
     kvtmp: Vec<f32>,
     iota: Vec<usize>,
+    /// State positions `0..S` (see [`S2Model::state_advance`]).
+    spos: Vec<usize>,
     mx: Vec<f32>,
     mh: Vec<f32>,
     mq: Vec<f32>,
     mup: Vec<f32>,
+    scores: Vec<f32>,
+    ab_t: Vec<f32>,
+    ab_u: Vec<f32>,
+    ab_o: Vec<f32>,
     attn: AttnScratch,
+    self_attn: SelfAttnScratch,
 }
+
+/// Longest stream attended with [`kernels::attend`] (plain loops) instead of the tiled kernel.
+const SMALL_ATTN: usize = 32;
 
 /// `v[..n]`, growing `v` if needed.
 #[inline]
@@ -355,9 +562,25 @@ impl S2Model {
             .map(|n| src.block("static.blk.", n, &cfg))
             .collect::<Result<Vec<_>>>()?;
         let static_norm = src.ln("static_norm", d, false)?;
-        let state_blocks = (0..cfg.state_layers)
+        let state_blocks = (0..cfg.state_blocks)
             .map(|n| src.block("blk.", n, &cfg))
             .collect::<Result<Vec<_>>>()?;
+        let (loop_emb, attn_norm_loop) = if cfg.state_loops > 1 {
+            (
+                Some(src.f32("loop_embd.weight", &[cfg.state_loops, d])?),
+                Some(src.ln("blk.0.attn_norm_loop", d, false)?),
+            )
+        } else {
+            (None, None)
+        };
+        let carry = if cfg.temporal_carry {
+            Some((
+                src.f32("carry_gate.weight", &[d])?,
+                src.ln("carry_norm", d, false)?,
+            ))
+        } else {
+            None
+        };
         // exits are numbered by their index (0-based); a file numbering them by depth also loads
         let by_index = (0..cfg.exits.len()).all(|e| src.has(&format!("exit.{e}.norm.weight")));
         let exit_norms = cfg
@@ -384,6 +607,7 @@ impl S2Model {
                     ffn_norm: src.ln(&p("ffn_norm"), d, true)?,
                     up: src.lin(&p("ffn_up"), 2 * d, d, true)?,
                     down: src.lin(&p("ffn_down"), d, 2 * d, true)?,
+                    absorbed: None,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -402,6 +626,10 @@ impl S2Model {
             static_blocks,
             static_norm,
             state_blocks,
+            loop_emb,
+            attn_norm_loop,
+            qkv_table: None,
+            carry,
             exit_norms,
             fusion,
             cls_norm,
@@ -438,6 +666,123 @@ impl S2Model {
         }
     }
 
+    /// Repack every f32 matrix into k-major panels for the small-row products of a frame, after
+    /// folding the first state projection ([`QkvTable`]) and the fusion keys / values
+    /// ([`Absorbed`]) (ternary matrices kept packed stay as they are).
+    pub fn pack_panels(&mut self) {
+        self.prepare_compute(super::TernaryCompute::F32);
+    }
+
+    /// Set up the compute of every matrix for `mode`: `F32` dequantizes the ternary matrices,
+    /// `Int8` turns them into int8 panels, `Packed` keeps them packed (without the folded
+    /// weights, which would need f32 copies). f32 matrices are repacked into panels.
+    pub fn prepare_compute(&mut self, mode: super::TernaryCompute) {
+        use super::TernaryCompute;
+        let mode = mode.resolve();
+        if mode == TernaryCompute::F32 {
+            self.dequantize_ternary();
+        }
+        if mode != TernaryCompute::Packed {
+            self.fold_weights();
+        }
+        if mode == TernaryCompute::Int8 {
+            for l in self.lins_mut() {
+                l.ternary_to_i8();
+            }
+        }
+        if mode == TernaryCompute::Lut {
+            for l in self.lins_mut() {
+                l.ternary_to_lut();
+            }
+        }
+        for l in self.lins_mut() {
+            l.pack_panels();
+        }
+    }
+
+    /// Build the [`Absorbed`] fusion weights and the [`QkvTable`] from the f32 values of the
+    /// weights.
+    fn fold_weights(&mut self) {
+        let (d, nh, hd) = (
+            self.cfg.hidden_size,
+            self.cfg.num_heads,
+            self.cfg.head_dim(),
+        );
+        for f in &mut self.fusion {
+            let w = f.kv.weight_f32();
+            let b = f.kv.b.as_deref().expect("fusion attn_kv has a bias");
+            let (wk, wv) = w.split_at(d * d);
+            let kt = (0..nh)
+                .map(|h| {
+                    let rows = &wk[h * hd * d..(h + 1) * hd * d];
+                    let mut t = vec![0.0; d * hd];
+                    for c in 0..hd {
+                        for i in 0..d {
+                            t[i * hd + c] = rows[c * d + i];
+                        }
+                    }
+                    PanelMatrix::from_rows(&t, d, hd)
+                })
+                .collect();
+            let v = (0..nh)
+                .map(|h| PanelMatrix::from_rows(&wv[h * hd * d..(h + 1) * hd * d], hd, d))
+                .collect();
+            f.absorbed = Some(Absorbed {
+                kt,
+                v,
+                bk: b[..d].to_vec(),
+                bv: b[d..2 * d].to_vec(),
+            });
+        }
+        self.qkv_table = self.build_qkv_table();
+    }
+
+    /// The [`QkvTable`] of state block 0, when its `attn_qkv` is f32, it has no input norm and the
+    /// table stays under 8 MB.
+    fn build_qkv_table(&self) -> Option<QkvTable> {
+        let c = &self.cfg;
+        let (v, d, nf) = (c.vocab_size, c.hidden_size, c.num_features);
+        let blk = self.state_blocks.first()?;
+        if blk.attn_norm.is_some() || v * 3 * d > MAX_QKV_TABLE {
+            return None;
+        }
+        let w = &blk.qkv.weight_f32();
+        let emb: Vec<f32> = match &self.tok_emb {
+            TokEmb::F32(e) => e.clone(),
+            TokEmb::Q8 { q, scale } => q
+                .iter()
+                .enumerate()
+                .map(|(i, &x)| x as f32 * scale[i / d])
+                .collect(),
+        };
+        let mut tok = vec![0.0; v * 3 * d];
+        kernels::matmul_f32(&emb, v, d, w, 3 * d, None, &mut tok, false);
+        // U = W P: column j of P is num_proj.weight[:, j]
+        let p = self.num_proj.weight_f32();
+        let mut pt = vec![0.0; nf * d];
+        for i in 0..d {
+            for j in 0..nf {
+                pt[j * d + i] = p[i * nf + j];
+            }
+        }
+        let mut ut = vec![0.0; nf * 3 * d];
+        kernels::matmul_f32(&pt, nf, d, w, 3 * d, None, &mut ut, false);
+        let mut u = vec![0.0; 3 * d * nf];
+        for j in 0..nf {
+            for o in 0..3 * d {
+                u[o * nf + j] = ut[j * 3 * d + o];
+            }
+        }
+        let b = self.num_proj.b.as_deref().expect("num_proj has a bias");
+        let mut num_bias = vec![0.0; 3 * d];
+        kernels::matmul_f32(b, 1, d, w, 3 * d, None, &mut num_bias, false);
+        Some(QkvTable {
+            tok,
+            num: PanelMatrix::from_rows(&u, 3 * d, nf),
+            num_bias,
+        })
+    }
+
     /// Total number of parameters (ternary weights count one each).
     pub fn n_params(&self) -> usize {
         let (v, d) = (self.cfg.vocab_size, self.cfg.hidden_size);
@@ -452,6 +797,12 @@ impl S2Model {
         let mut n = v * d + self.num_proj.n_params() + self.type_emb.len();
         n += self.static_blocks.iter().map(block).sum::<usize>() + self.static_norm.n_params();
         n += self.state_blocks.iter().map(block).sum::<usize>();
+        n += self.loop_emb.as_ref().map_or(0, Vec::len);
+        n += self.attn_norm_loop.as_ref().map_or(0, Ln::n_params);
+        n += self
+            .carry
+            .as_ref()
+            .map_or(0, |(g, ln)| g.len() + ln.n_params());
         n += self.exit_norms.iter().map(Ln::n_params).sum::<usize>();
         for f in &self.fusion {
             n += f.q_norm.n_params()
@@ -466,10 +817,31 @@ impl S2Model {
         n + self.cls_norm.n_params() + self.cls.n_params() + self.cls_out.n_params()
     }
 
-    /// Token embeddings plus the value features of the `[NUM]` tokens, into `out: [T][d]`.
-    pub fn embed(&self, ids: &[u32], values: &[f32], out: &mut [f32]) -> Result<()> {
+    /// Token embeddings plus the value features of the tokens carrying a value, into
+    /// `out: [T][d]`: `e = tok_embd[id] + has_value · (num_proj.weight · φ(v) + num_proj.bias)`.
+    /// An empty `has_value` means `id == [NUM]` (s2).
+    pub fn embed(
+        &self,
+        ids: &[u32],
+        values: &[f32],
+        has_value: &[bool],
+        out: &mut [f32],
+    ) -> Result<()> {
+        let mut phi = vec![0.0; ids.len() * NUM_FEATURES];
+        self.embed_phi(ids, values, has_value, out, &mut phi)
+    }
+
+    /// [`S2Model::embed`] that also writes `φ(v)` of every token (`[T][17]`, zeros for tokens
+    /// without a value).
+    fn embed_phi(
+        &self,
+        ids: &[u32],
+        values: &[f32],
+        has_value: &[bool],
+        out: &mut [f32],
+        phi: &mut [f32],
+    ) -> Result<()> {
         let d = self.cfg.hidden_size;
-        let mut phi = [0.0f32; NUM_FEATURES];
         for (r, &id) in ids.iter().enumerate() {
             let id = id as usize;
             if id >= self.cfg.vocab_size {
@@ -487,23 +859,36 @@ impl S2Model {
                     }
                 }
             }
-            if id as u32 == self.cfg.num_token_id {
-                num::features(values.get(r).copied().unwrap_or(0.0), &mut phi);
-                self.num_proj.forward(&phi, 1, row, true);
+            let hv = match has_value.get(r) {
+                Some(&h) => h,
+                None => id as u32 == self.cfg.num_token_id,
+            };
+            let f: &mut [f32; NUM_FEATURES] = (&mut phi[r * NUM_FEATURES..(r + 1) * NUM_FEATURES])
+                .try_into()
+                .expect("17 features");
+            if hv {
+                num::features(values.get(r).copied().unwrap_or(0.0), f);
+                self.num_proj.forward(f, 1, row, true);
+            } else {
+                f.fill(0.0);
             }
         }
         Ok(())
     }
 
-    /// One encoder block over `t` rows of `x` (positions `pos`).
+    /// One encoder block over `t` rows of `x` (positions `pos`). `attn_norm` is the input norm
+    /// (`None`: identity, block 0 on the first pass).
+    #[allow(clippy::too_many_arguments)]
     fn block(
         &self,
         blk: &Block,
+        attn_norm: Option<&Ln>,
         x: &mut [f32],
         t: usize,
         pos: &[usize],
         mode: AttnMode<'_>,
         ws: &mut S2Workspace,
+        table: Option<TableIn<'_>>,
     ) {
         let c = &self.cfg;
         let (d, ff, nh, hd) = (
@@ -522,17 +907,44 @@ impl S2Model {
             kvtmp,
             iota,
             attn,
+            self_attn,
             ..
         } = ws;
         let x = &mut x[..t * d];
         let hn = grow(hn, t * d);
         let qkv = grow(qkv, t * 3 * d);
-        match &blk.attn_norm {
-            Some(n) => {
+        // fused QKV + RoPE: each row is rotated right after its projection, while in cache
+        match (table, attn_norm) {
+            (
+                Some(TableIn {
+                    tb,
+                    ids,
+                    has_value,
+                    phi,
+                }),
+                _,
+            ) => {
+                for (r, row) in qkv.chunks_exact_mut(3 * d).enumerate() {
+                    let id = ids[r] as usize;
+                    row.copy_from_slice(&tb.tok[id * 3 * d..(id + 1) * 3 * d]);
+                    if has_value[r] {
+                        tb.num.matmul(
+                            &phi[r * NUM_FEATURES..(r + 1) * NUM_FEATURES],
+                            NUM_FEATURES,
+                            1,
+                            Some(&tb.num_bias),
+                            row,
+                            3 * d,
+                            true,
+                        );
+                    }
+                }
+            }
+            (None, Some(n)) => {
                 n.apply(x, d, eps, hn);
                 blk.qkv.forward(hn, t, qkv, false);
             }
-            None => blk.qkv.forward(x, t, qkv, false),
+            (None, None) => blk.qkv.forward(x, t, qkv, false),
         }
         for (r, &p) in pos.iter().enumerate().take(t) {
             let row = &mut qkv[r * 3 * d..r * 3 * d + 2 * d];
@@ -543,6 +955,9 @@ impl S2Model {
         }
         let att = grow(att, t * d);
         match mode {
+            AttnMode::Full if t <= SMALL_ATTN => {
+                kernels::self_attention(qkv, t, nh, hd, att, d, self_attn);
+            }
             AttnMode::Full => {
                 attn.ensure(t, hd);
                 let a = Attention {
@@ -599,13 +1014,10 @@ impl S2Model {
         blk.up.forward(hn, t, up, false);
         let act = grow(act, t * ff);
         for r in 0..t {
-            let (u, a) = (
+            kernels::geglu(
                 &up[r * 2 * ff..(r + 1) * 2 * ff],
                 &mut act[r * ff..(r + 1) * ff],
             );
-            for j in 0..ff {
-                a[j] = kernels::gelu(u[j]) * u[ff + j];
-            }
         }
         blk.down.forward(act, t, x, true);
     }
@@ -639,13 +1051,13 @@ impl S2Model {
         }
         ws.ensure_iota(t);
         let mut x = vec![0.0; t * d];
-        self.embed(&st.ids, &st.values, &mut x)?;
+        self.embed(&st.ids, &st.values, &st.has_value, &mut x)?;
         let mode = AttnMode::Static {
             q_len,
             options: &st.options,
         };
         for blk in &self.static_blocks {
-            self.block(blk, &mut x, t, &pos, mode, ws);
+            self.block(blk, blk.attn_norm.as_ref(), &mut x, t, &pos, mode, ws, None);
         }
         kernels::layer_norm_inplace(&mut x, d, &self.static_norm.w, None, c.norm_eps);
         let mut markers = Vec::with_capacity(st.options.len() * d);
@@ -653,7 +1065,7 @@ impl S2Model {
             markers.extend_from_slice(&x[s * d..(s + 1) * d]);
         }
         let q_tokens = &x[..q_len * d];
-        let kv = self
+        let kv: Vec<Vec<f32>> = self
             .fusion
             .iter()
             .map(|f| {
@@ -664,69 +1076,245 @@ impl S2Model {
                 kv
             })
             .collect();
+        let kv_panels = self.question_panels(&kv, q_len);
         Ok(StaticEnc {
             q_len,
             n_options: st.options.len(),
             markers,
             kv,
+            kv_panels,
             n_tokens: t,
+            fusion0: None,
         })
+    }
+
+    /// The projected question tokens of every fusion block (`[q][2d]`) in per-head panel
+    /// layouts.
+    fn question_panels(&self, kv: &[Vec<f32>], q: usize) -> Vec<Vec<HeadPanels>> {
+        let c = &self.cfg;
+        let (d, nh, hd) = (c.hidden_size, c.num_heads, c.head_dim());
+        kv.iter()
+            .map(|kv| {
+                (0..nh)
+                    .map(|h| {
+                        let mut p = HeadPanels {
+                            k: vec![0.0; kernels::panel_len(q, hd)],
+                            v: vec![0.0; kernels::panel_len(hd, q)],
+                        };
+                        kernels::pack_outputs(&kv[h * hd..], 2 * d, q, hd, &mut p.k);
+                        kernels::pack_inputs(&kv[d + h * hd..], 2 * d, q, hd, &mut p.v);
+                        p
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Precompute the question-type dependent part of the first fusion block (see [`Fusion0`]).
+    pub fn prepare_fusion(&self, enc: &mut StaticEnc, qtype: usize) -> Result<()> {
+        let c = &self.cfg;
+        let (d, nh, hd) = (c.hidden_size, c.num_heads, c.head_dim());
+        if qtype >= N_QTYPES {
+            return Err(Error::InvalidRequest(format!("question type {qtype}")));
+        }
+        if enc.fusion0.as_ref().is_some_and(|f| f.qtype == qtype) {
+            return Ok(());
+        }
+        let n = enc.n_options;
+        let te = &self.type_emb[qtype * d..(qtype + 1) * d];
+        let mut x0 = enc.markers.clone();
+        for row in x0.chunks_exact_mut(d) {
+            row.iter_mut().zip(te).for_each(|(o, &e)| *o += e);
+        }
+        let Some(f) = self.fusion.first() else {
+            enc.fusion0 = Some(Fusion0 {
+                qtype,
+                x0,
+                q0: Vec::new(),
+                prior: AttnPartial::default(),
+            });
+            return Ok(());
+        };
+        let mut h = vec![0.0; n * d];
+        f.q_norm.apply(&x0, d, c.norm_eps, &mut h);
+        let mut q0 = vec![0.0; n * d];
+        f.q.forward(&h, n, &mut q0, false);
+        let kv = &enc.kv[0];
+        let seg = KvSeg {
+            k: kv,
+            v: &kv[d..],
+            stride: 2 * d,
+            n: enc.q_len,
+        };
+        let prior = kernels::attend_partial(&q0, d, n, seg, nh, hd);
+        enc.fusion0 = Some(Fusion0 {
+            qtype,
+            x0,
+            q0,
+            prior,
+        });
+        Ok(())
+    }
+
+    /// A state encoding with buffers for `max_state_tokens` (no token yet).
+    pub fn state_buffers(&self) -> StateEnc {
+        let c = &self.cfg;
+        let (d, smax, ne) = (c.hidden_size, c.max_state_tokens, c.exits.len());
+        StateEnc {
+            len: 0,
+            x: vec![0.0; smax * d],
+            layers_done: 0,
+            exit_ready: vec![false; ne],
+            exit_h: vec![vec![0.0; smax * d]; ne],
+            kv_ready: vec![false; ne],
+            exit_kv: vec![
+                vec![
+                    vec![0.0; (smax * 2 * d).max(state_panels_len(smax, d))];
+                    c.fusion_layers
+                ];
+                ne
+            ],
+            ids: Vec::with_capacity(smax),
+            has_value: Vec::with_capacity(smax),
+            phi: vec![0.0; smax * NUM_FEATURES],
+            carried: false,
+        }
+    }
+
+    /// Embed a state stream into reused buffers (no block run yet).
+    pub fn state_reset(
+        &self,
+        st: &mut StateEnc,
+        ids: &[u32],
+        values: &[f32],
+        has_value: &[bool],
+    ) -> Result<()> {
+        let c = &self.cfg;
+        let d = c.hidden_size;
+        let s = ids.len();
+        if s == 0 || s > c.max_state_tokens {
+            return Err(Error::InvalidRequest(format!(
+                "state stream of {s} tokens (max {})",
+                c.max_state_tokens
+            )));
+        }
+        if st.x.len() < c.max_state_tokens * d || st.exit_ready.len() != c.exits.len() {
+            *st = self.state_buffers();
+        }
+        st.len = s;
+        st.layers_done = 0;
+        st.carried = false;
+        st.exit_ready.fill(false);
+        st.kv_ready.fill(false);
+        st.ids.clear();
+        st.ids.extend_from_slice(ids);
+        st.has_value.clear();
+        st.has_value.extend((0..s).map(|r| {
+            has_value
+                .get(r)
+                .copied()
+                .unwrap_or(ids[r] == c.num_token_id)
+        }));
+        self.embed_phi(
+            ids,
+            values,
+            &st.has_value,
+            &mut st.x[..s * d],
+            &mut st.phi[..s * NUM_FEATURES],
+        )
+    }
+
+    /// SPEC-S3 §7: start the stream `st` (just embedded by [`S2Model::state_reset`]) from the
+    /// previous frame's final latent `prev` (`[S][d]`, the output of the last block applied, with
+    /// the same token ids): `h⁰ = embed + carry_gate ⊙ LN₀(prev)`. No effect without
+    /// `temporal_carry` weights.
+    pub fn state_carry(&self, st: &mut StateEnc, prev: &[f32], ws: &mut S2Workspace) {
+        let Some((gate, ln)) = &self.carry else {
+            return;
+        };
+        let (d, s) = (self.cfg.hidden_size, st.len);
+        let h = grow(&mut ws.hn, d);
+        for (row, p) in st.x[..s * d]
+            .chunks_exact_mut(d)
+            .zip(prev[..s * d].chunks_exact(d))
+        {
+            ln.apply(p, d, self.cfg.norm_eps, h);
+            for ((x, &g), &v) in row.iter_mut().zip(gate).zip(h.iter()) {
+                *x += g * v;
+            }
+        }
+        st.carried = true;
     }
 
     /// Embed a state stream (no block run yet).
     pub fn state_start(&self, ids: &[u32], values: &[f32]) -> Result<StateEnc> {
-        let d = self.cfg.hidden_size;
-        let s = ids.len();
-        if s == 0 || s > self.cfg.max_state_tokens {
-            return Err(Error::InvalidRequest(format!(
-                "state stream of {s} tokens (max {})",
-                self.cfg.max_state_tokens
-            )));
-        }
-        let mut x = vec![0.0; s * d];
-        self.embed(ids, values, &mut x)?;
-        let n_exits = self.cfg.exits.len();
-        Ok(StateEnc {
-            len: s,
-            x,
-            layers_done: 0,
-            exit_h: vec![None; n_exits],
-            exit_kv: vec![None; n_exits],
-        })
+        let mut st = self.state_buffers();
+        self.state_reset(&mut st, ids, values, &[])?;
+        Ok(st)
     }
 
-    /// Run the state blocks up to depth `to` (1-based block count); `H_e` is kept for every exit
-    /// passed on the way.
+    /// Run the state encoder up to effective depth `to` (1-based block applications: block
+    /// `a % state_blocks` on pass `a / state_blocks`); `H_e` is kept for every exit passed.
     pub fn state_advance(&self, st: &mut StateEnc, to: usize, ws: &mut S2Workspace) {
         let c = &self.cfg;
-        let (d, s) = (c.hidden_size, st.len);
-        let to = to.min(self.state_blocks.len());
+        let (d, s, nb) = (c.hidden_size, st.len, c.state_blocks);
+        let to = to.min(c.state_layers);
         if st.layers_done >= to {
             return;
         }
         ws.ensure_iota(s);
-        let pos: Vec<usize> = (0..s).collect();
+        // positions 0..S, kept apart from `ws.iota`, which the tiled attention of streams longer
+        // than SMALL_ATTN reads
+        let mut pos = std::mem::take(&mut ws.spos);
+        if pos.len() < s {
+            pos = (0..s).collect();
+        }
         while st.layers_done < to {
-            let l = st.layers_done;
+            let a = st.layers_done;
+            let (pass, b) = (a / nb, a % nb);
+            let blk = &self.state_blocks[b];
+            let norm = if b == 0 && pass > 0 {
+                if let Some(le) = &self.loop_emb {
+                    let e = &le[pass * d..(pass + 1) * d];
+                    for row in st.x[..s * d].chunks_exact_mut(d) {
+                        row.iter_mut().zip(e).for_each(|(o, &v)| *o += v);
+                    }
+                }
+                self.attn_norm_loop.as_ref().or(blk.attn_norm.as_ref())
+            } else {
+                blk.attn_norm.as_ref()
+            };
+            let table = match &self.qkv_table {
+                Some(tb) if a == 0 && !st.carried => Some(TableIn {
+                    tb,
+                    ids: &st.ids,
+                    has_value: &st.has_value,
+                    phi: &st.phi,
+                }),
+                _ => None,
+            };
             self.block(
-                &self.state_blocks[l],
+                blk,
+                norm,
                 &mut st.x,
                 s,
-                &pos,
+                &pos[..s],
                 AttnMode::Full,
                 ws,
+                table,
             );
             st.layers_done += 1;
             if let Some(e) = c.exits.iter().position(|&x| x == st.layers_done) {
-                let mut h = vec![0.0; s * d];
-                self.exit_norms[e].apply(&st.x, d, c.norm_eps, &mut h);
-                st.exit_h[e] = Some(h);
+                self.exit_norms[e].apply(&st.x[..s * d], d, c.norm_eps, &mut st.exit_h[e][..s * d]);
+                st.exit_ready[e] = true;
             }
         }
+        ws.spos = pos;
     }
 
-    /// `attn_kv(LN_kv(H_e))` of exit `e` for every fusion block (runs the state encoder as deep as
-    /// needed, cached in `st`).
+    /// The state side of every fusion block for exit `e` (runs the state encoder as deep as
+    /// needed, cached in `st`): `LN_kv(H_e)` (`S` rows of `[d]`) for blocks with [`Absorbed`]
+    /// weights, else `attn_kv(LN_kv(H_e))` (`S` rows of `[2d]`). The buffers may be longer.
     pub fn exit_kv<'s>(
         &self,
         st: &'s mut StateEnc,
@@ -735,25 +1323,25 @@ impl S2Model {
     ) -> &'s [Vec<f32>] {
         let c = &self.cfg;
         let (d, s) = (c.hidden_size, st.len);
-        if st.exit_kv[e].is_none() {
-            if st.exit_h[e].is_none() {
+        if !st.kv_ready[e] {
+            if !st.exit_ready[e] {
                 self.state_advance(st, c.exits[e], ws);
             }
-            let h = st.exit_h[e].as_ref().expect("exit reached");
-            let kv = self
-                .fusion
-                .iter()
-                .map(|f| {
+            let h = &st.exit_h[e][..s * d];
+            for (f, kv) in self.fusion.iter().zip(st.exit_kv[e].iter_mut()) {
+                if f.absorbed.is_some() {
                     let hn = grow(&mut ws.hn, s * d);
                     f.kv_norm.apply(h, d, c.norm_eps, hn);
-                    let mut kv = vec![0.0; s * 2 * d];
-                    f.kv.forward(hn, s, &mut kv, false);
-                    kv
-                })
-                .collect();
-            st.exit_kv[e] = Some(kv);
+                    state_panels(hn, s, d, kv);
+                } else {
+                    let hn = grow(&mut ws.hn, s * d);
+                    f.kv_norm.apply(h, d, c.norm_eps, hn);
+                    f.kv.forward(hn, s, &mut kv[..s * 2 * d], false);
+                }
+            }
+            st.kv_ready[e] = true;
         }
-        st.exit_kv[e].as_deref().expect("computed")
+        &st.exit_kv[e]
     }
 
     /// Fusion head and scorer: one logit per option. `state_kv` / `static_kv` hold, per fusion
@@ -771,54 +1359,178 @@ impl S2Model {
         ws: &mut S2Workspace,
         logits: &mut Vec<f32>,
     ) -> Result<()> {
-        let c = &self.cfg;
-        let (d, nh, hd, eps) = (c.hidden_size, c.num_heads, c.head_dim(), c.norm_eps);
+        let d = self.cfg.hidden_size;
         if qtype >= N_QTYPES {
             return Err(Error::InvalidRequest(format!("question type {qtype}")));
         }
-        let S2Workspace {
-            kvtmp,
-            iota,
-            mx,
-            mh,
-            mq,
-            mup,
-            att,
-            attn,
-            ..
-        } = ws;
-        if iota.len() < n {
-            *iota = (0..n).collect();
-        }
-        let mx = grow(mx, n * d);
         let te = &self.type_emb[qtype * d..(qtype + 1) * d];
+        let mx = grow(&mut ws.mx, n * d);
         for (i, row) in mx.chunks_exact_mut(d).enumerate() {
             for ((o, &m), &e) in row.iter_mut().zip(&markers[i * d..(i + 1) * d]).zip(te) {
                 *o = m + e;
             }
         }
+        let panels = self.question_panels(static_kv, q);
+        self.fusion_blocks(
+            n,
+            None,
+            state_kv,
+            s,
+            static_kv,
+            Some(&panels),
+            q,
+            ws,
+            logits,
+        );
+        Ok(())
+    }
+
+    /// [`S2Model::fusion`] on a cached static encoding prepared by [`S2Model::prepare_fusion`]:
+    /// the first block reuses the precomputed queries and question-token attention.
+    pub fn fusion_cached(
+        &self,
+        enc: &StaticEnc,
+        state_kv: &[Vec<f32>],
+        s: usize,
+        ws: &mut S2Workspace,
+        logits: &mut Vec<f32>,
+    ) -> Result<()> {
+        let d = self.cfg.hidden_size;
+        let f0 = enc
+            .fusion0
+            .as_ref()
+            .ok_or_else(|| Error::InvalidRequest("static encoding not prepared".into()))?;
+        let n = enc.n_options;
+        grow(&mut ws.mx, n * d).copy_from_slice(&f0.x0);
+        self.fusion_blocks(
+            n,
+            Some(f0),
+            state_kv,
+            s,
+            &enc.kv,
+            Some(&enc.kv_panels),
+            enc.q_len,
+            ws,
+            logits,
+        );
+        Ok(())
+    }
+
+    /// The fusion blocks and the scorer on `ws.mx` (`[n][d]`, the markers plus the type
+    /// embedding).
+    #[allow(clippy::too_many_arguments)]
+    fn fusion_blocks(
+        &self,
+        n: usize,
+        f0: Option<&Fusion0>,
+        state_kv: &[Vec<f32>],
+        s: usize,
+        static_kv: &[Vec<f32>],
+        static_panels: Option<&[Vec<HeadPanels>]>,
+        q: usize,
+        ws: &mut S2Workspace,
+        logits: &mut Vec<f32>,
+    ) {
+        let c = &self.cfg;
+        let (d, nh, hd, eps) = (c.hidden_size, c.num_heads, c.head_dim(), c.norm_eps);
+        let S2Workspace {
+            mx,
+            mh,
+            mq,
+            mup,
+            att,
+            scores,
+            ab_t,
+            ab_u,
+            ab_o,
+            ..
+        } = ws;
+        let mx = &mut mx[..n * d];
         let mh = grow(mh, n * d);
-        let n_kv = s + q;
-        attn.ensure(n_kv, hd);
         for (b, f) in self.fusion.iter().enumerate() {
-            f.q_norm.apply(mx, d, eps, mh);
-            let mq = grow(mq, n * d);
-            f.q.forward(mh, n, mq, false);
-            let kv = grow(kvtmp, n_kv * 2 * d);
-            kv[..s * 2 * d].copy_from_slice(&state_kv[b][..s * 2 * d]);
-            kv[s * 2 * d..].copy_from_slice(&static_kv[b][..q * 2 * d]);
-            let kv: &[f32] = kv;
-            let a = Attention {
-                k: kv,
-                v: &kv[d..],
-                kv_stride: 2 * d,
-                n_kv,
-                n_heads: nh,
-                head_dim: hd,
-                window: None,
-            };
+            let sk = &state_kv[b];
             let att = grow(att, n * d);
-            a.run(mq, d, &iota[..n], att, d, attn);
+            let prior = match f0 {
+                Some(f0) if b == 0 => Some(f0),
+                _ => None,
+            };
+            let qrows: &[f32] = match prior {
+                Some(f0) => &f0.q0,
+                None => {
+                    f.q_norm.apply(mx, d, eps, mh);
+                    let mq = grow(mq, n * d);
+                    f.q.forward(mh, n, mq, false);
+                    mq
+                }
+            };
+            let qk = &static_kv[b];
+            let question = KvSeg {
+                k: qk,
+                v: &qk[d..],
+                stride: 2 * d,
+                n: q,
+            };
+            match &f.absorbed {
+                Some(ab) => {
+                    let bufs = AbsorbBufs {
+                        t: grow(ab_t, n * d),
+                        u: grow(ab_u, n * d),
+                        o: grow(ab_o, n * hd),
+                        scores,
+                    };
+                    let question = match (prior, static_panels) {
+                        (None, Some(p)) => Some((&p[b][..], q)),
+                        _ => None,
+                    };
+                    absorbed_attention(
+                        ab,
+                        qrows,
+                        n,
+                        &sk[..state_panels_len(s, d)],
+                        s,
+                        question,
+                        prior.map(|f0| &f0.prior),
+                        nh,
+                        hd,
+                        att,
+                        bufs,
+                    );
+                }
+                None => {
+                    let state = KvSeg {
+                        k: sk,
+                        v: &sk[d..],
+                        stride: 2 * d,
+                        n: s,
+                    };
+                    match prior {
+                        Some(f0) => kernels::attend(
+                            qrows,
+                            d,
+                            n,
+                            &[state],
+                            nh,
+                            hd,
+                            Some(&f0.prior),
+                            att,
+                            d,
+                            scores,
+                        ),
+                        None => kernels::attend(
+                            qrows,
+                            d,
+                            n,
+                            &[state, question],
+                            nh,
+                            hd,
+                            None,
+                            att,
+                            d,
+                            scores,
+                        ),
+                    }
+                }
+            }
             f.out.forward(att, n, mx, true);
             f.ffn_norm.apply(mx, d, eps, mh);
             let mup = grow(mup, n * 2 * d);
@@ -833,6 +1545,132 @@ impl S2Model {
         logits.clear();
         logits.resize(n, 0.0);
         self.cls_out.forward(s1, n, logits, false);
-        Ok(())
     }
+}
+
+/// Scratch buffers of [`absorbed_attention`].
+struct AbsorbBufs<'a> {
+    /// `[n][d]`: `W_kᵀ q` per query (one head at a time).
+    t: &'a mut [f32],
+    /// `[n][d]`: `Σ_j e_j h_j` per query.
+    u: &'a mut [f32],
+    /// `[n][hd]`: the question-token part of the output.
+    o: &'a mut [f32],
+    /// `[n][s + q]`: scores, then their exponentials.
+    scores: &'a mut Vec<f32>,
+}
+
+/// The question tokens of one head of a fusion block in panel layouts: keys (`q` outputs,
+/// `head_dim` inputs) and values (`head_dim` outputs, `q` inputs).
+#[derive(Clone, Debug, Default)]
+pub struct HeadPanels {
+    pub k: Vec<f32>,
+    pub v: Vec<f32>,
+}
+
+/// Cross-attention of `n` queries (`q: [n][d]`) over the `s` state tokens (normalized, not
+/// projected: see [`Absorbed`]; `hp` holds them in the panel layouts of [`state_panels`]) and
+/// the `nq` question tokens of `question` (per head), or the question-token softmax state
+/// `prior` (first fusion block). Every product is a panel product with `n` rows. Writes
+/// `out: [n][d]`.
+#[allow(clippy::too_many_arguments)]
+fn absorbed_attention(
+    ab: &Absorbed,
+    q: &[f32],
+    n: usize,
+    hp: &[f32],
+    s: usize,
+    question: Option<(&[HeadPanels], usize)>,
+    prior: Option<&AttnPartial>,
+    nh: usize,
+    hd: usize,
+    out: &mut [f32],
+    bufs: AbsorbBufs<'_>,
+) {
+    let d = nh * hd;
+    let scale = 1.0 / (hd as f32).sqrt();
+    let AbsorbBufs { t, u, o, scores } = bufs;
+    let nq = question.map_or(0, |(_, nq)| nq);
+    let ls = s + nq;
+    if scores.len() < n * ls {
+        scores.resize(n * ls, 0.0);
+    }
+    let sc = &mut scores[..n * ls];
+    let (hk, hv) = hp.split_at(kernels::panel_len(s, d));
+    for c in 0..nh {
+        let hr = c * hd..(c + 1) * hd;
+        let qh = &q[hr.start..];
+        // t_i = W_k[head]ᵀ q_i[head], then the state scores t_i · h_j
+        ab.kt[c].matmul(qh, d, n, None, t, d, false);
+        kernels::panel_matmul(hk, s, d, t, d, n, None, sc, ls, false);
+        if let Some((qp, _)) = question {
+            kernels::panel_matmul(&qp[c].k, nq, hd, qh, d, n, None, &mut sc[s..], ls, false);
+        }
+        for i in 0..n {
+            let qb = kernels::dot(&q[i * d + hr.start..i * d + hr.end], &ab.bk[hr.clone()]);
+            let row = &mut sc[i * ls..(i + 1) * ls];
+            row[..s].iter_mut().for_each(|v| *v = (*v + qb) * scale);
+            row[s..].iter_mut().for_each(|v| *v *= scale);
+            let m = row.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+            let (pm, pl) = prior.map_or((f32::NEG_INFINITY, 0.0), |p| {
+                (p.m[i * nh + c], p.l[i * nh + c])
+            });
+            let mm = m.max(pm);
+            let mut es = 0.0;
+            for v in row[..s].iter_mut() {
+                *v = kernels::fast_exp(*v - mm);
+                es += *v;
+            }
+            let mut l = es;
+            for v in row[s..].iter_mut() {
+                *v = kernels::fast_exp(*v - mm);
+                l += *v;
+            }
+            let oi = &mut o[i * hd..(i + 1) * hd];
+            match prior {
+                Some(p) if pl > 0.0 => {
+                    let f = kernels::fast_exp(pm - mm);
+                    l += pl * f;
+                    let po = &p.o[i * d + hr.start..i * d + hr.end];
+                    oi.iter_mut().zip(po).for_each(|(a, &b)| *a = b * f);
+                }
+                _ => oi.fill(0.0),
+            }
+            // keep 1/l and Σ e_j of the state tokens for the value projection below
+            t[i * d] = 1.0 / l;
+            t[i * d + 1] = es;
+        }
+        // u_i = Σ_j e_j h_j; question part o_i += Σ_j e_j v_j
+        kernels::panel_matmul(hv, d, s, sc, ls, n, None, u, d, false);
+        if let Some((qp, _)) = question {
+            kernels::panel_matmul(&qp[c].v, hd, nq, &sc[s..], ls, n, None, o, hd, true);
+        }
+        // out_i[head] = (W_v[head] u_i + b_v[head] Σ e_j + o_i) / l_i
+        ab.v[c].matmul(u, d, n, None, &mut out[hr.start..], d, false);
+        for i in 0..n {
+            let (inv, es) = (t[i * d], t[i * d + 1]);
+            let row = &mut out[i * d + hr.start..i * d + hr.end];
+            for ((r, &bv), &oq) in row
+                .iter_mut()
+                .zip(&ab.bv[hr.clone()])
+                .zip(&o[i * hd..(i + 1) * hd])
+            {
+                *r = (*r + bv * es + oq) * inv;
+            }
+        }
+    }
+}
+
+/// `h: [s][d]` in the two panel layouts used by [`absorbed_attention`], written to `dst`: as
+/// outputs (`s` outputs, `d` inputs, for the scores) then as inputs (`d` outputs, `s` inputs,
+/// for `Σ e_j h_j`).
+fn state_panels(h: &[f32], s: usize, d: usize, dst: &mut [f32]) {
+    let (a, b) = dst.split_at_mut(kernels::panel_len(s, d));
+    kernels::pack_outputs(h, d, s, d, a);
+    kernels::pack_inputs(h, d, s, d, b);
+}
+
+/// Floats of [`state_panels`] for `s` tokens.
+fn state_panels_len(s: usize, d: usize) -> usize {
+    kernels::panel_len(s, d) + kernels::panel_len(d, s)
 }

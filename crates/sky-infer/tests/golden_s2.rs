@@ -53,7 +53,12 @@ fn s2_golden() {
         assert_eq!(bytes.len() as u64, file["bytes"].as_u64().unwrap());
         let tolerance = tol[format].as_f64().unwrap() as f32;
         let computes: &[TernaryCompute] = if format == "ternary" {
-            &[TernaryCompute::Packed, TernaryCompute::F32]
+            &[
+                TernaryCompute::Packed,
+                TernaryCompute::F32,
+                TernaryCompute::Int8,
+                TernaryCompute::Lut,
+            ]
         } else {
             &[TernaryCompute::Auto]
         };

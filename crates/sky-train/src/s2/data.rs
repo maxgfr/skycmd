@@ -20,14 +20,27 @@ use crate::{
     sequence::{qtype_id, DecisionRecord, Tok, MASK_TEXT, OPTION_MAX_TOKENS},
 };
 
-/// Token ids with the parallel value array (0 for non-number tokens).
+/// Token ids with the parallel value array (0 for tokens without a value)
+/// and the `has_value` flags (SPEC-S3 §1). Without number fusion `has_value`
+/// is exactly `id == [NUM]`; a missing flag (shorter vector) falls back to that.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Stream {
     pub ids: Vec<u32>,
     pub values: Vec<f32>,
+    pub has_value: Vec<bool>,
 }
 
 impl Stream {
+    /// A stream whose value tokens are its `[NUM]` tokens (s2).
+    pub fn new(ids: Vec<u32>, values: Vec<f32>) -> Self {
+        let has_value = ids.iter().map(|&i| i == NUM_ID).collect();
+        Self {
+            ids,
+            values,
+            has_value,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.ids.len()
     }
@@ -36,20 +49,84 @@ impl Stream {
         self.ids.is_empty()
     }
 
-    fn push(&mut self, id: u32, v: f32) {
+    /// True when token `i` carries a value.
+    pub fn has(&self, i: usize) -> bool {
+        self.has_value
+            .get(i)
+            .copied()
+            .unwrap_or(self.ids[i] == NUM_ID)
+    }
+
+    /// Appends a token; it carries a value iff it is `[NUM]`.
+    pub fn push(&mut self, id: u32, v: f32) {
+        self.push_with(id, v, id == NUM_ID);
+    }
+
+    pub fn push_with(&mut self, id: u32, v: f32, has: bool) {
+        self.fill_flags();
         self.ids.push(id);
         self.values.push(v);
+        self.has_value.push(has);
+    }
+
+    /// Materializes missing `has_value` flags.
+    fn fill_flags(&mut self) {
+        while self.has_value.len() < self.ids.len() {
+            let i = self.has_value.len();
+            self.has_value.push(self.ids[i] == NUM_ID);
+        }
+        self.has_value.truncate(self.ids.len());
     }
 
     fn extend_from(&mut self, other: &Stream, n: usize) {
         let n = n.min(other.len());
-        self.ids.extend_from_slice(&other.ids[..n]);
-        self.values.extend_from_slice(&other.values[..n]);
+        for i in 0..n {
+            self.push_with(other.ids[i], other.values[i], other.has(i));
+        }
     }
 
     fn truncate(&mut self, n: usize) {
+        self.fill_flags();
         self.ids.truncate(n);
         self.values.truncate(n);
+        self.has_value.truncate(n);
+    }
+}
+
+/// SPEC-S3 §1 merge rule: every `[NUM]` whose previous (already merged)
+/// token exists, is not `[CLS]` / `[SEP]` / `[MASK]` and carries no value yet
+/// is removed and its value moves onto that token; any other `[NUM]` stays a
+/// standalone value token (id 5), as in s2. Positions are the merged ones.
+///
+/// sky-train applies it to each tokenized text (instructions head, every
+/// option, state) right after numeric extraction + BPE, i.e. *before* the
+/// SPEC truncation rules, so the 48-token option cap, the head budget and
+/// `max_state_tokens` all count merged tokens.
+pub fn fuse(s: &Stream) -> Stream {
+    let mut out = Stream::default();
+    for i in 0..s.len() {
+        let (id, v) = (s.ids[i], s.values[i]);
+        if id == NUM_ID {
+            if let Some(prev) = out.len().checked_sub(1) {
+                let pid = out.ids[prev];
+                if !out.has_value[prev] && pid != CLS_ID && pid != SEP_ID && pid != MASK_ID {
+                    out.has_value[prev] = true;
+                    out.values[prev] = v;
+                    continue;
+                }
+            }
+        }
+        out.push_with(id, v, s.has(i));
+    }
+    out
+}
+
+/// [`fuse`] when `on`.
+pub fn maybe_fuse(s: Stream, on: bool) -> Stream {
+    if on {
+        fuse(&s)
+    } else {
+        s
     }
 }
 
@@ -85,7 +162,7 @@ pub fn tokenize(tok: &Tok, texts: &[String]) -> Result<Vec<Stream>> {
                     }
                 })
                 .collect();
-            out.push(Stream { ids, values });
+            out.push(Stream::new(ids, values));
         }
     }
     Ok(out)
@@ -169,18 +246,47 @@ pub fn build_state(state: &Stream, max_state: usize) -> Stream {
     s
 }
 
-/// Tokenizes one record into its static and state streams.
+/// Tokenizes one record into its static and state streams (s2, no fusion).
 pub fn encode_record(
     tok: &Tok,
     rec: &DecisionRecord,
     head_max_len: usize,
     max_state: usize,
 ) -> Result<(StaticSeq, Stream)> {
+    encode_record_with(tok, rec, head_max_len, max_state, false)
+}
+
+/// Tokenizes one record with the stream settings of `cfg`.
+pub fn encode_record_cfg(
+    tok: &Tok,
+    rec: &DecisionRecord,
+    cfg: &crate::s2::config::S2Config,
+) -> Result<(StaticSeq, Stream)> {
+    encode_record_with(
+        tok,
+        rec,
+        cfg.max_head_tokens,
+        cfg.max_state_tokens,
+        cfg.fuse_numbers,
+    )
+}
+
+/// Tokenizes one record; `fuse` applies the SPEC-S3 merge rule per text.
+pub fn encode_record_with(
+    tok: &Tok,
+    rec: &DecisionRecord,
+    head_max_len: usize,
+    max_state: usize,
+    fuse: bool,
+) -> Result<(StaticSeq, Stream)> {
     let (h, o, s) = s2_texts(rec);
     let mut texts = vec![h];
     texts.extend(o);
     texts.push(s);
-    let mut st = tokenize(tok, &texts)?;
+    let mut st: Vec<Stream> = tokenize(tok, &texts)?
+        .into_iter()
+        .map(|x| maybe_fuse(x, fuse))
+        .collect();
     let state = st.pop().unwrap_or_default();
     let head = st.remove(0);
     Ok((
@@ -232,12 +338,38 @@ impl S2Data {
     }
 }
 
-/// Loads and tokenizes the decision records of every input path.
+/// Loads and tokenizes the decision records of every input path (s2, no fusion).
 pub fn load(
     paths: &[std::path::PathBuf],
     tok: &Tok,
     head_max_len: usize,
     max_state: usize,
+) -> Result<S2Data> {
+    load_with(paths, tok, head_max_len, max_state, false)
+}
+
+/// [`load`] with the stream settings of `cfg`.
+pub fn load_cfg(
+    paths: &[std::path::PathBuf],
+    tok: &Tok,
+    cfg: &crate::s2::config::S2Config,
+) -> Result<S2Data> {
+    load_with(
+        paths,
+        tok,
+        cfg.max_head_tokens,
+        cfg.max_state_tokens,
+        cfg.fuse_numbers,
+    )
+}
+
+/// Loads the records; `fuse` applies the SPEC-S3 merge rule per text.
+pub fn load_with(
+    paths: &[std::path::PathBuf],
+    tok: &Tok,
+    head_max_len: usize,
+    max_state: usize,
+    fuse: bool,
 ) -> Result<S2Data> {
     let mut data = S2Data::default();
     let mut index: HashMap<(String, String, Vec<String>), usize> = HashMap::new();
@@ -273,7 +405,9 @@ pub fn load(
             st_texts.push(h.clone());
             st_texts.extend(o.iter().cloned());
         }
-        let mut it = tokenize(tok, &st_texts)?.into_iter();
+        let mut it = tokenize(tok, &st_texts)?
+            .into_iter()
+            .map(|x| maybe_fuse(x, fuse));
         for (key, _, o) in new_statics {
             let head = it.next().unwrap_or_default();
             let opts: Vec<Stream> = (0..o.len())
@@ -282,7 +416,9 @@ pub fn load(
             data.statics.push(build_static(&head, &opts, head_max_len));
             data.static_keys.push(key);
         }
-        let states = tokenize(tok, &texts)?;
+        let states = tokenize(tok, &texts)?
+            .into_iter()
+            .map(|x| maybe_fuse(x, fuse));
         for ((rec, key), state) in kept.into_iter().zip(states) {
             let sum: f32 = rec.target.iter().sum();
             let item = S2Item {
@@ -309,6 +445,8 @@ pub struct S2Batch {
     /// Unique static streams `[U, Ts]`.
     pub st_ids: Array,
     pub st_values: Array,
+    /// `has_value` flags of the static streams `[U, Ts]` (f32 0/1).
+    pub st_has: Array,
     /// Segment ids `[U, Ts]` (-1 = padding).
     pub st_seg: Array,
     pub st_pos: Array,
@@ -320,6 +458,8 @@ pub struct S2Batch {
     /// State streams `[B, S]`.
     pub ids: Array,
     pub values: Array,
+    /// `has_value` flags `[B, S]` (f32 0/1).
+    pub has: Array,
     pub valid: Array,
     /// `[B]` question types.
     pub qtype: Array,
@@ -338,6 +478,17 @@ fn round_up(x: usize, m: usize) -> usize {
 /// of `pad_to` (the static count to a multiple of 8 and the option count to an
 /// even number when `pad_to > 1`) so compiled graphs get few distinct shapes.
 pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2Batch {
+    make_batch_min(statics, items, pad_to, 0)
+}
+
+/// [`make_batch`] whose state length is at least `s_min` (the frames of a
+/// temporal sequence share one padded length so the carry lines up).
+pub fn make_batch_min(
+    statics: &[StaticSeq],
+    items: &[&S2Item],
+    pad_to: usize,
+    s_min: usize,
+) -> S2Batch {
     let b = items.len();
     let mut uniq: Vec<usize> = Vec::new();
     let mut slot: HashMap<usize, usize> = HashMap::new();
@@ -348,7 +499,9 @@ pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2
         });
     }
     let coarse = pad_to > 1;
-    let u = if coarse {
+    let u = if pad_to >= 32 {
+        round_up(uniq.len(), 32)
+    } else if coarse {
         round_up(uniq.len(), 8)
     } else {
         uniq.len()
@@ -365,13 +518,25 @@ pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2
         pad_to,
     );
     let kmax = items.iter().map(|i| i.k()).max().unwrap_or(1).max(1);
-    let k = if coarse { round_up(kmax, 2) } else { kmax };
+    let k = if pad_to >= 32 {
+        round_up(kmax, 4)
+    } else if coarse {
+        round_up(kmax, 2)
+    } else {
+        kmax
+    };
     let s = round_up(
-        items.iter().map(|i| i.state.len()).max().unwrap_or(1),
+        items
+            .iter()
+            .map(|i| i.state.len())
+            .max()
+            .unwrap_or(1)
+            .max(s_min),
         pad_to,
     );
     let mut st_ids = vec![PAD_ID as i32; u * ts];
     let mut st_values = vec![0f32; u * ts];
+    let mut st_has = vec![0f32; u * ts];
     let mut st_seg = vec![-1i32; u * ts];
     let mut st_pos = vec![0i32; u * ts];
     let mut n_tokens = 0;
@@ -381,6 +546,7 @@ pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2
         for t in 0..st.tokens.len() {
             st_ids[j * ts + t] = st.tokens.ids[t] as i32;
             st_values[j * ts + t] = st.tokens.values[t];
+            st_has[j * ts + t] = st.tokens.has(t) as u8 as f32;
             st_seg[j * ts + t] = st.seg[t];
             st_pos[j * ts + t] = st.pos[t];
         }
@@ -392,6 +558,7 @@ pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2
     let mut q_valid = vec![false; b * tq];
     let mut ids = vec![PAD_ID as i32; b * s];
     let mut values = vec![0f32; b * s];
+    let mut has = vec![0f32; b * s];
     let mut valid = vec![false; b * s];
     for (r, it) in items.iter().enumerate() {
         let j = slot[&it.stat];
@@ -409,6 +576,7 @@ pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2
         for t in 0..it.state.len() {
             ids[r * s + t] = it.state.ids[t] as i32;
             values[r * s + t] = it.state.values[t];
+            has[r * s + t] = it.state.has(t) as u8 as f32;
             valid[r * s + t] = true;
         }
     }
@@ -416,6 +584,7 @@ pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2
     S2Batch {
         st_ids: Array::from_slice(&st_ids, &[ui, ts as i32]),
         st_values: Array::from_slice(&st_values, &[ui, ts as i32]),
+        st_has: Array::from_slice(&st_has, &[ui, ts as i32]),
         st_seg: Array::from_slice(&st_seg, &[ui, ts as i32]),
         st_pos: Array::from_slice(&st_pos, &[ui, ts as i32]),
         marker_idx: Array::from_slice(&marker_idx, &[bi, ki]),
@@ -423,6 +592,7 @@ pub fn make_batch(statics: &[StaticSeq], items: &[&S2Item], pad_to: usize) -> S2
         q_valid: Array::from_slice(&q_valid, &[bi, tq as i32]),
         ids: Array::from_slice(&ids, &[bi, s as i32]),
         values: Array::from_slice(&values, &[bi, s as i32]),
+        has: Array::from_slice(&has, &[bi, s as i32]),
         valid: Array::from_slice(&valid, &[bi, s as i32]),
         qtype: Array::from_iter(items.iter().map(|i| i.qtype as i32), &[bi]),
         marker_mask: Array::from_slice(&marker_mask, &[bi, ki]),
@@ -582,6 +752,28 @@ impl NumCorpus {
         })
     }
 
+    /// Tokenizes in-memory texts (each followed by `[SEP]`), without a cache.
+    pub fn from_texts(tok: &Tok, texts: &[String]) -> Result<Self> {
+        let (mut tokens, mut values) = (Vec::new(), Vec::new());
+        let cleaned: Vec<String> = texts.iter().map(|t| clean(t)).collect();
+        for s in tokenize(tok, &cleaned)? {
+            if s.is_empty() {
+                continue;
+            }
+            tokens.extend(s.ids);
+            values.extend(s.values);
+            tokens.push(SEP_ID);
+            values.push(0.0);
+        }
+        Ok(Self {
+            corpus: Corpus {
+                tokens,
+                n_records: texts.len(),
+            },
+            values,
+        })
+    }
+
     /// Number of `[NUM]` tokens.
     pub fn n_numbers(&self) -> usize {
         self.corpus.tokens.iter().filter(|&&t| t == NUM_ID).count()
@@ -590,12 +782,15 @@ impl NumCorpus {
     /// Row `[CLS] chunk [SEP]` starting at `start` (see [`crate::mlm::Rows::row`]).
     pub fn row(&self, seq_len: usize, start: usize) -> Stream {
         let end = (start + seq_len - 2).min(self.corpus.tokens.len());
-        let mut s = Stream::default();
-        s.push(CLS_ID, 0.0);
-        s.ids.extend_from_slice(&self.corpus.tokens[start..end]);
-        s.values.extend_from_slice(&self.values[start..end]);
-        s.push(SEP_ID, 0.0);
-        s
+        let mut ids = Vec::with_capacity(end - start + 2);
+        ids.push(CLS_ID);
+        ids.extend_from_slice(&self.corpus.tokens[start..end]);
+        ids.push(SEP_ID);
+        let mut values = Vec::with_capacity(ids.len());
+        values.push(0.0);
+        values.extend_from_slice(&self.values[start..end]);
+        values.push(0.0);
+        Stream::new(ids, values)
     }
 }
 
@@ -611,6 +806,8 @@ pub struct NumMlmBatch {
     pub ids: Array,
     /// Values `[B, T]` (0 for masked numbers).
     pub values: Array,
+    /// `has_value` flags `[B, T]` (f32 0/1; masked numbers keep theirs).
+    pub has: Array,
     /// 1 at masked numbers `[B, T]` (f32).
     pub num_flag: Array,
     pub valid: Array,
@@ -627,12 +824,15 @@ pub struct NumMlmBatch {
 
 /// Masks `ratio` of the maskable tokens (every non-special token and `[NUM]`).
 /// Masked words follow 80/10/10 (`[MASK]` / random / kept); a masked number
-/// keeps the `[NUM]` id, its value becomes 0 and its flag 1.
+/// keeps the `[NUM]` id, its value becomes 0 and its flag 1. A fused token
+/// (a word carrying a value, SPEC-S3) is masked as a number (value hidden)
+/// or as a word (id corrupted, value kept) with probability 1/2 each.
 pub fn mask_batch(rows: &[Stream], vocab: usize, ratio: f64, rng: &mut Rng) -> NumMlmBatch {
     let b = rows.len();
     let t = rows.iter().map(Stream::len).max().unwrap_or(1).max(1);
     let mut ids = vec![PAD_ID as i32; b * t];
     let mut values = vec![0f32; b * t];
+    let mut has = vec![0f32; b * t];
     let mut flag = vec![0f32; b * t];
     let mut valid = vec![false; b * t];
     let (mut positions, mut labels) = (Vec::new(), Vec::new());
@@ -645,6 +845,7 @@ pub fn mask_batch(rows: &[Stream], vocab: usize, ratio: f64, rng: &mut Rng) -> N
         for (j, &id) in r.ids.iter().enumerate() {
             ids[i * t + j] = id as i32;
             values[i * t + j] = r.values[j];
+            has[i * t + j] = r.has(j) as u8 as f32;
             valid[i * t + j] = true;
             if id >= NUM_ID {
                 cand.push(j);
@@ -660,7 +861,8 @@ pub fn mask_batch(rows: &[Stream], vocab: usize, ratio: f64, rng: &mut Rng) -> N
         chosen.sort_unstable();
         for j in chosen {
             let f = i * t + j;
-            if r.ids[j] == NUM_ID {
+            let as_number = r.ids[j] == NUM_ID || (r.has(j) && rng.f64() < 0.5);
+            if as_number {
                 npos.push(f as i32);
                 ntgt.push(signlog(r.values[j]).clamp(-NUM_TARGET_CLIP, NUM_TARGET_CLIP));
                 values[f] = 0.0;
@@ -695,6 +897,7 @@ pub fn mask_batch(rows: &[Stream], vocab: usize, ratio: f64, rng: &mut Rng) -> N
     NumMlmBatch {
         ids: Array::from_slice(&ids, &shape),
         values: Array::from_slice(&values, &shape),
+        has: Array::from_slice(&has, &shape),
         num_flag: Array::from_slice(&flag, &shape),
         valid: Array::from_slice(&valid, &shape),
         positions: Array::from_slice(&positions, &[pm as i32]),
@@ -792,6 +995,187 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>(),
             vec![12.0, -3.0]
         );
+    }
+
+    fn st(tokens: &[(u32, f32)]) -> Stream {
+        let mut s = Stream::default();
+        for &(id, v) in tokens {
+            s.push(id, v);
+        }
+        s
+    }
+
+    fn flags(s: &Stream) -> Vec<bool> {
+        (0..s.len()).map(|i| s.has(i)).collect()
+    }
+
+    #[test]
+    fn fusion_merge_rule_hand_cases() {
+        let w = |c: char| 6 + c as u32;
+        // `range 10-20`: the first number fuses onto `e`, the second stays a
+        // standalone [NUM] because its predecessor already carries a value.
+        let s = st(&[
+            (w('r'), 0.0),
+            (w('e'), 0.0),
+            (NUM_ID, 10.0),
+            (NUM_ID, -20.0),
+        ]);
+        let f = fuse(&s);
+        assert_eq!(f.ids, vec![w('r'), w('e'), NUM_ID]);
+        assert_eq!(f.values, vec![0.0, 10.0, -20.0]);
+        assert_eq!(flags(&f), vec![false, true, true]);
+        // `10-20` alone: position 0 stays standalone, so does the next one.
+        let f = fuse(&st(&[(NUM_ID, 10.0), (NUM_ID, -20.0)]));
+        assert_eq!(f.ids, vec![NUM_ID, NUM_ID]);
+        assert_eq!(flags(&f), vec![true, true]);
+        // After [CLS], [SEP] and [MASK] a [NUM] is kept; a zero value still fuses.
+        let f = fuse(&st(&[
+            (CLS_ID, 0.0),
+            (NUM_ID, 3.0),
+            (w('x'), 0.0),
+            (NUM_ID, 0.0),
+            (SEP_ID, 0.0),
+            (NUM_ID, 7.0),
+            (MASK_ID, 0.0),
+            (NUM_ID, -1.5),
+        ]));
+        assert_eq!(
+            f.ids,
+            vec![CLS_ID, NUM_ID, w('x'), SEP_ID, NUM_ID, MASK_ID, NUM_ID]
+        );
+        assert_eq!(f.values, vec![0.0, 3.0, 0.0, 0.0, 7.0, 0.0, -1.5]);
+        assert_eq!(flags(&f), vec![false, true, true, false, true, false, true]);
+        // Fusion is idempotent and a stream without numbers is unchanged.
+        assert_eq!(fuse(&f), f);
+        let plain = st(&[(CLS_ID, 0.0), (w('a'), 0.0), (SEP_ID, 0.0)]);
+        assert_eq!(fuse(&plain), plain);
+        assert_eq!(maybe_fuse(s.clone(), false), s);
+    }
+
+    #[test]
+    fn fused_records_state_options_and_truncation() {
+        let (_d, tok) = s2_tok();
+        let r = rec(
+            "choice",
+            "go 2 m?",
+            &["3", "up 3", "b2 5", "10-20"],
+            "vy -1 dx 35 up 7 dn 9 nxt 1 alt 32",
+        );
+        let (s2st, s2state) = encode_record(&tok, &r, 96, 64).unwrap();
+        let (st, state) = encode_record_with(&tok, &r, 96, 64, true).unwrap();
+        // State: every value fuses onto the last byte of its key (6 numbers saved).
+        assert_eq!(state.len(), s2state.len() - 6);
+        assert!(!state.ids.contains(&NUM_ID));
+        let vals: Vec<f32> = (0..state.len())
+            .filter(|&i| state.has(i))
+            .map(|i| state.values[i])
+            .collect();
+        assert_eq!(vals, vec![-1.0, 35.0, 7.0, 9.0, 1.0, 32.0]);
+        assert_eq!(state.ids[2], 6 + b'y' as u32);
+        assert!(state.has(2) && !state.has(1));
+        // Head: `go 2` -> `o` carries 2.
+        let carriers: Vec<usize> = (0..st.q_len).filter(|&i| st.tokens.has(i)).collect();
+        assert_eq!(carriers.len(), 1);
+        let i = carriers[0];
+        assert_eq!(st.tokens.ids[i], 6 + b'o' as u32);
+        assert_eq!(st.tokens.values[i], 2.0);
+        assert_eq!(st.tokens.ids[i + 1], 6 + b' ' as u32);
+        assert_eq!(st.q_len, s2st.q_len - 1);
+        // Options: " 3" alone keeps a standalone [NUM] right after [MASK];
+        // `up 3` fuses onto `p`; `b2 5` (glued, not extracted) fuses 5 onto `2`;
+        // `10-20` keeps two standalone value tokens.
+        let opt = |o: usize| -> Stream {
+            let a = st.markers[o];
+            let b = st.markers.get(o + 1).copied().unwrap_or(st.tokens.len());
+            let mut s = Stream::default();
+            for t in a..b {
+                s.push_with(st.tokens.ids[t], st.tokens.values[t], st.tokens.has(t));
+            }
+            s
+        };
+        assert_eq!(opt(0).ids, vec![MASK_ID, NUM_ID]);
+        assert_eq!(flags(&opt(0)), vec![false, true]);
+        let o1 = opt(1);
+        assert_eq!(o1.ids, [vec![MASK_ID], by(" up")].concat());
+        assert_eq!((o1.values[3], o1.has(3)), (3.0, true));
+        let o2 = opt(2);
+        assert_eq!(o2.ids, [vec![MASK_ID], by(" b2")].concat());
+        assert_eq!((o2.values[3], o2.has(3)), (5.0, true));
+        assert_eq!(opt(3).ids, vec![MASK_ID, NUM_ID, NUM_ID]);
+        assert_eq!(opt(3).values, vec![0.0, 10.0, -20.0]);
+        // Positions restart per option on the merged tokens.
+        assert_eq!(st.pos[st.markers[1] + 3], st.q_len as i32 + 3);
+        // max_state counts merged tokens.
+        let long = rec("noul", "q", &["a"], &"k 1 ".repeat(40));
+        let (_, s) = encode_record_with(&tok, &long, 96, 20, true).unwrap();
+        assert_eq!(s.len(), 20);
+        assert_eq!((1..19).filter(|&i| s.has(i)).count(), 9, "{:?}", s.ids);
+        // Batches carry the flags.
+        let _g = crate::test_util::lock();
+        let item = S2Item {
+            stat: 0,
+            state: state.clone(),
+            qtype: 0,
+            target: vec![0.25; 4],
+            src: "x".into(),
+            group: 0,
+        };
+        let b = make_batch(std::slice::from_ref(&st), &[&item], 1);
+        b.has.eval().unwrap();
+        b.st_has.eval().unwrap();
+        let h: Vec<bool> = b.has.as_slice::<f32>().iter().map(|&x| x == 1.0).collect();
+        assert_eq!(h, flags(&state));
+        let sh: Vec<bool> = b
+            .st_has
+            .as_slice::<f32>()
+            .iter()
+            .map(|&x| x == 1.0)
+            .collect();
+        assert_eq!(sh, flags(&st.tokens));
+    }
+
+    #[test]
+    fn fused_masking_hides_values_or_words() {
+        let _g = crate::test_util::lock();
+        let mut rng = Rng::new(9);
+        let rows: Vec<Stream> = (0..64)
+            .map(|_| {
+                let mut s = Stream::default();
+                s.push(CLS_ID, 0.0);
+                for j in 0..30 {
+                    s.push_with(10 + j, j as f32 + 1.0, j % 3 == 0);
+                }
+                s.push(SEP_ID, 0.0);
+                fuse(&s)
+            })
+            .collect();
+        let b = mask_batch(&rows, 100, 0.3, &mut rng);
+        for a in [&b.num_positions, &b.num_weights, &b.values, &b.has, &b.ids] {
+            a.eval().unwrap();
+        }
+        let (np, nw) = (
+            b.num_positions.as_slice::<i32>(),
+            b.num_weights.as_slice::<f32>(),
+        );
+        let (vals, has, ids) = (
+            b.values.as_slice::<f32>(),
+            b.has.as_slice::<f32>(),
+            b.ids.as_slice::<i32>(),
+        );
+        let n = nw.iter().filter(|&&w| w > 0.0).count();
+        assert!(n > 30, "{n} fused values masked");
+        for &p in &np[..n] {
+            let p = p as usize;
+            // Value hidden, flag kept, word id untouched.
+            assert_eq!(vals[p], 0.0);
+            assert_eq!(has[p], 1.0);
+            assert_eq!(ids[p], rows[p / 32].ids[p % 32] as i32);
+        }
+        // Some fused tokens were masked as words (id corrupted, value kept).
+        let word_masked = (0..ids.len())
+            .filter(|&p| has[p] == 1.0 && ids[p] == MASK_ID as i32 && vals[p] != 0.0)
+            .count();
+        assert!(word_masked > 5, "{word_masked}");
     }
 
     #[test]

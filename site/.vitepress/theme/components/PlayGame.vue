@@ -217,10 +217,10 @@ function release(key: string) {
   if (kind.value === 'doom') runner?.hold(key, false)
 }
 
-/** Doom: the model trained on the Doom-like game, when the manifest has one. */
+/** Doom: s3-pico plays all four games; fall back to a Doom fine-tune when it is absent. */
 function preferModelFor(k: GameKind) {
   if (k !== 'doom') return
-  const m = models.value.find((e) => e.name.includes('doom'))
+  const m = models.value.find((e) => e.name.startsWith('s3')) ?? models.value.find((e) => e.name.includes('doom'))
   if (m) selected.value = m.file
 }
 

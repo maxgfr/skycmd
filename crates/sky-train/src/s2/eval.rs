@@ -173,12 +173,7 @@ pub fn fit_calibration(preds: &[S2Pred], cfg: &S2Config, min_bucket: usize) -> C
 }
 
 fn records_data(m: &S2Model, records: &[PathBuf]) -> Result<S2Data> {
-    data::load(
-        records,
-        &m.tok,
-        m.cfg.max_head_tokens,
-        m.cfg.max_state_tokens,
-    )
+    data::load_cfg(records, &m.tok, &m.cfg)
 }
 
 /// `s2-calibrate`: fits the f32 and ternary calibrations on `split` and writes
@@ -291,18 +286,19 @@ pub fn permute_static(st: &StaticSeq, order: &[usize]) -> StaticSeq {
     let ends: Vec<usize> = (0..st.k())
         .map(|i| st.markers.get(i + 1).copied().unwrap_or(st.tokens.len()))
         .collect();
-    let mut tokens = Stream {
-        ids: st.tokens.ids[..st.q_len].to_vec(),
-        values: st.tokens.values[..st.q_len].to_vec(),
-    };
+    let mut tokens = Stream::default();
+    for t in 0..st.q_len {
+        tokens.push_with(st.tokens.ids[t], st.tokens.values[t], st.tokens.has(t));
+    }
     let mut seg = st.seg[..st.q_len].to_vec();
     let mut pos = st.pos[..st.q_len].to_vec();
     let mut markers = Vec::new();
     for (j, &i) in order.iter().enumerate() {
         markers.push(tokens.len());
         let (a, b) = (st.markers[i], ends[i]);
-        tokens.ids.extend_from_slice(&st.tokens.ids[a..b]);
-        tokens.values.extend_from_slice(&st.tokens.values[a..b]);
+        for t in a..b {
+            tokens.push_with(st.tokens.ids[t], st.tokens.values[t], st.tokens.has(t));
+        }
         seg.extend(std::iter::repeat_n(j as i32 + 1, b - a));
         pos.extend_from_slice(&st.pos[a..b]);
     }

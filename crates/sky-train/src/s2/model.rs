@@ -13,9 +13,8 @@ use mlx_rs::{
 };
 
 use crate::{
-    config::HEAD_DIM,
     model::{gelu_erf, layer_norm},
-    num::{features, NUM_FEATURES, NUM_ID},
+    num::{features, NUM_FEATURES},
     params::ParamMap,
     s2::{
         config::S2Config,
@@ -150,8 +149,27 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
         ),
         ("num_proj.bias".to_string(), vec![d], Init::Zeros),
     ];
-    encoder_specs(&mut out, "blk.", cfg.state_layers, d, ff, cfg.state_layers);
+    encoder_specs(&mut out, "blk.", cfg.state_layers, d, ff, cfg.depth());
+    if cfg.state_loops > 1 {
+        // SPEC-S3 §2: block 0's attention norm from the second loop on, and
+        // the per-loop embedding added before each loop l >= 1.
+        out.push((
+            "blk.0.attn_norm_loop.weight".to_string(),
+            vec![d],
+            Init::Ones,
+        ));
+        out.push((
+            "loop_embd.weight".to_string(),
+            vec![cfg.state_loops as i32, d],
+            Init::TruncNormal(0.02),
+        ));
+    }
     let last = cfg.n_exits() - 1;
+    if parts.decision && cfg.temporal_carry {
+        // SPEC-S3 §7: zero gate, so a fresh carry model equals its cold one.
+        out.push(("carry_gate.weight".to_string(), vec![d], Init::Zeros));
+        out.push(("carry_norm.weight".to_string(), vec![d], Init::Ones));
+    }
     if parts.decision {
         out.push((
             "type_embd.weight".to_string(),
@@ -197,7 +215,7 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
         out.push((format!("exit.{last}.norm.weight"), vec![d], Init::Ones));
     }
     if parts.mlm {
-        let std_out = 0.02 / (2.0 * cfg.state_layers as f32).sqrt();
+        let std_out = 0.02 / (2.0 * cfg.depth() as f32).sqrt();
         out.push((
             "mlm.dense.weight".to_string(),
             vec![d, d],
@@ -366,36 +384,36 @@ fn to_f32(x: Array) -> R<Array> {
     }
 }
 
-/// `[B, T, H * 64]` -> `[B, H, T, 64]`.
+/// `[B, T, H * hd]` -> `[B, H, T, hd]`.
 fn heads(x: &Array, h: i32) -> R<Array> {
     let (b, t) = (x.dim(0), x.dim(1));
-    x.reshape(&[b, t, h, HEAD_DIM])?
-        .transpose_axes(&[0, 2, 1, 3])
+    let hd = x.dim(2) / h;
+    x.reshape(&[b, t, h, hd])?.transpose_axes(&[0, 2, 1, 3])
 }
 
 fn merge_heads(x: &Array) -> R<Array> {
-    let (b, h, t) = (x.dim(0), x.dim(1), x.dim(2));
-    x.transpose_axes(&[0, 2, 1, 3])?
-        .reshape(&[b, t, h * HEAD_DIM])
+    let (b, h, t, hd) = (x.dim(0), x.dim(1), x.dim(2), x.dim(3));
+    x.transpose_axes(&[0, 2, 1, 3])?.reshape(&[b, t, h * hd])
 }
 
 fn attend(q: &Array, k: &Array, v: &Array, mask: &Array) -> R<Array> {
-    fast::scaled_dot_product_attention(q, k, v, 1.0 / (HEAD_DIM as f32).sqrt(), mask, None)
+    let hd = q.dim(3);
+    fast::scaled_dot_product_attention(q, k, v, 1.0 / (hd as f32).sqrt(), mask, None)
 }
 
 /// RoPE flavour of an encoder.
 enum Rope {
-    /// Positions `0..T` (fast kernel).
-    Sequential(f32),
-    /// Explicit positions: `(cos, sin)` tables `[B, 1, T, 32]`.
+    /// Positions `0..T` (fast kernel): `(theta, head_dim)`.
+    Sequential(f32, i32),
+    /// Explicit positions: `(cos, sin)` tables `[B, 1, T, hd / 2]`.
     Table(Array, Array),
 }
 
 /// cos / sin tables of rotate_half RoPE for explicit positions `[B, T]`.
-fn rope_tables(pos: &Array, theta: f32, like: &Array) -> R<(Array, Array)> {
-    let half = HEAD_DIM / 2;
+fn rope_tables(pos: &Array, theta: f32, hd: i32, like: &Array) -> R<(Array, Array)> {
+    let half = hd / 2;
     let inv: Vec<f32> = (0..half)
-        .map(|i| theta.powf(-(2.0 * i as f32) / HEAD_DIM as f32))
+        .map(|i| theta.powf(-(2.0 * i as f32) / hd as f32))
         .collect();
     let (b, t) = (pos.dim(0), pos.dim(1));
     let ang = pos
@@ -410,9 +428,9 @@ fn rope_tables(pos: &Array, theta: f32, like: &Array) -> R<(Array, Array)> {
 
 fn apply_rope(x: &Array, rope: &Rope) -> R<Array> {
     match rope {
-        Rope::Sequential(theta) => fast::rope(x, HEAD_DIM, false, *theta, 1.0, 0, None),
+        Rope::Sequential(theta, hd) => fast::rope(x, *hd, false, *theta, 1.0, 0, None),
         Rope::Table(c, s) => {
-            let parts = x.split_at_indices(&[HEAD_DIM / 2], -1)?;
+            let parts = x.split_at_indices(&[x.dim(3) / 2], -1)?;
             let (x1, x2) = (&parts[0], &parts[1]);
             ops::concatenate(
                 &[
@@ -426,11 +444,13 @@ fn apply_rope(x: &Array, rope: &Rope) -> R<Array> {
 }
 
 /// One encoder block (pre-LN, fused QKV, RoPE, masked attention, GeGLU).
+/// `attn_norm` names the attention norm (`None`: identity, as for layer 0).
+#[allow(clippy::too_many_arguments)]
 fn block(
     p: &ParamMap,
     cfg: &S2Config,
     pre: &str,
-    l: usize,
+    attn_norm: Option<&str>,
     x: Array,
     mask: &Array,
     rope: &Rope,
@@ -438,10 +458,9 @@ fn block(
     let eps = cfg.norm_eps;
     let h = cfg.n_heads() as i32;
     let d = cfg.hidden_size as i32;
-    let y = if l == 0 {
-        x.clone()
-    } else {
-        layer_norm(&x, w(p, &format!("{pre}.attn_norm.weight"))?, None, eps)?
+    let y = match attn_norm {
+        None => x.clone(),
+        Some(n) => layer_norm(&x, w(p, &format!("{pre}.{n}.weight"))?, None, eps)?,
     };
     let qkv = linear(&y, w(p, &format!("{pre}.attn_qkv.weight"))?, None)?;
     let parts = qkv.split_at_indices(&[d, 2 * d], -1)?;
@@ -461,19 +480,16 @@ fn block(
     x.add(linear(&m, w(p, &format!("{pre}.ffn_down.weight"))?, None)?)
 }
 
-/// `e = tok_embd[id] + is_num · (num_proj · φ(v) + num_proj.bias)`.
-fn embed(p: &ParamMap, ids: &Array, values: &Array) -> R<Array> {
+/// `e = tok_embd[id] + has_value · (num_proj · φ(v) + num_proj.bias)`;
+/// `has_value` (f32 0/1) is `id == [NUM]` without number fusion.
+fn embed(p: &ParamMap, ids: &Array, values: &Array, has: &Array) -> R<Array> {
     let table = w(p, "token_embd.weight")?;
     let e = table.take_axis(ids, 0)?;
     let phi = cast_like(features(values)?, table)?;
     let num = linear(&phi, w(p, "num_proj.weight")?, Some(w(p, "num_proj.bias")?))?;
-    let is_num = cast_like(
-        ids.eq(Array::from_int(NUM_ID as i32))?
-            .as_dtype(Dtype::Float32)?,
-        table,
-    )?;
+    let has = cast_like(has.as_dtype(Dtype::Float32)?, table)?;
     let shape = [ids.dim(0), ids.dim(1), 1];
-    e.add(num.multiply(is_num.reshape(&shape)?)?)
+    e.add(num.multiply(has.reshape(&shape)?)?)
 }
 
 /// Key-padding mask `[B, 1, T, T]` (a query always sees itself).
@@ -500,51 +516,88 @@ pub fn static_mask(seg: &Array) -> R<Array> {
 }
 
 /// Static encoder: `[U, Ts]` -> `[U, Ts, d]` after `static_norm`.
+#[allow(clippy::too_many_arguments)]
 fn static_encode(
     p: &ParamMap,
     cfg: &S2Config,
     ids: &Array,
     values: &Array,
+    has: &Array,
     seg: &Array,
     pos: &Array,
 ) -> R<Array> {
-    let mut x = embed(p, ids, values)?;
+    let mut x = embed(p, ids, values, has)?;
     let mask = static_mask(seg)?;
-    let (c, s) = rope_tables(pos, cfg.rope_theta, &x)?;
+    let (c, s) = rope_tables(pos, cfg.rope_theta, cfg.head_dim() as i32, &x)?;
     let rope = Rope::Table(c, s);
     for l in 0..cfg.static_layers {
-        x = block(p, cfg, &format!("static.blk.{l}"), l, x, &mask, &rope)?;
+        let norm = (l > 0).then_some("attn_norm");
+        x = block(p, cfg, &format!("static.blk.{l}"), norm, x, &mask, &rope)?;
     }
     layer_norm(&x, w(p, "static_norm.weight")?, None, cfg.norm_eps)
 }
 
 /// State encoder over embedded inputs `x`: the normalized hidden states
 /// `H_e` of the requested exits (ascending exit indices).
+///
+/// SPEC-S3 §2: application `a` (0-based) runs block `a % B` of loop `a / B`;
+/// before each loop `l >= 1`, `loop_embd[l]` is added to the hidden states;
+/// block 0 has no attention norm on the very first application and uses
+/// `blk.0.attn_norm_loop` afterwards. Exits count block applications.
 fn state_exits(
+    p: &ParamMap,
+    cfg: &S2Config,
+    x: Array,
+    valid: &Array,
+    exits: &[usize],
+) -> R<Vec<Array>> {
+    Ok(state_run(p, cfg, x, valid, exits)?
+        .into_iter()
+        .map(|(h, _)| h)
+        .collect())
+}
+
+/// [`state_exits`] that also returns, per exit, the raw hidden states after
+/// its block application (before the exit norm): the temporal carry source.
+fn state_run(
     p: &ParamMap,
     cfg: &S2Config,
     mut x: Array,
     valid: &Array,
     exits: &[usize],
-) -> R<Vec<Array>> {
+) -> R<Vec<(Array, Array)>> {
     let mask = padding_mask(valid)?;
-    let rope = Rope::Sequential(cfg.rope_theta);
-    let last_layer = exits
+    let rope = Rope::Sequential(cfg.rope_theta, cfg.head_dim() as i32);
+    let last_app = exits
         .iter()
         .map(|&e| cfg.exits[e])
         .max()
-        .unwrap_or(cfg.state_layers);
+        .unwrap_or(cfg.depth());
+    let nb = cfg.state_layers;
     let mut out = Vec::with_capacity(exits.len());
-    for l in 0..last_layer {
-        x = block(p, cfg, &format!("blk.{l}"), l, x, &mask, &rope)?;
+    for a in 0..last_app {
+        let (lp, l) = (a / nb, a % nb);
+        if l == 0 && lp > 0 {
+            let row = w(p, "loop_embd.weight")?.index(lp as i32);
+            x = x.add(cast_like(row, &x)?)?;
+        }
+        let norm = match (a, l) {
+            (0, _) => None,
+            (_, 0) => Some("attn_norm_loop"),
+            _ => Some("attn_norm"),
+        };
+        x = block(p, cfg, &format!("blk.{l}"), norm, x, &mask, &rope)?;
         for &e in exits {
-            if cfg.exits[e] == l + 1 {
-                out.push(layer_norm(
-                    &x,
-                    w(p, &format!("exit.{e}.norm.weight"))?,
-                    None,
-                    cfg.norm_eps,
-                )?);
+            if cfg.exits[e] == a + 1 {
+                out.push((
+                    layer_norm(
+                        &x,
+                        w(p, &format!("exit.{e}.norm.weight"))?,
+                        None,
+                        cfg.norm_eps,
+                    )?,
+                    x.clone(),
+                ));
             }
         }
     }
@@ -628,8 +681,60 @@ fn fusion(
 
 /// Raw marker logits `[E, B, K]` of every exit (`qat` = ternary fake-quant).
 pub fn forward(p: &ParamMap, cfg: &S2Config, b: &S2Batch, qat: bool) -> R<Array> {
+    forward_exits(p, cfg, b, qat, None)
+}
+
+/// [`forward`] over the first `n_exits` exits only (the state encoder stops
+/// at the last of them): stochastic depth during training.
+pub fn forward_exits(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    qat: bool,
+    n_exits: Option<usize>,
+) -> R<Array> {
     let p = &*prepare(p, cfg, qat)?;
-    let st = static_encode(p, cfg, &b.st_ids, &b.st_values, &b.st_seg, &b.st_pos)?;
+    let n = n_exits.unwrap_or(cfg.n_exits()).clamp(1, cfg.n_exits());
+    Ok(forward_prepared(p, cfg, b, n, None)?.0)
+}
+
+/// A frame's carry: the previous frame's raw final latent `[B, S, d]` and a
+/// per-row mask `[B]` (0 = cold start).
+pub struct Carry<'a> {
+    pub h: &'a Array,
+    pub on: &'a Array,
+}
+
+/// SPEC-S3 §7 forward of one frame: logits `[E, B, K]` and the raw latents
+/// of every exit (`[B, S, d]` each, before the exit norms). The state encoder
+/// starts from `embed(state) + on · carry_gate ⊙ LN(h; carry_norm)`.
+pub fn forward_carry(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    qat: bool,
+    carry: Option<Carry<'_>>,
+) -> R<(Array, Vec<Array>)> {
+    let p = &*prepare(p, cfg, qat)?;
+    forward_prepared(p, cfg, b, cfg.n_exits(), carry)
+}
+
+fn forward_prepared(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    n: usize,
+    carry: Option<Carry<'_>>,
+) -> R<(Array, Vec<Array>)> {
+    let st = static_encode(
+        p,
+        cfg,
+        &b.st_ids,
+        &b.st_values,
+        &b.st_has,
+        &b.st_seg,
+        &b.st_pos,
+    )?;
     let d = st.dim(2);
     let flat = st.reshape(&[-1, d])?;
     let (rows, k, tq) = (b.marker_idx.dim(0), b.marker_idx.dim(1), b.q_idx.dim(1));
@@ -639,10 +744,69 @@ pub fn forward(p: &ParamMap, cfg: &S2Config, b: &S2Batch, qat: bool) -> R<Array>
     let qt = flat
         .take_axis(b.q_idx.reshape(&[-1])?, 0)?
         .reshape(&[rows, tq, d])?;
-    let x = embed(p, &b.ids, &b.values)?;
-    let all: Vec<usize> = (0..cfg.n_exits()).collect();
-    let hs = state_exits(p, cfg, x, &b.valid, &all)?;
-    fusion(p, cfg, &m, &b.qtype, &hs, &b.valid, &qt, &b.q_valid)
+    let mut x = embed(p, &b.ids, &b.values, &b.has)?;
+    if let Some(c) = carry {
+        let ln = layer_norm(c.h, w(p, "carry_norm.weight")?, None, cfg.norm_eps)?;
+        let term = ln.multiply(w(p, "carry_gate.weight")?)?;
+        let on = cast_like(c.on.reshape(&[-1, 1, 1])?, &x)?;
+        x = x.add(cast_like(term, &x)?.multiply(&on)?)?;
+    }
+    let used: Vec<usize> = (0..n).collect();
+    let run = state_run(p, cfg, x, &b.valid, &used)?;
+    let (hs, raw): (Vec<Array>, Vec<Array>) = run.into_iter().unzip();
+    let logits = fusion(p, cfg, &m, &b.qtype, &hs, &b.valid, &qt, &b.q_valid)?;
+    Ok((logits, raw))
+}
+
+/// SPEC-S3 §7 sequence loss over `K` frames of the same rows: frame 0 cold,
+/// frame `t` warm from the detached latent of frame `t - 1` taken at the exit
+/// `src[t - 1]` (one-hot `[K, E]`, simulating where the previous frame
+/// stopped) unless `on[t]` (`[K, B]`) is 0 (dropped carry or different
+/// state ids). Deep supervision (`wts` `[E]`) at every exit of every frame;
+/// the mean over frames.
+pub fn seq_loss(
+    p: &ParamMap,
+    cfg: &S2Config,
+    frames: &[S2Batch],
+    on: &Array,
+    src: &Array,
+    wts: &Array,
+    qat: bool,
+) -> R<Array> {
+    let p = &*prepare(p, cfg, qat)?;
+    let mut total: Option<Array> = None;
+    let mut prev: Option<Array> = None;
+    for (t, b) in frames.iter().enumerate() {
+        let on_t = on.index(t as i32);
+        let carry = prev.as_ref().map(|h| Carry { h, on: &on_t });
+        let (logits, raw) = forward_prepared(p, cfg, b, cfg.n_exits(), carry)?;
+        let logits = masked(&logits, &b.marker_mask)?;
+        let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+        let ce = b
+            .target
+            .multiply(&logp)?
+            .sum_axis(-1, None)?
+            .mean_axis(-1, None)?
+            .negative()?;
+        let l = ce.multiply(wts)?.sum(None)?;
+        total = Some(match total {
+            Some(x) => x.add(&l)?,
+            None => l,
+        });
+        let sel = src.index(t as i32);
+        let mut h: Option<Array> = None;
+        for (e, r) in raw.iter().enumerate() {
+            let term = r.multiply(cast_like(sel.index(e as i32), r)?)?;
+            h = Some(match h {
+                Some(x) => x.add(&term)?,
+                None => term,
+            });
+        }
+        prev = Some(stop_gradient(h.expect("at least one exit"))?);
+    }
+    total
+        .expect("at least one frame")
+        .divide(Array::from_f32(frames.len() as f32))
 }
 
 /// Logits with invalid options pushed to -1e4 (`mask` `[B, K]` broadcast over exits).
@@ -650,8 +814,34 @@ pub fn masked(logits: &Array, mask: &Array) -> R<Array> {
     ops::select(mask, logits, Array::from_f32(-1e4))
 }
 
-/// Deep supervision: `Σ_e w_e · CE(exit e)` against the soft target.
+/// Deep supervision: `Σ_e w_e · CE(exit e)` against the soft target, over
+/// every exit (`w = linspace(0.5, 1)`, normalized).
 pub fn decision_loss(p: &ParamMap, cfg: &S2Config, b: &S2Batch, qat: bool) -> R<Array> {
+    decision_loss_exits(p, cfg, b, qat, None)
+}
+
+/// Deep-supervision weights over the first `n_exits` exits (the config's
+/// `linspace(0.5, 1)` weights renormalized), zero for the later exits.
+pub fn exit_weight_vec(cfg: &S2Config, n_exits: Option<usize>) -> Vec<f32> {
+    let n = n_exits.unwrap_or(cfg.n_exits()).clamp(1, cfg.n_exits());
+    let all = cfg.exit_weights();
+    let total: f32 = all[..n].iter().sum();
+    (0..cfg.n_exits())
+        .map(|e| if e < n { all[e] / total } else { 0.0 })
+        .collect()
+}
+
+/// Deep supervision with explicit per-exit weights `wts` `[E]` (every exit
+/// is computed). A zero weight on the later exits gives them, and the loops
+/// that only feed them, no gradient: the same update as skipping those loops,
+/// but with a single compiled graph per batch shape.
+pub fn decision_loss_weighted(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    qat: bool,
+    wts: &Array,
+) -> R<Array> {
     let logits = masked(&forward(p, cfg, b, qat)?, &b.marker_mask)?;
     let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
     let ce = b
@@ -659,8 +849,32 @@ pub fn decision_loss(p: &ParamMap, cfg: &S2Config, b: &S2Batch, qat: bool) -> R<
         .multiply(&logp)?
         .sum_axis(-1, None)?
         .mean_axis(-1, None)?
+        .negative()?;
+    ce.multiply(wts)?.sum(None)
+}
+
+/// [`decision_loss`] over the first `n_exits` exits (stochastic depth: the
+/// loops beyond them are skipped), their weights renormalized to sum to 1.
+pub fn decision_loss_exits(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    qat: bool,
+    n_exits: Option<usize>,
+) -> R<Array> {
+    let n = n_exits.unwrap_or(cfg.n_exits()).clamp(1, cfg.n_exits());
+    let logits = masked(&forward_exits(p, cfg, b, qat, Some(n))?, &b.marker_mask)?;
+    let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+    let ce = b
+        .target
+        .multiply(&logp)?
+        .sum_axis(-1, None)?
+        .mean_axis(-1, None)?
         .negative()?; // [E]
-    let wts = Array::from_slice(&cfg.exit_weights(), &[cfg.n_exits() as i32]);
+    let all = cfg.exit_weights();
+    let total: f32 = all[..n].iter().sum();
+    let wv: Vec<f32> = all[..n].iter().map(|x| x / total).collect();
+    let wts = Array::from_slice(&wv, &[n as i32]);
     ce.multiply(&wts)?.sum(None)
 }
 
@@ -677,7 +891,7 @@ pub fn mlm_loss(p: &ParamMap, cfg: &S2Config, b: &NumMlmBatch, num_weight: f32) 
 /// The two terms of [`mlm_loss`]: (token CE, number MSE).
 pub fn mlm_loss_parts(p: &ParamMap, cfg: &S2Config, b: &NumMlmBatch) -> R<(Array, Array)> {
     let p = &*prepare(p, cfg, false)?;
-    let mut x = embed(p, &b.ids, &b.values)?;
+    let mut x = embed(p, &b.ids, &b.values, &b.has)?;
     let nm = w(p, "mlm.num_mask.weight")?;
     let flag = cast_like(b.num_flag.clone(), nm)?;
     x = x.add(
@@ -757,6 +971,7 @@ mod tests {
 
     use super::*;
     use crate::{
+        num::NUM_ID,
         rng::Rng,
         s2::data::{encode_record, make_batch, tests::s2_tok, S2Item, StaticSeq, Stream},
         sequence::DecisionRecord,
@@ -806,6 +1021,370 @@ mod tests {
             assert_eq!(p["cls.output.bias"].shape(), &[1]);
             println!("{name}: decision model {total}, pretraining stack {pre}");
         }
+    }
+
+    #[test]
+    fn s3_parameter_counts_and_loop_structure() {
+        let _g = test_util::lock();
+        // (config, decision model, pretraining model)
+        for (name, total, pre) in [
+            ("s3-pico", 445_345, 203_393),
+            ("s3-nano", 1_204_353, 611_969),
+        ] {
+            let cfg = ladder(name);
+            assert!(cfg.fuse_numbers && cfg.state_loops > 1);
+            assert_eq!(expected_count(&cfg, S2Parts::DECISION), total, "{name}");
+            assert_eq!(expected_count(&cfg, S2Parts::PRETRAIN), pre, "{name}");
+            let p = init(&cfg, S2Parts::DECISION, 0).unwrap();
+            assert_eq!(crate::params::count(&p), total, "{name}");
+            let d = cfg.hidden_size as i32;
+            // Only the B distinct blocks exist; the loops share them.
+            for l in 0..cfg.state_layers {
+                assert!(p.contains_key(format!("blk.{l}.attn_qkv.weight").as_str()));
+            }
+            assert!(!p.contains_key(format!("blk.{}.attn_qkv.weight", cfg.state_layers).as_str()));
+            assert!(!p.contains_key("blk.0.attn_norm.weight"));
+            assert_eq!(p["blk.0.attn_norm_loop.weight"].shape(), &[d]);
+            assert_eq!(p["loop_embd.weight"].shape(), &[cfg.state_loops as i32, d]);
+            for e in 0..cfg.n_exits() {
+                assert!(p.contains_key(format!("exit.{e}.norm.weight").as_str()));
+            }
+            assert_eq!(cfg.head_dim() * cfg.n_heads(), cfg.hidden_size);
+            let pp = init(&cfg, S2Parts::PRETRAIN, 0).unwrap();
+            assert!(
+                pp.contains_key("loop_embd.weight")
+                    && pp.contains_key("blk.0.attn_norm_loop.weight")
+            );
+            println!("{name}: decision model {total}, pretraining stack {pre}");
+        }
+        // Without loops none of the new tensors exist (s2 unchanged).
+        let p = init(&S2Config::tiny(262), S2Parts::DECISION, 0).unwrap();
+        assert!(
+            !p.contains_key("loop_embd.weight") && !p.contains_key("blk.0.attn_norm_loop.weight")
+        );
+        assert!(!is_ternary("loop_embd.weight") && !is_ternary("blk.0.attn_norm_loop.weight"));
+        assert!(!is_hidden_matrix("blk.0.attn_norm_loop.weight"));
+    }
+
+    /// A tiny looped, fused configuration with head_dim 48.
+    fn looped(b: usize, loops: usize) -> S2Config {
+        S2Config {
+            hidden_size: 96,
+            head_count: Some(2),
+            intermediate_size: 40,
+            state_layers: b,
+            state_loops: loops,
+            static_layers: 1,
+            fusion_layers: 1,
+            exits: (1..=b * loops).collect(),
+            fuse_numbers: true,
+            ..S2Config::tiny(262)
+        }
+    }
+
+    #[test]
+    fn exits_count_block_applications() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            // B = 2 blocks x 2 loops = 4 applications, one exit after each.
+            let cfg = looped(2, 2);
+            let p = crate::s2::golden::golden_params(&cfg, 4).unwrap();
+            let (st, state) = crate::s2::data::encode_record_cfg(
+                &tok,
+                &rec(
+                    "choice",
+                    "go 2?",
+                    &["up 1", "down", "x"],
+                    "vy -3 alt 12 gap 4",
+                ),
+                &cfg,
+            )
+            .unwrap();
+            let statics = vec![st];
+            let it = item(0, &state, 3, 0);
+            let b = make_batch(&statics, &[&it], 1);
+            let base = logits_per_row(&forward(&p, &cfg, &b, false).unwrap(), &[3]).unwrap();
+            assert_eq!(base.len(), 4);
+            let close = |a: &[f32], b: &[f32]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
+            // Truncated depth reproduces the prefix of the exits.
+            for n in 1..=4 {
+                let t = logits_per_row(&forward_exits(&p, &cfg, &b, false, Some(n)).unwrap(), &[3])
+                    .unwrap();
+                assert_eq!(t.len(), n);
+                for e in 0..n {
+                    assert!(close(&t[e][0], &base[e][0]), "n {n} exit {e}");
+                }
+            }
+            // Perturbing a tensor changes exactly the exits at or after its first use:
+            // loop_embd[1] and blk.0.attn_norm_loop first act on application 3 (exit 2),
+            // blk.1 on application 2 (exit 1), blk.0's matrices on application 1 (exit 0).
+            let bump = |name: &str, row: Option<usize>| -> Vec<bool> {
+                let mut q = p.clone();
+                let mut v = crate::model::host_f32(&p[name]).unwrap();
+                let shape = p[name].shape().to_vec();
+                let cols = *shape.last().unwrap() as usize;
+                let r = row.unwrap_or(0);
+                // Not a constant shift: the LayerNorms would cancel it.
+                for (i, x) in v[r * cols..(r + 1) * cols].iter_mut().enumerate() {
+                    *x += 0.5 * (i as f32 * 0.7).sin();
+                }
+                q.insert(name.into(), Array::from_slice(&v, &shape));
+                let l = logits_per_row(&forward(&q, &cfg, &b, false).unwrap(), &[3]).unwrap();
+                (0..4).map(|e| !close(&l[e][0], &base[e][0])).collect()
+            };
+            assert_eq!(
+                bump("loop_embd.weight", Some(1)),
+                vec![false, false, true, true]
+            );
+            assert_eq!(bump("loop_embd.weight", Some(0)), vec![false; 4]);
+            assert_eq!(
+                bump("blk.0.attn_norm_loop.weight", None),
+                vec![false, false, true, true]
+            );
+            assert_eq!(
+                bump("blk.1.attn_norm.weight", None),
+                vec![false, true, true, true]
+            );
+            assert_eq!(bump("blk.0.ffn_norm.weight", None), vec![true; 4]);
+            assert_eq!(
+                bump("exit.1.norm.weight", None),
+                vec![false, true, false, false]
+            );
+            // B = 1 x 4 loops (s3-pico layout): exit e follows loop e.
+            let cfg1 = looped(1, 4);
+            let p1 = crate::s2::golden::golden_params(&cfg1, 5).unwrap();
+            let b1 = make_batch(&statics, &[&it], 1);
+            let base1 = logits_per_row(&forward(&p1, &cfg1, &b1, false).unwrap(), &[3]).unwrap();
+            for l in 1..4 {
+                let mut q = p1.clone();
+                let mut v = crate::model::host_f32(&p1["loop_embd.weight"]).unwrap();
+                for (i, x) in v[l * 96..(l + 1) * 96].iter_mut().enumerate() {
+                    *x -= 0.7 * (i as f32 * 0.3 + l as f32).cos();
+                }
+                q.insert("loop_embd.weight".into(), Array::from_slice(&v, &[4, 96]));
+                let lg = logits_per_row(&forward(&q, &cfg1, &b1, false).unwrap(), &[3]).unwrap();
+                let changed: Vec<bool> = (0..4).map(|e| !close(&lg[e][0], &base1[e][0])).collect();
+                let want: Vec<bool> = (0..4).map(|e| e >= l).collect();
+                assert_eq!(changed, want, "loop {l}");
+            }
+            // The stochastic-depth loss runs on a prefix of the exits.
+            let full = decision_loss(&p, &cfg, &b, true)
+                .unwrap()
+                .item_exact::<f32>();
+            let short = decision_loss_exits(&p, &cfg, &b, true, Some(1))
+                .unwrap()
+                .item_exact::<f32>();
+            assert!(full.is_finite() && short.is_finite() && full != short);
+            // The weighted form (one compiled graph) gives the same loss and
+            // no gradient to the loops beyond the kept exits.
+            for n in 1..=4 {
+                let w = Array::from_slice(&exit_weight_vec(&cfg, Some(n)), &[4]);
+                let a = decision_loss_weighted(&p, &cfg, &b, true, &w)
+                    .unwrap()
+                    .item_exact::<f32>();
+                let e = decision_loss_exits(&p, &cfg, &b, true, Some(n))
+                    .unwrap()
+                    .item_exact::<f32>();
+                assert!((a - e).abs() < 1e-5, "n {n}: {a} vs {e}");
+            }
+            let w = Array::from_slice(&exit_weight_vec(&cfg, Some(2)), &[4]);
+            let f = |p: HashMap<Rc<str>, Array>, _: ()| -> R<Vec<Array>> {
+                Ok(vec![decision_loss_weighted(&p, &cfg, &b, false, &w)?])
+            };
+            let (_, g) = keyed_value_and_grad(f)(p.clone(), ()).unwrap();
+            let norm = |n: &str| {
+                crate::model::host_f32(&g[n])
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.abs())
+                    .sum::<f32>()
+            };
+            assert_eq!(norm("loop_embd.weight"), 0.0);
+            assert_eq!(norm("blk.0.attn_norm_loop.weight"), 0.0);
+            assert!(norm("blk.1.attn_norm.weight") > 0.0);
+        });
+    }
+
+    #[test]
+    fn temporal_carry_forward_and_sequence_loss() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let mut cfg = ladder("s3-pico-temporal");
+            assert!(cfg.temporal_carry);
+            let base = ladder("s3-pico");
+            let d = cfg.hidden_size as i32;
+            assert_eq!(
+                expected_count(&cfg, S2Parts::DECISION),
+                expected_count(&base, S2Parts::DECISION) + 2 * d as usize
+            );
+            assert_eq!(
+                expected_count(&cfg, S2Parts::PRETRAIN),
+                expected_count(&base, S2Parts::PRETRAIN)
+            );
+            cfg.vocab_size = 262;
+            let fresh = init(&cfg, S2Parts::DECISION, 1).unwrap();
+            assert_eq!(
+                crate::model::host_f32(&fresh["carry_gate.weight"]).unwrap(),
+                vec![0.0; 96]
+            );
+            let enc = |s: &str| {
+                crate::s2::data::encode_record_cfg(
+                    &tok,
+                    &rec("choice", "how?", &["over", "brake", "around"], s),
+                    &cfg,
+                )
+                .unwrap()
+            };
+            let (st, s0) = enc("d 35 v 11 dz 2");
+            let (_, s1) = enc("d 33 v 10 dz 1");
+            assert_eq!(s0.ids, s1.ids, "fused frames share their ids");
+            let statics = vec![st];
+            let (i0, i1) = (item(0, &s0, 3, 0), item(0, &s1, 3, 0));
+            let b0 = make_batch(&statics, &[&i0, &i0], 1);
+            let b1 = make_batch(&statics, &[&i1, &i1], 1);
+            let rows = |l: &Array| logits_per_row(l, &[3, 3]).unwrap();
+            // A zero gate (fresh init): warm equals cold.
+            let (_, raw0) = forward_carry(&fresh, &cfg, &b0, false, None).unwrap();
+            let on = Array::from_slice(&[1.0f32, 1.0], &[2]);
+            let (cold, _) = forward_carry(&fresh, &cfg, &b1, false, None).unwrap();
+            let (warm, _) = forward_carry(
+                &fresh,
+                &cfg,
+                &b1,
+                false,
+                Some(Carry {
+                    h: &raw0[3],
+                    on: &on,
+                }),
+            )
+            .unwrap();
+            assert!(warm.all_close(&cold, 1e-6, 1e-6, None).unwrap());
+            // A random gate: the carry changes the warm row only.
+            let p = crate::s2::golden::golden_params(&cfg, 3).unwrap();
+            let (_, raw0) = forward_carry(&p, &cfg, &b0, false, None).unwrap();
+            let (cold, _) = forward_carry(&p, &cfg, &b1, false, None).unwrap();
+            let half = Array::from_slice(&[1.0f32, 0.0], &[2]);
+            let (warm, _) = forward_carry(
+                &p,
+                &cfg,
+                &b1,
+                false,
+                Some(Carry {
+                    h: &raw0[3],
+                    on: &half,
+                }),
+            )
+            .unwrap();
+            let (c, w) = (rows(&cold), rows(&warm));
+            for e in 0..4 {
+                assert!(c[e][0]
+                    .iter()
+                    .zip(&w[e][0])
+                    .any(|(a, b)| (a - b).abs() > 1e-4));
+                assert!(c[e][1]
+                    .iter()
+                    .zip(&w[e][1])
+                    .all(|(a, b)| (a - b).abs() < 1e-5));
+            }
+            // Sequence loss: frame 1 warm from frame 0's exit-1 latent; it equals
+            // the hand-chained forward, and the gate gets a gradient.
+            let frames = vec![b0.clone(), b1.clone()];
+            let on2 = Array::from_slice(&[0.0f32, 0.0, 1.0, 0.0], &[2, 2]);
+            let src = Array::from_slice(&[0.0f32, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], &[2, 4]);
+            let wv = exit_weight_vec(&cfg, None);
+            let wts = Array::from_slice(&wv, &[4]);
+            let l = seq_loss(&p, &cfg, &frames, &on2, &src, &wts, false).unwrap();
+            let lw = |b: &S2Batch, c: Option<Carry<'_>>| -> f32 {
+                let (lg, _) = forward_carry(&p, &cfg, b, false, c).unwrap();
+                let lg = masked(&lg, &b.marker_mask).unwrap();
+                let lp = lg.subtract(lg.logsumexp_axis(-1, true).unwrap()).unwrap();
+                b.target
+                    .multiply(&lp)
+                    .unwrap()
+                    .sum_axis(-1, None)
+                    .unwrap()
+                    .mean_axis(-1, None)
+                    .unwrap()
+                    .negative()
+                    .unwrap()
+                    .multiply(&wts)
+                    .unwrap()
+                    .sum(None)
+                    .unwrap()
+                    .item_exact::<f32>()
+            };
+            let on_row0 = Array::from_slice(&[1.0f32, 0.0], &[2]);
+            let want = (lw(&b0, None)
+                + lw(
+                    &b1,
+                    Some(Carry {
+                        h: &raw0[1],
+                        on: &on_row0,
+                    }),
+                ))
+                / 2.0;
+            assert!(
+                (l.item_exact::<f32>() - want).abs() < 1e-5,
+                "{} vs {want}",
+                l.item_exact::<f32>()
+            );
+            let f = |q: HashMap<Rc<str>, Array>, _: ()| -> R<Vec<Array>> {
+                Ok(vec![seq_loss(&q, &cfg, &frames, &on2, &src, &wts, true)?])
+            };
+            let (_, g) = keyed_value_and_grad(f)(p.clone(), ()).unwrap();
+            for n in ["carry_gate.weight", "carry_norm.weight", "loop_embd.weight"] {
+                let s: f32 = crate::model::host_f32(&g[n])
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.abs())
+                    .sum();
+                assert!(s > 0.0, "{n}: no gradient");
+            }
+        });
+    }
+
+    #[test]
+    fn s3_permutation_equivariance() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let mut cfg = ladder("s3-pico");
+            cfg.vocab_size = 262;
+            let p = crate::s2::golden::golden_params(&cfg, 6).unwrap();
+            let opts = ["north 3", "south", "east -2.5", "west 10", "5"];
+            let perm = [2usize, 4, 0, 3, 1];
+            let permuted: Vec<&str> = perm.iter().map(|&i| opts[i]).collect();
+            let state = "x 4 y -1 wind 12 10-20";
+            let enc = |o: &[&str]| {
+                crate::s2::data::encode_record_cfg(
+                    &tok,
+                    &rec("choice", "go 2 where?", o, state),
+                    &cfg,
+                )
+                .unwrap()
+            };
+            let (s_a, st) = enc(&opts);
+            let (s_b, _) = enc(&permuted);
+            let statics = vec![s_a, s_b];
+            let items = [item(0, &st, 5, 0), item(1, &st, 5, 0)];
+            let refs: Vec<&S2Item> = items.iter().collect();
+            for qat in [false, true] {
+                let logits = forward(&p, &cfg, &make_batch(&statics, &refs, 1), qat).unwrap();
+                let rows = logits_per_row(&logits, &[5, 5]).unwrap();
+                assert_eq!(rows.len(), 4);
+                let mut max_diff = 0f32;
+                for exit in &rows {
+                    let pa = crate::metrics::softmax_t(&exit[0], 1.0);
+                    let pb = crate::metrics::softmax_t(&exit[1], 1.0);
+                    for (j, &i) in perm.iter().enumerate() {
+                        max_diff = max_diff.max((pb[j] - pa[i]).abs() as f32);
+                    }
+                }
+                assert!(max_diff <= 1e-5, "qat {qat}: max diff {max_diff}");
+            }
+        });
     }
 
     #[test]
@@ -902,6 +1481,10 @@ mod tests {
             cfg,
             &Array::from_iter(st.tokens.ids.iter().map(|&x| x as i32), &[1, n]),
             &Array::from_slice(&st.tokens.values, &[1, n]),
+            &Array::from_iter(
+                (0..st.tokens.len()).map(|i| st.tokens.has(i) as u8 as f32),
+                &[1, n],
+            ),
             &Array::from_slice(&st.seg, &[1, n]),
             &Array::from_slice(&st.pos, &[1, n]),
         )
@@ -1198,7 +1781,7 @@ mod tests {
                     .iter()
                     .map(|&i| if i == NUM_ID { 7.0 } else { 0.0 })
                     .collect();
-                Stream { ids, values }
+                Stream::new(ids, values)
             })
             .collect();
         let b = crate::s2::data::mask_batch(&rows, 262, 0.3, &mut rng);

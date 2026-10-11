@@ -30,20 +30,28 @@ impl WeightFormat {
     }
 }
 
-/// Ladder configurations `s2-pico`, `s2-nano`, `s2-micro` (SPEC-S2 §3).
+/// Ladder configurations `s2-pico`, `s2-nano`, `s2-micro` (SPEC-S2 §3) and `s3-pico`, `s3-nano`
+/// (SPEC-S3 §4: value-fused numbers, looped state blocks).
 pub fn ladder_config(name: &str) -> Option<S2Config> {
-    let (d, state, stat, fusion, ff, vocab, exits): (
+    // (d, heads, state blocks, loops, static, fusion, ff, vocab, exits, fuse)
+    type Row = (
         usize,
         usize,
         usize,
         usize,
         usize,
         usize,
-        &[usize],
-    ) = match name {
-        "s2-pico" => (64, 3, 2, 1, 128, 1024, &[1, 3]),
-        "s2-nano" => (128, 4, 2, 2, 256, 2048, &[1, 2, 4]),
-        "s2-micro" => (256, 6, 3, 2, 512, 4096, &[2, 4, 6]),
+        usize,
+        usize,
+        &'static [usize],
+        bool,
+    );
+    let (d, heads, blocks, loops, stat, fusion, ff, vocab, exits, fuse): Row = match name {
+        "s2-pico" => (64, 1, 3, 1, 2, 1, 128, 1024, &[1, 3], false),
+        "s2-nano" => (128, 2, 4, 1, 2, 2, 256, 2048, &[1, 2, 4], false),
+        "s2-micro" => (256, 4, 6, 1, 3, 2, 512, 4096, &[2, 4, 6], false),
+        "s3-pico" => (96, 1, 1, 4, 1, 2, 192, 1024, &[1, 2, 3, 4], true),
+        "s3-nano" => (128, 2, 2, 3, 2, 2, 256, 2048, &[2, 4, 6], true),
         _ => return None,
     };
     Some(S2Config {
@@ -51,8 +59,12 @@ pub fn ladder_config(name: &str) -> Option<S2Config> {
         vocab_size: vocab,
         hidden_size: d,
         intermediate_size: ff,
-        num_heads: (d / 64).max(1),
-        state_layers: state,
+        num_heads: heads,
+        state_layers: blocks * loops,
+        state_blocks: blocks,
+        state_loops: loops,
+        fuse_numbers: fuse,
+        temporal_carry: false,
         static_layers: stat,
         fusion_layers: fusion,
         exits: exits.to_vec(),
@@ -82,7 +94,17 @@ pub fn write_metadata(w: &mut GgufWriter, cfg: &S2Config, format: &str) {
     w.add_kv(k("embedding_length"), cfg.hidden_size as u32);
     w.add_kv(k("feed_forward_length"), cfg.intermediate_size as u32);
     w.add_kv(k("head_count"), cfg.num_heads as u32);
-    w.add_kv(k("state_block_count"), cfg.state_layers as u32);
+    w.add_kv(k("state_block_count"), cfg.state_blocks as u32);
+    // the s3 keys are only written when used, so s2 files stay as they were
+    if cfg.state_loops != 1 {
+        w.add_kv(k("state_loops"), cfg.state_loops as u32);
+    }
+    if cfg.fuse_numbers {
+        w.add_kv(k("fuse_numbers"), true);
+    }
+    if cfg.temporal_carry {
+        w.add_kv(k("temporal_carry"), true);
+    }
     w.add_kv(k("static_block_count"), cfg.static_layers as u32);
     w.add_kv(k("fusion_block_count"), cfg.fusion_layers as u32);
     w.add_kv(
@@ -271,7 +293,7 @@ pub fn random_gguf(
         o.block("static.blk.", n, cfg)?;
     }
     o.norm("static_norm", d, false)?;
-    for n in 0..cfg.state_layers {
+    for n in 0..cfg.state_blocks {
         o.block("blk.", n, cfg)?;
     }
     for e in 0..cfg.exits.len() {
@@ -292,5 +314,17 @@ pub fn random_gguf(
     o.lin("cls", d, d, true, true)?;
     // a larger scorer gain gives far-from-uniform answers, so that comparisons are meaningful
     o.lin_gain("cls.output", 1, d, true, false, 8.0)?;
+    // s3 tensors last: the weights drawn for s2 files do not change
+    if cfg.state_loops > 1 {
+        let le = o.rng.vec(cfg.state_loops * d, 0.5, 0.0);
+        o.float("loop_embd.weight", &[cfg.state_loops, d], &le)?;
+        o.norm("blk.0.attn_norm_loop", d, false)?;
+    }
+    if cfg.temporal_carry {
+        // a trained gate starts at 0; random values make the carry visible in tests
+        let gate = o.rng.vec(d, 0.5, 0.0);
+        o.float("carry_gate.weight", &[d], &gate)?;
+        o.norm("carry_norm", d, false)?;
+    }
     Ok(w.to_bytes()?)
 }

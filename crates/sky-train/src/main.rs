@@ -270,6 +270,12 @@ enum Cmd {
         /// Weight of the masked-number MSE in the loss (SPEC-S2: 0.5).
         #[arg(long, default_value_t = 0.5)]
         num_weight: f32,
+        /// Numeric-curriculum records (s2-numeric output) mixed in as MLM text.
+        #[arg(long)]
+        numeric: Option<PathBuf>,
+        /// Fraction of MLM rows drawn from --numeric.
+        #[arg(long, default_value_t = 0.1)]
+        numeric_weight: f64,
     },
     /// s2: decision training with deep supervision over the exits and ternary QAT at the end.
     S2Decide {
@@ -297,9 +303,26 @@ enum Cmd {
         opt: OptFlags,
         #[arg(long, default_value_t = 0)]
         seed: u64,
-        /// Fraction of the budget (at the end) trained with ternary fake-quant.
+        /// Fraction of the budget (at the end) trained with ternary fake-quant
+        /// (0.9 = QAT after a 10% float warm-up).
         #[arg(long, default_value_t = 0.3)]
         qat_frac: f64,
+        /// Stochastic depth: probability that a batch is supervised only up to
+        /// a random earlier exit (its later loops skipped).
+        #[arg(long, default_value_t = 0.0)]
+        loop_dropout: f64,
+        /// Padding multiple of the training batch shapes (32: coarser buckets, fewer compiles).
+        #[arg(long, default_value_t = 16)]
+        pad_to: usize,
+        /// SPEC-S3 §7 temporal sequences (s2-seqgen output); needs temporal_carry in the config.
+        #[arg(long)]
+        seq_records: Option<PathBuf>,
+        /// Probability that a step trains on temporal sequences.
+        #[arg(long, default_value_t = 0.5)]
+        seq_frac: f64,
+        /// Probability that a warm frame starts cold anyway.
+        #[arg(long, default_value_t = 0.3)]
+        carry_drop: f64,
         #[arg(long, default_value_t = 20)]
         log_every: u64,
         #[arg(long, default_value_t = 1000)]
@@ -356,6 +379,60 @@ enum Cmd {
         #[arg(long, default_value = "crates/sky-infer/tests/golden")]
         out: PathBuf,
         #[arg(long, default_value_t = 7)]
+        seed: u64,
+        /// Ladder config whose shape and options (heads, loops, number fusion,
+        /// exits) the golden model uses (default: the s2 golden model).
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// File prefix (default: `s2`, or the config name up to its first `-`, e.g. `s3`).
+        #[arg(long)]
+        prefix: Option<String>,
+    },
+    /// s3: closed-loop play of a GGUF with the mlx-rs forward pass (early exit, temporal carry).
+    S2Play {
+        gguf: PathBuf,
+        #[arg(long, default_value = "flappy,rescue,dodge")]
+        games: String,
+        #[arg(long, default_value_t = 10)]
+        episodes: usize,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+        /// Early-exit threshold for every question type (1.0 = full depth).
+        #[arg(long, default_value_t = 1.0)]
+        tau: f32,
+        /// Disable the temporal carry of a temporal_carry model (cold frames only).
+        #[arg(long)]
+        no_carry: bool,
+        #[arg(long, default_value_t = 50)]
+        max_pipes: u32,
+        /// s2 tokenizer (default data/tok/tok-s2-<1024|2048>.json from the vocabulary size).
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
+    /// s3: temporal sequences (SPEC-S3 §7): K consecutive decision points per sequence.
+    S2Seqgen {
+        /// Comma-separated games.
+        #[arg(long, default_value = "flappy,rescue,dodge")]
+        games: String,
+        /// Sequences per game.
+        #[arg(long, default_value_t = 20_000)]
+        n_seq: usize,
+        #[arg(long, default_value_t = 4)]
+        k: usize,
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        #[arg(long, default_value = "data/seq")]
+        out: PathBuf,
+    },
+    /// s3: the programmatic numeric curriculum (SPEC-S3 §3) as decision records.
+    S2Numeric {
+        #[arg(long, default_value_t = 100_000)]
+        n: usize,
+        #[arg(long, default_value = "data/numeric/numeric.jsonl")]
+        out: PathBuf,
+        #[arg(long, default_value_t = 0)]
         seed: u64,
     },
     /// Per-source metrics table -> runs/<name>/report.md.
@@ -544,6 +621,8 @@ fn main() -> Result<()> {
             precision,
             no_compile,
             num_weight,
+            numeric,
+            numeric_weight,
         } => s2::train::pretrain(&S2PretrainArgs {
             config,
             tokenizer,
@@ -563,6 +642,8 @@ fn main() -> Result<()> {
             bf16: precision == Precision::Bf16,
             compile: !no_compile,
             num_weight,
+            numeric,
+            numeric_weight,
         })?,
         Cmd::S2Decide {
             config,
@@ -577,6 +658,11 @@ fn main() -> Result<()> {
             opt,
             seed,
             qat_frac,
+            loop_dropout,
+            pad_to,
+            seq_records,
+            seq_frac,
+            carry_drop,
             log_every,
             eval_every,
             checkpoint_minutes,
@@ -596,12 +682,17 @@ fn main() -> Result<()> {
             opt: opt.build(1e-3, 0.01),
             seed,
             qat_frac,
+            loop_dropout,
             log_every,
             eval_every,
             checkpoint_minutes,
             val_max,
             bf16: precision == Precision::Bf16,
             compile: !no_compile,
+            pad_to,
+            seq_records,
+            seq_frac,
+            carry_drop,
         })?,
         Cmd::S2Calibrate {
             run,
@@ -634,16 +725,76 @@ fn main() -> Result<()> {
             tokenizer,
             out,
             seed,
+            config,
+            prefix,
         } => {
             let tok = match tokenizer {
                 Some(p) => std::fs::read_to_string(p)?,
                 None => sky_train::s2::golden::byte_tokenizer_json(),
             };
-            sky_train::s2::golden::golden(&tok, &out, seed)?;
+            let base = config.map(s2::config::S2Config::load).transpose()?;
+            let prefix = prefix.unwrap_or_else(|| match &base {
+                Some(c) => {
+                    let p = c.name.split('-').next().unwrap_or("s2");
+                    if c.temporal_carry {
+                        format!("{p}t")
+                    } else {
+                        p.to_string()
+                    }
+                }
+                None => "s2".into(),
+            });
+            sky_train::s2::golden::golden_with(&tok, &out, seed, base.as_ref(), &prefix)?;
             println!(
-                "wrote {0}/s2.json, {0}/s2-f32.gguf, {0}/s2-ternary.gguf",
+                "wrote {0}/{prefix}.json, {0}/{prefix}-f32.gguf, {0}/{prefix}-ternary.gguf",
                 out.display()
             );
+        }
+        Cmd::S2Play {
+            gguf,
+            games,
+            episodes,
+            seed,
+            tau,
+            no_carry,
+            max_pipes,
+            tokenizer,
+            json,
+        } => {
+            let g: Vec<&str> = games.split(',').collect();
+            let r = s2::play::play(
+                &gguf,
+                &g,
+                episodes,
+                seed,
+                tau,
+                !no_carry,
+                max_pipes,
+                tokenizer.as_deref(),
+            )?;
+            if let Some(path) = json {
+                std::fs::write(path, serde_json::to_string_pretty(&r)?)?;
+            }
+        }
+        Cmd::S2Seqgen {
+            games,
+            n_seq,
+            k,
+            seed,
+            out,
+        } => {
+            for g in games.split(',') {
+                let path = out.join(format!("{g}.jsonl"));
+                let eps = s2::seq::generate(g, n_seq, k, seed, &path)?;
+                println!(
+                    "{g}: {n_seq} sequences of {k} frames from {eps} episodes -> {}",
+                    path.display()
+                );
+            }
+        }
+        Cmd::S2Numeric { n, out, seed } => {
+            s2::numeric::write(n, seed, &out)?;
+            println!("wrote {n} numeric records to {}", out.display());
         }
         Cmd::Eval {
             run,

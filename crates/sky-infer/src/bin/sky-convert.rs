@@ -7,7 +7,7 @@
 //! `sky-convert --random s1-pico|s1-nano|s1-micro <out.gguf> [--type ...]` writes a model with
 //! random weights and a small test tokenizer instead (to exercise the runtime before training).
 //!
-//! `sky-convert --random s2-pico|s2-nano|s2-micro <out.gguf> [--format f32|f16|ternary]
+//! `sky-convert --random s2-pico|s2-nano|s2-micro|s3-pico|s3-nano <out.gguf> [--format f32|f16|ternary]
 //! [--tokenizer tok-s2.json]` writes a random `skycmd-s2` model (SPEC-S2 §5), with the given s2
 //! tokenizer (`[NUM]` at id 5) or a small test tokenizer.
 //!
@@ -31,7 +31,7 @@ mod native {
     }
 
     const USAGE: &str =
-        "usage: sky-convert <laya_dir | --random s1-pico|s1-nano|s1-micro> <out.gguf> [--type f32|f16|bf16|q8_0] [--head-type f32|f16|bf16|q8_0] [--pre NAME] [--name NAME]\n       sky-convert --random s2-pico|s2-nano|s2-micro <out.gguf> [--format f32|f16|ternary] [--tokenizer tok-s2.json] [--name NAME]";
+        "usage: sky-convert <laya_dir | --random s1-pico|s1-nano|s1-micro> <out.gguf> [--type f32|f16|bf16|q8_0] [--head-type f32|f16|bf16|q8_0] [--pre NAME] [--name NAME]\n       sky-convert --random s2-pico|s2-nano|s2-micro|s3-pico|s3-nano <out.gguf> [--format f32|f16|ternary] [--tokenizer tok-s2.json] [--name NAME]";
 
     fn fail(msg: &str) -> ! {
         eprintln!("{msg}");
@@ -79,7 +79,7 @@ mod native {
         }
         let t0 = std::time::Instant::now();
         let (bytes, out) = match (random, pos.as_slice()) {
-            (Some(name), [out]) if name.starts_with("s2-") => {
+            (Some(name), [out]) if name.starts_with("s2-") || name.starts_with("s3-") => {
                 let mut cfg = sky_infer::s2::random::ladder_config(&name)
                     .unwrap_or_else(|| fail(&format!("unknown ladder configuration {name}")));
                 if let Some(n) = &opts.name {

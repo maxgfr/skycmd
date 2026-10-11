@@ -1,0 +1,27 @@
+{
+  "name": "s3-nano",
+  "vocab_size": 2048,
+  "hidden_size": 128,
+  "intermediate_size": 256,
+  "state_layers": 2,
+  "state_loops": 3,
+  "static_layers": 2,
+  "fusion_layers": 2,
+  "head_count": 2,
+  "fuse_numbers": true,
+  "exits": [
+    2,
+    4,
+    6
+  ],
+  "max_state_tokens": 64,
+  "max_head_tokens": 96,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "exit_threshold": [
+    0.9,
+    0.9,
+    0.9
+  ],
+  "temperature": {}
+}

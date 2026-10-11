@@ -260,6 +260,14 @@ mod simd {
     pub unsafe fn store(p: *mut f32, v: V) {
         v128_store(p as *mut v128, v)
     }
+    /// `acc + a * b`: one `f32x4.relaxed_madd` when built with `+relaxed-simd` (fused on hardware
+    /// with FMA), else a multiply and an add.
+    #[cfg(target_feature = "relaxed-simd")]
+    #[inline(always)]
+    pub fn fma(acc: V, a: V, b: V) -> V {
+        f32x4_relaxed_madd(a, b, acc)
+    }
+    #[cfg(not(target_feature = "relaxed-simd"))]
     #[inline(always)]
     pub fn fma(acc: V, a: V, b: V) -> V {
         f32x4_add(acc, f32x4_mul(a, b))
@@ -757,6 +765,746 @@ pub fn matmul_f32_strided(
     }
 }
 
+// ----------------------------------------------------------------------------- panel products
+
+/// Outputs per panel of a [`PanelMatrix`] (two SIMD vectors).
+pub const PANEL: usize = 8;
+
+/// Most rows of one micro-tile of [`PanelMatrix::matmul`].
+const PANEL_ROWS: usize = 3;
+
+/// f32 weights `[n][k]` repacked for products with few rows (M ≤ 16: the state tokens of a
+/// frame, the option markers): k-major panels of [`PANEL`] outputs. Panel `p` holds, for every
+/// input `i`, the weights `w[8p..8p + 8][i]` contiguously (the last panel is zero-padded).
+///
+/// The product is an outer-product micro-kernel without horizontal reductions: a tile of `R`
+/// rows x `8P` outputs lives in `2PR` SIMD accumulators, and every input step loads `2P` weight
+/// vectors and broadcasts one input per row (aarch64: the inputs of a row are loaded 4 at a time
+/// and broadcast by lane, k unrolled by 4; wasm32: one `v128.load32_splat` per row and input).
+/// The tile shapes keep 16-24 independent accumulators for any row count (rows split into
+/// balanced tiles of 4-5 rows x 2 panels, 3 x 3, 2 x 4, 1 x 4): with a 4-cycle FMA latency,
+/// fewer would leave the FMA pipes idle, which is what limits the classic 4 x 4 dot-product
+/// tiles on 5-11 rows (a 1-3 row remainder tile).
+/// On wasm32 the multiply-add is one `f32x4.relaxed_madd` when built with `+relaxed-simd`
+/// (mul + add otherwise).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PanelMatrix {
+    pub n: usize,
+    pub k: usize,
+    /// `n.div_ceil(PANEL) * k * PANEL` floats.
+    pub data: Vec<f32>,
+}
+
+impl PanelMatrix {
+    /// Repack row-major weights `w: [n][k]`.
+    pub fn from_rows(w: &[f32], n: usize, k: usize) -> Self {
+        assert!(w.len() >= n * k, "panel matrix: shape mismatch");
+        let np = n.div_ceil(PANEL);
+        let mut data = vec![0.0; np * k * PANEL];
+        for o in 0..n {
+            let (p, j) = (o / PANEL, o % PANEL);
+            let dst = &mut data[p * k * PANEL..(p + 1) * k * PANEL];
+            for (i, &v) in w[o * k..(o + 1) * k].iter().enumerate() {
+                dst[i * PANEL + j] = v;
+            }
+        }
+        PanelMatrix { n, k, data }
+    }
+
+    /// Row-major weights `[n][k]`.
+    pub fn to_rows(&self) -> Vec<f32> {
+        let (n, k) = (self.n, self.k);
+        let mut w = vec![0.0; n * k];
+        for o in 0..n {
+            let (p, j) = (o / PANEL, o % PANEL);
+            for i in 0..k {
+                w[o * k + i] = self.data[p * k * PANEL + i * PANEL + j];
+            }
+        }
+        w
+    }
+
+    /// `y[r][o] (+)= x[r] . w[o] + bias[o]` for `rows` rows (`x` row `r` at `r * ldx`, `y` row `r`
+    /// at `r * ldy`).
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    pub fn matmul(
+        &self,
+        x: &[f32],
+        ldx: usize,
+        rows: usize,
+        bias: Option<&[f32]>,
+        y: &mut [f32],
+        ldy: usize,
+        accumulate: bool,
+    ) {
+        panel_matmul(
+            &self.data, self.n, self.k, x, ldx, rows, bias, y, ldy, accumulate,
+        );
+    }
+}
+
+/// [`PanelMatrix::matmul`] on panel data `data` of `n` outputs and `k` inputs (layout of
+/// [`PanelMatrix::data`]).
+#[allow(clippy::too_many_arguments)]
+pub fn panel_matmul(
+    data: &[f32],
+    n: usize,
+    k: usize,
+    x: &[f32],
+    ldx: usize,
+    rows: usize,
+    bias: Option<&[f32]>,
+    y: &mut [f32],
+    ldy: usize,
+    accumulate: bool,
+) {
+    if rows == 0 || n == 0 {
+        return;
+    }
+    assert!(ldx >= k && ldy >= n);
+    assert!(x.len() >= (rows - 1) * ldx + k && y.len() >= (rows - 1) * ldy + n);
+    if let Some(b) = bias {
+        assert!(b.len() >= n);
+    }
+    let np = n.div_ceil(PANEL);
+    let tile = Tile {
+        ldx,
+        k,
+        ldy,
+        n,
+        bias,
+        accumulate,
+    };
+    assert!(data.len() >= np * k * PANEL);
+    // Blocks of panels sized for L1, each reused by every row tile: a block layer's weights
+    // (~370 KB for s3-pico) live in L2, and streaming them once per row tile cost ~30%.
+    let pb = (PANEL_BLOCK_BYTES / (k * PANEL * 4)).max(1).div_ceil(12) * 12;
+    for p0 in (0..np).step_by(pb) {
+        let p1 = (p0 + pb).min(np);
+        let mut r0 = 0;
+        while r0 < rows {
+            let mr = row_tile(rows - r0);
+            let xp = x[r0 * ldx..].as_ptr();
+            let yr = &mut y[r0 * ldy..];
+            let d = data;
+            // SAFETY: rows r0..r0 + mr of x hold k floats (asserted above) and panels p0..p1 hold
+            // k * PANEL floats each
+            unsafe {
+                match mr {
+                    5 => tile.panels::<5, 2>(xp, d, p0, p1, yr),
+                    4 => tile.panels::<4, 2>(xp, d, p0, p1, yr),
+                    3 => tile.panels::<3, 3>(xp, d, p0, p1, yr),
+                    2 => tile.panels::<2, 4>(xp, d, p0, p1, yr),
+                    _ => tile.panels::<1, 4>(xp, d, p0, p1, yr),
+                }
+            }
+            r0 += mr;
+        }
+    }
+}
+
+/// Bytes of weights per block of panels in [`panel_matmul`] (rounded up to 12 panels).
+const PANEL_BLOCK_BYTES: usize = 48 * 1024;
+
+/// Rows of the next micro-tile when `left` rows remain: balanced tiles of at most
+/// [`PANEL_ROWS`] rows (each tile is one pass over the weights). Measured on aarch64 (288 x 96
+/// weights, one core): tiles of 3-5 rows reach 50-60 GMAC/s; 6-7 rows x 2 panels spill registers
+/// (~35) and 8 rows x 1 panel stalls (~30).
+#[inline]
+fn row_tile(left: usize) -> usize {
+    let tiles = left.div_ceil(PANEL_ROWS);
+    left / tiles
+}
+
+/// Geometry of the row tiles of [`PanelMatrix::matmul`].
+struct Tile<'b> {
+    ldx: usize,
+    k: usize,
+    ldy: usize,
+    n: usize,
+    bias: Option<&'b [f32]>,
+    accumulate: bool,
+}
+
+impl Tile<'_> {
+    /// `R` rows against panels `p0..p1`, `P` panels at a time (then one at a time for the rest).
+    ///
+    /// # Safety
+    /// `R` rows of `x` (stride `ldx`) hold `k` readable floats and `data` holds `p1` panels.
+    #[inline(always)]
+    unsafe fn panels<const R: usize, const NP: usize>(
+        &self,
+        x: *const f32,
+        data: &[f32],
+        p0: usize,
+        p1: usize,
+        y: &mut [f32],
+    ) {
+        let kp = self.k * PANEL;
+        let np = p1;
+        let mut p = p0;
+        while p + NP <= np {
+            let acc = panel_tile::<R, NP>(x, self.ldx, data.as_ptr().add(p * kp), kp, self.k);
+            self.store::<R, NP>(&acc, p, y);
+            p += NP;
+        }
+        while p < np {
+            let acc = panel_tile::<R, 1>(x, self.ldx, data.as_ptr().add(p * kp), kp, self.k);
+            self.store::<R, 1>(&acc, p, y);
+            p += 1;
+        }
+    }
+
+    #[inline(always)]
+    fn store<const R: usize, const NP: usize>(
+        &self,
+        acc: &[[[V; 2]; NP]; R],
+        p: usize,
+        y: &mut [f32],
+    ) {
+        for (i, row) in acc.iter().enumerate() {
+            for (j, a) in row.iter().enumerate() {
+                store_panel(
+                    &mut y[i * self.ldy..],
+                    (p + j) * PANEL,
+                    self.n,
+                    a,
+                    self.bias,
+                    self.accumulate,
+                );
+            }
+        }
+    }
+}
+
+/// `dst[o..o + 8] (+)= acc + bias[o..o + 8]`, clipped to `n` outputs.
+#[inline(always)]
+fn store_panel(
+    dst: &mut [f32],
+    o: usize,
+    n: usize,
+    acc: &[V; 2],
+    bias: Option<&[f32]>,
+    accumulate: bool,
+) {
+    if o + PANEL <= n {
+        store4(dst, o, acc[0], bias, o, accumulate);
+        store4(dst, o + 4, acc[1], bias, o + 4, accumulate);
+    } else {
+        let mut tmp = [0.0f32; PANEL];
+        // SAFETY: tmp holds 8 floats
+        unsafe {
+            store(tmp.as_mut_ptr(), acc[0]);
+            store(tmp.as_mut_ptr().add(4), acc[1]);
+        }
+        for j in 0..n - o {
+            store_out(dst, o + j, tmp[j], bias, o + j, accumulate);
+        }
+    }
+}
+
+/// An `R x 8P` tile of a panel product: rows `x + r * ldx`, `k` inputs, `P` consecutive panels
+/// starting at `w` (`kp = 8k` floats apart). aarch64: the inputs of a row are loaded 4 at a
+/// time and broadcast by lane (`fmla v.4s, v.4s, v.s[l]`), k unrolled by 4.
+///
+/// # Safety
+/// Every row must hold `k` readable floats and `w` must hold `P * kp` readable floats.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn panel_tile<const R: usize, const NP: usize>(
+    x: *const f32,
+    ldx: usize,
+    w: *const f32,
+    kp: usize,
+    k: usize,
+) -> [[[V; 2]; NP]; R] {
+    use core::arch::aarch64::*;
+    let mut acc = [[[zero(); 2]; NP]; R];
+    let k4 = k / 4 * 4;
+    let mut i = 0;
+    while i < k4 {
+        let xv: [V; R] = core::array::from_fn(|r| vld1q_f32(x.add(r * ldx + i)));
+        macro_rules! lane {
+            ($l:literal) => {{
+                let wv: [[V; 2]; NP] = core::array::from_fn(|q| {
+                    let wq = w.add(q * kp + (i + $l) * PANEL);
+                    [vld1q_f32(wq), vld1q_f32(wq.add(4))]
+                });
+                for r in 0..R {
+                    for q in 0..NP {
+                        acc[r][q][0] = vfmaq_laneq_f32::<$l>(acc[r][q][0], wv[q][0], xv[r]);
+                        acc[r][q][1] = vfmaq_laneq_f32::<$l>(acc[r][q][1], wv[q][1], xv[r]);
+                    }
+                }
+            }};
+        }
+        lane!(0);
+        lane!(1);
+        lane!(2);
+        lane!(3);
+        i += 4;
+    }
+    while i < k {
+        let wv: [[V; 2]; NP] = core::array::from_fn(|q| {
+            let wq = w.add(q * kp + i * PANEL);
+            [load(wq), load(wq.add(4))]
+        });
+        for r in 0..R {
+            let xv = splat(*x.add(r * ldx + i));
+            for q in 0..NP {
+                acc[r][q][0] = fma(acc[r][q][0], xv, wv[q][0]);
+                acc[r][q][1] = fma(acc[r][q][1], xv, wv[q][1]);
+            }
+        }
+        i += 1;
+    }
+    acc
+}
+
+/// An `R x 8P` tile of a panel product on wasm32: the inputs of a row are loaded 4 at a time
+/// (`v128.load`) and broadcast lane by lane with a 32-bit lane shuffle (one `dup` on arm64,
+/// `pshufd` on x86), k unrolled by 4.
+///
+/// # Safety
+/// Every row must hold `k` readable floats and `w` must hold `P * kp` readable floats.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+#[inline(always)]
+unsafe fn panel_tile<const R: usize, const NP: usize>(
+    x: *const f32,
+    ldx: usize,
+    w: *const f32,
+    kp: usize,
+    k: usize,
+) -> [[[V; 2]; NP]; R] {
+    use core::arch::wasm32::*;
+    let mut acc = [[[zero(); 2]; NP]; R];
+    let k4 = k / 4 * 4;
+    let mut i = 0;
+    while i < k4 {
+        let xv: [V; R] = core::array::from_fn(|r| load(x.add(r * ldx + i)));
+        macro_rules! lane {
+            ($l:literal) => {{
+                let wv: [[V; 2]; NP] = core::array::from_fn(|q| {
+                    let wq = w.add(q * kp + (i + $l) * PANEL);
+                    [load(wq), load(wq.add(4))]
+                });
+                for r in 0..R {
+                    let b = i32x4_shuffle::<$l, $l, $l, $l>(xv[r], xv[r]);
+                    for q in 0..NP {
+                        acc[r][q][0] = fma(acc[r][q][0], b, wv[q][0]);
+                        acc[r][q][1] = fma(acc[r][q][1], b, wv[q][1]);
+                    }
+                }
+            }};
+        }
+        lane!(0);
+        lane!(1);
+        lane!(2);
+        lane!(3);
+        i += 4;
+    }
+    while i < k {
+        let wv: [[V; 2]; NP] = core::array::from_fn(|q| {
+            let wq = w.add(q * kp + i * PANEL);
+            [load(wq), load(wq.add(4))]
+        });
+        for r in 0..R {
+            let xv = splat(*x.add(r * ldx + i));
+            for q in 0..NP {
+                acc[r][q][0] = fma(acc[r][q][0], xv, wv[q][0]);
+                acc[r][q][1] = fma(acc[r][q][1], xv, wv[q][1]);
+            }
+        }
+        i += 1;
+    }
+    acc
+}
+
+/// An `R x 8P` tile of a panel product (one broadcast load per row and input).
+///
+/// # Safety
+/// Every row must hold `k` readable floats and `w` must hold `P * kp` readable floats.
+#[cfg(not(any(
+    target_arch = "aarch64",
+    all(target_arch = "wasm32", target_feature = "simd128")
+)))]
+#[inline(always)]
+unsafe fn panel_tile<const R: usize, const NP: usize>(
+    x: *const f32,
+    ldx: usize,
+    w: *const f32,
+    kp: usize,
+    k: usize,
+) -> [[[V; 2]; NP]; R] {
+    let mut acc = [[[zero(); 2]; NP]; R];
+    for i in 0..k {
+        let wv: [[V; 2]; NP] = core::array::from_fn(|q| {
+            let wq = w.add(q * kp + i * PANEL);
+            [load(wq), load(wq.add(4))]
+        });
+        for r in 0..R {
+            let xv = splat(*x.add(r * ldx + i));
+            for q in 0..NP {
+                acc[r][q][0] = fma(acc[r][q][0], xv, wv[q][0]);
+                acc[r][q][1] = fma(acc[r][q][1], xv, wv[q][1]);
+            }
+        }
+    }
+    acc
+}
+
+// ----------------------------------------------------------------------------- int8 x ternary
+
+/// Scale of the second activation pass of the int8 products: `x ≈ s (q + e / 254)`, with
+/// `|e| ≤ 127` since `|x / s - q| ≤ 1/2`.
+const I8_RESIDUAL: f32 = 254.0;
+
+/// Inputs per group of an int8 dot product (one 32-bit lane: 4 x i8).
+const I8_GROUP: usize = 4;
+
+/// Ternary weights `[n][k]` as int8 for integer dot products, with one f32 scale per output:
+/// panels of 4 outputs (one i32x4 accumulator), and inside a panel groups of 4 inputs, each group
+/// 16 bytes `[o0: k0..k3][o1: k0..k3][o2: ..][o3: ..]`. `k` is padded to a multiple of 16 and
+/// `n` to a multiple of 4 with zero weights.
+#[derive(Clone, Debug, PartialEq)]
+pub struct I8Panels {
+    pub n: usize,
+    pub k: usize,
+    /// `k` rounded up to a multiple of 16.
+    pub k16: usize,
+    /// `n.div_ceil(4) * k16 * 4` bytes.
+    pub data: Vec<i8>,
+    /// Scale of each output (`n`).
+    pub scale: Vec<f32>,
+}
+
+impl I8Panels {
+    /// From trits `t: [n][k]` (each in {−1, 0, +1}) and the row scales.
+    pub fn from_trits(t: &[i8], scale: &[f32], n: usize, k: usize) -> Self {
+        assert!(t.len() >= n * k && scale.len() >= n);
+        let k16 = k.div_ceil(16) * 16;
+        let np = n.div_ceil(4);
+        let mut data = vec![0i8; np * k16 * 4];
+        for o in 0..n {
+            let (p, j) = (o / 4, o % 4);
+            for i in 0..k {
+                let (g, c) = (i / I8_GROUP, i % I8_GROUP);
+                data[p * k16 * 4 + g * 16 + j * 4 + c] = t[o * k + i];
+            }
+        }
+        I8Panels {
+            n,
+            k,
+            k16,
+            data,
+            scale: scale[..n].to_vec(),
+        }
+    }
+
+    /// `y[r][o] (+)= γ_o · Σ_k x[r][k] t[o][k] + bias[o]` with the activations quantized per row
+    /// in two passes (see [`quantize_rows_i8x2`]): `x ≈ s_r (q + e / 254)`, so each product is two
+    /// integer dot products (`sdot` on aarch64, `i32x4.relaxed_dot_i8x16_i7x16_add` on wasm32 with
+    /// `+relaxed-simd`; the ternary weights fit the 7-bit operand). The relative error of the
+    /// activations is below 1 / (127 · 508) of the row maximum (~16-bit).
+    #[allow(clippy::too_many_arguments)]
+    pub fn matmul(
+        &self,
+        x: &[f32],
+        rows: usize,
+        bias: Option<&[f32]>,
+        y: &mut [f32],
+        accumulate: bool,
+        sc: &mut I8Scratch,
+    ) {
+        let (n, k, k16) = (self.n, self.k, self.k16);
+        if rows == 0 || n == 0 {
+            return;
+        }
+        assert!(x.len() >= rows * k && y.len() >= rows * n);
+        if let Some(b) = bias {
+            assert!(b.len() >= n);
+        }
+        sc.ensure(rows, k16);
+        quantize_rows_i8x2(x, rows, k, k16, &mut sc.q, &mut sc.e, &mut sc.s);
+        let np = n.div_ceil(4);
+        let mut r0 = 0;
+        while r0 < rows {
+            let left = rows - r0;
+            let mr = left / left.div_ceil(4);
+            let t = I8Tile {
+                q: &sc.q[r0 * k16..],
+                e: &sc.e[r0 * k16..],
+                s: &sc.s[r0..],
+                w: self,
+                bias,
+                accumulate,
+            };
+            let yr = &mut y[r0 * n..];
+            match mr {
+                4 => t.run::<4>(np, yr),
+                3 => t.run::<3>(np, yr),
+                2 => t.run::<2>(np, yr),
+                _ => t.run::<1>(np, yr),
+            }
+            r0 += mr;
+        }
+    }
+}
+
+/// Quantized activations of [`I8Panels::matmul`].
+#[derive(Clone, Debug, Default)]
+pub struct I8Scratch {
+    q: Vec<i8>,
+    e: Vec<i8>,
+    s: Vec<f32>,
+}
+
+impl I8Scratch {
+    fn ensure(&mut self, rows: usize, k16: usize) {
+        if self.q.len() < rows * k16 {
+            self.q.resize(rows * k16, 0);
+            self.e.resize(rows * k16, 0);
+        }
+        if self.s.len() < rows {
+            self.s.resize(rows, 0.0);
+        }
+    }
+}
+
+/// Two-pass int8 quantization of `rows` rows of `k` values (rows of `k16` bytes, zero-padded):
+/// `s = max|x| / 127`, `q = round(x / s)` and `e = round((x / s - q) · 254)` (|e| ≤ 127).
+pub fn quantize_rows_i8x2(
+    x: &[f32],
+    rows: usize,
+    k: usize,
+    k16: usize,
+    q: &mut [i8],
+    e: &mut [i8],
+    s: &mut [f32],
+) {
+    for r in 0..rows {
+        let xr = &x[r * k..(r + 1) * k];
+        let amax = xr.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        let sr = amax / 127.0;
+        let inv = if sr > 0.0 { 1.0 / sr } else { 0.0 };
+        s[r] = sr;
+        let (qr, er) = (
+            &mut q[r * k16..(r + 1) * k16],
+            &mut e[r * k16..(r + 1) * k16],
+        );
+        for ((qv, ev), &v) in qr.iter_mut().zip(er.iter_mut()).zip(xr) {
+            let t = v * inv;
+            let a = t.round_ties_even();
+            *qv = a as i8;
+            *ev = ((t - a) * I8_RESIDUAL).round_ties_even() as i8;
+        }
+        qr[k..].fill(0);
+        er[k..].fill(0);
+    }
+}
+
+/// Rows `R` of an [`I8Panels`] product.
+struct I8Tile<'a> {
+    q: &'a [i8],
+    e: &'a [i8],
+    s: &'a [f32],
+    w: &'a I8Panels,
+    bias: Option<&'a [f32]>,
+    accumulate: bool,
+}
+
+impl I8Tile<'_> {
+    #[inline(always)]
+    fn run<const R: usize>(&self, np: usize, y: &mut [f32]) {
+        let (n, k16) = (self.w.n, self.w.k16);
+        let kp = k16 * 4;
+        assert!(self.q.len() >= (R - 1) * k16 + k16 && self.e.len() >= (R - 1) * k16 + k16);
+        assert!(self.w.data.len() >= np * kp);
+        let mut p = 0;
+        while p < np {
+            let pp = if p + 2 <= np { 2 } else { 1 };
+            // SAFETY: R rows of k16 bytes (asserted above), panels p..p + pp of kp bytes
+            let (aq, ae) = unsafe {
+                let w = self.w.data.as_ptr().add(p * kp);
+                if pp == 2 {
+                    let (a, b) = i8_tile::<R, 2>(self.q.as_ptr(), self.e.as_ptr(), k16, w, kp);
+                    (
+                        core::array::from_fn::<_, R, _>(|r| [a[r][0], a[r][1]]),
+                        core::array::from_fn::<_, R, _>(|r| [b[r][0], b[r][1]]),
+                    )
+                } else {
+                    let (a, b) = i8_tile::<R, 1>(self.q.as_ptr(), self.e.as_ptr(), k16, w, kp);
+                    (
+                        core::array::from_fn::<_, R, _>(|r| [a[r][0], a[r][0]]),
+                        core::array::from_fn::<_, R, _>(|r| [b[r][0], b[r][0]]),
+                    )
+                }
+            };
+            for r in 0..R {
+                for j in 0..pp {
+                    let o = (p + j) * 4;
+                    let v = fma(i2f(aq[r][j]), splat(1.0 / I8_RESIDUAL), i2f(ae[r][j]));
+                    let v = fma(zero(), v, splat(self.s[r]));
+                    let dst = &mut y[r * n..];
+                    if o + 4 <= n {
+                        // SAFETY: 4 scales from o (checked)
+                        let g = unsafe { load(self.w.scale[o..o + 4].as_ptr()) };
+                        store4(dst, o, fma(zero(), v, g), self.bias, o, self.accumulate);
+                    } else {
+                        let mut tmp = [0.0f32; 4];
+                        // SAFETY: tmp holds 4 floats
+                        unsafe { store(tmp.as_mut_ptr(), v) };
+                        for c in 0..n - o {
+                            let val = tmp[c] * self.w.scale[o + c];
+                            store_out(dst, o + c, val, self.bias, o + c, self.accumulate);
+                        }
+                    }
+                }
+            }
+            p += pp;
+        }
+    }
+}
+
+/// `R` rows x `NP` panels of 4 outputs: integer accumulators of `q · t` and `e · t`.
+///
+/// # Safety
+/// `q` and `e` hold `R` rows of `k16` bytes, `w` holds `NP` panels of `kp = 4 k16` bytes.
+#[cfg(all(target_arch = "aarch64", target_feature = "dotprod"))]
+#[inline(always)]
+unsafe fn i8_tile<const R: usize, const NP: usize>(
+    q: *const i8,
+    e: *const i8,
+    k16: usize,
+    w: *const i8,
+    kp: usize,
+) -> ([[VI; NP]; R], [[VI; NP]; R]) {
+    use core::arch::aarch64::*;
+    #[inline(always)]
+    unsafe fn sdot<const L: i32>(acc: int32x4_t, w: int8x16_t, x: int8x16_t) -> int32x4_t {
+        let mut r = acc;
+        core::arch::asm!("sdot {0:v}.4s, {1:v}.16b, {2:v}.4b[{l}]", inout(vreg) r, in(vreg) w,
+                         in(vreg) x, l = const L, options(pure, nomem, nostack));
+        r
+    }
+    let mut aq = [[vdupq_n_s32(0); NP]; R];
+    let mut ae = [[vdupq_n_s32(0); NP]; R];
+    let mut kb = 0;
+    while kb < k16 {
+        let xq: [int8x16_t; R] = core::array::from_fn(|r| vld1q_s8(q.add(r * k16 + kb)));
+        let xe: [int8x16_t; R] = core::array::from_fn(|r| vld1q_s8(e.add(r * k16 + kb)));
+        macro_rules! group {
+            ($l:literal) => {{
+                let wv: [int8x16_t; NP] =
+                    core::array::from_fn(|p| vld1q_s8(w.add(p * kp + (kb / 4 + $l) * 16)));
+                for r in 0..R {
+                    for p in 0..NP {
+                        aq[r][p] = sdot::<$l>(aq[r][p], wv[p], xq[r]);
+                        ae[r][p] = sdot::<$l>(ae[r][p], wv[p], xe[r]);
+                    }
+                }
+            }};
+        }
+        group!(0);
+        group!(1);
+        group!(2);
+        group!(3);
+        kb += 16;
+    }
+    (aq, ae)
+}
+
+/// `R` rows x `NP` panels of 4 outputs (wasm32 `+relaxed-simd`): each group of 4 activations is
+/// broadcast with `v128.load32_splat` and multiplied by 4 outputs' weights with one relaxed dot.
+///
+/// # Safety
+/// `q` and `e` hold `R` rows of `k16` bytes, `w` holds `NP` panels of `kp = 4 k16` bytes.
+#[cfg(all(
+    target_arch = "wasm32",
+    target_feature = "simd128",
+    target_feature = "relaxed-simd"
+))]
+#[inline(always)]
+unsafe fn i8_tile<const R: usize, const NP: usize>(
+    q: *const i8,
+    e: *const i8,
+    k16: usize,
+    w: *const i8,
+    kp: usize,
+) -> ([[VI; NP]; R], [[VI; NP]; R]) {
+    use core::arch::wasm32::*;
+    let mut aq = [[i32x4_splat(0); NP]; R];
+    let mut ae = [[i32x4_splat(0); NP]; R];
+    for g in 0..k16 / I8_GROUP {
+        let wv: [v128; NP] =
+            core::array::from_fn(|p| v128_load(w.add(p * kp + g * 16) as *const v128));
+        for r in 0..R {
+            let xq = v128_load32_splat(q.add(r * k16 + g * I8_GROUP) as *const u32);
+            let xe = v128_load32_splat(e.add(r * k16 + g * I8_GROUP) as *const u32);
+            for p in 0..NP {
+                aq[r][p] = i32x4_relaxed_dot_i8x16_i7x16_add(xq, wv[p], aq[r][p]);
+                ae[r][p] = i32x4_relaxed_dot_i8x16_i7x16_add(xe, wv[p], ae[r][p]);
+            }
+        }
+    }
+    (aq, ae)
+}
+
+/// Portable `R` rows x `NP` panels of 4 outputs (exact integer sums).
+///
+/// # Safety
+/// `q` and `e` hold `R` rows of `k16` bytes, `w` holds `NP` panels of `kp = 4 k16` bytes.
+#[cfg(not(any(
+    all(target_arch = "aarch64", target_feature = "dotprod"),
+    all(
+        target_arch = "wasm32",
+        target_feature = "simd128",
+        target_feature = "relaxed-simd"
+    )
+)))]
+#[inline(always)]
+unsafe fn i8_tile<const R: usize, const NP: usize>(
+    q: *const i8,
+    e: *const i8,
+    k16: usize,
+    w: *const i8,
+    kp: usize,
+) -> ([[VI; NP]; R], [[VI; NP]; R]) {
+    let mut aq = [[[0i32; 4]; NP]; R];
+    let mut ae = [[[0i32; 4]; NP]; R];
+    for g in 0..k16 / I8_GROUP {
+        for p in 0..NP {
+            let wg = w.add(p * kp + g * 16);
+            for r in 0..R {
+                for j in 0..4 {
+                    for c in 0..I8_GROUP {
+                        let wt = *wg.add(j * 4 + c) as i32;
+                        aq[r][p][j] += *q.add(r * k16 + g * I8_GROUP + c) as i32 * wt;
+                        ae[r][p][j] += *e.add(r * k16 + g * I8_GROUP + c) as i32 * wt;
+                    }
+                }
+            }
+        }
+    }
+    (aq.map(|r| r.map(vi_from)), ae.map(|r| r.map(vi_from)))
+}
+
+/// `[i32; 4]` as an integer SIMD vector.
+#[cfg(not(any(
+    all(target_arch = "aarch64", target_feature = "dotprod"),
+    all(
+        target_arch = "wasm32",
+        target_feature = "simd128",
+        target_feature = "relaxed-simd"
+    )
+)))]
+#[inline(always)]
+fn vi_from(a: [i32; 4]) -> VI {
+    // SAFETY: VI is 4 x i32 on every target (plain array, int32x4_t, v128 or __m128i)
+    unsafe { core::mem::transmute::<[i32; 4], VI>(a) }
+}
+
 // ----------------------------------------------------------------------------- Q8_0 products
 
 #[inline(always)]
@@ -969,17 +1717,18 @@ pub fn matmul_q8(
 /// LayerNorm of each row of `x` (`d` columns) into `out` (may be the same buffer through
 /// [`layer_norm_inplace`]).
 pub fn layer_norm(x: &[f32], d: usize, w: &[f32], b: Option<&[f32]>, eps: f32, out: &mut [f32]) {
+    let w = &w[..d];
     for (xr, or) in x.chunks_exact(d).zip(out.chunks_exact_mut(d)) {
         let (mean, rstd) = moments(xr, eps);
         match b {
             Some(b) => {
-                for i in 0..d {
-                    or[i] = (xr[i] - mean) * rstd * w[i] + b[i];
+                for (((o, &v), &g), &c) in or.iter_mut().zip(xr).zip(w).zip(&b[..d]) {
+                    *o = (v - mean) * rstd * g + c;
                 }
             }
             None => {
-                for i in 0..d {
-                    or[i] = (xr[i] - mean) * rstd * w[i];
+                for ((o, &v), &g) in or.iter_mut().zip(xr).zip(w) {
+                    *o = (v - mean) * rstd * g;
                 }
             }
         }
@@ -987,20 +1736,66 @@ pub fn layer_norm(x: &[f32], d: usize, w: &[f32], b: Option<&[f32]>, eps: f32, o
 }
 
 pub fn layer_norm_inplace(x: &mut [f32], d: usize, w: &[f32], b: Option<&[f32]>, eps: f32) {
+    let w = &w[..d];
     for xr in x.chunks_exact_mut(d) {
         let (mean, rstd) = moments(xr, eps);
-        for i in 0..d {
-            xr[i] = (xr[i] - mean) * rstd * w[i] + b.map_or(0.0, |b| b[i]);
+        match b {
+            Some(b) => {
+                for ((v, &g), &c) in xr.iter_mut().zip(w).zip(&b[..d]) {
+                    *v = (*v - mean) * rstd * g + c;
+                }
+            }
+            None => {
+                for (v, &g) in xr.iter_mut().zip(w) {
+                    *v = (*v - mean) * rstd * g;
+                }
+            }
         }
     }
 }
 
+/// Mean and `1 / sqrt(var + eps)` of a row (two passes, 8 SIMD partial sums: a plain `f32` sum
+/// does not vectorize and its 4-cycle add chain dominated the norms of short rows).
 #[inline]
 fn moments(x: &[f32], eps: f32) -> (f32, f32) {
-    let n = x.len() as f32;
-    let mean = x.iter().sum::<f32>() / n;
-    let var = x.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / n;
-    (mean, 1.0 / (var + eps).sqrt())
+    let n = x.len();
+    let n8 = n / 8 * 8;
+    let p = x.as_ptr();
+    let (mut a0, mut a1) = (zero(), zero());
+    let one = splat(1.0);
+    // SAFETY: offsets i + 8 <= n8 <= n
+    unsafe {
+        let mut i = 0;
+        while i < n8 {
+            a0 = fma(a0, load(p.add(i)), one);
+            a1 = fma(a1, load(p.add(i + 4)), one);
+            i += 8;
+        }
+    }
+    let mut sum = hsum(a0) + hsum(a1);
+    for &v in &x[n8..] {
+        sum += v;
+    }
+    let mean = sum / n as f32;
+    let vm = splat(mean);
+    let (mut b0, mut b1) = (zero(), zero());
+    let neg = splat(-1.0);
+    // SAFETY: as above
+    unsafe {
+        let mut i = 0;
+        while i < n8 {
+            let d0 = fma(load(p.add(i)), vm, neg);
+            let d1 = fma(load(p.add(i + 4)), vm, neg);
+            b0 = fma(b0, d0, d0);
+            b1 = fma(b1, d1, d1);
+            i += 8;
+        }
+    }
+    let mut var = hsum(b0) + hsum(b1);
+    for &v in &x[n8..] {
+        var += (v - mean) * (v - mean);
+    }
+    (mean, 1.0 / (var / n as f32 + eps).sqrt())
 }
 
 /// `e^x` without a libm call (branch-free, vectorizes in loops): Cody-Waite range reduction
@@ -1039,6 +1834,17 @@ pub fn erf(x: f32) -> f32 {
 #[inline]
 pub fn gelu(x: f32) -> f32 {
     0.5 * x * (1.0 + erf(x * std::f32::consts::FRAC_1_SQRT_2))
+}
+
+/// GeGLU of one row: `out[j] = gelu(up[j]) * up[ff + j]` with `ff = out.len()` (the first half
+/// of `up` is the input, the second half the gate). Branch-free, so it vectorizes.
+#[inline]
+pub fn geglu(up: &[f32], out: &mut [f32]) {
+    let ff = out.len();
+    let (a, g) = up[..2 * ff].split_at(ff);
+    for ((o, &x), &gate) in out.iter_mut().zip(a).zip(g) {
+        *o = gelu(x) * gate;
+    }
 }
 
 /// Softmax in place.
@@ -1216,6 +2022,246 @@ impl<'a> Attention<'a> {
     }
 }
 
+/// Scratch buffers of [`self_attention`].
+#[derive(Clone, Debug, Default)]
+pub struct SelfAttnScratch {
+    kp: Vec<f32>,
+    vp: Vec<f32>,
+    s: Vec<f32>,
+}
+
+/// Full bidirectional self-attention of `t` rows of fused `qkv` (`[t][3d]`: queries, keys,
+/// values; `n_heads` heads of `head_dim`) into `out` (row `r` at `r * ldo`). For the few tokens
+/// of a state stream, both products go through the panel kernel: per head, the keys are packed
+/// as a panel matrix (`t` outputs) for `Q Kᵀ`, and the values as one (`head_dim` outputs, `t`
+/// inputs) for `P V`.
+pub fn self_attention(
+    qkv: &[f32],
+    t: usize,
+    n_heads: usize,
+    head_dim: usize,
+    out: &mut [f32],
+    ldo: usize,
+    sc: &mut SelfAttnScratch,
+) {
+    let hd = head_dim;
+    let d = n_heads * hd;
+    let ld = 3 * d;
+    let scale = 1.0 / (hd as f32).sqrt();
+    let (npk, npv) = (t.div_ceil(PANEL), hd.div_ceil(PANEL));
+    for (v, n) in [
+        (&mut sc.kp, npk * hd * PANEL),
+        (&mut sc.vp, npv * t * PANEL),
+        (&mut sc.s, t * t),
+    ] {
+        if v.len() < n {
+            v.resize(n, 0.0);
+        }
+    }
+    let kp = &mut sc.kp[..npk * hd * PANEL];
+    let vp = &mut sc.vp[..npv * t * PANEL];
+    let s = &mut sc.s[..t * t];
+    for h in 0..n_heads {
+        pack_outputs(&qkv[d + h * hd..], ld, t, hd, kp);
+        panel_matmul(kp, t, hd, &qkv[h * hd..], ld, t, None, s, t, false);
+        for row in s.chunks_exact_mut(t) {
+            row.iter_mut().for_each(|v| *v *= scale);
+            softmax(row);
+        }
+        pack_inputs(&qkv[2 * d + h * hd..], ld, t, hd, vp);
+        panel_matmul(vp, hd, t, s, t, t, None, &mut out[h * hd..], ldo, false);
+    }
+}
+
+/// Floats of the panel layout of `n` outputs x `k` inputs.
+#[inline]
+pub fn panel_len(n: usize, k: usize) -> usize {
+    n.div_ceil(PANEL) * k * PANEL
+}
+
+/// Pack a matrix whose `rows` rows (stride `ld`, `cols` used) are the outputs into the panel
+/// layout (`rows` outputs, `cols` inputs): `dst[p][i][j] = src[(8p + j) * ld + i]`.
+pub fn pack_outputs(src: &[f32], ld: usize, rows: usize, cols: usize, dst: &mut [f32]) {
+    let np = rows.div_ceil(PANEL);
+    let dst = &mut dst[..np * cols * PANEL];
+    if !rows.is_multiple_of(PANEL) {
+        dst[(np - 1) * cols * PANEL..].fill(0.0);
+    }
+    for j in 0..rows {
+        let (p, jj) = (j / PANEL, j % PANEL);
+        let panel = &mut dst[p * cols * PANEL..(p + 1) * cols * PANEL];
+        for (i, &v) in src[j * ld..j * ld + cols].iter().enumerate() {
+            panel[i * PANEL + jj] = v;
+        }
+    }
+}
+
+/// Pack a matrix whose `rows` rows (stride `ld`, `cols` used) are the inputs into the panel layout
+/// (`cols` outputs, `rows` inputs): `dst[p][j][c] = src[j * ld + 8p + c]`.
+pub fn pack_inputs(src: &[f32], ld: usize, rows: usize, cols: usize, dst: &mut [f32]) {
+    for p in 0..cols.div_ceil(PANEL) {
+        let c0 = p * PANEL;
+        let w = (cols - c0).min(PANEL);
+        for j in 0..rows {
+            let d = &mut dst[(p * rows + j) * PANEL..(p * rows + j + 1) * PANEL];
+            let s = &src[j * ld + c0..j * ld + c0 + w];
+            if let (Ok(d), Ok(s)) = (
+                <&mut [f32; PANEL]>::try_from(&mut *d),
+                <&[f32; PANEL]>::try_from(s),
+            ) {
+                // a fixed-size copy (a call to memcpy per 8 floats costs more on wasm32)
+                *d = *s;
+            } else {
+                d[..w].copy_from_slice(s);
+                d[w..].fill(0.0);
+            }
+        }
+    }
+}
+
+/// Keys and values of [`attend`]: `n` rows, key `j` (all heads) at `k[j * stride..]` and value
+/// `j` at `v[j * stride..]`.
+#[derive(Clone, Copy, Debug)]
+pub struct KvSeg<'a> {
+    pub k: &'a [f32],
+    pub v: &'a [f32],
+    pub stride: usize,
+    pub n: usize,
+}
+
+/// Softmax state of queries over keys already seen (online-softmax merge): per query and head the
+/// max score `m`, the sum `l` of `exp(s - m)` and the unnormalized output `o = Σ exp(s - m) v`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AttnPartial {
+    /// `[n_q][n_heads]`
+    pub m: Vec<f32>,
+    /// `[n_q][n_heads]`
+    pub l: Vec<f32>,
+    /// `[n_q][n_heads * head_dim]`
+    pub o: Vec<f32>,
+}
+
+/// Bidirectional attention of a few queries over a few keys (no transposes, no tiling: the state
+/// tokens of a frame, the option markers). Query `i` is `q[i * q_stride..]`, its output goes to
+/// `out[i * out_stride..]`; the keys are the concatenation of `segs`, plus the keys summarized by
+/// `prior` if given. `scores` is scratch (grown to the number of keys).
+#[allow(clippy::too_many_arguments)]
+pub fn attend(
+    q: &[f32],
+    q_stride: usize,
+    n_q: usize,
+    segs: &[KvSeg<'_>],
+    n_heads: usize,
+    head_dim: usize,
+    prior: Option<&AttnPartial>,
+    out: &mut [f32],
+    out_stride: usize,
+    scores: &mut Vec<f32>,
+) {
+    let hd = head_dim;
+    let scale = 1.0 / (hd as f32).sqrt();
+    let n_kv: usize = segs.iter().map(|s| s.n).sum();
+    if scores.len() < n_kv {
+        scores.resize(n_kv, 0.0);
+    }
+    for i in 0..n_q {
+        for h in 0..n_heads {
+            let qi = &q[i * q_stride + h * hd..i * q_stride + (h + 1) * hd];
+            let mut m = f32::NEG_INFINITY;
+            let mut j = 0;
+            for s in segs {
+                for r in 0..s.n {
+                    let kr = &s.k[r * s.stride + h * hd..r * s.stride + (h + 1) * hd];
+                    let v = dot(qi, kr) * scale;
+                    scores[j] = v;
+                    m = m.max(v);
+                    j += 1;
+                }
+            }
+            let (pm, pl) = match prior {
+                Some(p) => (p.m[i * n_heads + h], p.l[i * n_heads + h]),
+                None => (f32::NEG_INFINITY, 0.0),
+            };
+            let mm = m.max(pm);
+            let o = &mut out[i * out_stride + h * hd..i * out_stride + (h + 1) * hd];
+            let mut l = 0.0;
+            match prior {
+                Some(p) if pl > 0.0 => {
+                    let c = fast_exp(pm - mm);
+                    l += pl * c;
+                    let po = &p.o[i * n_heads * hd + h * hd..i * n_heads * hd + (h + 1) * hd];
+                    for (a, &b) in o.iter_mut().zip(po) {
+                        *a = b * c;
+                    }
+                }
+                _ => o.fill(0.0),
+            }
+            let mut j = 0;
+            for s in segs {
+                for r in 0..s.n {
+                    let e = fast_exp(scores[j] - mm);
+                    l += e;
+                    axpy(
+                        e,
+                        &s.v[r * s.stride + h * hd..r * s.stride + (h + 1) * hd],
+                        o,
+                    );
+                    j += 1;
+                }
+            }
+            let inv = 1.0 / l;
+            o.iter_mut().for_each(|v| *v *= inv);
+        }
+    }
+}
+
+/// The [`AttnPartial`] of `n_q` queries over the keys of `seg` (to be merged later by
+/// [`attend`]).
+pub fn attend_partial(
+    q: &[f32],
+    q_stride: usize,
+    n_q: usize,
+    seg: KvSeg<'_>,
+    n_heads: usize,
+    head_dim: usize,
+) -> AttnPartial {
+    let hd = head_dim;
+    let scale = 1.0 / (hd as f32).sqrt();
+    let mut p = AttnPartial {
+        m: vec![f32::NEG_INFINITY; n_q * n_heads],
+        l: vec![0.0; n_q * n_heads],
+        o: vec![0.0; n_q * n_heads * hd],
+    };
+    let mut sc = vec![0.0; seg.n];
+    for i in 0..n_q {
+        for h in 0..n_heads {
+            let qi = &q[i * q_stride + h * hd..i * q_stride + (h + 1) * hd];
+            let mut m = f32::NEG_INFINITY;
+            for (r, v) in sc.iter_mut().enumerate() {
+                *v = dot(
+                    qi,
+                    &seg.k[r * seg.stride + h * hd..r * seg.stride + (h + 1) * hd],
+                ) * scale;
+                m = m.max(*v);
+            }
+            let o = &mut p.o[i * n_heads * hd + h * hd..i * n_heads * hd + (h + 1) * hd];
+            let mut l = 0.0;
+            for (r, &v) in sc.iter().enumerate() {
+                let e = fast_exp(v - m);
+                l += e;
+                axpy(
+                    e,
+                    &seg.v[r * seg.stride + h * hd..r * seg.stride + (h + 1) * hd],
+                    o,
+                );
+            }
+            p.m[i * n_heads + h] = m;
+            p.l[i * n_heads + h] = l;
+        }
+    }
+    p
+}
+
 /// Plain reference implementations (used by tests to validate the SIMD kernels).
 pub mod scalar {
     use super::{ActBlock, BlockQ8};
@@ -1321,6 +2367,93 @@ mod tests {
             matmul_f32(&x, rows, k, &w, n, Some(&b), &mut y, true);
             for (a, c) in y.iter().zip(&yr) {
                 assert!((a - 2.0 * c).abs() < 2e-4);
+            }
+        }
+    }
+
+    #[test]
+    fn panel_matmul_matches_scalar() {
+        let mut seed = 17;
+        for &(rows, k, n) in &[
+            (1, 4, 1),
+            (3, 7, 5),
+            (8, 96, 288),
+            (9, 96, 13),
+            (17, 193, 33),
+            (6, 36, 2),
+            (16, 64, 8),
+            (2, 192, 96),
+        ] {
+            let x = rnd(rows * k, &mut seed);
+            let w = rnd(n * k, &mut seed);
+            let b = rnd(n, &mut seed);
+            let m = PanelMatrix::from_rows(&w, n, k);
+            assert_eq!(m.to_rows(), w);
+            let mut y = vec![0.0; rows * n];
+            let mut yr = vec![0.0; rows * n];
+            m.matmul(&x, k, rows, Some(&b), &mut y, n, false);
+            scalar::matmul_f32(&x, rows, k, &w, n, Some(&b), &mut yr);
+            for (a, c) in y.iter().zip(&yr) {
+                assert!((a - c).abs() < 1e-4, "{rows}x{k}x{n}: {a} vs {c}");
+            }
+            m.matmul(&x, k, rows, None, &mut y, n, true);
+            for (i, (a, c)) in y.iter().zip(&yr).enumerate() {
+                let want = 2.0 * c - b[i % n];
+                assert!((a - want).abs() < 2e-4);
+            }
+            // strided rows: x inside a wider buffer, y into a wider buffer
+            let (ldx, ldy) = (k + 3, n + 5);
+            let mut xs = vec![0.0; rows * ldx];
+            for r in 0..rows {
+                xs[r * ldx..r * ldx + k].copy_from_slice(&x[r * k..(r + 1) * k]);
+            }
+            let mut ys = vec![7.0; rows * ldy];
+            m.matmul(&xs, ldx, rows, Some(&b), &mut ys, ldy, false);
+            for r in 0..rows {
+                for o in 0..n {
+                    assert!((ys[r * ldy + o] - yr[r * n + o]).abs() < 1e-4);
+                }
+                assert!(ys[r * ldy + n..(r + 1) * ldy].iter().all(|&v| v == 7.0));
+            }
+        }
+    }
+
+    #[test]
+    fn int8_ternary_matches_f32() {
+        let mut seed = 41;
+        for &(rows, k, n) in &[
+            (1, 4, 1),
+            (3, 7, 5),
+            (9, 96, 288),
+            (9, 192, 96),
+            (2, 96, 13),
+            (17, 50, 8),
+        ] {
+            let x = rnd(rows * k, &mut seed);
+            let w = rnd(n * k, &mut seed);
+            let b = rnd(n, &mut seed);
+            let t = crate::ternary::TernaryMatrix::from_f32(&w, n, k);
+            let m = I8Panels::from_trits(&t.trits(), &t.scale, n, k);
+            let mut y = vec![0.0; rows * n];
+            let mut sc = I8Scratch::default();
+            m.matmul(&x, rows, Some(&b), &mut y, false, &mut sc);
+            let mut yr = vec![0.0; rows * n];
+            scalar::matmul_f32(&x, rows, k, &t.to_f32(), n, Some(&b), &mut yr);
+            // ~16-bit activations: error below 1 / (127 * 508) of the row max per input
+            for r in 0..rows {
+                let amax = x[r * k..(r + 1) * k]
+                    .iter()
+                    .fold(0.0f32, |m, v| m.max(v.abs()));
+                for o in 0..n {
+                    let bound = amax / (127.0 * 508.0) * t.scale[o] * k as f32 + 1e-5;
+                    let (a, c) = (y[r * n + o], yr[r * n + o]);
+                    assert!((a - c).abs() <= bound, "{rows}x{k}x{n}: {a} vs {c}");
+                }
+            }
+            // accumulate adds on top
+            m.matmul(&x, rows, None, &mut y, true, &mut sc);
+            for (i, (a, c)) in y.iter().zip(&yr).enumerate() {
+                assert!((a - (2.0 * c - b[i % n])).abs() < 1e-3);
             }
         }
     }
@@ -1503,6 +2636,122 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn panel_self_attention_matches_tiled() {
+        let mut seed = 31;
+        for &(t, nh, hd) in &[(9, 1, 96), (5, 2, 12), (17, 3, 20), (1, 1, 8)] {
+            let d = nh * hd;
+            let qkv = rnd(t * 3 * d, &mut seed);
+            let a = Attention {
+                k: &qkv[d..],
+                v: &qkv[2 * d..],
+                kv_stride: 3 * d,
+                n_kv: t,
+                n_heads: nh,
+                head_dim: hd,
+                window: None,
+            };
+            let pos: Vec<usize> = (0..t).collect();
+            let mut want = vec![0.0; t * d];
+            a.run(
+                &qkv,
+                3 * d,
+                &pos,
+                &mut want,
+                d,
+                &mut AttnScratch::new(t, hd),
+            );
+            let mut got = vec![0.0; t * (d + 3)];
+            let mut sc = SelfAttnScratch::default();
+            self_attention(&qkv, t, nh, hd, &mut got, d + 3, &mut sc);
+            for r in 0..t {
+                for c in 0..d {
+                    assert!((got[r * (d + 3) + c] - want[r * d + c]).abs() < 1e-5);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn small_attention_matches_naive_and_merges_partials() {
+        let mut seed = 23;
+        let (nh, hd, n_q) = (2, 12, 3);
+        let d = nh * hd;
+        let (n_a, n_b) = (5, 7);
+        let q = rnd(n_q * d, &mut seed);
+        let ka = rnd(n_a * 2 * d, &mut seed);
+        let kb = rnd(n_b * 2 * d, &mut seed);
+        // naive over a ++ b
+        let key = |j: usize, h: usize, c: usize, v: bool| {
+            let off = if v { d } else { 0 };
+            if j < n_a {
+                ka[j * 2 * d + off + h * hd + c]
+            } else {
+                kb[(j - n_a) * 2 * d + off + h * hd + c]
+            }
+        };
+        let mut want = vec![0.0f32; n_q * d];
+        for i in 0..n_q {
+            for h in 0..nh {
+                let mut sv: Vec<f32> = (0..n_a + n_b)
+                    .map(|j| {
+                        (0..hd)
+                            .map(|c| q[i * d + h * hd + c] * key(j, h, c, false))
+                            .sum::<f32>()
+                            / (hd as f32).sqrt()
+                    })
+                    .collect();
+                softmax(&mut sv);
+                for c in 0..hd {
+                    want[i * d + h * hd + c] = sv
+                        .iter()
+                        .enumerate()
+                        .map(|(j, p)| p * key(j, h, c, true))
+                        .sum();
+                }
+            }
+        }
+        fn seg(k: &[f32], n: usize, d: usize) -> KvSeg<'_> {
+            KvSeg {
+                k,
+                v: &k[d..],
+                stride: 2 * d,
+                n,
+            }
+        }
+        let mut sc = Vec::new();
+        let mut out = vec![0.0; n_q * d];
+        attend(
+            &q,
+            d,
+            n_q,
+            &[seg(&ka, n_a, d), seg(&kb, n_b, d)],
+            nh,
+            hd,
+            None,
+            &mut out,
+            d,
+            &mut sc,
+        );
+        let close = |a: &[f32]| a.iter().zip(&want).all(|(x, y)| (x - y).abs() < 1e-5);
+        assert!(close(&out));
+        let prior = attend_partial(&q, d, n_q, seg(&kb, n_b, d), nh, hd);
+        let mut out2 = vec![0.0; n_q * d];
+        attend(
+            &q,
+            d,
+            n_q,
+            &[seg(&ka, n_a, d)],
+            nh,
+            hd,
+            Some(&prior),
+            &mut out2,
+            d,
+            &mut sc,
+        );
+        assert!(close(&out2));
     }
 
     #[test]

@@ -665,6 +665,48 @@ impl Engine {
         Ok(p)
     }
 
+    /// [`Engine::decide_raw`] for one frame of a game stream (SPEC-S3 §7): with a
+    /// `temporal_carry` model, the state encoder of a new frame starts from the final latent of
+    /// the stream's previous frame when their state token ids match (else cold), so a stream
+    /// needs one id per game session and [`Engine::reset_stream`] on episode reset. Questions
+    /// with the same state text belong to the same frame (the encoding is shared). Models without
+    /// `temporal_carry` (and s1) answer exactly like [`Engine::decide_raw`].
+    pub fn decide_raw_stream<S: AsRef<str>>(
+        &mut self,
+        stream: u64,
+        qtype: QType,
+        instructions: &str,
+        options: &[S],
+        state: &str,
+    ) -> Result<Vec<f32>> {
+        let t0 = timer::now();
+        let p = match &mut self.inner {
+            Inner::S2(e) => {
+                let o = e.question_stream(stream, qtype, instructions, options, state)?;
+                self.last = Some(DecisionStats {
+                    exit: Some(o.exit),
+                    layers_used: Some(o.layers_used),
+                    n_exits: e.model().cfg.exits.len(),
+                    static_hit: o.static_hit,
+                    state_hit: o.state_hit,
+                    tokens: o.tokens,
+                });
+                o.probs
+            }
+            Inner::S1(_) => self.question(qtype, instructions, options, state)?.0,
+        };
+        self.last_micros = timer::since(t0);
+        Ok(p)
+    }
+
+    /// Forget the frames of a stream (see [`Engine::decide_raw_stream`]): its next frame starts
+    /// cold.
+    pub fn reset_stream(&mut self, stream: u64) {
+        if let Inner::S2(e) = &mut self.inner {
+            e.reset_stream(stream);
+        }
+    }
+
     /// Probabilities at every exit without early exit (s2); s1 has a single "exit".
     pub fn probs_per_exit<S: AsRef<str>>(
         &mut self,

@@ -1,0 +1,60 @@
+# 21 · s3: a 251 KB model that plays four games
+
+s3 is the result of one night of research and experiments, aimed at the smallest and fastest model that still plays every game as well as the oracle. It is s2 (chapter 19) with three changes, each taken from recent work. The spec is in [`docs/SPEC-S3.md`](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S3.md), and the research notes with their sources are in [`docs/research-night.md`](https://github.com/maxgfr/skycmd/blob/main/docs/research-night.md).
+
+## The result
+
+| model | params | file | flappy | rescue | dodge (oracle 0.867) | doom | dodge vetoes | per Flappy frame, WASM |
+|---|---:|---:|---|---|---|---|---:|---:|
+| **s3-pico** | **445,345** | **251 KB** ternary | 200/200, 0 crashes | 100 % | **0.867** | 100 % levels, kills = oracle | **14** | **≈ 50 µs** |
+| s2-nano | 1,532,033 | 702 KB ternary | 200/200 | 100 % | 0.867 | (doom fine-tune) | 25 | ≈ 409 µs |
+| s1-pico | 202,305 | 545 KB f16 | 200/200 | 100 % | 0.833 | — | 1,026 | ≈ 589 µs |
+
+- **Games**: 30 seeded episodes per game in `sky-arena`, with the shipped GGUF files (`runs/ship-*.arena.json`). s3-pico also completes 100 % of Doom-like levels and kills as many monsters as the oracle (0.77), with no deaths.
+- **Latency**: median per Flappy frame (both questions plus physics) in the browser WASM module under Node, on the build machine (`crates/sky-web/bench/bench-node.mjs`). Natively, `sky-arena` measures a median of 21 µs per Flappy decision for s3-pico.
+- **Held-out accuracy** (test split, Doom excluded): s3-pico 0.543, s2-nano 0.544, s1-pico 0.479 (BENCH.md, s3 section). s3-pico matches s2-nano with 3.4× fewer parameters and a 2.8× smaller file.
+
+## Change 1: one token per measured value
+
+FT-Transformer turns each column of a table into one token, and FoNE encodes a number as a single token with Fourier features. In s2, `vy -1` costs two tokens: `vy` and `[NUM]`. With `fuse_numbers`, the value is added onto the key's token: `e = embed(vy) + num_proj(φ(-1))`. A Flappy state goes from about 14 tokens to 6, plus `[CLS]`/`[SEP]`. Attention cost is quadratic in that length, and everything else is linear.
+
+## Change 2: depth from a loop, not from parameters
+
+TRM reasons with a single 2-layer network applied recursively, and Ouro loops a shared block with a learned exit. s3-pico has **one** state block applied **four** times (`state_loops = 4`), with a small loop embedding so the block knows which pass it is in and an exit after every pass. Every exit is supervised during training (deep supervision), and `--loop-dropout` randomly stops the trajectory early, like learned stochastic stopping.
+
+## Change 3: calibrate the exit where the model is used
+
+Chapter 19 showed that a threshold fitted on i.i.d. validation questions breaks closed-loop play. `scripts/calibrate-exit.sh` plays the games at full depth, sweeps τ, and keeps the smallest τ whose game metrics stay within 2 % of full depth with no extra crashes or vetoes. This is the closed-loop version of risk-controlled early exit. For s3-pico it picks **τ = 0.6** (τ = 0.5 fails by one extra veto):
+
+| | flappy | rescue | dodge |
+|---|---|---|---|
+| mean layers used (of 4) at τ = 0.6 | 1.44 | 1.52 | 1.05 |
+
+Most frames stop after the **first** pass of the shared block.
+
+## Ternary all the way, and DAgger
+
+s3-pico is trained ternary from 10 % of the decision phase onward (QAT). The file stores 2-bit weights and int8 embeddings, so 445k parameters fit in 251 KB. It then went through three DAgger rounds (chapter 20), with the model playing and the oracle labelling the states it reached:
+
+| round | flappy | rescue | dodge | dodge vetoes |
+|---|---|---|---|---:|
+| base | 145.3, 14 crashes | 0.08 | 0.567 | 9,137 |
+| 1 | 5.4, 30 crashes | 1.00 | 0.667 | 4,205 |
+| 2 | 200, 0 crashes | 1.00 | 0.833 | 1,030 |
+| 3 | 200, 0 crashes | 1.00 | 0.867 | 14 |
+
+## What did not work (and stays in the code, off by default)
+
+- **Temporal recursion** (`temporal_carry`, SPEC-S3 §7): the latent of the previous frame warm-starts the loop, as RIN warm-starts latents and TRM carries its latent. The hope was that frames after the first would converge in one pass. In closed loop, warm frames used as many layers as cold ones (Flappy 1.61 vs 1.45 at τ 0.6, Dodge 1.52 vs 1.60 at τ 0.9), because the early exit already fires after one pass. It is not shipped. The engine supports it through `Engine::decide_raw_stream`, so you can try it.
+- **Lookup-table ternary kernels** (T-MAC / bitnet.cpp style, SPEC-S3 §8): they beat our first packed add/sub kernel but not plain f32 at these tiny sizes. One pass of int8 activations moved probabilities by up to 4e-2, and two passes cost more than f32. The engine downloads the 2-bit file and expands it to f32 at load time on every platform.
+- **The numeric curriculum** (comparisons, ordering, closest value; exact labels in `data/numeric`) reached only 0.41–0.43 validation accuracy (chance is about 0.33) in 15 minutes. It did not hurt, but the value channel needs a longer schedule to learn exact comparisons.
+
+## Reproduce
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+scripts/train-s3.sh numeric pico    # numeric curriculum, then pretrain, decide (QAT), export
+scripts/specialize-s3.sh pico 3 8   # three DAgger rounds of 8 minutes
+scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf models/ship/s3-pico.gguf
+cargo run --release -p sky-arena -- models/ship/s3-pico.gguf --game flappy,rescue,dodge,doom --episodes 30
+```

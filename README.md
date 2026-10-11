@@ -8,6 +8,7 @@ A decision model does not generate text. It receives a **state** and **typed que
 
 | model | architecture | parameters | GGUF size | closed-loop play (`sky-arena`) | per decision |
 |---|---|---:|---:|---|---|
+| **s3-pico** (default) | s3 = s2 + fused value tokens + 1 block × 4 loops, ternary | 445,345 | **251 KB** | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 14 vetoes; Doom-like 100% levels, kills = oracle; 1.05–1.73 of 4 loops used | **21 µs** native, **≈ 50 µs** WASM (Flappy frame) |
 | s1-pico | s1, f16 | 202,305 | 545 KB | Flappy 200/200 pipes, 0 crashes; Rescue 100%; Dodge 83% (oracle 87%), 1,026 reflex vetoes | 188 µs native (1 question), 694 µs WASM (Flappy frame) |
 | s2-nano | s2, ternary | 1,532,033 | 702 KB | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 25 reflex vetoes | 298 µs native, 501 µs WASM |
 | s2-nano-doom | s2, ternary | 1,532,033 | 702 KB | Doom-like: completion 100%, kill rate 0.75 (= oracle), 0 deaths; Flappy 197.6 pipes (2 crashes in 50); Dodge 72% (oracle 78%) | 1,055 µs native, 1,830 µs WASM (3 questions) |
@@ -65,7 +66,7 @@ A fourth game is a Doom-like first-person shooter on a grid, drawn with [Freedoo
 | `sky-py` | Python bindings (PyO3), the `skycmd` wheel |
 | `packages/skycmd-js` | the `skycmd` npm package (WASM) |
 
-Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](docs/SPEC-S2.md), runtime compatibility in [`docs/compat.md`](docs/compat.md), and the research notes in [`docs/research.md`](docs/research.md).
+Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](docs/SPEC-S2.md), runtime compatibility in [`docs/compat.md`](docs/compat.md), and the research notes in [`docs/research.md`](docs/research.md), plus the night research on recursion, early exit, numbers and ternary in [`docs/research-night.md`](docs/research-night.md) and the s3 spec in [`docs/SPEC-S3.md`](docs/SPEC-S3.md).
 
 ## Quick start (macOS, Apple Silicon)
 ```sh

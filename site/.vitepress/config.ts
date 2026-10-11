@@ -21,6 +21,7 @@ const chapters: [string, string][] = [
   ['18-doom', '18 A Doom-like shooter'],
   ['19-s2-architecture', '19 The s2 architecture'],
   ['20-dagger-lessons', '20 What DAgger taught us'],
+  ['21-s3-recursive-tiny', '21 s3: a 251 KB model that plays four games'],
 ]
 
 const groups: [string, number, number][] = [

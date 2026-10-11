@@ -1,5 +1,13 @@
 [
   {
+    "name": "s3-pico",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "params": 445345,
+    "bytes": 251104,
+    "file": "s3-pico.gguf"
+  },
+  {
     "name": "s1-pico",
     "arch": "modern-bert",
     "weight_format": "f16",

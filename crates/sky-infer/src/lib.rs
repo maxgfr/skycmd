@@ -8,6 +8,7 @@ pub mod convert;
 pub mod engine;
 pub mod json;
 pub mod kernels;
+pub mod lut;
 pub mod model;
 pub mod num;
 pub mod prompt;

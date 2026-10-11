@@ -359,6 +359,16 @@ pub fn to_gguf(
     w.add_kv(k("state_block_count"), u(cfg.state_layers));
     w.add_kv(k("static_block_count"), u(cfg.static_layers));
     w.add_kv(k("fusion_block_count"), u(cfg.fusion_layers));
+    // SPEC-S3: written only when on, so s2 files stay byte-identical.
+    if cfg.fuse_numbers {
+        w.add_kv(k("fuse_numbers"), true);
+    }
+    if cfg.state_loops != 1 {
+        w.add_kv(k("state_loops"), u(cfg.state_loops));
+    }
+    if cfg.temporal_carry {
+        w.add_kv(k("temporal_carry"), true);
+    }
     w.add_kv(
         k("exits"),
         OwnedValue::Array(cfg.exits.iter().map(|&e| u(e)).collect()),
@@ -475,10 +485,34 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
             exit_threshold[q] = v;
         }
     }
+    let hidden_size = u32_key(g, "embedding_length")?;
+    let head_count = g
+        .get_u64(&format!("{ARCH}.head_count"))
+        .map(|v| v as usize)
+        .filter(|&h| h * crate::config::HEAD_DIM as usize != hidden_size);
+    let fuse_numbers = match g.get(&format!("{ARCH}.fuse_numbers")) {
+        None => false,
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| anyhow!("{ARCH}.fuse_numbers is not a bool"))?,
+    };
+    let temporal_carry = match g.get(&format!("{ARCH}.temporal_carry")) {
+        None => false,
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| anyhow!("{ARCH}.temporal_carry is not a bool"))?,
+    };
+    let state_loops = g
+        .get_u64(&format!("{ARCH}.state_loops"))
+        .map_or(1, |v| v as usize);
     let cfg = S2Config {
         name: g.get_str("general.name").unwrap_or("s2").to_string(),
+        head_count,
+        fuse_numbers,
+        state_loops,
+        temporal_carry,
         vocab_size: u32_key(g, "vocab_size")?,
-        hidden_size: u32_key(g, "embedding_length")?,
+        hidden_size,
         intermediate_size: u32_key(g, "feed_forward_length")?,
         state_layers: u32_key(g, "state_block_count")?,
         static_layers: u32_key(g, "static_block_count")?,
@@ -564,6 +598,103 @@ mod tests {
         assert_eq!(packed[0], 0b01_00_10_01);
         assert_eq!(unpack_ternary(&packed, 2, 7).unwrap(), codes);
         assert!(unpack_ternary(&[0xff], 1, 4).is_err());
+    }
+
+    #[test]
+    fn s3_keys_round_trip() {
+        let _g = test_util::lock();
+        let tok = s2_tokenizer_json();
+        // s2: none of the new keys or tensors.
+        let cfg2 = S2Config::tiny(262);
+        let p2 = init(&cfg2, S2Parts::DECISION, 1).unwrap();
+        let g2b = to_gguf(&p2, &cfg2, &tok, WeightFormat::Ternary, "s2").unwrap();
+        let g2 = Gguf::parse(&g2b).unwrap();
+        assert!(
+            g2.get("skycmd-s2.fuse_numbers").is_none() && g2.get("skycmd-s2.state_loops").is_none()
+        );
+        assert_eq!(g2.get_u64("skycmd-s2.head_count"), Some(2));
+        assert!(g2.tensor("loop_embd.weight").is_none());
+        let back = config_from_gguf(&g2).unwrap();
+        assert_eq!(
+            (back.fuse_numbers, back.state_loops, back.head_count),
+            (false, 1, None)
+        );
+        assert!(!back.temporal_carry && g2.get("skycmd-s2.temporal_carry").is_none());
+        // Temporal carry: key and the two vectors.
+        let tcfg = S2Config {
+            temporal_carry: true,
+            ..S2Config::tiny(262)
+        };
+        let tp = init(&tcfg, S2Parts::DECISION, 4).unwrap();
+        let tb = to_gguf(&tp, &tcfg, &tok, WeightFormat::Ternary, "t").unwrap();
+        let tg = Gguf::parse(&tb).unwrap();
+        assert_eq!(tg.get_bool("skycmd-s2.temporal_carry"), Some(true));
+        assert_eq!(tg.tensor("carry_gate.weight").unwrap().dtype, GgmlType::F32);
+        assert_eq!(tg.tensor("carry_norm.weight").unwrap().shape(), vec![128]);
+        let tback = config_from_gguf(&tg).unwrap();
+        assert!(tback.temporal_carry);
+        assert_eq!(params_from_gguf(&tg, &tback).unwrap().len(), tp.len());
+        // s3: fused, 1 block x 4 loops, one 96-wide head.
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../configs/s3-pico.json");
+        let mut cfg = S2Config::load(path).unwrap();
+        cfg.vocab_size = 262;
+        cfg.temperature.insert("e3.noul".into(), 0.6);
+        cfg.exit_threshold = [0.85, 1.0, 0.7];
+        let p = init(&cfg, S2Parts::DECISION, 2).unwrap();
+        for format in [WeightFormat::F32, WeightFormat::F16, WeightFormat::Ternary] {
+            let bytes = to_gguf(&p, &cfg, &tok, format, "s3-pico").unwrap();
+            let g = Gguf::parse(&bytes).unwrap();
+            assert_eq!(g.get_bool("skycmd-s2.fuse_numbers"), Some(true));
+            assert_eq!(g.get_u64("skycmd-s2.state_loops"), Some(4));
+            assert_eq!(g.get_u64("skycmd-s2.state_block_count"), Some(1));
+            assert_eq!(g.get_u64("skycmd-s2.head_count"), Some(1));
+            assert_eq!(g.get_u64("skycmd-s2.embedding_length"), Some(96));
+            let ex = g
+                .get_array("skycmd-s2.exits")
+                .unwrap()
+                .to_i64_vec()
+                .unwrap();
+            assert_eq!(ex, vec![1, 2, 3, 4]);
+            let le = g.tensor("loop_embd.weight").unwrap();
+            assert_eq!(le.shape(), vec![4, 96]);
+            assert_eq!(
+                g.tensor("blk.0.attn_norm_loop.weight").unwrap().dtype,
+                GgmlType::F32
+            );
+            assert!(g.tensor("blk.0.attn_norm.weight").is_none());
+            if format == WeightFormat::Ternary {
+                assert_eq!(le.dtype, GgmlType::F32);
+                assert!(g.tensor("blk.0.attn_qkv.tq").is_some());
+            }
+            let back = config_from_gguf(&g).unwrap();
+            assert_eq!(
+                (
+                    back.fuse_numbers,
+                    back.state_loops,
+                    back.head_count,
+                    back.head_dim()
+                ),
+                (true, 4, Some(1), 96)
+            );
+            assert_eq!(back.exits, cfg.exits);
+            assert_eq!(back.exit_threshold, cfg.exit_threshold);
+            assert_eq!(back.temperature, cfg.temperature);
+            let q = params_from_gguf(&g, &back).unwrap();
+            assert_eq!(q.len(), p.len());
+            for name in ["loop_embd.weight", "blk.0.attn_norm_loop.weight"] {
+                let (a, b) = (host_f32(&p[name]).unwrap(), host_f32(&q[name]).unwrap());
+                let tol = if format == WeightFormat::F16 {
+                    1e-3
+                } else {
+                    0.0
+                };
+                assert!(
+                    a.iter().zip(&b).all(|(x, y)| (x - y).abs() <= tol),
+                    "{name}"
+                );
+            }
+        }
     }
 
     #[test]
