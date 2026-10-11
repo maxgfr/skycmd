@@ -69,7 +69,11 @@ fn compute_params<'a>(p: &'a ParamMap, cfg: &ModelConfig) -> R<Cow<'a, ParamMap>
     }
     let mut out = ParamMap::with_capacity(p.len());
     for (k, v) in p {
-        let v = if v.dtype() == Dtype::Float32 { v.as_dtype(Dtype::Bfloat16)? } else { v.clone() };
+        let v = if v.dtype() == Dtype::Float32 {
+            v.as_dtype(Dtype::Bfloat16)?
+        } else {
+            v.clone()
+        };
         out.insert(k.clone(), v);
     }
     Ok(Cow::Owned(out))
@@ -103,7 +107,8 @@ pub fn host_f32(a: &Array) -> R<Vec<f32>> {
 /// Exact (erf) GELU.
 pub fn gelu_erf(x: &Array) -> R<Array> {
     let inner = ops::erf(x.multiply(scalar(std::f32::consts::FRAC_1_SQRT_2, x)?)?)?;
-    x.multiply(scalar(0.5, x)?)?.multiply(inner.add(scalar(1.0, x)?)?)
+    x.multiply(scalar(0.5, x)?)?
+        .multiply(inner.add(scalar(1.0, x)?)?)
 }
 
 /// LayerNorm over the last axis.
@@ -132,7 +137,8 @@ fn split_heads(qkv: &Array, n_heads: i32) -> R<(Array, Array, Array)> {
 /// `[B, H, T, 64]` -> `[B, T, H * 64]`.
 fn merge_heads(x: &Array) -> R<Array> {
     let (b, h, t) = (x.dim(0), x.dim(1), x.dim(2));
-    x.transpose_axes(&[0, 2, 1, 3])?.reshape(&[b, t, h * HEAD_DIM])
+    x.transpose_axes(&[0, 2, 1, 3])?
+        .reshape(&[b, t, h * HEAD_DIM])
 }
 
 /// Boolean attention masks (true = attend) for a batch of length `t`.
@@ -181,7 +187,12 @@ fn attend(q: &Array, k: &Array, v: &Array, mask: Option<&Array>) -> R<Array> {
 }
 
 /// ModernBERT encoder: `[B, T]` ids -> `[B, T, d]` final-normed hidden states.
-pub fn encoder(p: &ParamMap, cfg: &ModelConfig, ids: &Array, key_valid: Option<&Array>) -> R<Array> {
+pub fn encoder(
+    p: &ParamMap,
+    cfg: &ModelConfig,
+    ids: &Array,
+    key_valid: Option<&Array>,
+) -> R<Array> {
     let p = &*compute_params(p, cfg)?;
     let eps = cfg.norm_eps;
     let h_count = cfg.n_heads() as i32;
@@ -201,7 +212,11 @@ pub fn encoder(p: &ParamMap, cfg: &ModelConfig, ids: &Array, key_valid: Option<&
         let theta = cfg.rope_theta(l);
         let q = fast::rope(&q, HEAD_DIM, false, theta, 1.0, 0, None)?;
         let k = fast::rope(&k, HEAD_DIM, false, theta, 1.0, 0, None)?;
-        let mask = if cfg.is_global(l) { global.as_ref() } else { local.as_ref() };
+        let mask = if cfg.is_global(l) {
+            global.as_ref()
+        } else {
+            local.as_ref()
+        };
         let a = merge_heads(&attend(&q, &k, &v, mask)?)?;
         x = x.add(linear(&a, w(p, &format!("{pre}.attn.Wo.weight"))?, None)?)?;
         let h = layer_norm(&x, w(p, &format!("{pre}.mlp_norm.weight"))?, None, eps)?;
@@ -227,13 +242,20 @@ pub fn decision_logits(
     let eps = 1e-5;
     let (b, t, d) = (enc.dim(0), enc.dim(1), enc.dim(2));
     let h_count = cfg.n_heads() as i32;
-    let type_row = w(p, "type_emb.weight")?.take_axis(qtype, 0)?.reshape(&[b, 1, d])?;
+    let type_row = w(p, "type_emb.weight")?
+        .take_axis(qtype, 0)?
+        .reshape(&[b, 1, d])?;
     let mut h = enc.add(&type_row)?;
     // Full attention with a key padding mask only.
     let (pad, _) = attention_masks(cfg, t, key_valid)?;
     for i in 0..cfg.rl_agent.head_layers {
         let pre = format!("head.layers.{i}");
-        let y = layer_norm(&h, w(p, &format!("{pre}.norm1.weight"))?, Some(w(p, &format!("{pre}.norm1.bias"))?), eps)?;
+        let y = layer_norm(
+            &h,
+            w(p, &format!("{pre}.norm1.weight"))?,
+            Some(w(p, &format!("{pre}.norm1.bias"))?),
+            eps,
+        )?;
         let qkv = linear(
             &y,
             w(p, &format!("{pre}.self_attn.in_proj_weight"))?,
@@ -246,7 +268,12 @@ pub fn decision_logits(
             w(p, &format!("{pre}.self_attn.out_proj.weight"))?,
             Some(w(p, &format!("{pre}.self_attn.out_proj.bias"))?),
         )?)?;
-        let y = layer_norm(&h, w(p, &format!("{pre}.norm2.weight"))?, Some(w(p, &format!("{pre}.norm2.bias"))?), eps)?;
+        let y = layer_norm(
+            &h,
+            w(p, &format!("{pre}.norm2.weight"))?,
+            Some(w(p, &format!("{pre}.norm2.bias"))?),
+            eps,
+        )?;
         let f = linear(
             &y,
             w(p, &format!("{pre}.linear1.weight"))?,
@@ -263,8 +290,17 @@ pub fn decision_logits(
     let k = marker_pos.dim(1);
     let idx = ops::broadcast_to(marker_pos.reshape(&[b, k, 1])?, &[b, k, d])?;
     let m = h.take_along_axis(&idx, 1)?;
-    let s = layer_norm(&m, w(p, "scorer.0.weight")?, Some(w(p, "scorer.0.bias")?), eps)?;
-    let s = gelu_erf(&linear(&s, w(p, "scorer.1.weight")?, Some(w(p, "scorer.1.bias")?))?)?;
+    let s = layer_norm(
+        &m,
+        w(p, "scorer.0.weight")?,
+        Some(w(p, "scorer.0.bias")?),
+        eps,
+    )?;
+    let s = gelu_erf(&linear(
+        &s,
+        w(p, "scorer.1.weight")?,
+        Some(w(p, "scorer.1.bias")?),
+    )?)?;
     let s = linear(&s, w(p, "scorer.3.weight")?, Some(w(p, "scorer.3.bias")?))?;
     to_f32(s.reshape(&[b, k])?)
 }
@@ -285,7 +321,11 @@ pub fn decision_forward(p: &ParamMap, cfg: &ModelConfig, b: &DecisionBatch) -> R
 pub fn soft_cross_entropy(masked_logits: &Array, target: &Array) -> R<Array> {
     let lse = masked_logits.logsumexp_axis(-1, true)?;
     let logp = masked_logits.subtract(&lse)?;
-    target.multiply(&logp)?.sum_axis(-1, None)?.mean(None)?.negative()
+    target
+        .multiply(&logp)?
+        .sum_axis(-1, None)?
+        .mean(None)?
+        .negative()
 }
 
 /// Cross-entropy against the soft target over the valid options.
@@ -339,7 +379,12 @@ mod tests {
     fn mask_shapes_and_window() {
         let _g = test_util::lock();
         let cfg = ModelConfig::tiny(32); // local_attention 4 -> |i-j| <= 2
-        let kv = Array::from_slice(&[true, true, true, true, true, false, true, true, true, true, true, true], &[2, 6]);
+        let kv = Array::from_slice(
+            &[
+                true, true, true, true, true, false, true, true, true, true, true, true,
+            ],
+            &[2, 6],
+        );
         let (g, l) = attention_masks(&cfg, 6, Some(&kv)).unwrap();
         let (g, l) = (g.unwrap(), l.unwrap());
         assert_eq!(g.shape(), &[2, 1, 6, 6]);
@@ -354,7 +399,10 @@ mod tests {
         let off = 36;
         assert_eq!(&lv[off..off + 6], &[true, true, true, false, false, false]);
         // Query 3 of batch 1: keys 1..=5.
-        assert_eq!(&lv[off + 18..off + 24], &[false, true, true, true, true, true]);
+        assert_eq!(
+            &lv[off + 18..off + 24],
+            &[false, true, true, true, true, true]
+        );
         // No padding and a short sequence: nothing to mask.
         let (g, l) = attention_masks(&cfg, 3, None).unwrap();
         assert!(g.is_none() && l.is_none());
@@ -369,7 +417,9 @@ mod tests {
         // x: [1, 1, T=3, D=64] of ones; compare against an explicit rotate_half RoPE.
         let t = 3;
         let d = HEAD_DIM as usize;
-        let data: Vec<f32> = (0..t * d).map(|i| ((i * 37 % 11) as f32 - 5.0) / 5.0).collect();
+        let data: Vec<f32> = (0..t * d)
+            .map(|i| ((i * 37 % 11) as f32 - 5.0) / 5.0)
+            .collect();
         let x = Array::from_slice(&data, &[1, 1, t as i32, HEAD_DIM]);
         let theta = 10_000.0f32;
         let y = fast::rope(&x, HEAD_DIM, false, theta, 1.0, 0, None).unwrap();
@@ -386,7 +436,10 @@ mod tests {
                 let e1 = x1 * c - x2 * s;
                 let e2 = x2 * c + x1 * s;
                 assert!((got[pos * d + i] - e1).abs() < 1e-4, "pos {pos} i {i}");
-                assert!((got[pos * d + i + half] - e2).abs() < 1e-4, "pos {pos} i {i}");
+                assert!(
+                    (got[pos * d + i + half] - e2).abs() < 1e-4,
+                    "pos {pos} i {i}"
+                );
             }
         }
     }

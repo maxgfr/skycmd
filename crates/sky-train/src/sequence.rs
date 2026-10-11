@@ -44,7 +44,13 @@ impl Tok {
         let inner = tokenizers::Tokenizer::from_file(path)
             .map_err(|e| anyhow!("loading tokenizer {}: {e}", path.display()))?;
         let tok = Self { inner };
-        for (name, id) in [("[PAD]", 0), ("[UNK]", 1), ("[CLS]", CLS_ID), ("[SEP]", SEP_ID), ("[MASK]", MASK_ID)] {
+        for (name, id) in [
+            ("[PAD]", 0),
+            ("[UNK]", 1),
+            ("[CLS]", CLS_ID),
+            ("[SEP]", SEP_ID),
+            ("[MASK]", MASK_ID),
+        ] {
             if tok.inner.token_to_id(name) != Some(id) {
                 bail!("tokenizer {}: {name} must have id {id}", path.display());
             }
@@ -73,6 +79,35 @@ impl Tok {
     /// Vocabulary size including added tokens.
     pub fn vocab_size(&self) -> usize {
         self.inner.get_vocab_size(true)
+    }
+
+    /// Id of a token string.
+    pub fn token_to_id(&self, token: &str) -> Option<u32> {
+        self.inner.token_to_id(token)
+    }
+
+    /// Checks that `[NUM]` has the fixed s2 id and is matched as a special token.
+    pub fn check_num(&self) -> Result<()> {
+        let id = crate::num::NUM_ID;
+        if self.token_to_id(crate::num::NUM_TOKEN) != Some(id) {
+            bail!(
+                "not an s2 tokenizer: {} must have id {id}",
+                crate::num::NUM_TOKEN
+            );
+        }
+        if self
+            .encode(&format!("a{}b", crate::num::NUM_TOKEN))?
+            .iter()
+            .filter(|&&t| t == id)
+            .count()
+            != 1
+        {
+            bail!(
+                "not an s2 tokenizer: {} is not matched as a special token",
+                crate::num::NUM_TOKEN
+            );
+        }
+        Ok(())
     }
 }
 
@@ -121,7 +156,12 @@ pub fn pieces(tok: &Tok, rec: &DecisionRecord) -> Result<Pieces> {
 
 /// Builds the input ids and marker positions for the given option order
 /// (`rl_common.build_sequence` with `truncate_left=False`).
-pub fn build_from_pieces(p: &Pieces, order: &[usize], max_len: usize, head_max_len: usize) -> (Vec<u32>, Vec<usize>) {
+pub fn build_from_pieces(
+    p: &Pieces,
+    order: &[usize],
+    max_len: usize,
+    head_max_len: usize,
+) -> (Vec<u32>, Vec<usize>) {
     let mut opt_ids: Vec<Vec<u32>> = order
         .iter()
         .map(|&i| {
@@ -135,7 +175,8 @@ pub fn build_from_pieces(p: &Pieces, order: &[usize], max_len: usize, head_max_l
     let mut opt_budget = head_max_len as i64 - total as i64;
     if opt_budget < 16 {
         // Too many / too long options: shrink every option text evenly.
-        let per = 4.max((head_max_len as i64 - 16).div_euclid(opt_ids.len().max(1) as i64)) as usize;
+        let per =
+            4.max((head_max_len as i64 - 16).div_euclid(opt_ids.len().max(1) as i64)) as usize;
         for o in &mut opt_ids {
             o.truncate(per);
         }
@@ -170,7 +211,12 @@ pub fn build_sequence(
 ) -> Result<(Vec<u32>, Vec<usize>)> {
     let p = pieces(tok, rec)?;
     let identity: Vec<usize> = (0..rec.opts.len()).collect();
-    Ok(build_from_pieces(&p, order.unwrap_or(&identity), max_len, head_max_len))
+    Ok(build_from_pieces(
+        &p,
+        order.unwrap_or(&identity),
+        max_len,
+        head_max_len,
+    ))
 }
 
 /// Laya temperature bucket key (`rl_common.temp_bucket`), e.g. `"choice:3-5"`.
@@ -186,7 +232,11 @@ pub fn temp_bucket(qtype: usize, k: usize) -> String {
 
 /// The same bucket in the GGUF / llama.cpp server form, e.g. `"choice.3_5"`.
 pub fn gguf_bucket(laya_key: &str) -> String {
-    laya_key.replace(':', ".").replace('-', "_").trim_end_matches('+').to_string()
+    laya_key
+        .replace(':', ".")
+        .replace('-', "_")
+        .trim_end_matches('+')
+        .to_string()
 }
 
 #[cfg(test)]
@@ -220,7 +270,10 @@ pub(crate) mod tests {
     pub fn byte_tokenizer_json() -> String {
         let chars = byte_chars();
         let mut vocab = serde_json::Map::new();
-        for (i, s) in ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"].iter().enumerate() {
+        for (i, s) in ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
+            .iter()
+            .enumerate()
+        {
             vocab.insert(s.to_string(), i.into());
         }
         for (b, c) in chars.iter().enumerate() {
@@ -275,7 +328,10 @@ pub(crate) mod tests {
     fn byte_tokenizer_is_one_token_per_byte() {
         let (_d, tok) = byte_tok();
         assert_eq!(tok.encode("ab c").unwrap(), b("ab c"));
-        assert_eq!(tok.encode("x[MASK]y").unwrap(), vec![5 + b'x' as u32, MASK_ID, 5 + b'y' as u32]);
+        assert_eq!(
+            tok.encode("x[MASK]y").unwrap(),
+            vec![5 + b'x' as u32, MASK_ID, 5 + b'y' as u32]
+        );
     }
 
     #[test]

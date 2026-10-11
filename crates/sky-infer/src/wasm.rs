@@ -34,9 +34,9 @@ pub struct SkyEngine {
 
 #[wasm_bindgen]
 impl SkyEngine {
-    /// Load a GGUF model (f32, f16 or Q8_0 file) and compute in f32: with baseline SIMD128,
-    /// int8 dot products are not faster than f32 in browsers, so Q8_0 files are dequantized at
-    /// load (smaller download, f32 speed and accuracy).
+    /// Load a GGUF model (s1 or s2; f32, f16, Q8_0 or ternary file) and compute in f32: with
+    /// baseline SIMD128, int8 dot products are not faster than f32 in browsers, so Q8_0 files are
+    /// dequantized at load (smaller download, f32 speed and accuracy).
     #[wasm_bindgen(constructor)]
     pub fn new(gguf_bytes: &[u8]) -> Result<SkyEngine, JsError> {
         Self::with_options(gguf_bytes, false, false)
@@ -136,5 +136,35 @@ impl SkyEngine {
     /// Duration of the last decision in microseconds (feature `timing`), or undefined.
     pub fn last_micros(&self) -> Option<f64> {
         self.inner.last_micros().map(|v| v as f64)
+    }
+
+    /// `general.architecture`: `modern-bert` (s1) or `skycmd-s2` (s2).
+    pub fn arch(&self) -> String {
+        self.inner.arch().name().to_string()
+    }
+
+    /// s2: override the early-exit threshold τ of every question type (undefined: the calibrated
+    /// values; 1.0: full depth). No effect on s1 models.
+    #[wasm_bindgen(js_name = setExitThreshold)]
+    pub fn set_exit_threshold(&mut self, tau: Option<f32>) {
+        self.inner.set_exit_threshold(tau)
+    }
+
+    /// Statistics of the last question as JSON: `{exit, layers_used, n_exits, static_hit,
+    /// state_hit, tokens}` (`exit` and `layers_used` are null for s1), or `null`.
+    #[wasm_bindgen(js_name = lastStats)]
+    pub fn last_stats(&self) -> String {
+        match self.inner.last_stats() {
+            None => "null".into(),
+            Some(s) => serde_json::json!({
+                "exit": s.exit,
+                "layers_used": s.layers_used,
+                "n_exits": s.n_exits,
+                "static_hit": s.static_hit,
+                "state_hit": s.state_hit,
+                "tokens": s.tokens,
+            })
+            .to_string(),
+        }
     }
 }

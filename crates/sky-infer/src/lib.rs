@@ -1,5 +1,7 @@
-//! `sky-infer`: a small, fast inference engine for Laya-format "System One" decision models
-//! (ModernBERT encoder + typed decision head), for native targets and wasm32.
+//! `sky-infer`: a small, fast inference engine for "System One" decision models, for native
+//! targets and wasm32. Two families run behind one [`Engine`] API: s1 (Laya format, ModernBERT
+//! encoder + typed decision head) and s2 (`skycmd-s2`: cached static stream, early-exit state
+//! encoder, fusion head, native numbers, ternary weights; see [`s2`]).
 
 pub mod api;
 pub mod convert;
@@ -7,17 +9,21 @@ pub mod engine;
 pub mod json;
 pub mod kernels;
 pub mod model;
+pub mod num;
 pub mod prompt;
 pub mod quant;
+pub mod s2;
 pub mod safetensors;
+pub mod ternary;
 pub mod tokenizer;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-pub use api::{Answer, DecisionRequest, DecisionResponse, Question};
-pub use engine::{Engine, EngineOptions, ModelInfo};
+pub use api::{Answer, DecisionRequest, DecisionResponse, ExitInfo, Question};
+pub use engine::{Arch, DecisionStats, Engine, EngineOptions, ModelInfo};
 pub use model::{Model, ModelConfig, QuantizeSpec};
 pub use prompt::{QType, QuestionKind};
+pub use s2::{S2Config, S2Engine, S2Model, TernaryCompute};
 pub use tokenizer::{BpeCache, SpecialTokens, Tokenizer};
 
 /// Errors of this crate.

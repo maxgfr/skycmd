@@ -1,6 +1,6 @@
 [package]
 name = "sky-infer"
-description = "Tiny inference engine for Laya-format (ModernBERT + decision head) System One models, native and wasm32"
+description = "Tiny inference engine for System One decision models (s1: Laya ModernBERT + decision head; s2: skycmd-s2 with cached static stream, early exits and ternary weights), native and wasm32"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,7 +21,7 @@ wasm = ["json", "dep:wasm-bindgen", "dep:js-sys"]
 [dependencies]
 sky-gguf = { path = "../sky-gguf" }
 unicode-normalization = { version = "0.1.25", default-features = false }
-serde_json = { version = "1.0.145", optional = true, features = ["preserve_order", "float_roundtrip", "arbitrary_precision"] }
+serde_json = { version = "1.0.145", optional = true, features = ["preserve_order", "float_roundtrip"] }
 wasm-bindgen = { version = "0.2.117", optional = true }
 js-sys = { version = "0.3.94", optional = true }
 

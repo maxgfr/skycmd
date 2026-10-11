@@ -3,11 +3,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { GameRunner, newHud, type GameKind, type Hud, type Mode } from '../lib/runner'
 import {
+  FAMILY_LABEL,
+  familyOf,
   formatInt,
   formatKB,
   loadEngine,
   loadManifest,
   loadWasm,
+  type Family,
   type ModelEntry,
   type Question,
   type SkyWeb,
@@ -65,11 +68,21 @@ const HUMAN_BUTTONS: Record<GameKind, { key: string; label: string }[]> = {
 
 const ORACLE = '__oracle__'
 
+/** s2 early-exit threshold choices: the calibrated τ of the file, fixed values, or full depth. */
+const TAU_CHOICES: { value: string; label: string }[] = [
+  { value: 'auto', label: 'calibrated' },
+  { value: '0.7', label: 'τ = 0.7' },
+  { value: '0.8', label: 'τ = 0.8' },
+  { value: '0.9', label: 'τ = 0.9' },
+  { value: '1', label: 'full depth' },
+]
+
 const kind = ref<GameKind>('flappy')
 const mode = ref<Mode>('ai')
 const veto = ref(true)
 const models = ref<ModelEntry[]>([])
 const selected = ref<string>(ORACLE)
+const tau = ref('auto')
 const status = ref('Loading the wasm module…')
 const error = ref('')
 const hud = ref<Hud>(newHud())
@@ -84,6 +97,18 @@ let runner: GameRunner | null = null
 
 const game = computed(() => GAMES.find((g) => g.kind === kind.value)!)
 const selectedEntry = computed(() => models.value.find((m) => m.file === selected.value) ?? null)
+const selectedFamily = computed<Family | null>(() => (selectedEntry.value ? familyOf(selectedEntry.value) : null))
+const groups = computed(() =>
+  (['s1', 's2'] as Family[])
+    .map((f) => ({ family: f, label: FAMILY_LABEL[f], items: models.value.filter((m) => familyOf(m) === f) }))
+    .filter((g) => g.items.length),
+)
+const info = computed(() => (mode.value === 'ai' && engine.value ? hud.value.info : null))
+const layerCells = computed(() => {
+  const i = info.value
+  if (!i || i.max_layers == null) return []
+  return Array.from({ length: i.max_layers }, (_, k) => k < (i.layers_used ?? 0))
+})
 const vetoFlash = computed(() => hud.value.vetoAt > 0 && now.value - hud.value.vetoAt < 700)
 const primary = computed(() => questions.value[0])
 const secondaryPct = computed(() => {
@@ -115,9 +140,16 @@ function makeRunner() {
   runner.start()
 }
 
+function applyTau() {
+  const e = engine.value
+  if (!e || typeof e.setExitThreshold !== 'function') return
+  e.setExitThreshold(tau.value === 'auto' ? undefined : Number(tau.value))
+}
+
 function applyEngine() {
   if (!runner) return
   const entry = selectedEntry.value
+  applyTau()
   runner.setEngine(engine.value, entry ? entry.name : undefined)
 }
 
@@ -164,6 +196,7 @@ watch(mode, (m) => {
 })
 watch(veto, (v) => runner?.setVeto(v))
 watch(selected, (f) => selectModel(f))
+watch(tau, () => applyEngine())
 
 const KEYMAP: Record<GameKind, Record<string, string>> = {
   flappy: { ' ': 'thrust', ArrowUp: 'thrust', w: 'thrust' },
@@ -276,10 +309,18 @@ function pct(p: number) {
       <label class="field">
         <span>Model</span>
         <select v-model="selected" :disabled="mode === 'human'">
-          <option v-for="m in models" :key="m.file" :value="m.file">
-            {{ m.name }} · {{ formatInt(m.params) }} params · {{ formatKB(m.bytes) }}
-          </option>
+          <optgroup v-for="g in groups" :key="g.family" :label="g.label">
+            <option v-for="m in g.items" :key="m.file" :value="m.file">
+              {{ m.name }} · {{ formatInt(m.params) }} params · {{ formatKB(m.bytes) }}{{ m.weight_format ? ` · ${m.weight_format}` : '' }}
+            </option>
+          </optgroup>
           <option :value="ORACLE">oracle (no model loaded)</option>
+        </select>
+      </label>
+      <label v-if="selectedFamily === 's2' && mode === 'ai'" class="field" title="Early exit: stop at the first exit whose top probability reaches τ">
+        <span>Exit</span>
+        <select v-model="tau">
+          <option v-for="t in TAU_CHOICES" :key="t.value" :value="t.value">{{ t.label }}</option>
         </select>
       </label>
       <label v-if="kind !== 'flappy'" class="check">
@@ -325,6 +366,39 @@ function pct(p: number) {
             <div class="mv">{{ hud.score }}</div>
             <div class="ml">score · best {{ hud.best }}</div>
           </div>
+        </div>
+        <div v-if="info" class="depth" aria-label="Model depth and caches">
+          <template v-if="info.family === 's2'">
+            <div class="drow">
+              <span class="dl">layers used</span>
+              <span class="cells" :title="`exit ${(info.exit ?? 0) + 1} of ${info.n_exits}`">
+                <span v-for="(on, k) in layerCells" :key="k" class="cell" :class="{ on }" />
+              </span>
+              <span class="dv">{{ info.layers_used }}/{{ info.max_layers }} · avg {{ hud.meanLayers.toFixed(2) }}</span>
+            </div>
+            <div class="drow">
+              <span class="dl">question cache</span>
+              <span class="tag" :class="{ ok: info.static_hit }">{{ info.static_hit ? 'hit' : 'miss' }}</span>
+              <span class="dv">{{ Math.round(100 * hud.staticHitRate) }}% hits</span>
+            </div>
+            <div class="drow">
+              <span class="dl">state encoding</span>
+              <span class="tag" :class="{ ok: info.state_reused }">{{ info.state_reused ? 'shared' : 'single' }}</span>
+              <span class="dv">{{ info.state_reused ? '2 questions' : '1 question' }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <div class="drow">
+              <span class="dl">depth</span>
+              <span />
+              <span class="dv">all layers, full prompt</span>
+            </div>
+            <div class="drow">
+              <span class="dl">prompt cache</span>
+              <span class="tag" :class="{ ok: info.static_hit }">{{ info.static_hit ? 'hit' : 'miss' }}</span>
+              <span class="dv">tokens only</span>
+            </div>
+          </template>
         </div>
         <p v-if="mode === 'ai' && hud.decideEvery > 1" class="throttle">
           This model is slower than the frame budget on this device: it decides every {{ hud.decideEvery }} frames.
@@ -604,6 +678,54 @@ function pct(p: number) {
 .ml {
   font-size: 11px;
   color: var(--vp-c-text-3);
+}
+.depth {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  font-size: 12px;
+}
+.drow {
+  display: grid;
+  grid-template-columns: 96px auto 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+}
+.dl {
+  color: var(--vp-c-text-3);
+}
+.dv {
+  color: var(--vp-c-text-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.cells {
+  display: inline-flex;
+  gap: 3px;
+}
+.cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--vp-c-default-soft);
+}
+.cell.on {
+  background: var(--vp-c-brand-1);
+}
+.tag {
+  padding: 0 6px;
+  border-radius: 6px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-default-soft);
+}
+.tag.ok {
+  color: #fff;
+  background: #16a34a;
 }
 .throttle {
   margin: 0 0 10px !important;

@@ -1,0 +1,48 @@
+{
+  "name": "skycmd",
+  "version": "0.1.0",
+  "description": "Tiny System One decision models (GGUF) in the browser, Node, Deno and Bun: typed choice / score / yes-no probabilities in one forward pass, via WebAssembly",
+  "type": "module",
+  "main": "./dist/skycmd.js",
+  "module": "./dist/skycmd.js",
+  "types": "./dist/skycmd.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/skycmd.d.ts",
+      "default": "./dist/skycmd.js"
+    },
+    "./sky_infer_bg.wasm": "./dist/sky_infer_bg.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "sh scripts/build.sh",
+    "test": "node test/smoke.mjs",
+    "test:deno": "deno run --allow-read test/smoke.mjs",
+    "test:bun": "bun test/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "gguf",
+    "wasm",
+    "webassembly",
+    "decision-model",
+    "system-one",
+    "modernbert",
+    "inference"
+  ],
+  "homepage": "https://maxgfr.github.io/skycmd/install/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maxgfr/skycmd.git",
+    "directory": "packages/skycmd-js"
+  },
+  "bugs": "https://github.com/maxgfr/skycmd/issues",
+  "license": "Apache-2.0"
+}

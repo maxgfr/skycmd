@@ -132,8 +132,13 @@ impl<'a> Array<'a> {
         }
     }
 
-    /// Elements as strings (`None` if the array is not an array of strings).
+    /// Elements as strings (`None` if the array is not an array of strings). An empty array is
+    /// an empty list whatever its declared element type (writers often declare empty arrays
+    /// as u8, as [`crate::GgufWriter`] does).
     pub fn strings(&self) -> Option<Vec<&'a str>> {
+        if self.len == 0 {
+            return Some(Vec::new());
+        }
         if self.elem_type != ValueType::String {
             return None;
         }

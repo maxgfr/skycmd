@@ -25,8 +25,14 @@ pub struct Parts {
 }
 
 impl Parts {
-    pub const PRETRAIN: Parts = Parts { decision: false, mlm: true };
-    pub const DECISION: Parts = Parts { decision: true, mlm: false };
+    pub const PRETRAIN: Parts = Parts {
+        decision: false,
+        mlm: true,
+    };
+    pub const DECISION: Parts = Parts {
+        decision: true,
+        mlm: false,
+    };
 }
 
 /// How a parameter is initialized.
@@ -54,15 +60,27 @@ pub enum Group {
 }
 
 /// Optimizer group of parameter `name` with `ndim` dimensions.
+///
+/// s1 names (`encoder.layers.*`) and s2 names (`blk.*`, `static.blk.*`) are
+/// both recognized: the encoder hidden matrices go to Muon; the s2 embeddings
+/// (`token_embd`, `num_proj`, `type_embd`) are never decayed.
 pub fn group_of(name: &str, ndim: usize) -> Group {
     let hidden = name.starts_with("encoder.layers.")
         && (name.ends_with(".attn.Wqkv.weight")
             || name.ends_with(".attn.Wo.weight")
             || name.ends_with(".mlp.Wi.weight")
             || name.ends_with(".mlp.Wo.weight"));
-    if hidden {
+    let s2_embedding = matches!(
+        name,
+        "token_embd.weight" | "type_embd.weight" | "num_proj.weight"
+    );
+    if hidden || crate::s2::model::is_hidden_matrix(name) {
         Group::Muon
-    } else if ndim == 2 && !name.contains("embeddings") && name != "type_emb.weight" {
+    } else if ndim == 2
+        && !name.contains("embeddings")
+        && name != "type_emb.weight"
+        && !s2_embedding
+    {
         Group::AdamDecay
     } else {
         Group::AdamNoDecay
@@ -77,19 +95,43 @@ fn specs(cfg: &ModelConfig, parts: Parts) -> Vec<(String, Vec<i32>, Init)> {
     let std = 0.02f32;
     let std_out = std / (2.0 * cfg.num_hidden_layers as f32).sqrt();
     let mut out = vec![
-        ("encoder.embeddings.tok_embeddings.weight".to_string(), vec![v, d], Init::TruncNormal(std)),
-        ("encoder.embeddings.norm.weight".to_string(), vec![d], Init::Ones),
+        (
+            "encoder.embeddings.tok_embeddings.weight".to_string(),
+            vec![v, d],
+            Init::TruncNormal(std),
+        ),
+        (
+            "encoder.embeddings.norm.weight".to_string(),
+            vec![d],
+            Init::Ones,
+        ),
     ];
     for l in 0..cfg.num_hidden_layers {
         let p = format!("encoder.layers.{l}");
         if l > 0 {
             out.push((format!("{p}.attn_norm.weight"), vec![d], Init::Ones));
         }
-        out.push((format!("{p}.attn.Wqkv.weight"), vec![3 * d, d], Init::TruncNormal(std)));
-        out.push((format!("{p}.attn.Wo.weight"), vec![d, d], Init::TruncNormal(std_out)));
+        out.push((
+            format!("{p}.attn.Wqkv.weight"),
+            vec![3 * d, d],
+            Init::TruncNormal(std),
+        ));
+        out.push((
+            format!("{p}.attn.Wo.weight"),
+            vec![d, d],
+            Init::TruncNormal(std_out),
+        ));
         out.push((format!("{p}.mlp_norm.weight"), vec![d], Init::Ones));
-        out.push((format!("{p}.mlp.Wi.weight"), vec![2 * i, d], Init::TruncNormal(std)));
-        out.push((format!("{p}.mlp.Wo.weight"), vec![d, i], Init::TruncNormal(std_out)));
+        out.push((
+            format!("{p}.mlp.Wi.weight"),
+            vec![2 * i, d],
+            Init::TruncNormal(std),
+        ));
+        out.push((
+            format!("{p}.mlp.Wo.weight"),
+            vec![d, i],
+            Init::TruncNormal(std_out),
+        ));
     }
     out.push(("encoder.final_norm.weight".to_string(), vec![d], Init::Ones));
     if parts.decision {
@@ -100,8 +142,16 @@ fn specs(cfg: &ModelConfig, parts: Parts) -> Vec<(String, Vec<i32>, Init)> {
             let xavier = Init::Uniform((6.0 / (d + 3 * d) as f32).sqrt());
             out.push((format!("{p}.norm1.weight"), vec![d], Init::Ones));
             out.push((format!("{p}.norm1.bias"), vec![d], Init::Zeros));
-            out.push((format!("{p}.self_attn.in_proj_weight"), vec![3 * d, d], xavier));
-            out.push((format!("{p}.self_attn.in_proj_bias"), vec![3 * d], Init::Zeros));
+            out.push((
+                format!("{p}.self_attn.in_proj_weight"),
+                vec![3 * d, d],
+                xavier,
+            ));
+            out.push((
+                format!("{p}.self_attn.in_proj_bias"),
+                vec![3 * d],
+                Init::Zeros,
+            ));
             out.push((format!("{p}.self_attn.out_proj.weight"), vec![d, d], lin(d)));
             out.push((format!("{p}.self_attn.out_proj.bias"), vec![d], Init::Zeros));
             out.push((format!("{p}.norm2.weight"), vec![d], Init::Ones));
@@ -120,7 +170,11 @@ fn specs(cfg: &ModelConfig, parts: Parts) -> Vec<(String, Vec<i32>, Init)> {
         out.push(("scorer.3.bias".to_string(), vec![1], Init::Zeros));
     }
     if parts.mlm {
-        out.push(("mlm.dense.weight".to_string(), vec![d, d], Init::TruncNormal(std_out)));
+        out.push((
+            "mlm.dense.weight".to_string(),
+            vec![d, d],
+            Init::TruncNormal(std_out),
+        ));
         out.push(("mlm.norm.weight".to_string(), vec![d], Init::Ones));
         out.push(("mlm.decoder.bias".to_string(), vec![v], Init::Zeros));
     }
@@ -144,7 +198,8 @@ pub fn init(cfg: &ModelConfig, parts: Parts, seed: u64) -> Result<ParamMap> {
         key = next;
         let a = match init {
             Init::TruncNormal(s) => {
-                random::truncated_normal::<f32, f32>(-2.0, 2.0, &shape[..], &k)?.multiply(Array::from_f32(s))?
+                random::truncated_normal::<f32, f32>(-2.0, 2.0, &shape[..], &k)?
+                    .multiply(Array::from_f32(s))?
             }
             Init::Uniform(a) => random::uniform::<f32, f32>(-a, a, &shape[..], &k)?,
             Init::Normal(s) => random::normal::<f32>(&shape[..], 0.0, s, &k)?,
@@ -178,7 +233,9 @@ pub fn eval(map: &ParamMap) -> Result<()> {
 
 /// Deep copy (new buffers) of a parameter map.
 pub fn deep_clone(map: &ParamMap) -> ParamMap {
-    map.iter().map(|(k, v)| (k.clone(), v.deep_clone())).collect()
+    map.iter()
+        .map(|(k, v)| (k.clone(), v.deep_clone()))
+        .collect()
 }
 
 /// Saves arrays to a safetensors file, cast to `dtype` if given.
@@ -201,7 +258,8 @@ pub fn save(path: &Path, map: &ParamMap, dtype: Option<Dtype>) -> Result<()> {
 
 /// Loads every array of a safetensors file (as f32 for floating tensors).
 pub fn load(path: &Path) -> Result<ParamMap> {
-    let raw = Array::load_safetensors(path).map_err(|e| anyhow!("loading {}: {e}", path.display()))?;
+    let raw =
+        Array::load_safetensors(path).map_err(|e| anyhow!("loading {}: {e}", path.display()))?;
     let mut map = ParamMap::new();
     for (k, v) in raw {
         let v = match v.dtype() {
@@ -221,7 +279,11 @@ pub fn load_matching(dst: &mut ParamMap, src: &ParamMap) -> Result<usize> {
     for (k, v) in dst.iter_mut() {
         if let Some(s) = src.get(k) {
             if s.shape() != v.shape() {
-                return Err(anyhow!("shape mismatch for {k}: {:?} vs {:?}", s.shape(), v.shape()));
+                return Err(anyhow!(
+                    "shape mismatch for {k}: {:?} vs {:?}",
+                    s.shape(),
+                    v.shape()
+                ));
             }
             *v = s.clone();
             n += 1;
@@ -296,12 +358,30 @@ mod tests {
 
     #[test]
     fn groups() {
-        assert_eq!(group_of("encoder.layers.3.attn.Wqkv.weight", 2), Group::Muon);
+        assert_eq!(
+            group_of("encoder.layers.3.attn.Wqkv.weight", 2),
+            Group::Muon
+        );
         assert_eq!(group_of("encoder.layers.3.mlp.Wo.weight", 2), Group::Muon);
-        assert_eq!(group_of("encoder.embeddings.tok_embeddings.weight", 2), Group::AdamNoDecay);
+        assert_eq!(
+            group_of("encoder.embeddings.tok_embeddings.weight", 2),
+            Group::AdamNoDecay
+        );
         assert_eq!(group_of("type_emb.weight", 2), Group::AdamNoDecay);
-        assert_eq!(group_of("head.layers.0.linear1.weight", 2), Group::AdamDecay);
+        assert_eq!(
+            group_of("head.layers.0.linear1.weight", 2),
+            Group::AdamDecay
+        );
         assert_eq!(group_of("scorer.1.bias", 1), Group::AdamNoDecay);
         assert_eq!(group_of("encoder.final_norm.weight", 1), Group::AdamNoDecay);
+        // s2 names.
+        assert_eq!(group_of("blk.2.attn_qkv.weight", 2), Group::Muon);
+        assert_eq!(group_of("static.blk.0.ffn_down.weight", 2), Group::Muon);
+        assert_eq!(group_of("fusion.0.attn_kv.weight", 2), Group::AdamDecay);
+        assert_eq!(group_of("cls.weight", 2), Group::AdamDecay);
+        assert_eq!(group_of("token_embd.weight", 2), Group::AdamNoDecay);
+        assert_eq!(group_of("num_proj.weight", 2), Group::AdamNoDecay);
+        assert_eq!(group_of("type_embd.weight", 2), Group::AdamNoDecay);
+        assert_eq!(group_of("blk.1.attn_norm.weight", 1), Group::AdamNoDecay);
     }
 }

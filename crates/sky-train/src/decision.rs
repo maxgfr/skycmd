@@ -15,7 +15,9 @@ use crate::{
     model::{self, DecisionBatch},
     params::ParamMap,
     rng::Rng,
-    sequence::{build_from_pieces, piece_texts, qtype_id, DecisionRecord, Pieces, Tok, OPTION_MAX_TOKENS},
+    sequence::{
+        build_from_pieces, piece_texts, qtype_id, DecisionRecord, Pieces, Tok, OPTION_MAX_TOKENS,
+    },
 };
 
 /// Score questions are ordinal (`level i`), their option order is never permuted
@@ -83,7 +85,8 @@ pub fn list_jsonl(path: &Path) -> Result<Vec<PathBuf>> {
 pub fn read_records(path: &Path) -> Result<Vec<DecisionRecord>> {
     let mut out = Vec::new();
     for file in list_jsonl(path)? {
-        let f = std::fs::File::open(&file).with_context(|| format!("opening {}", file.display()))?;
+        let f =
+            std::fs::File::open(&file).with_context(|| format!("opening {}", file.display()))?;
         for (i, line) in BufReader::new(f).lines().enumerate() {
             let line = line?;
             if line.trim().is_empty() {
@@ -99,8 +102,13 @@ pub fn read_records(path: &Path) -> Result<Vec<DecisionRecord>> {
 
 /// Group name of an input path.
 pub fn group_name(path: &Path) -> String {
-    let stem = if path.is_file() { path.file_stem() } else { path.file_name() };
-    stem.map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "data".into())
+    let stem = if path.is_file() {
+        path.file_stem()
+    } else {
+        path.file_name()
+    };
+    stem.map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "data".into())
 }
 
 /// Validates and pre-tokenizes the records of every input path.
@@ -147,7 +155,8 @@ pub fn load(paths: &[PathBuf], tok: &Tok, agent: &AgentConfig) -> Result<Decisio
             let pieces = Pieces { head, opts, state };
             let k = rec.opts.len();
             let identity: Vec<usize> = (0..k).collect();
-            let (seq, markers) = build_from_pieces(&pieces, &identity, agent.max_len, agent.head_max_len);
+            let (seq, markers) =
+                build_from_pieces(&pieces, &identity, agent.max_len, agent.head_max_len);
             if markers.len() != k {
                 // Options did not fit: skip rather than train on a truncated answer space.
                 data.skipped += 1;
@@ -184,7 +193,12 @@ pub struct Row {
 /// Builds the row of `item` with option `order` (target permuted accordingly).
 pub fn row(item: &Item, order: &[usize], agent: &AgentConfig) -> Row {
     let (ids, markers) = build_from_pieces(&item.pieces, order, agent.max_len, agent.head_max_len);
-    Row { ids, markers, qtype: item.qtype, target: order.iter().map(|&i| item.target[i]).collect() }
+    Row {
+        ids,
+        markers,
+        qtype: item.qtype,
+        target: order.iter().map(|&i| item.target[i]).collect(),
+    }
 }
 
 /// Random option permutation (identity for score questions).
@@ -201,7 +215,12 @@ pub fn make_batch(rows: &[Row], pad_to: usize) -> DecisionBatch {
     let b = rows.len();
     let max_t = rows.iter().map(|r| r.ids.len()).max().unwrap_or(1);
     let t = max_t.div_ceil(pad_to.max(1)) * pad_to.max(1);
-    let k = rows.iter().map(|r| r.markers.len()).max().unwrap_or(1).max(1);
+    let k = rows
+        .iter()
+        .map(|r| r.markers.len())
+        .max()
+        .unwrap_or(1)
+        .max(1);
     let mut ids = vec![PAD_ID as i32; b * t];
     let mut valid = vec![false; b * t];
     let mut mpos = vec![0i32; b * k];
@@ -221,7 +240,11 @@ pub fn make_batch(rows: &[Row], pad_to: usize) -> DecisionBatch {
         }
     }
     let shape = [b as i32, t as i32];
-    let key_valid = if valid.iter().all(|&v| v) { None } else { Some(Array::from_slice(&valid, &shape)) };
+    let key_valid = if valid.iter().all(|&v| v) {
+        None
+    } else {
+        Some(Array::from_slice(&valid, &shape))
+    };
     DecisionBatch {
         ids: Array::from_slice(&ids, &shape),
         key_valid,
@@ -235,7 +258,13 @@ pub fn make_batch(rows: &[Row], pad_to: usize) -> DecisionBatch {
 
 /// Samples an augmented training batch: the group is drawn by `weights`, the
 /// item uniformly within the group.
-pub fn sample_batch(data: &DecisionData, weights: &[f64], batch: usize, rng: &mut Rng, agent: &AgentConfig) -> DecisionBatch {
+pub fn sample_batch(
+    data: &DecisionData,
+    weights: &[f64],
+    batch: usize,
+    rng: &mut Rng,
+    agent: &AgentConfig,
+) -> DecisionBatch {
     let w: Vec<f64> = weights
         .iter()
         .zip(&data.train)
@@ -272,12 +301,20 @@ pub fn predict(
     let mut start = 0;
     while start < order.len() {
         let mut end = start + 1;
-        while end < order.len() && items[order[end]].len.div_ceil(16) * 16 * (end - start + 1) <= max_tokens {
+        while end < order.len()
+            && items[order[end]].len.div_ceil(16) * 16 * (end - start + 1) <= max_tokens
+        {
             end += 1;
         }
         let rows: Vec<Row> = order[start..end]
             .iter()
-            .map(|&i| row(items[i], &(0..items[i].k()).collect::<Vec<_>>(), &cfg.rl_agent))
+            .map(|&i| {
+                row(
+                    items[i],
+                    &(0..items[i].k()).collect::<Vec<_>>(),
+                    &cfg.rl_agent,
+                )
+            })
             .collect();
         let batch = make_batch(&rows, 16);
         let logits = model::decision_forward(params, cfg, &batch)?;
@@ -295,7 +332,10 @@ pub fn predict(
         }
         start = end;
     }
-    Ok(out.into_iter().map(|p| p.expect("every item predicted")).collect())
+    Ok(out
+        .into_iter()
+        .map(|p| p.expect("every item predicted"))
+        .collect())
 }
 
 #[cfg(test)]
@@ -305,7 +345,10 @@ mod tests {
 
     fn write_records(dir: &Path, name: &str, recs: &[DecisionRecord]) {
         std::fs::create_dir_all(dir).unwrap();
-        let body: Vec<String> = recs.iter().map(|r| serde_json::to_string(r).unwrap()).collect();
+        let body: Vec<String> = recs
+            .iter()
+            .map(|r| serde_json::to_string(r).unwrap())
+            .collect();
         std::fs::write(dir.join(name), body.join("\n")).unwrap();
     }
 
@@ -359,8 +402,18 @@ mod tests {
     fn batch_padding_layout() {
         let _g = crate::test_util::lock();
         let rows = vec![
-            Row { ids: vec![2, 9, 3, 4, 7, 4, 8, 3, 3], markers: vec![3, 5], qtype: 2, target: vec![0.0, 1.0] },
-            Row { ids: vec![2, 9, 3, 4, 7, 4, 8, 4, 6, 3, 3], markers: vec![3, 5, 7], qtype: 0, target: vec![0.2, 0.3, 0.5] },
+            Row {
+                ids: vec![2, 9, 3, 4, 7, 4, 8, 3, 3],
+                markers: vec![3, 5],
+                qtype: 2,
+                target: vec![0.0, 1.0],
+            },
+            Row {
+                ids: vec![2, 9, 3, 4, 7, 4, 8, 4, 6, 3, 3],
+                markers: vec![3, 5, 7],
+                qtype: 0,
+                target: vec![0.2, 0.3, 0.5],
+            },
         ];
         let b = make_batch(&rows, 16);
         assert_eq!(b.ids.shape(), &[2, 16]);
@@ -371,6 +424,9 @@ mod tests {
         let kv = kv.as_slice::<bool>();
         assert!(kv[8] && !kv[9] && kv[16 + 10] && !kv[16 + 11]);
         b.marker_mask.eval().unwrap();
-        assert_eq!(b.marker_mask.as_slice::<bool>(), &[true, true, false, true, true, true]);
+        assert_eq!(
+            b.marker_mask.as_slice::<bool>(),
+            &[true, true, false, true, true, true]
+        );
     }
 }

@@ -173,3 +173,69 @@ fn bench_reports_latency() {
 fn bad_gguf_is_rejected() {
     assert!(Engine::load(b"not a gguf").is_err());
 }
+
+fn random_s2(format: sky_infer::s2::random::WeightFormat) -> Vec<u8> {
+    use sky_infer::s2::random::{ladder_config, random_gguf, test_tokenizer};
+    random_gguf(
+        &ladder_config("s2-pico").unwrap(),
+        &test_tokenizer(),
+        5,
+        format,
+    )
+    .unwrap()
+}
+
+#[test]
+fn s2_model_plays_and_reports_depth() {
+    use sky_infer::s2::random::WeightFormat;
+    for format in [WeightFormat::F32, WeightFormat::Ternary] {
+        let mut engine = Engine::load(&random_s2(format)).unwrap();
+        assert_eq!(engine.family(), "s2");
+        let m = engine.model_mut();
+        assert_eq!(m.info()["arch"], "skycmd-s2");
+        assert_eq!(m.max_layers(), 3);
+        for (kind, n0) in [("flappy", 2), ("rescue", 7), ("dodge", 4)] {
+            let mut s = Session::new(kind, 9).unwrap();
+            let first = s.step_ai(Policy::Model(m)).unwrap();
+            let info = first.info.clone().unwrap();
+            assert_eq!(info.family, "s2");
+            assert_eq!(info.n_exits, 2);
+            assert!([Some(1), Some(3)].contains(&info.layers_used), "{kind}");
+            assert_eq!(info.max_layers, Some(3));
+            // the second question of the frame reuses the state encoding
+            assert!(info.state_reused, "{kind}");
+            assert_eq!(first.probs.len(), n0);
+            assert!((sum(&first.probs) - 1.0).abs() < 1e-3);
+            // the next decision finds the static encodings cached
+            let mut next = s.step_ai(Policy::Model(m)).unwrap();
+            while !next.decided {
+                next = s.step_ai(Policy::Model(m)).unwrap();
+            }
+            assert!(next.info.unwrap().static_hit, "{kind}");
+            let json = serde_json::to_value(&first).unwrap();
+            assert!(json["info"]["layers_used"].is_u64());
+        }
+        // full depth on request
+        m.set_exit_threshold(Some(1.0));
+        let mut s = Session::new("flappy", 1).unwrap();
+        let r = s.step_ai(Policy::Model(m)).unwrap();
+        assert_eq!(r.info.unwrap().layers_used, Some(3));
+    }
+}
+
+#[test]
+fn bench_compares_families() {
+    let mut s1 = Engine::load(&random_pico()).unwrap();
+    let b1 = session::bench(s1.model_mut(), 20).unwrap();
+    assert_eq!(b1["family"], "s1");
+    assert!(b1["mean_layers_used"].is_null());
+    let mut s2 = Engine::load(&random_s2(sky_infer::s2::random::WeightFormat::F32)).unwrap();
+    let b2 = session::bench(s2.model_mut(), 20).unwrap();
+    assert_eq!(b2["family"], "s2");
+    let layers = b2["mean_layers_used"].as_f64().unwrap();
+    assert!((1.0..=3.0).contains(&layers), "{b2}");
+    assert_eq!(b2["max_layers"], 3);
+    assert_eq!(b2["state_reuse_rate"], 1.0);
+    assert_eq!(b2["static_hit_rate"], 1.0);
+    assert!(b2["median_us"].as_f64().unwrap() > 0.0);
+}

@@ -1,0 +1,11 @@
+# Ollama Modelfile for a skycmd s1 model (llama.cpp architecture `modern-bert`, decision type
+# `laya`). Put the GGUF next to this file, then:
+#
+#   curl -LO https://maxgfr.github.io/skycmd/models/s1-pico.gguf
+#   ollama create skycmd-s1-pico -f Modelfile
+#
+# Status (see docs/compat.md): Ollama has no /v1/systemone endpoint and its engine does not run
+# decision heads, so this file only registers the weights in an Ollama store. To answer
+# requests, serve the same file with `skycmd serve` or llama.cpp `llama-server`.
+# s2 GGUFs (`skycmd-s2`) are served only by the skycmd engine.
+FROM ./s1-pico.gguf

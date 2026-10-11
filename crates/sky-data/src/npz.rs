@@ -45,13 +45,22 @@ pub fn parse_npy_u16(buf: &[u8]) -> Result<U16Matrix> {
             if buf.len() < 12 {
                 bail!("truncated npy header");
             }
-            (u32::from_le_bytes(buf[8..12].try_into().unwrap()) as usize, 12)
+            (
+                u32::from_le_bytes(buf[8..12].try_into().unwrap()) as usize,
+                12,
+            )
         }
         v => bail!("unsupported npy version {v}"),
     };
-    let header = std::str::from_utf8(buf.get(off..off + hlen).ok_or_else(|| anyhow!("truncated npy header"))?)?;
+    let header = std::str::from_utf8(
+        buf.get(off..off + hlen)
+            .ok_or_else(|| anyhow!("truncated npy header"))?,
+    )?;
     let descr = dict_value(header, "descr").ok_or_else(|| anyhow!("no descr in {header}"))?;
-    if !matches!(descr.trim_matches(|c| c == '\'' || c == '"'), "<u2" | "|u2" | "u2") {
+    if !matches!(
+        descr.trim_matches(|c| c == '\'' || c == '"'),
+        "<u2" | "|u2" | "u2"
+    ) {
         bail!("unsupported dtype {descr}");
     }
     if dict_value(header, "fortran_order").is_some_and(|v| v.starts_with("True")) {

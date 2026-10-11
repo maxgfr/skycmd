@@ -1,0 +1,316 @@
+[
+  {
+    "input": "alt 12 vy -3 dx 40 gt 20 gb 35",
+    "text": "alt [NUM] vy [NUM] dx [NUM] gt [NUM] gb [NUM]",
+    "values": [
+      12.0,
+      -3.0,
+      40.0,
+      20.0,
+      35.0
+    ],
+    "bits": [
+      1094713344,
+      3225419776,
+      1109393408,
+      1101004800,
+      1108082688
+    ]
+  },
+  {
+    "input": "vy -3",
+    "text": "vy [NUM]",
+    "values": [
+      -3.0
+    ],
+    "bits": [
+      3225419776
+    ]
+  },
+  {
+    "input": "glm-5",
+    "text": "glm-5",
+    "values": [],
+    "bits": []
+  },
+  {
+    "input": "b2",
+    "text": "b2",
+    "values": [],
+    "bits": []
+  },
+  {
+    "input": "3.5km",
+    "text": "[NUM]km",
+    "values": [
+      3.5
+    ],
+    "bits": [
+      1080033280
+    ]
+  },
+  {
+    "input": "1,000",
+    "text": "[NUM],[NUM]",
+    "values": [
+      1.0,
+      0.0
+    ],
+    "bits": [
+      1065353216,
+      0
+    ]
+  },
+  {
+    "input": "-0",
+    "text": "[NUM]",
+    "values": [
+      -0.0
+    ],
+    "bits": [
+      2147483648
+    ]
+  },
+  {
+    "input": "-0.0",
+    "text": "[NUM]",
+    "values": [
+      -0.0
+    ],
+    "bits": [
+      2147483648
+    ]
+  },
+  {
+    "input": "x=-0.25,7.",
+    "text": "x=[NUM],[NUM].",
+    "values": [
+      -0.25,
+      7.0
+    ],
+    "bits": [
+      3196059648,
+      1088421888
+    ]
+  },
+  {
+    "input": "1.2.3",
+    "text": "[NUM].[NUM]",
+    "values": [
+      1.2000000476837158,
+      3.0
+    ],
+    "bits": [
+      1067030938,
+      1077936128
+    ]
+  },
+  {
+    "input": "- 3 --4",
+    "text": "- [NUM] -[NUM]",
+    "values": [
+      3.0,
+      -4.0
+    ],
+    "bits": [
+      1077936128,
+      3229614080
+    ]
+  },
+  {
+    "input": "1-2",
+    "text": "[NUM][NUM]",
+    "values": [
+      1.0,
+      -2.0
+    ],
+    "bits": [
+      1065353216,
+      3221225472
+    ]
+  },
+  {
+    "input": "Le drone vole à 120 m d'altitude pendant 3,5 minutes.",
+    "text": "Le drone vole à [NUM] m d'altitude pendant [NUM],[NUM] minutes.",
+    "values": [
+      120.0,
+      3.0,
+      5.0
+    ],
+    "bits": [
+      1123024896,
+      1077936128,
+      1084227584
+    ]
+  },
+  {
+    "input": "Il reste 15 % de batterie et -2 °C dehors.",
+    "text": "Il reste [NUM] % de batterie et [NUM] °C dehors.",
+    "values": [
+      15.0,
+      -2.0
+    ],
+    "bits": [
+      1097859072,
+      3221225472
+    ]
+  },
+  {
+    "input": "Décolle à 30 m, puis inspecte le pylône n°7.",
+    "text": "Décolle à [NUM] m, puis inspecte le pylône n°[NUM].",
+    "values": [
+      30.0,
+      7.0
+    ],
+    "bits": [
+      1106247680,
+      1088421888
+    ]
+  },
+  {
+    "input": "é5 è12",
+    "text": "é[NUM] è[NUM]",
+    "values": [
+      5.0,
+      12.0
+    ],
+    "bits": [
+      1084227584,
+      1094713344
+    ]
+  },
+  {
+    "input": "item_1 and x1.5y",
+    "text": "item_[NUM] and x1.5y",
+    "values": [
+      1.0
+    ],
+    "bits": [
+      1065353216
+    ]
+  },
+  {
+    "input": "no digits here",
+    "text": "no digits here",
+    "values": [],
+    "bits": []
+  },
+  {
+    "input": "",
+    "text": "",
+    "values": [],
+    "bits": []
+  },
+  {
+    "input": "3.14159265358979",
+    "text": "[NUM]",
+    "values": [
+      3.1415927410125732
+    ],
+    "bits": [
+      1078530011
+    ]
+  },
+  {
+    "input": "123456789012",
+    "text": "[NUM]",
+    "values": [
+      123456790528.0
+    ],
+    "bits": [
+      1374024905
+    ]
+  },
+  {
+    "input": "0.1",
+    "text": "[NUM]",
+    "values": [
+      0.10000000149011612
+    ],
+    "bits": [
+      1036831949
+    ]
+  },
+  {
+    "input": "007",
+    "text": "[NUM]",
+    "values": [
+      7.0
+    ],
+    "bits": [
+      1088421888
+    ]
+  },
+  {
+    "input": "1e5 and 2E-3",
+    "text": "[NUM]e5 and [NUM]E-3",
+    "values": [
+      1.0,
+      2.0
+    ],
+    "bits": [
+      1065353216,
+      1073741824
+    ]
+  },
+  {
+    "input": "range 10-20 km",
+    "text": "range [NUM][NUM] km",
+    "values": [
+      10.0,
+      -20.0
+    ],
+    "bits": [
+      1092616192,
+      3248488448
+    ]
+  },
+  {
+    "input": "temp: -40.5, delta +3",
+    "text": "temp: [NUM], delta +[NUM]",
+    "values": [
+      -40.5,
+      3.0
+    ],
+    "bits": [
+      3257008128,
+      1077936128
+    ]
+  },
+  {
+    "input": "v2.0 release",
+    "text": "v2.0 release",
+    "values": [],
+    "bits": []
+  },
+  {
+    "input": "S2-pico has 64 dims",
+    "text": "S2-pico has [NUM] dims",
+    "values": [
+      64.0
+    ],
+    "bits": [
+      1115684864
+    ]
+  },
+  {
+    "input": "(42) [7] {-1}",
+    "text": "([NUM]) [[NUM]] {[NUM]}",
+    "values": [
+      42.0,
+      7.0,
+      -1.0
+    ],
+    "bits": [
+      1109917696,
+      1088421888,
+      3212836864
+    ]
+  },
+  {
+    "input": "١٢٣ and ２ are not ASCII digits",
+    "text": "١٢٣ and ２ are not ASCII digits",
+    "values": [],
+    "bits": []
+  }
+]

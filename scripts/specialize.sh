@@ -9,10 +9,10 @@ name=$1 rounds=${2:-2} minutes=${3:-6}
 case "$name" in pico) vocab=1024 ;; nano) vocab=2048 ;; micro) vocab=4096 ;; esac
 T=target/sky-train/release/sky-train
 A=target/sky-arena/release/sky-arena
-CARGO_TARGET_DIR=$PWD/target/sky-arena cargo build -q --release -p sky-arena
-init=runs/s1-$name/decide/last
-model=models/s1-$name
-for r in $(seq 1 "$rounds"); do
+[ -x "$A" ] || CARGO_TARGET_DIR=$PWD/target/sky-arena cargo build -q --release -p sky-arena
+init=${INIT:-runs/s1-$name/decide/last}
+model=${MODEL:-models/s1-$name}
+for r in $(seq "${START:-1}" "$rounds"); do
   run=runs/s1-$name-g$r
   dag=data/dagger-$name/r$r
   echo "== s1-$name round $r: DAgger from $model"

@@ -13,13 +13,19 @@ use tokenizers::models::bpe::{BpeTrainerBuilder, BPE};
 use tokenizers::normalizers::NFC;
 use tokenizers::pre_tokenizers::byte_level::ByteLevel;
 use tokenizers::processors::template::TemplateProcessing;
-use tokenizers::{AddedToken, DecoderWrapper, NormalizerWrapper, PostProcessorWrapper, PreTokenizerWrapper, Tokenizer, TokenizerBuilder};
+use tokenizers::{
+    AddedToken, DecoderWrapper, NormalizerWrapper, PostProcessorWrapper, PreTokenizerWrapper,
+    Tokenizer, TokenizerBuilder,
+};
 
+use crate::num::{replace as replace_numbers, NUM_ID, NUM_TOKEN};
 use crate::record::DecisionRecord;
 use crate::rng::{hash64, Rng};
 
 /// Special tokens in id order: `[PAD]=0 [UNK]=1 [CLS]=2 [SEP]=3 [MASK]=4`.
 pub const SPECIALS: [&str; 5] = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"];
+/// Special tokens of the s2 tokenizers (SPEC-S2 §2): the s1 ones plus `[NUM]=5`.
+pub const SPECIALS_S2: [&str; 6] = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", NUM_TOKEN];
 pub const PAD_ID: u32 = 0;
 pub const CLS_ID: u32 = 2;
 pub const SEP_ID: u32 = 3;
@@ -33,7 +39,11 @@ pub const HEAD_MAX_LEN: usize = 96;
 /// `build_sequence` tokenizes separately: head, each `" " + option`, state.
 pub fn decision_segments(r: &DecisionRecord) -> Vec<String> {
     let mut out = Vec::with_capacity(r.opts.len() + 2);
-    out.push(format!("{} question: {}", r.t, r.ins.replace("[MASK]", " ")));
+    out.push(format!(
+        "{} question: {}",
+        r.t,
+        r.ins.replace("[MASK]", " ")
+    ));
     for o in &r.opts {
         out.push(format!(" {}", o.replace("[MASK]", " ")));
     }
@@ -88,7 +98,11 @@ pub fn build_corpus(opts: &CorpusOptions) -> Result<Corpus> {
             eprintln!("[tok] skipping missing input {dir:?}");
             continue;
         }
-        let files = if dir.is_dir() { jsonl_files(dir) } else { vec![dir.clone()] };
+        let files = if dir.is_dir() {
+            jsonl_files(dir)
+        } else {
+            vec![dir.clone()]
+        };
         for f in files {
             let game = is_game_path(&f);
             let reps = if game { opts.game_weight.max(1) } else { 1 };
@@ -131,10 +145,17 @@ pub fn build_corpus(opts: &CorpusOptions) -> Result<Corpus> {
     }
     // Text: an even byte share per file, sampled deterministically by line hash.
     let budget = (opts.max_text_mb * 1e6) as u64;
-    let sizes: Vec<u64> = text_files.iter().map(|f| fs::metadata(f).map(|m| m.len()).unwrap_or(0)).collect();
+    let sizes: Vec<u64> = text_files
+        .iter()
+        .map(|f| fs::metadata(f).map(|m| m.len()).unwrap_or(0))
+        .collect();
     let total: u64 = sizes.iter().sum();
     for (f, size) in text_files.iter().zip(sizes) {
-        let keep = if total <= budget { 1.0 } else { budget as f64 / total as f64 };
+        let keep = if total <= budget {
+            1.0
+        } else {
+            budget as f64 / total as f64
+        };
         let limit = (size as f64 * keep) as u64;
         let mut used = 0u64;
         for line in BufReader::new(fs::File::open(f)?).lines() {
@@ -142,7 +163,9 @@ pub fn build_corpus(opts: &CorpusOptions) -> Result<Corpus> {
             if keep < 1.0 && (hash64(line.as_bytes()) % 10_000) as f64 / 1e4 >= keep {
                 continue;
             }
-            let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+            let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
             if let Some(t) = v.get("text").and_then(Value::as_str) {
                 used += t.len() as u64;
                 corpus.text_bytes += t.len() as u64;
@@ -180,10 +203,61 @@ pub fn int_prior_reps(corpus_bytes: u64) -> usize {
     ((corpus_bytes / 4000) as usize).max(1000)
 }
 
+/// Training segments for an s2 tokenizer: numbers are replaced by `[NUM]` (SPEC-S2 §2) and
+/// each segment is split around `[NUM]`, exactly as the added special token splits the text at
+/// encoding time, so no merge is ever learned across or inside `[NUM]`.
+pub fn num_segments(segments: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(segments.len());
+    for s in segments {
+        let replaced = replace_numbers(s);
+        out.extend(
+            replaced
+                .split(NUM_TOKEN)
+                .filter(|p| !p.is_empty())
+                .map(str::to_string),
+        );
+    }
+    out
+}
+
+/// Whether `tok` is an s2 tokenizer (`[NUM]` registered with its fixed id).
+pub fn is_s2(tok: &Tokenizer) -> bool {
+    tok.token_to_id(NUM_TOKEN) == Some(NUM_ID)
+}
+
 /// Trains a byte-level BPE tokenizer with fixed special ids and the oscar-style
 /// pipeline (NFC normalizer, ByteLevel pre-tokenizer/decoder, `[CLS] $A [SEP]` template).
 pub fn train_tokenizer(segments: &[String], vocab: usize, min_frequency: u64) -> Result<Tokenizer> {
-    let specials: Vec<AddedToken> = SPECIALS.iter().map(|s| AddedToken::from(*s, true)).collect();
+    train_tokenizer_with(segments, vocab, min_frequency, &SPECIALS)
+}
+
+/// s2 tokenizer: same pipeline with `[NUM]=5` as an extra special token. `segments` must
+/// already be prepared with [`num_segments`].
+pub fn train_tokenizer_s2(
+    segments: &[String],
+    vocab: usize,
+    min_frequency: u64,
+) -> Result<Tokenizer> {
+    let tok = train_tokenizer_with(segments, vocab, min_frequency, &SPECIALS_S2)?;
+    let ids = tok
+        .encode(format!("a{NUM_TOKEN}b {NUM_TOKEN}"), false)
+        .map_err(|e| anyhow!(e))?;
+    if ids.get_ids().iter().filter(|&&i| i == NUM_ID).count() != 2 {
+        bail!("{NUM_TOKEN} is not matched as a special token");
+    }
+    Ok(tok)
+}
+
+fn train_tokenizer_with(
+    segments: &[String],
+    vocab: usize,
+    min_frequency: u64,
+    specials_list: &[&str],
+) -> Result<Tokenizer> {
+    let specials: Vec<AddedToken> = specials_list
+        .iter()
+        .map(|s| AddedToken::from(*s, true))
+        .collect();
     let mut trainer = BpeTrainerBuilder::new()
         .vocab_size(vocab)
         .min_frequency(min_frequency)
@@ -196,33 +270,86 @@ pub fn train_tokenizer(segments: &[String], vocab: usize, min_frequency: u64) ->
         .map_err(|e| anyhow!(e))?
         .try_pair("[CLS] $A [SEP] $B:0 [SEP]:0")
         .map_err(|e| anyhow!(e))?
-        .special_tokens(vec![("[CLS]".to_string(), CLS_ID), ("[SEP]".to_string(), SEP_ID)])
+        .special_tokens(vec![
+            ("[CLS]".to_string(), CLS_ID),
+            ("[SEP]".to_string(), SEP_ID),
+        ])
         .build()?;
-    let mut tok = TokenizerBuilder::<BPE, NormalizerWrapper, PreTokenizerWrapper, PostProcessorWrapper, DecoderWrapper>::new()
-        .with_model(BPE::default())
-        .with_normalizer(Some(NFC.into()))
-        .with_pre_tokenizer(Some(ByteLevel::new(false, true, true).into()))
-        .with_post_processor(Some(template.into()))
-        .with_decoder(Some(ByteLevel::new(false, true, true).into()))
-        .build()
+    let mut tok = TokenizerBuilder::<
+        BPE,
+        NormalizerWrapper,
+        PreTokenizerWrapper,
+        PostProcessorWrapper,
+        DecoderWrapper,
+    >::new()
+    .with_model(BPE::default())
+    .with_normalizer(Some(NFC.into()))
+    .with_pre_tokenizer(Some(ByteLevel::new(false, true, true).into()))
+    .with_post_processor(Some(template.into()))
+    .with_decoder(Some(ByteLevel::new(false, true, true).into()))
+    .build()
+    .map_err(|e| anyhow!(e))?;
+    tok.train(&mut trainer, segments.iter())
         .map_err(|e| anyhow!(e))?;
-    tok.train(&mut trainer, segments.iter()).map_err(|e| anyhow!(e))?;
     let tok: Tokenizer = tok.into();
-    for (i, s) in SPECIALS.iter().enumerate() {
+    for (i, s) in specials_list.iter().enumerate() {
         if tok.token_to_id(s) != Some(i as u32) {
-            bail!("special token {s} got id {:?}, expected {i}", tok.token_to_id(s));
+            bail!(
+                "special token {s} got id {:?}, expected {i}",
+                tok.token_to_id(s)
+            );
         }
     }
     Ok(tok)
 }
 
-fn encode(tok: &Tokenizer, s: &str) -> Result<Vec<u32>> {
-    Ok(tok.encode(s, false).map_err(|e| anyhow!(e))?.get_ids().to_vec())
+/// Encodes one segment without specials; s2 tokenizers get numeric extraction first.
+pub fn encode(tok: &Tokenizer, s: &str) -> Result<Vec<u32>> {
+    let enc = if is_s2(tok) {
+        tok.encode(replace_numbers(s), false)
+    } else {
+        tok.encode(s, false)
+    };
+    Ok(enc.map_err(|e| anyhow!(e))?.get_ids().to_vec())
+}
+
+/// Mean number of tokens of `[CLS] {state} [SEP]` over the game records of `dir`
+/// (per file stem), the per-frame input of the s2 state encoder.
+pub fn state_token_stats(
+    tok: &Tokenizer,
+    dir: &Path,
+    sample: usize,
+    seed: u64,
+) -> Result<BTreeMap<String, f64>> {
+    let mut out = BTreeMap::new();
+    for f in jsonl_files(dir) {
+        let mut recs: Vec<DecisionRecord> = crate::record::read_jsonl(&f)?;
+        if recs.is_empty() {
+            continue;
+        }
+        Rng::derived(seed, "statestats").shuffle(&mut recs);
+        recs.truncate(sample);
+        let mut total = 0usize;
+        for r in &recs {
+            total += encode(tok, &r.state.replace("[MASK]", " "))?.len() + 2;
+        }
+        let name = f
+            .file_stem()
+            .map(|x| x.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        out.insert(name, total as f64 / recs.len() as f64);
+    }
+    Ok(out)
 }
 
 /// Port of `rl_common.build_sequence` (options in record order, state truncated on the right).
 /// Returns the ids and the `[MASK]` marker positions.
-pub fn build_sequence(tok: &Tokenizer, r: &DecisionRecord, max_len: usize, head_max_len: usize) -> Result<(Vec<u32>, Vec<usize>)> {
+pub fn build_sequence(
+    tok: &Tokenizer,
+    r: &DecisionRecord,
+    max_len: usize,
+    head_max_len: usize,
+) -> Result<(Vec<u32>, Vec<usize>)> {
     let ins = r.ins.replace("[MASK]", " ");
     let mut head = encode(tok, &format!("{} question: {}", r.t, ins))?;
     let mut opt_ids: Vec<Vec<u32>> = Vec::with_capacity(r.opts.len());
@@ -271,7 +398,12 @@ pub struct SeqStats {
 }
 
 /// Measures tokens per decision sequence on up to `sample` records of each `*.jsonl` in `dir`.
-pub fn sequence_stats(tok: &Tokenizer, dir: &Path, sample: usize, seed: u64) -> Result<BTreeMap<String, SeqStats>> {
+pub fn sequence_stats(
+    tok: &Tokenizer,
+    dir: &Path,
+    sample: usize,
+    seed: u64,
+) -> Result<BTreeMap<String, SeqStats>> {
     let mut out = BTreeMap::new();
     for f in jsonl_files(dir) {
         let mut recs: Vec<DecisionRecord> = crate::record::read_jsonl(&f)?;
@@ -280,10 +412,18 @@ pub fn sequence_stats(tok: &Tokenizer, dir: &Path, sample: usize, seed: u64) -> 
         }
         Rng::derived(seed, "seqstats").shuffle(&mut recs);
         recs.truncate(sample);
-        let mut s = SeqStats { n: recs.len(), ..Default::default() };
+        let mut s = SeqStats {
+            n: recs.len(),
+            ..Default::default()
+        };
         for r in &recs {
             let (ids, markers) = build_sequence(tok, r, MAX_LEN, HEAD_MAX_LEN)?;
-            let full: usize = decision_segments(r).iter().map(|x| encode(tok, x).map(|v| v.len())).sum::<Result<usize>>()? + 4 + r.opts.len();
+            let full: usize = decision_segments(r)
+                .iter()
+                .map(|x| encode(tok, x).map(|v| v.len()))
+                .sum::<Result<usize>>()?
+                + 4
+                + r.opts.len();
             s.mean_tokens += ids.len() as f64;
             s.mean_untruncated += full as f64;
             if full > ids.len() {
@@ -298,7 +438,10 @@ pub fn sequence_stats(tok: &Tokenizer, dir: &Path, sample: usize, seed: u64) -> 
         s.mean_untruncated /= n;
         s.truncated_frac /= n;
         s.markers_lost_frac /= n;
-        let name = f.file_stem().map(|x| x.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = f
+            .file_stem()
+            .map(|x| x.to_string_lossy().into_owned())
+            .unwrap_or_default();
         out.insert(name, s);
     }
     Ok(out)
@@ -313,7 +456,11 @@ mod tests {
         let mut v = Vec::new();
         for i in 0..200 {
             let q = Question::noul(format!("Is the bird above pipe number {}?", i % 7));
-            let r = q.record("t", format!("alt {} vy -3 dx {} gt 20 gb 35", i % 30, i % 50), vec![0.0, 1.0]);
+            let r = q.record(
+                "t",
+                format!("alt {} vy -3 dx {} gt 20 gb 35", i % 30, i % 50),
+                vec![0.0, 1.0],
+            );
             v.extend(decision_segments(&r));
             v.push("Once upon a time a little bird flew over green pipes. Il était une fois un petit oiseau.".into());
         }
@@ -326,7 +473,9 @@ mod tests {
         assert_eq!(tok.token_to_id("[PAD]"), Some(0));
         assert_eq!(tok.token_to_id("[MASK]"), Some(4));
         assert!(tok.get_vocab_size(true) <= 400);
-        let enc = tok.encode("noul question: Is the bird above pipe?", true).unwrap();
+        let enc = tok
+            .encode("noul question: Is the bird above pipe?", true)
+            .unwrap();
         assert_eq!(enc.get_ids()[0], CLS_ID);
         assert_eq!(*enc.get_ids().last().unwrap(), SEP_ID);
         let text = "Un oiseau très rapide — ça vole! 123";
@@ -334,13 +483,22 @@ mod tests {
         assert_eq!(tok.decode(&ids, false).unwrap(), text);
         // Frequent schema words become single tokens (BPE never merges across the
         // GPT-2 pre-tokenizer splits, so one token per word is the floor).
-        assert_eq!(encode(&tok, " true: yes, the statement holds").unwrap().len(), 7);
+        assert_eq!(
+            encode(&tok, " true: yes, the statement holds")
+                .unwrap()
+                .len(),
+            7
+        );
     }
 
     #[test]
     fn build_sequence_matches_reference_layout() {
         let tok = train_tokenizer(&toy_corpus(), 400, 2).unwrap();
-        let r = Question::noul("Is the bird above pipe number 3?").record("t", "alt 12 vy -3", vec![0.0, 1.0]);
+        let r = Question::noul("Is the bird above pipe number 3?").record(
+            "t",
+            "alt 12 vy -3",
+            vec![0.0, 1.0],
+        );
         let (ids, markers) = build_sequence(&tok, &r, MAX_LEN, HEAD_MAX_LEN).unwrap();
         assert_eq!(ids[0], CLS_ID);
         assert_eq!(markers.len(), 2);
@@ -370,8 +528,40 @@ mod tests {
     }
 
     #[test]
+    fn s2_tokenizer_has_num_special() {
+        let segs = num_segments(&toy_corpus());
+        assert!(segs.iter().all(|s| !s.contains(NUM_TOKEN)));
+        assert!(segs.iter().all(|s| !s.chars().any(|c| c.is_ascii_digit())));
+        let tok = train_tokenizer_s2(&segs, 400, 2).unwrap();
+        assert!(is_s2(&tok));
+        for (i, s) in SPECIALS_S2.iter().enumerate() {
+            assert_eq!(tok.token_to_id(s), Some(i as u32));
+        }
+        // Numbers are extracted before BPE: one [NUM] per number, nothing learned from digits.
+        let ids = encode(&tok, "alt 12 vy -3 dx 4.5").unwrap();
+        assert_eq!(ids.iter().filter(|&&i| i == NUM_ID).count(), 3);
+        assert!(tok
+            .get_vocab(false)
+            .keys()
+            .all(|k| k == NUM_TOKEN || !k.contains("NUM")));
+        let s1 = train_tokenizer(&toy_corpus(), 400, 2).unwrap();
+        assert!(!is_s2(&s1));
+        let r = Question::noul("Is pipe 3 near?").record("t", "alt 12 vy -3", vec![0.0, 1.0]);
+        let (ids, markers) = build_sequence(&tok, &r, MAX_LEN, HEAD_MAX_LEN).unwrap();
+        assert_eq!(ids.iter().filter(|&&i| i == NUM_ID).count(), 3);
+        assert!(markers.iter().all(|&m| ids[m] == MASK_ID));
+    }
+
+    #[test]
     fn segments_follow_sequence_layout() {
-        let r = Question::choice("Pick [MASK] one", vec![("a".into(), "first".into())]).record("s", "st", vec![1.0]);
-        assert_eq!(decision_segments(&r), vec!["choice question: Pick   one", " a: first", "st"]);
+        let r = Question::choice("Pick [MASK] one", vec![("a".into(), "first".into())]).record(
+            "s",
+            "st",
+            vec![1.0],
+        );
+        assert_eq!(
+            decision_segments(&r),
+            vec!["choice question: Pick   one", " a: first", "st"]
+        );
     }
 }

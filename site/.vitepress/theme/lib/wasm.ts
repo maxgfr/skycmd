@@ -7,6 +7,10 @@ export interface WasmEngine {
   n_params(): number
   file_bytes(): number
   name(): string
+  /** `s1` (ModernBERT + decision head) or `s2` (static cache + early exits). */
+  family(): string
+  /** s2: early-exit threshold override (undefined = calibrated, 1 = full depth). */
+  setExitThreshold(tau?: number): void
   free(): void
 }
 
@@ -36,11 +40,40 @@ export interface SkyWeb {
   version(): string
 }
 
+export type Family = 's1' | 's2'
+
 export interface ModelEntry {
   name: string
   file: string
   params: number
   bytes: number
+  /** `general.architecture`: `modern-bert` (s1) or `skycmd-s2` (s2). */
+  arch?: string
+  /** `f32`, `f16`, `q8_0` or `ternary`. */
+  weight_format?: string
+}
+
+/** Model family of a manifest entry (from `arch`, else from the name). */
+export function familyOf(entry: Pick<ModelEntry, 'name' | 'arch'>): Family {
+  if (entry.arch) return entry.arch === 'skycmd-s2' ? 's2' : 's1'
+  return entry.name.startsWith('s2') ? 's2' : 's1'
+}
+
+export const FAMILY_LABEL: Record<Family, string> = {
+  s1: 's1 · ModernBERT encoder + decision head',
+  s2: 's2 · cached question, early exit, native numbers',
+}
+
+/** How the model answered a decision frame (see `sky_web::session::DecisionInfo`). */
+export interface DecisionInfo {
+  family: Family
+  exit: number | null
+  n_exits: number
+  layers_used: number | null
+  mean_layers: number | null
+  max_layers: number | null
+  static_hit: boolean
+  state_reused: boolean
 }
 
 export interface OptionProb {
@@ -55,6 +88,7 @@ export interface StepReport {
   executed: string
   probs?: OptionProb[]
   secondary?: { id: string; type: string; value: number; max: number; probs: OptionProb[] } | null
+  info?: DecisionInfo | null
   vetoed: boolean
   micros?: number
   state_text?: string
@@ -97,7 +131,7 @@ export function loadManifest(): Promise<ModelEntry[]> {
   if (!manifestPromise) {
     manifestPromise = fetch(withBase('/models/manifest.json'))
       .then((r) => (r.ok ? r.json() : []))
-      .then((list) => (Array.isArray(list) ? (list as ModelEntry[]) : []))
+      .then((list) => (Array.isArray(list) ? (list as ModelEntry[]).filter((m) => m && m.file && m.name) : []))
       .catch(() => [])
   }
   return manifestPromise

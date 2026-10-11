@@ -12,14 +12,22 @@ pub const ROWS: usize = NUM_PERM / BANDS;
 
 /// Normalizes text for exact-duplicate hashing (case and whitespace insensitive).
 pub fn normalize_text(s: &str) -> String {
-    s.split_whitespace().map(str::to_lowercase).collect::<Vec<_>>().join(" ")
+    s.split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Hashes of the word 5-gram shingles (a short text is a single shingle).
 pub fn shingles(text: &str) -> Vec<u64> {
     let words: Vec<String> = text
         .split_whitespace()
-        .map(|w| w.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>())
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        })
         .filter(|w| !w.is_empty())
         .collect();
     if words.is_empty() {
@@ -124,7 +132,9 @@ impl Dedup {
         for (b, k) in keys.iter().enumerate() {
             if let Some(cands) = self.bands[b].get(k) {
                 for &c in cands {
-                    if checked.insert(c) && estimated_jaccard(&sig, &self.sigs[c as usize]) >= self.threshold {
+                    if checked.insert(c)
+                        && estimated_jaccard(&sig, &self.sigs[c as usize]) >= self.threshold
+                    {
                         self.near_dups += 1;
                         return false;
                     }
@@ -150,16 +160,25 @@ mod tests {
     fn exact_and_near_duplicates() {
         let mut d = Dedup::new(0.8, 1);
         assert!(d.insert(A));
-        assert!(!d.insert(&A.to_uppercase()), "case-only change is an exact dup");
+        assert!(
+            !d.insert(&A.to_uppercase()),
+            "case-only change is an exact dup"
+        );
         let near = A.replace("every single day", "every single  day!");
         assert!(!d.insert(&near));
         let long: Vec<String> = (0..80).map(|i| format!("word{i}")).collect();
         assert!(d.insert(&long.join(" ")));
         let mut edited = long.clone();
         edited[79] = "changed".into();
-        assert!(!d.insert(&edited.join(" ")), "one changed word in 80 should be a near dup");
+        assert!(
+            !d.insert(&edited.join(" ")),
+            "one changed word in 80 should be a near dup"
+        );
         edited[20..40].iter_mut().for_each(|w| *w = "x".into());
-        assert!(d.insert(&edited.join(" ")), "a quarter rewritten is not a near dup");
+        assert!(
+            d.insert(&edited.join(" ")),
+            "a quarter rewritten is not a near dup"
+        );
         assert!(d.insert("A completely different story about a dragon who learned to bake bread in a small village by the sea."));
         assert_eq!(d.len(), 4);
         assert_eq!(d.exact_dups, 1);

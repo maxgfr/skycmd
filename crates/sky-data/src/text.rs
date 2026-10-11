@@ -14,7 +14,10 @@ use crate::record::{write_jsonl, MlmRecord};
 #[derive(Clone, Debug)]
 pub enum Location {
     /// Dataset-viewer parquet conversion (`/api/datasets/<repo>/parquet/<config>/<split>`).
-    Converted { config: &'static str, split: &'static str },
+    Converted {
+        config: &'static str,
+        split: &'static str,
+    },
     /// A specific parquet file in the repo at `main`.
     File(&'static str),
 }
@@ -36,7 +39,10 @@ pub fn text_sources() -> Vec<TextSource> {
         TextSource {
             name: "simplestories",
             repo: "SimpleStories/SimpleStories",
-            loc: Location::Converted { config: "default", split: "train" },
+            loc: Location::Converted {
+                config: "default",
+                split: "train",
+            },
             column: "story",
             share: 0.20,
             pass_shortfall: false,
@@ -44,7 +50,10 @@ pub fn text_sources() -> Vec<TextSource> {
         TextSource {
             name: "tinystories",
             repo: "roneneldan/TinyStories",
-            loc: Location::Converted { config: "default", split: "train" },
+            loc: Location::Converted {
+                config: "default",
+                split: "train",
+            },
             column: "text",
             share: 0.20,
             pass_shortfall: false,
@@ -62,7 +71,10 @@ pub fn text_sources() -> Vec<TextSource> {
         TextSource {
             name: "tinystories_fr",
             repo: "btecsec/tinystories-fr",
-            loc: Location::Converted { config: "default", split: "train" },
+            loc: Location::Converted {
+                config: "default",
+                split: "train",
+            },
             column: "text",
             share: 0.20,
             pass_shortfall: true,
@@ -107,7 +119,10 @@ pub fn clean_text(s: &str, max_chars: usize) -> String {
     match s.char_indices().nth(max_chars) {
         Some((i, _)) => {
             // Cut at the last sentence or line end before the cap when possible.
-            let cut = s[..i].rfind(['\n', '.', '!', '?']).filter(|&j| j > i / 2).map_or(i, |j| j + 1);
+            let cut = s[..i]
+                .rfind(['\n', '.', '!', '?'])
+                .filter(|&j| j > i / 2)
+                .map_or(i, |j| j + 1);
             s[..cut].trim_end().to_string()
         }
         None => s.to_string(),
@@ -128,8 +143,13 @@ pub fn fetch_text(hf: &Hf, opts: &TextOptions) -> Result<Vec<TextReport>> {
         let budget = (total as f64 * src.share) as u64 + carry;
         carry = 0;
         let (exact0, near0) = (dedup.exact_dups, dedup.near_dups);
-        eprintln!("[text] {} budget {:.1} MB ...", src.name, budget as f64 / 1e6);
-        let (docs, downloaded) = collect_source(hf, &src, budget, opts, &mut dedup).with_context(|| format!("text source {}", src.name))?;
+        eprintln!(
+            "[text] {} budget {:.1} MB ...",
+            src.name,
+            budget as f64 / 1e6
+        );
+        let (docs, downloaded) = collect_source(hf, &src, budget, opts, &mut dedup)
+            .with_context(|| format!("text source {}", src.name))?;
         let bytes: u64 = docs.iter().map(|d| d.text.len() as u64).sum();
         if src.pass_shortfall {
             carry = budget.saturating_sub(bytes);
@@ -160,7 +180,13 @@ pub fn fetch_text(hf: &Hf, opts: &TextOptions) -> Result<Vec<TextReport>> {
     Ok(reports)
 }
 
-fn collect_source(hf: &Hf, src: &TextSource, budget: u64, opts: &TextOptions, dedup: &mut Dedup) -> Result<(Vec<MlmRecord>, u64)> {
+fn collect_source(
+    hf: &Hf,
+    src: &TextSource,
+    budget: u64,
+    opts: &TextOptions,
+    dedup: &mut Dedup,
+) -> Result<(Vec<MlmRecord>, u64)> {
     let urls = match &src.loc {
         Location::Converted { config, split } => hf.parquet_urls(src.repo, config, split)?,
         Location::File(f) => vec![resolve_url(src.repo, "main", f)],
@@ -169,12 +195,18 @@ fn collect_source(hf: &Hf, src: &TextSource, budget: u64, opts: &TextOptions, de
     let mut bytes = 0u64;
     let mut downloaded = 0u64;
     'outer: for (si, url) in urls.iter().enumerate() {
-        let rel = format!("{}/{}-{si:05}.parquet", src.repo.replace('/', "__"), src.name);
+        let rel = format!(
+            "{}/{}-{si:05}.parquet",
+            src.repo.replace('/', "__"),
+            src.name
+        );
         let mut pq = hf.remote_parquet(url, &rel)?;
         for rg in 0..pq.num_row_groups() {
             downloaded += pq.ensure(rg, &[src.column])?;
             for row in pq.rows(rg, &[src.column])? {
-                let Some(text) = row.get(src.column).and_then(Value::as_str) else { continue };
+                let Some(text) = row.get(src.column).and_then(Value::as_str) else {
+                    continue;
+                };
                 let text = clean_text(text, opts.max_chars);
                 if text.chars().count() < opts.min_chars || !dedup.insert(&text) {
                     continue;

@@ -3,7 +3,7 @@
 //! * [`Gguf::parse`] reads a file held in memory without copying tensor data (metadata of all
 //!   types including nested arrays, tensor infos, aligned data offsets).
 //! * [`GgufWriter`] builds files (`general.alignment` = 32 by default).
-//! * Tensor types F32, F16, BF16 and Q8_0 can be converted to and from f32
+//! * Tensor types F32, F16, BF16, Q8_0 and I8 can be converted to and from f32
 //!   ([`dequantize`], [`encode_f32`], [`quantize_q8_0`]).
 //!
 //! **Dimension order.** GGUF/ggml dimensions are listed innermost first: `ne[0]` is the

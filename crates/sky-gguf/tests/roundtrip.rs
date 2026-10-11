@@ -85,6 +85,8 @@ fn write_read_round_trip_all_kv_types_and_dtypes() {
         .collect();
     assert_eq!(inner, vec![vec!["x"], vec!["y", "z"]]);
     assert!(g.get_array("a.empty").unwrap().is_empty());
+    // an empty array is an empty string list, whatever its declared element type
+    assert_eq!(g.get_array("a.empty").unwrap().strings(), Some(vec![]));
 
     for t in &g.tensors {
         assert_eq!(

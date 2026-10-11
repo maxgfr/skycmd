@@ -1,0 +1,23 @@
+{
+  "name": "s2-pico",
+  "vocab_size": 1024,
+  "hidden_size": 64,
+  "intermediate_size": 128,
+  "state_layers": 3,
+  "static_layers": 2,
+  "fusion_layers": 1,
+  "exits": [
+    1,
+    3
+  ],
+  "max_state_tokens": 64,
+  "max_head_tokens": 96,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "exit_threshold": [
+    0.9,
+    0.9,
+    0.9
+  ],
+  "temperature": {}
+}

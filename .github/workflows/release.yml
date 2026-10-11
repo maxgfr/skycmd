@@ -1,0 +1,324 @@
+# Release on a version tag (v0.1.0, v0.2.0-rc.1, ...):
+#   - `skycmd` CLI/server binaries for macOS (arm64, x86_64), Linux (x86_64, arm64) and Windows (x86_64)
+#   - Python wheels (abi3, CPython >= 3.9) for macOS, manylinux and Windows, plus the sdist
+#   - the npm package tarball (`npm pack` of packages/skycmd-js)
+#   - the model GGUFs of site/public/models and a SHA256SUMS file
+# all attached to a GitHub Release. Publishing to npm, PyPI and the Homebrew tap is optional and
+# runs only when configured (see the `gate` job); without configuration those jobs are skipped.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.97.1"
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  # Which optional publish jobs are configured. Secrets cannot be read in a job-level `if`, so
+  # their presence is turned into outputs here.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      npm: ${{ steps.g.outputs.npm }}
+      pypi: ${{ steps.g.outputs.pypi }}
+      homebrew: ${{ steps.g.outputs.homebrew }}
+    steps:
+      - id: v
+        run: |
+          case "$TAG" in
+            v[0-9]*) echo "version=${TAG#v}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::tag $TAG does not look like v<semver>"; exit 1 ;;
+          esac
+      - id: g
+        env:
+          HAS_NPM: ${{ secrets.NPM_TOKEN != '' }}
+          # PyPI trusted publishing has no secret: enable it with the repository variable
+          # PYPI_TRUSTED_PUBLISHING=true once the publisher is registered on pypi.org
+          # (workflow release.yml, environment pypi). An API token secret works too.
+          HAS_PYPI: ${{ vars.PYPI_TRUSTED_PUBLISHING == 'true' || secrets.PYPI_API_TOKEN != '' }}
+          HAS_TAP: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        run: |
+          {
+            echo "npm=$HAS_NPM"
+            echo "pypi=$HAS_PYPI"
+            echo "homebrew=$HAS_TAP"
+          } >> "$GITHUB_OUTPUT"
+          echo "publish: npm=$HAS_NPM pypi=$HAS_PYPI homebrew=$HAS_TAP"
+
+  cli:
+    needs: gate
+    name: skycmd ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          # 22.04 keeps the glibc requirement low (2.35)
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked -p sky-serve --target ${{ matrix.target }}
+      - name: Smoke test
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          bin=target/${{ matrix.target }}/release/skycmd
+          $bin --version
+          $bin info site/public/models/s1-pico.gguf
+          echo '{"state":"alt 12 vy -3","questions":{"go":{"type":"noul","instructions":"Should the drone climb?"}}}' |
+            $bin decide --model site/public/models/s1-pico.gguf -
+      - name: Package
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          name="skycmd-$VERSION-$TARGET"
+          mkdir -p "pkg/$name" out
+          cp LICENSE README.md "pkg/$name/"
+          if [[ "$TARGET" == *windows* ]]; then
+            cp "target/$TARGET/release/skycmd.exe" "pkg/$name/"
+            (cd pkg && 7z a -tzip "../out/$name.zip" "$name" >/dev/null)
+          else
+            cp "target/$TARGET/release/skycmd" "pkg/$name/"
+            tar -C pkg -czf "out/$name.tar.gz" "$name"
+          fi
+          ls -l out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: cli-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+
+  wheels:
+    needs: gate
+    name: wheel ${{ matrix.platform }} ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: macos, os: macos-latest, target: aarch64 }
+          - { platform: macos, os: macos-latest, target: x86_64 }
+          - { platform: manylinux, os: ubuntu-latest, target: x86_64 }
+          - { platform: manylinux, os: ubuntu-latest, target: aarch64 }
+          - { platform: windows, os: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: auto
+          rust-toolchain: ${{ env.RUST_TOOLCHAIN }}
+          args: --release --locked --out dist -m crates/sky-py/Cargo.toml
+      - name: Smoke test
+        # native wheels only (cross-built ones cannot run on the runner)
+        if: (matrix.platform == 'macos' && matrix.target == 'aarch64') || (matrix.platform != 'macos' && matrix.target != 'aarch64')
+        shell: bash
+        run: |
+          python -m pip install --no-index --find-links dist skycmd
+          python crates/sky-py/tests/smoke.py site/public/models/s1-pico.gguf
+      - uses: actions/upload-artifact@v5
+        with:
+          name: wheel-${{ matrix.platform }}-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist -m crates/sky-py/Cargo.toml
+      - uses: actions/upload-artifact@v5
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  npm:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target/skycmd-js-wasm"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build
+        working-directory: packages/skycmd-js
+        run: |
+          npm version --no-git-tag-version --allow-same-version "${{ needs.gate.outputs.version }}"
+          sh scripts/build.sh
+      - name: Test (Node)
+        working-directory: packages/skycmd-js
+        run: node test/smoke.mjs ../../site/public/models/s1-pico.gguf
+      - name: Pack
+        working-directory: packages/skycmd-js
+        run: |
+          mkdir -p ../../out
+          npm pack --pack-destination ../../out
+          ls -l ../../out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: npm
+          path: out/*.tgz
+          if-no-files-found: error
+
+  release:
+    needs: [gate, cli, wheels, sdist, npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Collect assets and checksums
+        run: |
+          mkdir -p assets
+          cp artifacts/* assets/
+          cp site/public/models/*.gguf assets/
+          (cd assets && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          [[ "$TAG" == *-* ]] && prerelease="--prerelease"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber
+          else
+            gh release create "$TAG" assets/* --title "skycmd $TAG" --generate-notes $prerelease
+          fi
+      - uses: actions/upload-artifact@v5
+        with:
+          name: SHA256SUMS
+          path: assets/SHA256SUMS
+
+  publish-npm:
+    needs: [gate, release]
+    if: needs.gate.outputs.npm == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: npm
+          path: npm
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          tag=latest
+          [[ "$VERSION" == *-* ]] && tag=next
+          npm publish npm/*.tgz --access public --provenance --tag "$tag"
+
+  publish-pypi:
+    needs: [gate, release]
+    if: needs.gate.outputs.pypi == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/skycmd/
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: "{wheel-*,sdist}"
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # empty unless the secret exists; then trusted publishing (OIDC) is used
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  homebrew:
+    needs: [gate, release]
+    if: needs.gate.outputs.homebrew == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v6
+        with:
+          name: SHA256SUMS
+          path: sums
+      - name: Render the formula
+        run: |
+          sh packaging/homebrew/render.sh "${{ needs.gate.outputs.version }}" sums/SHA256SUMS > skycmd.rb
+          cat skycmd.rb
+      - name: Push to maxgfr/homebrew-tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/maxgfr/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp skycmd.rb tap/Formula/skycmd.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/skycmd.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
+          git commit -m "skycmd ${{ needs.gate.outputs.version }}"
+          git push

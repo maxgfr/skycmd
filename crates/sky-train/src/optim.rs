@@ -83,7 +83,9 @@ pub fn newton_schulz(g: &Array, steps: usize) -> R<Array> {
         let poly = gram
             .multiply(Array::from_f32(b))?
             .add(ops::matmul(&gram, &gram)?.multiply(Array::from_f32(c))?)?;
-        x = x.multiply(Array::from_f32(a))?.add(ops::matmul(&poly, &x)?)?;
+        x = x
+            .multiply(Array::from_f32(a))?
+            .add(ops::matmul(&poly, &x)?)?;
     }
     Ok(if transpose { x.t() } else { x })
 }
@@ -101,7 +103,13 @@ pub struct Optimizer {
 
 impl Optimizer {
     pub fn new(cfg: OptConfig) -> Self {
-        Self { cfg, step: 0, m: HashMap::new(), v: HashMap::new(), mom: HashMap::new() }
+        Self {
+            cfg,
+            step: 0,
+            m: HashMap::new(),
+            v: HashMap::new(),
+            mom: HashMap::new(),
+        }
     }
 
     /// Muon momentum at the current step.
@@ -173,7 +181,10 @@ impl Optimizer {
                         None => ops::zeros_like(&g)?,
                     }
                     .add(g.square()?.multiply(Array::from_f32(1.0 - c.beta2))?)?;
-                    let denom = v.divide(Array::from_f32(bc2))?.sqrt()?.add(Array::from_f32(c.eps))?;
+                    let denom = v
+                        .divide(Array::from_f32(bc2))?
+                        .sqrt()?
+                        .add(Array::from_f32(c.eps))?;
                     let step = m.divide(Array::from_f32(bc1))?.divide(&denom)?;
                     let mut np = p.clone();
                     if group == Group::AdamDecay && c.weight_decay != 0.0 {
@@ -191,7 +202,11 @@ impl Optimizer {
     /// All state arrays (for evaluation and checkpoints), keyed `adam.m.*`, `adam.v.*`, `muon.v.*`.
     pub fn state_arrays(&self) -> ParamMap {
         let mut out = ParamMap::new();
-        for (prefix, map) in [("adam.m.", &self.m), ("adam.v.", &self.v), ("muon.v.", &self.mom)] {
+        for (prefix, map) in [
+            ("adam.m.", &self.m),
+            ("adam.v.", &self.v),
+            ("muon.v.", &self.mom),
+        ] {
             for (k, v) in map {
                 out.insert(format!("{prefix}{k}").into(), v.clone());
             }
@@ -247,12 +262,18 @@ mod tests {
         // meaningful input.
         let cpu = || mlx_rs::Device::cpu();
         let (q1, q2) = mlx_rs::with_device(cpu(), || {
-            let a = random::normal::<f32>(&[64, 64][..], 0.0, 1.0, &random::key(1).unwrap()).unwrap();
-            let b = random::normal::<f32>(&[64, 64][..], 0.0, 1.0, &random::key(2).unwrap()).unwrap();
-            (mlx_rs::linalg::qr(&a).unwrap().0, mlx_rs::linalg::qr(&b).unwrap().0)
+            let a =
+                random::normal::<f32>(&[64, 64][..], 0.0, 1.0, &random::key(1).unwrap()).unwrap();
+            let b =
+                random::normal::<f32>(&[64, 64][..], 0.0, 1.0, &random::key(2).unwrap()).unwrap();
+            (
+                mlx_rs::linalg::qr(&a).unwrap().0,
+                mlx_rs::linalg::qr(&b).unwrap().0,
+            )
         });
         let s: Vec<f32> = (0..64).map(|i| 0.1 + 0.9 * i as f32 / 63.0).collect();
-        let square = ops::matmul(q1.multiply(Array::from_slice(&s, &[1, 64])).unwrap(), &q2).unwrap();
+        let square =
+            ops::matmul(q1.multiply(Array::from_slice(&s, &[1, 64])).unwrap(), &q2).unwrap();
         for (rows, cols) in [(64, 64), (192, 64), (64, 256)] {
             let key = random::key(rows as u64 * 7 + cols as u64).unwrap();
             let g = if rows == cols {
@@ -270,9 +291,15 @@ mod tests {
             // [0.7, 1.2] (it trades exact convergence for speed): all of them
             // must be close to 1 and none may collapse.
             for &x in s {
-                assert!((0.6..=1.3).contains(&x), "{rows}x{cols}: singular value {x}");
+                assert!(
+                    (0.6..=1.3).contains(&x),
+                    "{rows}x{cols}: singular value {x}"
+                );
             }
-            assert!((mean - 1.0).abs() < 0.2, "{rows}x{cols}: mean singular value {mean}");
+            assert!(
+                (mean - 1.0).abs() < 0.2,
+                "{rows}x{cols}: mean singular value {mean}"
+            );
         }
     }
 
@@ -290,12 +317,22 @@ mod tests {
     fn adamw_minimizes_quadratic() {
         let _g = test_util::lock();
         let mut params = ParamMap::new();
-        params.insert("head.layers.0.linear1.bias".into(), Array::from_slice(&[3.0f32, -2.0], &[2]));
-        let mut o = Optimizer::new(OptConfig { adam_lr: 0.1, clip_norm: 0.0, ..Default::default() });
+        params.insert(
+            "head.layers.0.linear1.bias".into(),
+            Array::from_slice(&[3.0f32, -2.0], &[2]),
+        );
+        let mut o = Optimizer::new(OptConfig {
+            adam_lr: 0.1,
+            clip_norm: 0.0,
+            ..Default::default()
+        });
         for _ in 0..300 {
             let p = &params["head.layers.0.linear1.bias"];
             let mut g = ParamMap::new();
-            g.insert("head.layers.0.linear1.bias".into(), p.multiply(Array::from_f32(2.0)).unwrap());
+            g.insert(
+                "head.layers.0.linear1.bias".into(),
+                p.multiply(Array::from_f32(2.0)).unwrap(),
+            );
             o.update(&mut params, &g, 1.0).unwrap();
         }
         let p = &params["head.layers.0.linear1.bias"];

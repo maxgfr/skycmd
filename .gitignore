@@ -13,3 +13,4 @@ site/public/pkg
 runs-ladder.log
 /models
 /models-src
+site/public/lib/

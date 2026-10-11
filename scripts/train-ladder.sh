@@ -16,7 +16,9 @@ ladder() {
   esac
 }
 
-for name in "${@:-pico nano micro}"; do
+names=("$@")
+[ ${#names[@]} -eq 0 ] && names=(pico nano micro)
+for name in "${names[@]}"; do
   read -r vocab pre dec gw <<<"$(ladder "$name")"
   run=runs/s1-$name
   tok=data/tok/tok-$vocab.json

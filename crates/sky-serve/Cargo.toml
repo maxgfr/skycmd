@@ -1,0 +1,20 @@
+[package]
+name = "sky-serve"
+description = "skycmd CLI: serve, decide, info and bench for System One decision models (GGUF)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+
+[[bin]]
+name = "skycmd"
+path = "src/main.rs"
+
+[dependencies]
+sky-infer = { path = "../sky-infer" }
+sky-gguf = { path = "../sky-gguf" }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+tiny_http = { version = "0.12.0", default-features = false }
+
+[dev-dependencies]

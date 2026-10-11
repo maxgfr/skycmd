@@ -42,13 +42,23 @@ fn cache_key(files: &[PathBuf], tokenizer: &Path, max_tokens: usize) -> Result<C
         .iter()
         .map(|f| Ok((f.display().to_string(), std::fs::metadata(f)?.len())))
         .collect::<Result<_>>()?;
-    Ok(CacheKey { files, tokenizer_bytes: std::fs::metadata(tokenizer)?.len(), max_tokens })
+    Ok(CacheKey {
+        files,
+        tokenizer_bytes: std::fs::metadata(tokenizer)?.len(),
+        max_tokens,
+    })
 }
 
 impl Corpus {
     /// Tokenizes every MLM record under `text` (JSONL `{"src","text"}`), up to
     /// `max_tokens` tokens. The result is cached in `cache_dir`.
-    pub fn load(text: &Path, tok: &Tok, tokenizer_path: &Path, cache_dir: &Path, max_tokens: usize) -> Result<Self> {
+    pub fn load(
+        text: &Path,
+        tok: &Tok,
+        tokenizer_path: &Path,
+        cache_dir: &Path,
+        max_tokens: usize,
+    ) -> Result<Self> {
         let files = list_jsonl(text)?;
         if files.is_empty() {
             bail!("no *.jsonl under {}", text.display());
@@ -58,10 +68,17 @@ impl Corpus {
         let meta = cache_dir.join("corpus.json");
         if let (Ok(m), true) = (std::fs::read_to_string(&meta), bin.exists()) {
             let saved: serde_json::Value = serde_json::from_str(&m)?;
-            if serde_json::from_value::<CacheKey>(saved["key"].clone()).ok().as_ref() == Some(&key) {
+            if serde_json::from_value::<CacheKey>(saved["key"].clone())
+                .ok()
+                .as_ref()
+                == Some(&key)
+            {
                 let mut raw = Vec::new();
                 std::fs::File::open(&bin)?.read_to_end(&mut raw)?;
-                let tokens = raw.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+                let tokens = raw
+                    .chunks_exact(4)
+                    .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect();
                 let n_records = saved["n_records"].as_u64().unwrap_or(0) as usize;
                 return Ok(Self { tokens, n_records });
             }
@@ -70,13 +87,15 @@ impl Corpus {
         let mut n_records = 0;
         let mut batch = Vec::new();
         'files: for file in &files {
-            let f = std::fs::File::open(file).with_context(|| format!("opening {}", file.display()))?;
+            let f =
+                std::fs::File::open(file).with_context(|| format!("opening {}", file.display()))?;
             for line in BufReader::new(f).lines() {
                 let line = line?;
                 if line.trim().is_empty() {
                     continue;
                 }
-                let rec: MlmRecord = serde_json::from_str(&line).with_context(|| format!("parsing {}", file.display()))?;
+                let rec: MlmRecord = serde_json::from_str(&line)
+                    .with_context(|| format!("parsing {}", file.display()))?;
                 batch.push(rec.text);
                 if batch.len() == 20_000 {
                     n_records += Self::append(&mut tokens, tok, std::mem::take(&mut batch))?;
@@ -96,7 +115,10 @@ impl Corpus {
             w.write_all(&t.to_le_bytes())?;
         }
         w.flush()?;
-        std::fs::write(&meta, serde_json::to_string(&serde_json::json!({"key": key, "n_records": n_records}))?)?;
+        std::fs::write(
+            &meta,
+            serde_json::to_string(&serde_json::json!({"key": key, "n_records": n_records}))?,
+        )?;
         Ok(Self { tokens, n_records })
     }
 
@@ -130,10 +152,16 @@ impl Rows {
     pub fn new(corpus: &Corpus, seq_len: usize, val_fraction: f64, max_val: usize) -> Self {
         let body = seq_len - 2;
         let n = corpus.tokens.len().div_ceil(body);
-        let n_val = ((n as f64 * val_fraction).ceil() as usize).min(max_val).min(n.saturating_sub(1));
+        let n_val = ((n as f64 * val_fraction).ceil() as usize)
+            .min(max_val)
+            .min(n.saturating_sub(1));
         let starts: Vec<usize> = (0..n).map(|c| c * body).collect();
         let (train, val) = starts.split_at(n - n_val);
-        Self { seq_len, train: train.to_vec(), val: val.to_vec() }
+        Self {
+            seq_len,
+            train: train.to_vec(),
+            val: val.to_vec(),
+        }
     }
 
     /// Row tokens starting at `start` (may be shorter at the end of the stream).
@@ -199,7 +227,8 @@ pub fn mask_batch(rows: &[Vec<u32>], vocab: usize, ratio: f64, rng: &mut Rng) ->
                 cand.push(j);
             }
         }
-        let n_mask = ((cand.len() as f64 * ratio).round() as usize).max(usize::from(!cand.is_empty()));
+        let n_mask =
+            ((cand.len() as f64 * ratio).round() as usize).max(usize::from(!cand.is_empty()));
         // Partial Fisher–Yates: the first n_mask candidates are the chosen ones.
         for s in 0..n_mask {
             let k = s + rng.below(cand.len() - s);
@@ -226,7 +255,11 @@ pub fn mask_batch(rows: &[Vec<u32>], vocab: usize, ratio: f64, rng: &mut Rng) ->
     positions.resize(padded, 0);
     labels.resize(padded, 0);
     let shape = [b as i32, t as i32];
-    let key_valid = if valid.iter().all(|&v| v) { None } else { Some(Array::from_slice(&valid, &shape)) };
+    let key_valid = if valid.iter().all(|&v| v) {
+        None
+    } else {
+        Some(Array::from_slice(&valid, &shape))
+    };
     MlmBatch {
         ids: Array::from_slice(&ids, &shape),
         key_valid,
@@ -255,7 +288,12 @@ mod tests {
             .collect();
         let b = mask_batch(&rows, 100, 0.3, &mut rng);
         b.weights.eval().unwrap();
-        let m = b.weights.as_slice::<f32>().iter().filter(|&&w| w > 0.0).count();
+        let m = b
+            .weights
+            .as_slice::<f32>()
+            .iter()
+            .filter(|&&w| w > 0.0)
+            .count();
         assert_eq!(m, 64 * 38); // round(126 * 0.3) per row
         b.ids.eval().unwrap();
         b.positions.eval().unwrap();
@@ -266,7 +304,10 @@ mod tests {
         let (mut masked, mut kept) = (0, 0);
         for i in 0..m {
             let p = pos[i] as usize;
-            assert!(!p.is_multiple_of(128) && p % 128 != 127, "special tokens are never predicted");
+            assert!(
+                !p.is_multiple_of(128) && p % 128 != 127,
+                "special tokens are never predicted"
+            );
             if ids[p] == MASK_ID as i32 {
                 masked += 1;
             } else if ids[p] == lab[i] {
@@ -282,7 +323,10 @@ mod tests {
 
     #[test]
     fn rows_and_cursor() {
-        let corpus = Corpus { tokens: (10..1010).collect(), n_records: 1 };
+        let corpus = Corpus {
+            tokens: (10..1010).collect(),
+            n_records: 1,
+        };
         let rows = Rows::new(&corpus, 128, 0.1, 100);
         assert_eq!(rows.train.len() + rows.val.len(), 1000usize.div_ceil(126));
         assert_eq!(rows.val.len(), 1);

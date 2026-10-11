@@ -1,6 +1,6 @@
 [package]
 name = "sky-gguf"
-description = "Zero-copy GGUF v3 reader and writer with F32/F16/BF16/Q8_0 support"
+description = "Zero-copy GGUF v3 reader and writer with F32/F16/BF16/Q8_0/I8 support"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

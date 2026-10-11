@@ -53,10 +53,17 @@ According to its model card, `oscar-1-17m` scores **0.6775** on `LocalLLaMA/type
 
 ## Datasets used
 Licenses and row counts are in [`DATA_LICENSES.md`](../DATA_LICENSES.md).
-- Decisions: `n4ze3m/typed-decisions-synth` (MIT), `kgrozdanovski/assistant-decisions` (Apache-2.0), `pngwn/typed-decisions` (CC-BY-SA-4.0, soft `gold_probs`), plus BoolQ, MNLI, ARC, CommonsenseQA and Banking77 converted to typed questions.
-- Test only: `LocalLLaMA/typed-decisions` (Apache-2.0).
+- Typed decisions (Jev / System One format, soft targets kept):
+  - `n4ze3m/typed-decisions-synth` (MIT), `kgrozdanovski/assistant-decisions` (Apache-2.0), `pngwn/typed-decisions` (CC-BY-SA-4.0, soft `gold_probs`);
+  - `tasksource/tasksource-jev-typed-decisions`: only rows tagged `license_use = commercial`, minus sources we load directly or whose upstream is non-commercial; 120k rows shared fairly over 389 sources;
+  - `tasksource/procedural-typed-decisions` (Apache-2.0, 80k over 13 procedural tasks), `tasksource/synthetic-typed-decisions` (Apache-2.0), `helmo/synthetic-typed-decisions` (MIT), `m-lagnajit/calibrated-typed-decisions` (CC-BY-4.0, permissive rows, calibrated teacher probabilities);
+  - control: `ZefanCai/Open-Jev` `browser-drone-expansion-v1-redistributable` (CC0; all 18,130 drone-control rows plus 30k from the other sources) and `Aditharavind/swarm-laya-decisions` (Apache-2.0, robot-swarm actions).
+- Classic sets converted to typed questions: BoolQ, MNLI, SNLI, ARC, CommonsenseQA, HellaSwag, Banking77, HelpSteer2 (one 0–4 score question per attribute), When2Call (tool_call / request_for_info / cannot_answer / direct_answer), and French: PAWS-X fr (paraphrase noul) and Allociné (sentiment noul).
+- GLM teacher data: the 3,000 civil drone-order `action` records (`glm_orders`) and 40k records whose instructions are replaced by EN/FR GLM paraphrases (`paraphrased`).
+- Test only: `LocalLLaMA/typed-decisions` (Apache-2.0), `AirsideLabs/notam-typed-decisions` (CC-BY-4.0) and the When2Call `mcq` test split.
+- Commands (for the NL → command decoder, `data/commands/`): `NousResearch/hermes-function-calling-v1` and `glaiveai/glaive-function-calling-v2` (Apache-2.0) as `{user, tools, target_json}`, MASSIVE en + fr (CC-BY-4.0) as intents.
 - MLM text: SimpleStories (MIT), TinyStories and tinystories-fr (CDLA-Sharing), fineweb-edu and fineweb-2 `fra_Latn` (ODC-BY).
-- Skipped: `Salesforce/xlam-function-calling-60k` is gated, and the HF drone-command sets have no license or a non-commercial one.
+- Rejected: XNLI, frenchNLI, SciQ, RACE, LogiQA 2, FQuAD, `pngwn/system-one-decisions` and the CJJones drone telemetry (non-commercial licenses), `SargeDev/jev-distill-corpus-v3` (model-distilled labels, mixed upstream licenses), PIQA (no clear license), the gated `Salesforce/xlam-function-calling-60k` and its re-licensed mirrors. Details in `DATA_LICENSES.md`.
 
 ## Tooling facts
 - mlx-rs 0.32.0 (crate published 2026-09-12; repo `oxiglade/mlx-rs`):

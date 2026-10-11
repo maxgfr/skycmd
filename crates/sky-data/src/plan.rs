@@ -16,16 +16,28 @@ pub const MAX_RANGE_M: f64 = 500.0;
 #[derive(Clone, Copy)]
 enum F {
     /// Number within `[lo, hi]`; `open_lo` excludes `lo`.
-    Num { lo: f64, hi: f64, open_lo: bool },
+    Num {
+        lo: f64,
+        hi: f64,
+        open_lo: bool,
+    },
     Text,
 }
 
 const fn pos(hi: f64) -> F {
-    F::Num { lo: 0.0, hi, open_lo: true }
+    F::Num {
+        lo: 0.0,
+        hi,
+        open_lo: true,
+    }
 }
 
 const fn range(lo: f64, hi: f64) -> F {
-    F::Num { lo, hi, open_lo: false }
+    F::Num {
+        lo,
+        hi,
+        open_lo: false,
+    }
 }
 
 /// Action names (the `sky-schema` tags) in a fixed order.
@@ -53,7 +65,11 @@ fn fields(action: &str) -> Option<Vec<(&'static str, F)>> {
     Some(match action {
         "takeoff" => vec![("alt_m", pos(MAX_ALT_M))],
         "hover" => vec![("s", pos(600.0))],
-        "goto" => vec![("lat", range(-90.0, 90.0)), ("lon", range(-180.0, 180.0)), ("alt_m", pos(MAX_ALT_M))],
+        "goto" => vec![
+            ("lat", range(-90.0, 90.0)),
+            ("lon", range(-180.0, 180.0)),
+            ("alt_m", pos(MAX_ALT_M)),
+        ],
         "move" => vec![
             ("dx_m", range(-MAX_RANGE_M, MAX_RANGE_M)),
             ("dy_m", range(-MAX_RANGE_M, MAX_RANGE_M)),
@@ -70,7 +86,9 @@ fn fields(action: &str) -> Option<Vec<(&'static str, F)>> {
         "inspect" => vec![("target_desc", F::Text), ("distance_m", pos(100.0))],
         "clarify" => vec![("question", F::Text)],
         "refuse" => vec![("reason", F::Text)],
-        "land" | "take_photo" | "start_video" | "stop_video" | "return_home" | "end" | "abort" => vec![],
+        "land" | "take_photo" | "start_video" | "stop_video" | "return_home" | "end" | "abort" => {
+            vec![]
+        }
         _ => return None,
     })
 }
@@ -87,16 +105,22 @@ fn check_action(i: usize, a: &Map<String, Value>) -> Result<String> {
         }
     }
     for (f, kind) in spec {
-        let v = a.get(f).ok_or_else(|| anyhow!("action {i} ({name}): missing {f}"))?;
+        let v = a
+            .get(f)
+            .ok_or_else(|| anyhow!("action {i} ({name}): missing {f}"))?;
         match kind {
             F::Text => {
-                let s = v.as_str().ok_or_else(|| anyhow!("action {i} ({name}): {f} must be a string"))?;
+                let s = v
+                    .as_str()
+                    .ok_or_else(|| anyhow!("action {i} ({name}): {f} must be a string"))?;
                 if s.trim().is_empty() {
                     bail!("action {i} ({name}): empty {f}");
                 }
             }
             F::Num { lo, hi, open_lo } => {
-                let x = v.as_f64().ok_or_else(|| anyhow!("action {i} ({name}): {f} must be a number"))?;
+                let x = v
+                    .as_f64()
+                    .ok_or_else(|| anyhow!("action {i} ({name}): {f} must be a number"))?;
                 let low_ok = if open_lo { x > lo } else { x >= lo };
                 if !x.is_finite() || !low_ok || x > hi {
                     bail!("action {i} ({name}): {f}={x} out of range");
@@ -117,14 +141,24 @@ pub fn validate_plan(v: &Value) -> Result<Vec<String>> {
     }
     .ok_or_else(|| anyhow!("plan must be {{\"plan\": [...]}} or a list"))?;
     if list.is_empty() || list.len() > MAX_ACTIONS {
-        bail!("plan must have 1..={MAX_ACTIONS} actions, got {}", list.len());
+        bail!(
+            "plan must have 1..={MAX_ACTIONS} actions, got {}",
+            list.len()
+        );
     }
     let names = list
         .iter()
         .enumerate()
-        .map(|(i, a)| a.as_object().ok_or_else(|| anyhow!("action {i} is not an object")).and_then(|a| check_action(i, a)))
+        .map(|(i, a)| {
+            a.as_object()
+                .ok_or_else(|| anyhow!("action {i} is not an object"))
+                .and_then(|a| check_action(i, a))
+        })
         .collect::<Result<Vec<_>>>()?;
-    let terminal = names.iter().filter(|n| matches!(n.as_str(), "clarify" | "refuse")).count();
+    let terminal = names
+        .iter()
+        .filter(|n| matches!(n.as_str(), "clarify" | "refuse"))
+        .count();
     if terminal > 0 && names.len() != 1 {
         bail!("clarify/refuse must be the only action of a plan");
     }
@@ -138,7 +172,9 @@ pub fn check_category(category: &str, names: &[String]) -> Result<()> {
         "unsafe" if first != "refuse" => bail!("unsafe order must be refused"),
         "ambiguous" if first != "clarify" => bail!("ambiguous order must ask for clarification"),
         "unsafe" | "ambiguous" => Ok(()),
-        _ if matches!(first, "refuse" | "clarify") => bail!("{category} order must not be refused or clarified"),
+        _ if matches!(first, "refuse" | "clarify") => {
+            bail!("{category} order must not be refused or clarified")
+        }
         _ => Ok(()),
     }
 }
@@ -162,9 +198,17 @@ mod tests {
     #[test]
     fn accepts_valid_plans() {
         let p = json!({"plan":[{"action":"takeoff","alt_m":30},{"action":"survey_grid","w_m":200,"h_m":100,"spacing_m":20,"alt_m":40},{"action":"return_home"}]});
-        assert_eq!(validate_plan(&p).unwrap(), vec!["takeoff", "survey_grid", "return_home"]);
-        assert!(validate_plan(&json!([{"action":"refuse","reason":"weapons are out of scope"}])).is_ok());
-        assert!(validate_plan(&json!([{"action":"goto","lat":48.85,"lon":2.35,"alt_m":50}])).is_ok());
+        assert_eq!(
+            validate_plan(&p).unwrap(),
+            vec!["takeoff", "survey_grid", "return_home"]
+        );
+        assert!(
+            validate_plan(&json!([{"action":"refuse","reason":"weapons are out of scope"}]))
+                .is_ok()
+        );
+        assert!(
+            validate_plan(&json!([{"action":"goto","lat":48.85,"lon":2.35,"alt_m":50}])).is_ok()
+        );
     }
 
     #[test]
@@ -189,14 +233,21 @@ mod tests {
     #[test]
     fn categories_and_labels() {
         let refuse = vec!["refuse".to_string()];
-        let normal = vec!["takeoff".to_string(), "inspect".to_string(), "land".to_string()];
+        let normal = vec![
+            "takeoff".to_string(),
+            "inspect".to_string(),
+            "land".to_string(),
+        ];
         assert!(check_category("unsafe", &refuse).is_ok());
         assert!(check_category("unsafe", &normal).is_err());
         assert!(check_category("inspection", &refuse).is_err());
         assert!(check_category("mapping", &normal).is_ok());
         assert_eq!(first_mission_action(&normal), Some("inspect"));
         assert_eq!(first_mission_action(&refuse), Some("refuse"));
-        assert_eq!(first_mission_action(&["takeoff".to_string()]), Some("takeoff"));
+        assert_eq!(
+            first_mission_action(&["takeoff".to_string()]),
+            Some("takeoff")
+        );
         assert_eq!(ACTIONS.len(), 17);
         assert!(ACTIONS.iter().all(|a| fields(a).is_some()));
     }

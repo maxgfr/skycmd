@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust stable with the wasm32 target
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.97.1
         with:
           targets: wasm32-unknown-unknown
 
@@ -38,6 +38,13 @@ jobs:
 
       - name: Build the wasm module (SIMD128)
         run: scripts/build-wasm.sh
+
+      # The npm package `skycmd`, served as https://<user>.github.io/skycmd/lib/skycmd.js
+      - name: Build the JS package and copy it to site/public/lib
+        run: |
+          sh packages/skycmd-js/scripts/build.sh
+          mkdir -p site/public/lib
+          cp packages/skycmd-js/dist/*.js packages/skycmd-js/dist/*.wasm packages/skycmd-js/dist/*.d.ts site/public/lib/
 
       - uses: actions/setup-node@v5
         with:

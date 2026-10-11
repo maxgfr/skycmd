@@ -246,34 +246,41 @@ pub fn generate_with_actor(
         let eps = EPSILONS[rng.gen_range(0..EPSILONS.len())];
         let mut g = make_game(game, episode_seed).expect("known game");
         ep += 1;
-        play_episode(&mut *g, eps, actor.as_deref_mut(), &mut rng, |g, targets, rng| {
-            if stats.records >= n {
-                return;
-            }
-            // Quota: the secondary question gets SECONDARY_SHARE of the emitted records.
-            let secondary_due = (secondary as f64) < SECONDARY_SHARE * (stats.records + 1) as f64;
-            let qi = usize::from(questions.len() > 1 && secondary_due);
-            let label = argmax(&targets[qi]);
-            seen[qi][label] += 1.0;
-            if rng.gen::<f32>() >= base_keep(game) * balance_keep(&seen[qi], label) {
-                return;
-            }
-            let r = render_variant(&questions[qi], rng);
-            let rec = DecisionRecord {
-                src: src.clone(),
-                t: questions[qi].qtype,
-                target: r.map_target(&targets[qi]),
-                ins: r.ins,
-                opts: r.opts,
-                state: g.state_text(),
-                split,
-            };
-            stats.records += 1;
-            stats.splits[split as usize] += 1;
-            stats.labels[qi].2[label] += 1;
-            secondary += qi;
-            emit(rec);
-        });
+        play_episode(
+            &mut *g,
+            eps,
+            actor.as_deref_mut(),
+            &mut rng,
+            |g, targets, rng| {
+                if stats.records >= n {
+                    return;
+                }
+                // Quota: the secondary question gets SECONDARY_SHARE of the emitted records.
+                let secondary_due =
+                    (secondary as f64) < SECONDARY_SHARE * (stats.records + 1) as f64;
+                let qi = usize::from(questions.len() > 1 && secondary_due);
+                let label = argmax(&targets[qi]);
+                seen[qi][label] += 1.0;
+                if rng.gen::<f32>() >= base_keep(game) * balance_keep(&seen[qi], label) {
+                    return;
+                }
+                let r = render_variant(&questions[qi], rng);
+                let rec = DecisionRecord {
+                    src: src.clone(),
+                    t: questions[qi].qtype,
+                    target: r.map_target(&targets[qi]),
+                    ins: r.ins,
+                    opts: r.opts,
+                    state: g.state_text(),
+                    split,
+                };
+                stats.records += 1;
+                stats.splits[split as usize] += 1;
+                stats.labels[qi].2[label] += 1;
+                secondary += qi;
+                emit(rec);
+            },
+        );
         stats.episodes = ep;
     }
     Ok(stats)

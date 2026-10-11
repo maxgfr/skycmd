@@ -67,7 +67,10 @@ fn ccs_get(key: &str) -> Option<String> {
 }
 
 fn env_nonempty(k: &str) -> Option<String> {
-    std::env::var(k).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::env::var(k)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 #[derive(Clone, Debug, Default)]
@@ -119,7 +122,10 @@ impl TeacherConfig {
 /// Picks the newest full GLM model from the endpoint's model list (`GET /v1/models`),
 /// preferring the full model over Air/Flash/Turbo variants.
 fn pick_model(cfg: &TeacherConfig) -> Result<String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(30))).build().into();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(30)))
+        .build()
+        .into();
     let mut resp = agent
         .get(&format!("{}/v1/models", cfg.base_url))
         .header("x-api-key", &cfg.api_key)
@@ -135,10 +141,22 @@ pub fn choose_model(list: &Value) -> Option<String> {
         .get("data")?
         .as_array()?
         .iter()
-        .filter_map(|m| Some((m.get("id")?.as_str()?.to_string(), m.get("created_at").and_then(Value::as_str).unwrap_or("").to_string())))
+        .filter_map(|m| {
+            Some((
+                m.get("id")?.as_str()?.to_string(),
+                m.get("created_at")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            ))
+        })
         .filter(|(id, _)| id.to_ascii_lowercase().contains("glm"))
         .collect();
-    let lite = |id: &str| ["air", "flash", "turbo", "mini", "lite"].iter().any(|w| id.to_ascii_lowercase().contains(w));
+    let lite = |id: &str| {
+        ["air", "flash", "turbo", "mini", "lite"]
+            .iter()
+            .any(|w| id.to_ascii_lowercase().contains(w))
+    };
     models.sort_by(|a, b| (!lite(&a.0), &a.1, &a.0).cmp(&(!lite(&b.0), &b.1, &b.0)));
     models.pop().map(|m| m.0)
 }
@@ -149,7 +167,9 @@ pub fn parse_strict_json(text: &str) -> Result<Value> {
     let t = text.trim();
     let t = if let Some(rest) = t.strip_prefix("```") {
         let rest = rest.strip_prefix("json").unwrap_or(rest);
-        rest.strip_suffix("```").ok_or_else(|| anyhow!("unterminated code fence"))?.trim()
+        rest.strip_suffix("```")
+            .ok_or_else(|| anyhow!("unterminated code fence"))?
+            .trim()
     } else {
         t
     };
@@ -216,8 +236,13 @@ impl Teacher {
             .header("content-type", "application/json")
             .send_json(body)?;
         let status = resp.status().as_u16();
-        let text = resp.body_mut().with_config().limit(32 << 20).read_to_string()?;
-        let v = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text.chars().take(500).collect::<String>() }));
+        let text = resp
+            .body_mut()
+            .with_config()
+            .limit(32 << 20)
+            .read_to_string()?;
+        let v = serde_json::from_str(&text)
+            .unwrap_or_else(|_| json!({ "raw": text.chars().take(500).collect::<String>() }));
         Ok((status, v))
     }
 
@@ -321,7 +346,10 @@ pub struct Paraphrase {
 const PARA_SYSTEM: &str = "You write training data for a small decision model. You reply with one JSON object and nothing else: no prose, no Markdown.";
 
 pub fn paraphrase_prompt(batch: &[QuestionSpec], n: usize) -> String {
-    let items: Vec<Value> = batch.iter().map(|q| json!({"id": q.id, "type": q.t, "instructions": q.ins, "options": q.opts})).collect();
+    let items: Vec<Value> = batch
+        .iter()
+        .map(|q| json!({"id": q.id, "type": q.t, "instructions": q.ins, "options": q.opts}))
+        .collect();
     format!(
         "For each question below, write {n} English and {n} French paraphrases of its instructions.\n\
          Rules: keep the exact meaning and the same answer options (the options are context only, do not rewrite them); \
@@ -338,8 +366,15 @@ pub fn parse_paraphrases(reply: &Value, batch: &[QuestionSpec], n: usize) -> Vec
     let by_id: BTreeMap<&str, &QuestionSpec> = batch.iter().map(|q| (q.id.as_str(), q)).collect();
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for it in reply.get("items").and_then(Value::as_array).into_iter().flatten() {
-        let Some(id) = it.get("id").and_then(Value::as_str) else { continue };
+    for it in reply
+        .get("items")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(id) = it.get("id").and_then(Value::as_str) else {
+            continue;
+        };
         let Some(q) = by_id.get(id) else { continue };
         let take = |k: &str| -> Option<Vec<String>> {
             let v: Vec<String> = it
@@ -379,14 +414,19 @@ pub fn export_questions(dirs: &[PathBuf], max: usize, seed: u64) -> Result<Vec<Q
     let mut out = Vec::new();
     for dir in dirs {
         let mut files: Vec<PathBuf> = match fs::read_dir(dir) {
-            Ok(rd) => rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|e| e == "jsonl")).collect(),
+            Ok(rd) => rd
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().is_some_and(|e| e == "jsonl"))
+                .collect(),
             Err(_) => continue,
         };
         files.sort();
         for f in files {
             let recs: Vec<DecisionRecord> = read_jsonl(&f).unwrap_or_default();
             for r in recs.into_iter().filter(|r| r.split != "test") {
-                let key = hash64(format!("{}\u{1}{}\u{1}{}", r.t, r.ins, r.opts.join("\u{2}")).as_bytes());
+                let key = hash64(
+                    format!("{}\u{1}{}\u{1}{}", r.t, r.ins, r.opts.join("\u{2}")).as_bytes(),
+                );
                 if seen.insert(key) {
                     out.push(QuestionSpec {
                         id: format!("{}-{key:016x}", r.src),
@@ -403,15 +443,28 @@ pub fn export_questions(dirs: &[PathBuf], max: usize, seed: u64) -> Result<Vec<Q
     Ok(out)
 }
 
-pub fn paraphrase_questions(teacher: &mut Teacher, input: &Path, out: &Path, n: usize) -> Result<usize> {
-    let qs: Vec<QuestionSpec> = serde_json::from_slice(&fs::read(input).with_context(|| format!("read {input:?}"))?)?;
+pub fn paraphrase_questions(
+    teacher: &mut Teacher,
+    input: &Path,
+    out: &Path,
+    n: usize,
+) -> Result<usize> {
+    let qs: Vec<QuestionSpec> =
+        serde_json::from_slice(&fs::read(input).with_context(|| format!("read {input:?}"))?)?;
     let done: HashSet<String> = if out.exists() {
-        read_jsonl::<Paraphrase>(out)?.into_iter().map(|p| p.id).collect()
+        read_jsonl::<Paraphrase>(out)?
+            .into_iter()
+            .map(|p| p.id)
+            .collect()
     } else {
         HashSet::new()
     };
     let todo: Vec<QuestionSpec> = qs.into_iter().filter(|q| !done.contains(&q.id)).collect();
-    eprintln!("[teacher] {} questions to paraphrase ({} already done)", todo.len(), done.len());
+    eprintln!(
+        "[teacher] {} questions to paraphrase ({} already done)",
+        todo.len(),
+        done.len()
+    );
     let mut written = 0;
     for batch in todo.chunks(teacher.cfg.batch) {
         if teacher.budget_left() == 0 {
@@ -442,7 +495,14 @@ pub struct DroneOrder {
     pub plan: Vec<Value>,
 }
 
-pub const CATEGORIES: [&str; 6] = ["inspection", "mapping", "agriculture", "search_rescue", "ambiguous", "unsafe"];
+pub const CATEGORIES: [&str; 6] = [
+    "inspection",
+    "mapping",
+    "agriculture",
+    "search_rescue",
+    "ambiguous",
+    "unsafe",
+];
 
 const THEMES: [&str; 24] = [
     "bridge pillars",
@@ -524,10 +584,18 @@ pub struct Rejected {
 pub fn parse_orders(reply: &Value) -> (Vec<DroneOrder>, Vec<Rejected>) {
     let mut ok = Vec::new();
     let mut bad = Vec::new();
-    for o in reply.get("orders").and_then(Value::as_array).into_iter().flatten() {
+    for o in reply
+        .get("orders")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
         match order_problem(o) {
             None => ok.extend(serde_json::from_value::<DroneOrder>(o.clone()).ok()),
-            Some(reason) => bad.push(Rejected { reason, item: o.clone() }),
+            Some(reason) => bad.push(Rejected {
+                reason,
+                item: o.clone(),
+            }),
         }
     }
     (ok, bad)
@@ -538,10 +606,25 @@ pub fn order_record(o: &DroneOrder, val_frac: f64) -> Option<DecisionRecord> {
     let names = validate_plan(&Value::Array(o.plan.clone())).ok()?;
     let label = first_mission_action(&names)?;
     let idx = ACTIONS.iter().position(|a| *a == label)?;
-    let crit = ACTIONS.iter().map(|a| (a.to_string(), String::new())).collect();
-    let q = Question::choice("Which action should the drone perform first for this order (after any takeoff)?", crit);
-    let mut r = q.record("teacher_drone_orders", o.order.trim(), one_hot(ACTIONS.len(), idx));
-    r.split = if (hash64(o.order.as_bytes()) % 10_000) as f64 / 1e4 < val_frac { "val" } else { "train" }.into();
+    let crit = ACTIONS
+        .iter()
+        .map(|a| (a.to_string(), String::new()))
+        .collect();
+    let q = Question::choice(
+        "Which action should the drone perform first for this order (after any takeoff)?",
+        crit,
+    );
+    let mut r = q.record(
+        "teacher_drone_orders",
+        o.order.trim(),
+        one_hot(ACTIONS.len(), idx),
+    );
+    r.split = if (hash64(o.order.as_bytes()) % 10_000) as f64 / 1e4 < val_frac {
+        "val"
+    } else {
+        "train"
+    }
+    .into();
     Some(r)
 }
 
@@ -549,12 +632,28 @@ fn rejects_path(out: &Path) -> PathBuf {
     out.with_extension("rejects.jsonl")
 }
 
-pub fn drone_orders(teacher: &mut Teacher, out: &Path, decisions_out: &Path, n: usize, seed: u64) -> Result<(usize, usize)> {
-    let mut have: Vec<DroneOrder> = if out.exists() { read_jsonl(out)? } else { Vec::new() };
-    let mut seen: HashSet<u64> = have.iter().map(|o| hash64(o.order.trim().to_lowercase().as_bytes())).collect();
+pub fn drone_orders(
+    teacher: &mut Teacher,
+    out: &Path,
+    decisions_out: &Path,
+    n: usize,
+    seed: u64,
+) -> Result<(usize, usize)> {
+    let mut have: Vec<DroneOrder> = if out.exists() {
+        read_jsonl(out)?
+    } else {
+        Vec::new()
+    };
+    let mut seen: HashSet<u64> = have
+        .iter()
+        .map(|o| hash64(o.order.trim().to_lowercase().as_bytes()))
+        .collect();
     let mut rng = Rng::derived(seed, &format!("orders-{}", have.len()));
     let mut dropped = 0;
-    eprintln!("[teacher] drone orders: {} existing, target {n}", have.len());
+    eprintln!(
+        "[teacher] drone orders: {} existing, target {n}",
+        have.len()
+    );
     while have.len() < n && teacher.budget_left() > 0 {
         let k = teacher.cfg.batch.min(n - have.len()).max(1);
         let mut themes: Vec<&str> = THEMES.to_vec();
@@ -568,7 +667,11 @@ pub fn drone_orders(teacher: &mut Teacher, out: &Path, decisions_out: &Path, n: 
                     .filter(|o| seen.insert(hash64(o.order.trim().to_lowercase().as_bytes())))
                     .collect();
                 dropped += bad.len();
-                eprintln!("[teacher] batch: {} valid new, {} invalid dropped", fresh.len(), bad.len());
+                eprintln!(
+                    "[teacher] batch: {} valid new, {} invalid dropped",
+                    fresh.len(),
+                    bad.len()
+                );
                 let mut reasons: BTreeMap<String, usize> = BTreeMap::new();
                 for b in &bad {
                     *reasons.entry(b.reason.clone()).or_default() += 1;
@@ -633,7 +736,10 @@ mod tests {
     #[test]
     fn strict_json() {
         assert_eq!(parse_strict_json(" {\"a\":1} ").unwrap(), json!({"a":1}));
-        assert_eq!(parse_strict_json("```json\n{\"a\":1}\n```").unwrap(), json!({"a":1}));
+        assert_eq!(
+            parse_strict_json("```json\n{\"a\":1}\n```").unwrap(),
+            json!({"a":1})
+        );
         assert!(parse_strict_json("Sure! {\"a\":1}").is_err());
         assert!(parse_strict_json("{\"a\":1} trailing").is_err());
     }
@@ -651,7 +757,12 @@ mod tests {
 
     #[test]
     fn paraphrase_validation() {
-        let batch = vec![QuestionSpec { id: "q1".into(), t: "noul".into(), ins: "Is it on?".into(), opts: vec![] }];
+        let batch = vec![QuestionSpec {
+            id: "q1".into(),
+            t: "noul".into(),
+            ins: "Is it on?".into(),
+            opts: vec![],
+        }];
         let reply = json!({"items":[
             {"id":"q1","en":["Is it switched on?","Is it on?","Is it switched on?"],"fr":["Est-ce allumé ?"]},
             {"id":"zz","en":["x"],"fr":["y"]}]});

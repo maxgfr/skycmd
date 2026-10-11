@@ -7,14 +7,16 @@ pub const QK8_0: usize = 32;
 /// Size in bytes of one Q8_0 block: an f16 scale followed by 32 signed bytes.
 pub const Q8_0_BLOCK_BYTES: usize = 2 + QK8_0;
 
-/// ggml tensor types (`enum ggml_type`). Only F32, F16, BF16 and Q8_0 can be converted
-/// to f32; other types are recognized so that files containing them can still be inspected.
+/// ggml tensor types (`enum ggml_type`). F32, F16, BF16, Q8_0 and I8 can be converted to f32;
+/// other types are recognized so that files containing them can still be inspected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GgmlType {
     F32,
     F16,
     Q8_0,
     BF16,
+    /// Raw signed bytes (`GGML_TYPE_I8`), e.g. int8 embeddings or packed ternary weights.
+    I8,
     /// Any other ggml type id, kept as is.
     Other(u32),
 }
@@ -25,6 +27,7 @@ impl GgmlType {
             0 => GgmlType::F32,
             1 => GgmlType::F16,
             8 => GgmlType::Q8_0,
+            24 => GgmlType::I8,
             30 => GgmlType::BF16,
             other => GgmlType::Other(other),
         }
@@ -35,6 +38,7 @@ impl GgmlType {
             GgmlType::F32 => 0,
             GgmlType::F16 => 1,
             GgmlType::Q8_0 => 8,
+            GgmlType::I8 => 24,
             GgmlType::BF16 => 30,
             GgmlType::Other(v) => v,
         }
@@ -46,6 +50,7 @@ impl GgmlType {
             GgmlType::F16 => "F16".into(),
             GgmlType::Q8_0 => "Q8_0".into(),
             GgmlType::BF16 => "BF16".into(),
+            GgmlType::I8 => "I8".into(),
             GgmlType::Other(v) => format!("type{v}"),
         }
     }
@@ -53,7 +58,7 @@ impl GgmlType {
     /// Elements per block (1 for plain float types).
     pub fn block_len(self) -> Option<usize> {
         match self {
-            GgmlType::F32 | GgmlType::F16 | GgmlType::BF16 => Some(1),
+            GgmlType::F32 | GgmlType::F16 | GgmlType::BF16 | GgmlType::I8 => Some(1),
             GgmlType::Q8_0 => Some(QK8_0),
             GgmlType::Other(_) => None,
         }
@@ -64,6 +69,7 @@ impl GgmlType {
         match self {
             GgmlType::F32 => Some(4),
             GgmlType::F16 | GgmlType::BF16 => Some(2),
+            GgmlType::I8 => Some(1),
             GgmlType::Q8_0 => Some(Q8_0_BLOCK_BYTES),
             GgmlType::Other(_) => None,
         }
@@ -252,12 +258,14 @@ pub fn dequantize_into(ty: GgmlType, bytes: &[u8], out: &mut Vec<f32>) -> Result
                 out.extend(blk[2..].iter().map(|&q| q as i8 as f32 * d));
             }
         }
+        GgmlType::I8 => out.extend(bytes.iter().map(|&b| b as i8 as f32)),
         GgmlType::Other(_) => unreachable!(),
     }
     Ok(())
 }
 
-/// Encode f32 values as raw little-endian bytes of type `ty` (F32, F16, BF16 or Q8_0).
+/// Encode f32 values as raw little-endian bytes of type `ty` (F32, F16, BF16, Q8_0, or I8:
+/// rounded to the nearest integer and clamped to [-128, 127]).
 pub fn encode_f32(ty: GgmlType, x: &[f32]) -> Result<Vec<u8>> {
     Ok(match ty {
         GgmlType::F32 => x.iter().flat_map(|v| v.to_le_bytes()).collect(),
@@ -278,6 +286,10 @@ pub fn encode_f32(ty: GgmlType, x: &[f32]) -> Result<Vec<u8>> {
             }
             quantize_q8_0(x)
         }
+        GgmlType::I8 => x
+            .iter()
+            .map(|&v| v.round().clamp(-128.0, 127.0) as i8 as u8)
+            .collect(),
         GgmlType::Other(_) => return Err(Error::Unsupported(format!("encode {}", ty.name()))),
     })
 }
@@ -306,6 +318,19 @@ mod tests {
         assert_eq!(f16_to_f32(f32_to_f16(1e-9)), 0.0);
         let sub = 3.0e-6f32;
         assert!((f16_to_f32(f32_to_f16(sub)) - sub).abs() < 6.0e-8);
+    }
+
+    #[test]
+    fn i8_round_trip() {
+        let v = [0.0f32, 1.0, -1.0, 127.0, -128.0, 300.0, -2.6];
+        let b = encode_f32(GgmlType::I8, &v).unwrap();
+        assert_eq!(b.len(), v.len());
+        assert_eq!(
+            dequantize(GgmlType::I8, &b).unwrap(),
+            vec![0.0, 1.0, -1.0, 127.0, -128.0, 127.0, -3.0]
+        );
+        assert_eq!(GgmlType::from_u32(24), GgmlType::I8);
+        assert_eq!(GgmlType::I8.byte_size(10).unwrap(), 10);
     }
 
     #[test]

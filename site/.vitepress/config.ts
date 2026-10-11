@@ -53,6 +53,7 @@ export default defineConfig({
       { text: 'Play', link: '/play/' },
       { text: 'Tutorial', link: '/tutorial/' },
       { text: 'Bench', link: '/bench/' },
+      { text: 'Install', link: '/install/' },
     ],
     socialLinks: [{ icon: 'github', link: 'https://github.com/maxgfr/skycmd' }],
     sidebar: {

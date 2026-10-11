@@ -103,6 +103,9 @@ mod tests {
     fn hash_is_stable() {
         assert_eq!(hash64(b"abc"), hash64(b"abc"));
         assert_ne!(hash64(b"abc"), hash64(b"abd"));
-        assert_ne!(Rng::derived(1, "a").next_u64(), Rng::derived(1, "b").next_u64());
+        assert_ne!(
+            Rng::derived(1, "a").next_u64(),
+            Rng::derived(1, "b").next_u64()
+        );
     }
 }

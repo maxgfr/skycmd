@@ -1,5 +1,5 @@
 //! `sky-train`: benchmark, pretrain, decide, calibrate, export and eval the
-//! skycmd-s1 decision models.
+//! skycmd-s1 decision models, and the `s2-*` equivalents for skycmd-s2.
 
 use std::path::PathBuf;
 
@@ -8,11 +8,20 @@ use clap::{Args, Parser, Subcommand};
 use sky_train::{
     export,
     optim::OptConfig,
+    s2::{
+        self,
+        gguf::WeightFormat,
+        train::{S2BenchArgs, S2DecideArgs, S2PretrainArgs},
+    },
     train::{self, BenchArgs, DecideArgs, PretrainArgs},
 };
 
 #[derive(Parser)]
-#[command(name = "sky-train", version, about = "Train skycmd-s1 decision models with mlx-rs")]
+#[command(
+    name = "sky-train",
+    version,
+    about = "Train skycmd-s1 and skycmd-s2 decision models with mlx-rs"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -48,7 +57,10 @@ impl OptFlags {
 }
 
 fn split_paths(s: &str) -> Vec<PathBuf> {
-    s.split(',').filter(|p| !p.trim().is_empty()).map(|p| PathBuf::from(p.trim())).collect()
+    s.split(',')
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| PathBuf::from(p.trim()))
+        .collect()
 }
 
 /// Compute precision of the training step.
@@ -184,6 +196,168 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// s2: numeric-MLM training throughput on random data; appends to the s2 section of BENCH.md.
+    S2Bench {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long, default_value_t = 128)]
+        mlm_batch: usize,
+        #[arg(long, default_value_t = 128)]
+        mlm_seq: usize,
+        #[arg(long, default_value_t = 64)]
+        dec_batch: usize,
+        /// Distinct questions (static streams) per decision batch.
+        #[arg(long, default_value_t = 64)]
+        dec_questions: usize,
+        #[arg(long, default_value_t = 64)]
+        static_len: usize,
+        #[arg(long, default_value_t = 32)]
+        state_len: usize,
+        #[arg(long, default_value_t = 4)]
+        options: usize,
+        #[arg(long, default_value_t = 10)]
+        warmup: usize,
+        #[arg(long, default_value_t = 50)]
+        steps: usize,
+        #[arg(long, default_value = "BENCH.md")]
+        bench_md: PathBuf,
+        #[arg(long, value_enum, default_value_t = Precision::F32)]
+        precision: Precision,
+        /// Run the graphs eagerly instead of compiling them.
+        #[arg(long)]
+        no_compile: bool,
+        /// Also time the QAT (ternary fake-quant) decision step.
+        #[arg(long)]
+        qat: bool,
+    },
+    /// s2: numeric MLM over the state stack (CE + 0.5 MSE on masked numbers), then the decision init.
+    S2Pretrain {
+        #[arg(long)]
+        config: PathBuf,
+        /// s2 tokenizer.json with [NUM] = 5 (data/tok/tok-s2-<vocab>.json).
+        #[arg(long)]
+        tokenizer: PathBuf,
+        #[arg(long)]
+        text: PathBuf,
+        #[arg(long)]
+        minutes: f64,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        resume: bool,
+        #[arg(long, default_value_t = 128)]
+        batch: usize,
+        #[arg(long, default_value_t = 128)]
+        seq: usize,
+        #[command(flatten)]
+        opt: OptFlags,
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        #[arg(long, default_value_t = 300_000_000)]
+        max_tokens: usize,
+        #[arg(long, default_value_t = 20)]
+        log_every: u64,
+        #[arg(long, default_value_t = 500)]
+        eval_every: u64,
+        #[arg(long, default_value_t = 10.0)]
+        checkpoint_minutes: f64,
+        #[arg(long, default_value_t = 16)]
+        val_batches: usize,
+        #[arg(long, value_enum, default_value_t = Precision::F32)]
+        precision: Precision,
+        #[arg(long)]
+        no_compile: bool,
+        /// Weight of the masked-number MSE in the loss (SPEC-S2: 0.5).
+        #[arg(long, default_value_t = 0.5)]
+        num_weight: f32,
+    },
+    /// s2: decision training with deep supervision over the exits and ternary QAT at the end.
+    S2Decide {
+        #[arg(long)]
+        config: PathBuf,
+        /// Pretraining run (runs/<name>/pretrain, uses its init/) or a checkpoint directory.
+        #[arg(long)]
+        init: Option<PathBuf>,
+        /// tokenizer.json (defaults to <init>/tokenizer.json).
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        #[arg(long)]
+        records: String,
+        #[arg(long)]
+        weights: Option<String>,
+        #[arg(long)]
+        minutes: f64,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        resume: bool,
+        #[arg(long, default_value_t = 64)]
+        batch: usize,
+        #[command(flatten)]
+        opt: OptFlags,
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        /// Fraction of the budget (at the end) trained with ternary fake-quant.
+        #[arg(long, default_value_t = 0.3)]
+        qat_frac: f64,
+        #[arg(long, default_value_t = 20)]
+        log_every: u64,
+        #[arg(long, default_value_t = 1000)]
+        eval_every: u64,
+        #[arg(long, default_value_t = 10.0)]
+        checkpoint_minutes: f64,
+        #[arg(long, default_value_t = 4000)]
+        val_max: usize,
+        #[arg(long, value_enum, default_value_t = Precision::F32)]
+        precision: Precision,
+        #[arg(long)]
+        no_compile: bool,
+    },
+    /// s2: temperatures per (exit, type, bucket) and τ per type, for f32 and ternary (calibration.json).
+    S2Calibrate {
+        #[arg(long)]
+        run: PathBuf,
+        #[arg(long)]
+        records: String,
+        #[arg(long, default_value = "val")]
+        split: String,
+        #[arg(long, default_value_t = 50)]
+        min_bucket: usize,
+    },
+    /// s2: export the calibrated model as a skycmd-s2 GGUF.
+    S2Export {
+        #[arg(long)]
+        run: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// f32, f16 or ternary.
+        #[arg(long, default_value = "f32")]
+        format: String,
+    },
+    /// s2: per-source / per-exit metrics, early exit, permutation invariance, coherence -> report.md.
+    S2Eval {
+        #[arg(long)]
+        run: PathBuf,
+        #[arg(long)]
+        records: String,
+        #[arg(long, default_value = "test")]
+        split: String,
+        /// Exported GGUF files to evaluate as well (comma-separated).
+        #[arg(long)]
+        gguf: Option<String>,
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
+    /// s2: tiny random model -> GGUF (f32 + ternary) and golden outputs for sky-infer.
+    S2Golden {
+        /// s2 tokenizer.json (default: a built-in byte-level tokenizer with [NUM] = 5).
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        #[arg(long, default_value = "crates/sky-infer/tests/golden")]
+        out: PathBuf,
+        #[arg(long, default_value_t = 7)]
+        seed: u64,
+    },
     /// Per-source metrics table -> runs/<name>/report.md.
     Eval {
         #[arg(long)]
@@ -200,7 +374,18 @@ enum Cmd {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
-        Cmd::Bench { config, mlm_batch, mlm_seq, dec_batch, dec_seq, dec_options, warmup, steps, bench_md, precision } => {
+        Cmd::Bench {
+            config,
+            mlm_batch,
+            mlm_seq,
+            dec_batch,
+            dec_seq,
+            dec_options,
+            warmup,
+            steps,
+            bench_md,
+            precision,
+        } => {
             let rows = train::bench(&BenchArgs {
                 config,
                 mlm_batch,
@@ -291,11 +476,181 @@ fn main() -> Result<()> {
             val_max,
             bf16: precision == Precision::Bf16,
         })?,
-        Cmd::Calibrate { run, records, split, min_bucket } => {
+        Cmd::Calibrate {
+            run,
+            records,
+            split,
+            min_bucket,
+        } => {
             export::calibrate(&run, &split_paths(&records), &split, min_bucket)?;
         }
         Cmd::Export { run, out } => export::export(&run, &out)?,
-        Cmd::Eval { run, records, split, report } => {
+        Cmd::S2Bench {
+            config,
+            mlm_batch,
+            mlm_seq,
+            dec_batch,
+            dec_questions,
+            static_len,
+            state_len,
+            options,
+            warmup,
+            steps,
+            bench_md,
+            precision,
+            no_compile,
+            qat,
+        } => {
+            let rows = s2::train::bench(&S2BenchArgs {
+                config,
+                mlm_batch,
+                mlm_seq,
+                dec_batch,
+                dec_questions,
+                static_len,
+                state_len,
+                options,
+                warmup,
+                steps,
+                bench_md: bench_md.clone(),
+                bf16: precision == Precision::Bf16,
+                compile: !no_compile,
+                qat,
+            })?;
+            for r in rows {
+                println!(
+                    "{} {:>9} params {:<12} {} batch {:>4} ({}): {:>7.1} ms/step {:>9.0} tok/s peak {:>6.0} MB",
+                    r.model, r.params, r.phase, r.precision, r.batch, r.shape, r.step_ms, r.tok_s, r.peak_mb
+                );
+            }
+            println!("appended to {}", bench_md.display());
+        }
+        Cmd::S2Pretrain {
+            config,
+            tokenizer,
+            text,
+            minutes,
+            out,
+            resume,
+            batch,
+            seq,
+            opt,
+            seed,
+            max_tokens,
+            log_every,
+            eval_every,
+            checkpoint_minutes,
+            val_batches,
+            precision,
+            no_compile,
+            num_weight,
+        } => s2::train::pretrain(&S2PretrainArgs {
+            config,
+            tokenizer,
+            text,
+            minutes,
+            out,
+            resume,
+            batch,
+            seq,
+            opt: opt.build(3e-3, 0.02),
+            seed,
+            max_tokens,
+            log_every,
+            eval_every,
+            checkpoint_minutes,
+            val_batches,
+            bf16: precision == Precision::Bf16,
+            compile: !no_compile,
+            num_weight,
+        })?,
+        Cmd::S2Decide {
+            config,
+            init,
+            tokenizer,
+            records,
+            weights,
+            minutes,
+            out,
+            resume,
+            batch,
+            opt,
+            seed,
+            qat_frac,
+            log_every,
+            eval_every,
+            checkpoint_minutes,
+            val_max,
+            precision,
+            no_compile,
+        } => s2::train::decide(&S2DecideArgs {
+            config,
+            init,
+            tokenizer,
+            records: split_paths(&records),
+            weights,
+            minutes,
+            out,
+            resume,
+            batch,
+            opt: opt.build(1e-3, 0.01),
+            seed,
+            qat_frac,
+            log_every,
+            eval_every,
+            checkpoint_minutes,
+            val_max,
+            bf16: precision == Precision::Bf16,
+            compile: !no_compile,
+        })?,
+        Cmd::S2Calibrate {
+            run,
+            records,
+            split,
+            min_bucket,
+        } => {
+            s2::eval::calibrate(&run, &split_paths(&records), &split, min_bucket)?;
+        }
+        Cmd::S2Export { run, out, format } => {
+            s2::eval::export(&run, &out, WeightFormat::parse(&format)?)?
+        }
+        Cmd::S2Eval {
+            run,
+            records,
+            split,
+            gguf,
+            report,
+        } => {
+            let ggufs = gguf.as_deref().map(split_paths).unwrap_or_default();
+            s2::eval::eval(
+                &run,
+                &split_paths(&records),
+                &split,
+                &ggufs,
+                report.as_deref(),
+            )?;
+        }
+        Cmd::S2Golden {
+            tokenizer,
+            out,
+            seed,
+        } => {
+            let tok = match tokenizer {
+                Some(p) => std::fs::read_to_string(p)?,
+                None => sky_train::s2::golden::byte_tokenizer_json(),
+            };
+            sky_train::s2::golden::golden(&tok, &out, seed)?;
+            println!(
+                "wrote {0}/s2.json, {0}/s2-f32.gguf, {0}/s2-ternary.gguf",
+                out.display()
+            );
+        }
+        Cmd::Eval {
+            run,
+            records,
+            split,
+            report,
+        } => {
             export::eval(&run, &split_paths(&records), &split, report.as_deref())?;
         }
     }

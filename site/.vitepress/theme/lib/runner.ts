@@ -2,10 +2,11 @@
 // (rescue), AI or human control, rendering with requestAnimationFrame, and a HUD state object.
 //
 // The wasm module runs on the main thread: a full AI frame (state text, tokenization, two
-// forward passes, safety reflex, physics) measures ~0.7 ms with s1-pico in V8, well inside a
-// 16 ms frame, so a Web Worker would add latency (one frame of delay for the snapshot) without
-// making rendering smoother. Slower models are throttled with `set_decide_every` instead.
-import type { Question, StepReport, SkyWeb, WasmEngine, WasmSession } from './wasm'
+// forward passes, safety reflex, physics) measures ~0.7 ms with s1-pico in V8 (s2 models encode
+// only the state per frame, once for both questions), well inside a 16 ms frame, so a Web Worker
+// would add latency (one frame of delay for the snapshot) without making rendering smoother.
+// Slower models are throttled with `set_decide_every` instead.
+import type { DecisionInfo, Question, StepReport, SkyWeb, WasmEngine, WasmSession } from './wasm'
 import { RateMeter, readNumber, writeNumber } from './wasm'
 import {
   currentTheme,
@@ -40,6 +41,12 @@ export interface Hud {
   episodes: number
   done: boolean
   stateText: string
+  /** How the model answered the last decision (null for the oracle). */
+  info: DecisionInfo | null
+  /** s2: mean state-encoder blocks used per question over the recent decisions. */
+  meanLayers: number
+  /** Share of the recent decisions whose question part came from the cache. */
+  staticHitRate: number
 }
 
 export function newHud(): Hud {
@@ -60,8 +67,14 @@ export function newHud(): Hud {
     episodes: 0,
     done: false,
     stateText: '',
+    info: null,
+    meanLayers: 0,
+    staticHitRate: 0,
   }
 }
+
+/** Decisions kept for the rolling depth and cache statistics of the HUD. */
+const DEPTH_WINDOW = 120
 
 /** Per-decision time budget before the runner starts deciding every N frames. */
 const BUDGET_US: Record<GameKind, number> = { flappy: 6000, dodge: 12000, rescue: 60000 }
@@ -97,6 +110,8 @@ export class GameRunner {
   private hudAt = 0
   private decisions = 0
   private running = false
+  private layers: number[] = []
+  private hits: number[] = []
 
   constructor(
     private mod: SkyWeb,
@@ -115,6 +130,11 @@ export class GameRunner {
     this.engine = engine
     this.session.set_decide_every(1)
     this.decisions = 0
+    this.layers = []
+    this.hits = []
+    this.hud.info = null
+    this.hud.meanLayers = 0
+    this.hud.staticHitRate = 0
     this.hud.policy = engine ? label ?? engine.name() : 'oracle (no model loaded)'
   }
 
@@ -199,6 +219,8 @@ export class GameRunner {
       this.hud.action = r.action ?? ''
       this.hud.secondary = r.secondary ?? null
       this.hud.stateText = r.state_text ?? ''
+      this.hud.info = r.info ?? null
+      if (r.info) this.trackDepth(r.info)
       if (this.engine && this.decisions % 30 === 0) this.retune()
     }
     this.afterStep(r, now)
@@ -227,6 +249,18 @@ export class GameRunner {
         if (this.opts.bestKey) writeNumber(this.opts.bestKey, score)
       }
     }
+  }
+
+  private trackDepth(info: DecisionInfo) {
+    const push = (a: number[], v: number) => {
+      a.push(v)
+      if (a.length > DEPTH_WINDOW) a.shift()
+    }
+    if (info.mean_layers != null) push(this.layers, info.mean_layers)
+    push(this.hits, info.static_hit ? 1 : 0)
+    const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0)
+    this.hud.meanLayers = mean(this.layers)
+    this.hud.staticHitRate = mean(this.hits)
   }
 
   /** Decide every N frames when the rolling median exceeds the frame budget. */

@@ -49,11 +49,23 @@ impl Answer {
     }
 }
 
+/// Early-exit details of an s2 answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExitInfo {
+    /// Index of the exit that answered.
+    pub exit: usize,
+    /// State-encoder blocks used.
+    pub layers_used: usize,
+}
+
 /// Answers in question order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecisionResponse {
     pub model: String,
     pub answers: Vec<(String, Answer)>,
+    /// Per answer (same order): the exit of s2 models, `None` for s1. Serialized as `exit` and
+    /// `layers_used` inside each answer.
+    pub exits: Vec<Option<ExitInfo>>,
     /// Tokens evaluated over all questions.
     pub input_tokens: usize,
     /// Wall time of the request in microseconds (feature `timing`).
@@ -140,10 +152,10 @@ mod json_impl {
         }
     }
 
-    /// A JSON number as Python prints it after `json.loads`: integers exactly (`-0` is `0`),
-    /// floats with `repr`.
+    /// A JSON number as Python prints it after `json.loads`: 64-bit integers exactly, floats
+    /// with `repr`. Integers beyond 64 bits and `-0` are read as floats (no `arbitrary_precision`).
     fn py_number(n: &serde_json::Number) -> String {
-        let text = n.to_string(); // original text (arbitrary_precision)
+        let text = n.to_string(); // integers print exactly, floats with a `.`
         if !text.contains(['.', 'e', 'E']) {
             let t = text.strip_prefix('-').unwrap_or(&text);
             if t.bytes().all(|b| b == b'0') {
@@ -219,11 +231,12 @@ mod json_impl {
                         }
                         QuestionKind::Choice(opts)
                     }
+                    // llama.cpp `server-decision.cpp`: 2 to 10 levels (HTTP 400 otherwise)
                     "score" => match crit {
-                        Value::Array(a) if !a.is_empty() => {
+                        Value::Array(a) if (2..=10).contains(&a.len()) => {
                             QuestionKind::Score(a.iter().map(py_str).collect())
                         }
-                        _ => return Err(err("\"criteria\" must be a non-empty array of levels")),
+                        _ => return Err(err("\"criteria\" must be an array of 2 to 10 levels")),
                     },
                     "noul" => {
                         let get = |k: &str| crit.get(k).filter(|d| truthy(d)).map(py_str);
@@ -305,7 +318,15 @@ mod json_impl {
                 Value::Object(
                     self.answers
                         .iter()
-                        .map(|(k, a)| (k.clone(), a.to_value()))
+                        .enumerate()
+                        .map(|(i, (k, a))| {
+                            let mut v = a.to_value();
+                            if let (Some(Some(e)), Value::Object(o)) = (self.exits.get(i), &mut v) {
+                                o.insert("exit".into(), Value::from(e.exit));
+                                o.insert("layers_used".into(), Value::from(e.layers_used));
+                            }
+                            (k.clone(), v)
+                        })
                         .collect(),
                 ),
             );
@@ -469,18 +490,22 @@ mod json_impl {
         #[test]
         fn python_numbers_and_repr() {
             let v: Value = serde_json::from_str(
-                r#"[0.30000000000000004, 0.01988593426858726, -0, 123456789012345678901234567890, 1.0]"#,
+                r#"[0.30000000000000004, 0.01988593426858726, 0, 9007199254740993, 1.0]"#,
             )
             .unwrap();
             assert_eq!(
                 py_json_dumps(&v, false),
-                "[0.30000000000000004, 0.01988593426858726, 0, 123456789012345678901234567890, 1.0]"
+                "[0.30000000000000004, 0.01988593426858726, 0, 9007199254740993, 1.0]"
             );
+            // Without serde_json's `arbitrary_precision` (it breaks internally tagged enums in
+            // crates built alongside), integers beyond 64 bits and `-0` go through f64.
+            let v: Value = serde_json::from_str("[-0, 123456789012345678901234567890]").unwrap();
+            assert_eq!(py_json_dumps(&v, false), "[-0.0, 1.2345678901234568e+29]");
             let r = DecisionRequest::from_json(
                 r#"{"state": null, "questions": {"q": {"type": "choice", "instructions": "i",
                     "criteria": {"a": {"x": [true, null, "it's"]}, "b": "plain"}},
                     "l": {"type": "choice", "instructions": "i", "criteria": ["a", "b", "a"]},
-                    "s": {"type": "score", "instructions": "i", "criteria": ["only"]}}}"#,
+                    "s": {"type": "score", "instructions": "i", "criteria": ["lo", "hi"]}}}"#,
             )
             .unwrap();
             assert_eq!(r.state, "null");
@@ -492,7 +517,18 @@ mod json_impl {
                 panic!()
             };
             assert_eq!(l.len(), 2);
-            assert!(matches!(&r.questions[2].kind, QuestionKind::Score(s) if s.len() == 1));
+            assert!(matches!(&r.questions[2].kind, QuestionKind::Score(s) if s.len() == 2));
+            // score questions take 2 to 10 levels, as llama.cpp
+            let score = |n: usize| {
+                let levels: Vec<String> = (0..n).map(|i| format!("\"l{i}\"")).collect();
+                DecisionRequest::from_json(&format!(
+                    r#"{{"state": "s", "questions": {{"q": {{"type": "score", "instructions": "i", "criteria": [{}]}}}}}}"#,
+                    levels.join(",")
+                ))
+            };
+            assert!(score(0).is_err() && score(1).is_err() && score(11).is_err());
+            assert!(score(2).is_ok() && score(10).is_ok());
+            assert!(matches!(score(1), Err(crate::Error::InvalidRequest(_))));
         }
 
         #[test]

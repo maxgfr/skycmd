@@ -6,11 +6,16 @@ use std::time::Instant;
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 
-use sky_data::decisions::{fetch_decisions, DecisionOptions};
+use sky_data::augment::{augment_paraphrases, AugmentOptions};
+use sky_data::commands::{fetch_commands, CommandOptions};
+use sky_data::decisions::{fetch_decisions, sources, DecisionOptions};
 use sky_data::hf::Hf;
 use sky_data::teacher::{self, Teacher, TeacherArgs, TeacherConfig};
 use sky_data::text::{fetch_text, TextOptions};
-use sky_data::tok::{build_corpus, int_prior_reps, int_prior_segments, sequence_stats, train_tokenizer, CorpusOptions};
+use sky_data::tok::{
+    build_corpus, int_prior_reps, int_prior_segments, num_segments, sequence_stats,
+    state_token_stats, train_tokenizer, train_tokenizer_s2, CorpusOptions,
+};
 
 #[derive(Parser)]
 #[command(name = "sky-data", version, about = "skycmd data pipeline")]
@@ -31,15 +36,52 @@ enum Cmd {
     FetchDecisions {
         #[arg(long, default_value = "data/decisions")]
         out: PathBuf,
-        /// Maximum records per source.
+        /// Maximum records per source (sources with their own cap, e.g. tasksource_jev, keep it).
         #[arg(long, default_value_t = 60_000)]
         cap: usize,
         /// Validation fraction (by state group) for non-test sources.
         #[arg(long, default_value_t = 0.05)]
         val_frac: f64,
-        /// Only these sources (comma separated).
+        /// Only these sources (comma separated; see --list).
         #[arg(long, value_delimiter = ',')]
         only: Vec<String>,
+        /// GLM teacher output directory (for glm_orders).
+        #[arg(long, default_value = "data/teacher")]
+        teacher: PathBuf,
+        /// List the source names and exit.
+        #[arg(long)]
+        list: bool,
+    },
+    /// Download NL → command data (function calling + MASSIVE intents) into JSONL.
+    FetchCommands {
+        #[arg(long, default_value = "data/commands")]
+        out: PathBuf,
+        #[arg(long, default_value_t = 0.05)]
+        val_frac: f64,
+        /// Cap on glaive conversations that offer no function.
+        #[arg(long, default_value_t = 10_000)]
+        max_no_tools: usize,
+        /// Only these sources (hermes, glaive, massive).
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<String>,
+    },
+    /// Decision records whose instructions are replaced by GLM paraphrases (targets unchanged).
+    AugmentParaphrases {
+        #[arg(long, default_value = "data/teacher/paraphrases.jsonl")]
+        paraphrases: PathBuf,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "data/decisions,data/games"
+        )]
+        inputs: Vec<PathBuf>,
+        #[arg(long, default_value = "data/decisions/paraphrased.jsonl")]
+        out: PathBuf,
+        #[arg(long, default_value_t = 40_000)]
+        cap: usize,
+        /// Candidate records sampled per instruction before the final draw.
+        #[arg(long, default_value_t = 8192)]
+        per_question: usize,
     },
     /// Download MLM text, size-capped, exact + MinHash near-dup deduplicated.
     FetchText {
@@ -59,10 +101,18 @@ enum Cmd {
     TrainTokenizer {
         #[arg(long)]
         vocab: usize,
-        /// Output path (default data/tok/tok-<vocab>.json).
+        /// s2 tokenizer (SPEC-S2 §2): numbers are replaced by the special token [NUM]=5 before
+        /// BPE, and no integer prior is added.
+        #[arg(long)]
+        num: bool,
+        /// Output path (default data/tok/tok-<vocab>.json, or data/tok/tok-s2-<vocab>.json with --num).
         #[arg(long)]
         out: Option<PathBuf>,
-        #[arg(long, value_delimiter = ',', default_value = "data/text,data/decisions,data/games")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "data/text,data/decisions,data/games"
+        )]
         inputs: Vec<PathBuf>,
         /// Repetitions of game records in the corpus.
         #[arg(long, default_value_t = 4)]
@@ -111,7 +161,11 @@ enum Cmd {
 enum TeacherTask {
     /// Export unique questions from decision records into a questions.json for paraphrasing.
     ExportQuestions {
-        #[arg(long, value_delimiter = ',', default_value = "data/decisions,data/games")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "data/decisions,data/games"
+        )]
         from: Vec<PathBuf>,
         #[arg(long, default_value = "data/teacher/questions.json")]
         out: PathBuf,
@@ -143,10 +197,50 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let t0 = Instant::now();
     match cli.cmd {
-        Cmd::FetchDecisions { out, cap, val_frac, only } => {
+        Cmd::FetchDecisions {
+            out,
+            cap,
+            val_frac,
+            only,
+            teacher,
+            list,
+        } => {
+            if list {
+                for s in sources() {
+                    let cap = s.cap.map_or_else(
+                        || format!("{cap} (default)"),
+                        |c| {
+                            if c == usize::MAX {
+                                "none".into()
+                            } else {
+                                c.to_string()
+                            }
+                        },
+                    );
+                    println!(
+                        "{:<24} cap {cap}{}",
+                        s.name,
+                        if s.test_only { ", test only" } else { "" }
+                    );
+                }
+                return Ok(());
+            }
             let hf = Hf::new(&cli.cache)?;
-            let reports = fetch_decisions(&hf, &DecisionOptions { out, seed: cli.seed, cap, val_frac, only })?;
-            println!("{:<24} {:>8} {:>8} {:>6} {:>8} {:>6} {:>6} {:>7}", "source", "raw", "invalid", "dup", "train", "val", "test", "secs");
+            let reports = fetch_decisions(
+                &hf,
+                &DecisionOptions {
+                    out,
+                    seed: cli.seed,
+                    cap,
+                    val_frac,
+                    only,
+                    teacher,
+                },
+            )?;
+            println!(
+                "{:<24} {:>8} {:>8} {:>6} {:>8} {:>6} {:>6} {:>7}",
+                "source", "raw", "invalid", "dup", "train", "val", "test", "secs"
+            );
             for r in reports {
                 println!(
                     "{:<24} {:>8} {:>8} {:>6} {:>8} {:>6} {:>6} {:>7.1}",
@@ -154,10 +248,80 @@ fn main() -> Result<()> {
                 );
             }
         }
-        Cmd::FetchText { out, max_mb, min_chars, max_chars, only } => {
+        Cmd::FetchCommands {
+            out,
+            val_frac,
+            max_no_tools,
+            only,
+        } => {
             let hf = Hf::new(&cli.cache)?;
-            let reports = fetch_text(&hf, &TextOptions { out, max_mb, seed: cli.seed, min_chars, max_chars, only })?;
-            println!("{:<16} {:>8} {:>8} {:>8} {:>8} {:>8} {:>10} {:>7}", "source", "docs", "MB", "budget", "exact", "near", "dl MB", "secs");
+            let reports = fetch_commands(
+                &hf,
+                &CommandOptions {
+                    out,
+                    seed: cli.seed,
+                    val_frac,
+                    max_no_tools,
+                    only,
+                },
+            )?;
+            println!(
+                "{:<10} {:>8} {:>8} {:>8} {:>8} {:>10} {:>7}",
+                "source", "raw", "skipped", "dup", "written", "with calls", "secs"
+            );
+            for r in reports {
+                println!(
+                    "{:<10} {:>8} {:>8} {:>8} {:>8} {:>10} {:>7.1}",
+                    r.src, r.raw, r.skipped, r.duplicates, r.written, r.with_calls, r.secs
+                );
+            }
+        }
+        Cmd::AugmentParaphrases {
+            paraphrases,
+            inputs,
+            out,
+            cap,
+            per_question,
+        } => {
+            let rep = augment_paraphrases(&AugmentOptions {
+                paraphrases,
+                inputs,
+                out: out.clone(),
+                cap,
+                per_question,
+                seed: cli.seed,
+            })?;
+            println!(
+                "{} paraphrased instructions, {} matched in the data ({} records); wrote {} records to {out:?}",
+                rep.paraphrased_instructions, rep.matched_instructions, rep.matched_records, rep.written
+            );
+            for (src, n) in rep.by_src {
+                println!("  {src:<32} {n}");
+            }
+        }
+        Cmd::FetchText {
+            out,
+            max_mb,
+            min_chars,
+            max_chars,
+            only,
+        } => {
+            let hf = Hf::new(&cli.cache)?;
+            let reports = fetch_text(
+                &hf,
+                &TextOptions {
+                    out,
+                    max_mb,
+                    seed: cli.seed,
+                    min_chars,
+                    max_chars,
+                    only,
+                },
+            )?;
+            println!(
+                "{:<16} {:>8} {:>8} {:>8} {:>8} {:>8} {:>10} {:>7}",
+                "source", "docs", "MB", "budget", "exact", "near", "dl MB", "secs"
+            );
             for r in reports {
                 println!(
                     "{:<16} {:>8} {:>8.1} {:>8.1} {:>8} {:>8} {:>10.1} {:>7.1}",
@@ -172,11 +336,23 @@ fn main() -> Result<()> {
                 );
             }
         }
-        Cmd::TrainTokenizer { vocab, out, inputs, game_weight, max_text_mb, max_decisions_per_file, min_frequency, int_prior } => {
+        Cmd::TrainTokenizer {
+            vocab,
+            num,
+            out,
+            inputs,
+            game_weight,
+            max_text_mb,
+            max_decisions_per_file,
+            min_frequency,
+            int_prior,
+        } => {
             if vocab < 300 {
                 bail!("vocab must be at least 300 (256 bytes + specials + merges)");
             }
-            let out = out.unwrap_or_else(|| PathBuf::from(format!("data/tok/tok-{vocab}.json")));
+            let family = if num { "s2-" } else { "" };
+            let out =
+                out.unwrap_or_else(|| PathBuf::from(format!("data/tok/tok-{family}{vocab}.json")));
             let mut corpus = build_corpus(&CorpusOptions {
                 inputs: inputs.clone(),
                 game_weight,
@@ -191,20 +367,36 @@ fn main() -> Result<()> {
                 corpus.decision_records,
                 corpus.game_records
             );
-            let int_max = int_prior.unwrap_or(vocab / 32);
-            if int_max > 0 {
-                let bytes: u64 = corpus.segments.iter().map(|s| s.len() as u64).sum();
-                let reps = int_prior_reps(bytes);
-                corpus.segments.extend(int_prior_segments(int_max, reps));
-                eprintln!("[tok] integer prior 0..{int_max} x{reps}");
-            }
-            let tok = train_tokenizer(&corpus.segments, vocab, min_frequency)?;
+            let tok = if num {
+                let segments = num_segments(&corpus.segments);
+                eprintln!(
+                    "[tok] numeric extraction: {} segments after splitting at [NUM]",
+                    segments.len()
+                );
+                train_tokenizer_s2(&segments, vocab, min_frequency)?
+            } else {
+                let int_max = int_prior.unwrap_or(vocab / 32);
+                if int_max > 0 {
+                    let bytes: u64 = corpus.segments.iter().map(|s| s.len() as u64).sum();
+                    let reps = int_prior_reps(bytes);
+                    corpus.segments.extend(int_prior_segments(int_max, reps));
+                    eprintln!("[tok] integer prior 0..{int_max} x{reps}");
+                }
+                train_tokenizer(&corpus.segments, vocab, min_frequency)?
+            };
             if let Some(d) = out.parent() {
                 std::fs::create_dir_all(d)?;
             }
             tok.save(&out, false).map_err(|e| anyhow::anyhow!(e))?;
-            println!("saved {out:?} (vocab {}) in {:.1}s", tok.get_vocab_size(true), t0.elapsed().as_secs_f64());
-            println!("{:<24} {:>8} {:>12} {:>14} {:>10} {:>10}", "source", "sampled", "mean tokens", "untruncated", "truncated", "opts cut");
+            println!(
+                "saved {out:?} (vocab {}) in {:.1}s",
+                tok.get_vocab_size(true),
+                t0.elapsed().as_secs_f64()
+            );
+            println!(
+                "{:<24} {:>8} {:>12} {:>14} {:>10} {:>10}",
+                "source", "sampled", "mean tokens", "untruncated", "truncated", "opts cut"
+            );
             for dir in inputs.iter().filter(|d| d.is_dir() && !d.ends_with("text")) {
                 for (src, s) in sequence_stats(&tok, dir, 2000, cli.seed)? {
                     println!(
@@ -218,8 +410,19 @@ fn main() -> Result<()> {
                     );
                 }
             }
+            for dir in inputs.iter().filter(|d| d.is_dir() && d.ends_with("games")) {
+                for (game, mean) in state_token_stats(&tok, dir, 2000, cli.seed)? {
+                    println!("state tokens [CLS] state [SEP] {game:<10} {mean:.1}");
+                }
+            }
         }
-        Cmd::Teacher { model, max_calls, batch, min_interval_ms, task } => {
+        Cmd::Teacher {
+            model,
+            max_calls,
+            batch,
+            min_interval_ms,
+            task,
+        } => {
             if let TeacherTask::ExportQuestions { from, out, max } = &task {
                 let qs = teacher::export_questions(from, *max, cli.seed)?;
                 if let Some(d) = out.parent() {
@@ -229,16 +432,29 @@ fn main() -> Result<()> {
                 println!("wrote {} questions to {out:?}", qs.len());
                 return Ok(());
             }
-            let cfg = TeacherConfig::resolve(&TeacherArgs { model, max_calls, batch, min_interval_ms })?;
-            eprintln!("[teacher] endpoint {} model {} max_calls {} batch {}", cfg.base_url, cfg.model, cfg.max_calls, cfg.batch);
+            let cfg = TeacherConfig::resolve(&TeacherArgs {
+                model,
+                max_calls,
+                batch,
+                min_interval_ms,
+            })?;
+            eprintln!(
+                "[teacher] endpoint {} model {} max_calls {} batch {}",
+                cfg.base_url, cfg.model, cfg.max_calls, cfg.batch
+            );
             let mut t = Teacher::new(cfg);
             match task {
                 TeacherTask::ParaphraseQuestions { input, out, n } => {
                     let w = teacher::paraphrase_questions(&mut t, &input, &out, n)?;
                     println!("wrote {w} paraphrase items to {out:?}");
                 }
-                TeacherTask::DroneOrders { out, decisions_out, n } => {
-                    let (total, dropped) = teacher::drone_orders(&mut t, &out, &decisions_out, n, cli.seed)?;
+                TeacherTask::DroneOrders {
+                    out,
+                    decisions_out,
+                    n,
+                } => {
+                    let (total, dropped) =
+                        teacher::drone_orders(&mut t, &out, &decisions_out, n, cli.seed)?;
                     println!("{total} orders in {out:?} ({dropped} invalid dropped this run); decision records in {decisions_out:?}");
                 }
                 TeacherTask::ExportQuestions { .. } => unreachable!(),

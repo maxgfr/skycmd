@@ -1114,6 +1114,16 @@ impl AttnScratch {
             vt: vec![0.0; head_dim * max_kv],
         }
     }
+
+    /// Grow the buffers (if needed) for `max_kv` keys of `head_dim` values.
+    pub fn ensure(&mut self, max_kv: usize, head_dim: usize) {
+        if self.scores.len() < ATTN_QBLOCK * max_kv {
+            self.scores.resize(ATTN_QBLOCK * max_kv, 0.0);
+        }
+        if self.vt.len() < head_dim * max_kv {
+            self.vt.resize(head_dim * max_kv, 0.0);
+        }
+    }
 }
 
 /// Bidirectional scaled dot-product attention (all heads) over `n_kv` key/value rows.

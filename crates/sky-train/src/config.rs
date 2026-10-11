@@ -82,7 +82,10 @@ impl ModelConfig {
     /// Checks the invariants the model code relies on.
     pub fn validate(&self) -> Result<()> {
         if !self.hidden_size.is_multiple_of(HEAD_DIM as usize) {
-            bail!("hidden_size {} is not a multiple of {HEAD_DIM}", self.hidden_size);
+            bail!(
+                "hidden_size {} is not a multiple of {HEAD_DIM}",
+                self.hidden_size
+            );
         }
         if self.num_attention_heads != self.n_heads() {
             bail!(
@@ -231,9 +234,15 @@ mod tests {
                 (c.hidden_size, c.num_hidden_layers, c.num_attention_heads),
                 (d, l, h)
             );
-            assert_eq!((c.intermediate_size, c.rl_agent.head_layers, c.vocab_size), (i, hl, v));
+            assert_eq!(
+                (c.intermediate_size, c.rl_agent.head_layers, c.vocab_size),
+                (i, hl, v)
+            );
             assert_eq!((c.global_attn_every_n_layers, c.local_attention), (3, 128));
-            assert_eq!((c.global_rope_theta, c.local_rope_theta), (160_000.0, 10_000.0));
+            assert_eq!(
+                (c.global_rope_theta, c.local_rope_theta),
+                (160_000.0, 10_000.0)
+            );
             assert_eq!((c.rl_agent.max_len, c.rl_agent.head_max_len), (256, 96));
         }
     }

@@ -44,7 +44,10 @@ pub fn resolve_run(path: &Path) -> Result<RunPaths> {
     if root.file_name().is_some_and(|n| n == "last") {
         root.pop();
     }
-    if root.file_name().is_some_and(|n| n == "decide" || n == "pretrain") {
+    if root
+        .file_name()
+        .is_some_and(|n| n == "decide" || n == "pretrain")
+    {
         root.pop();
     }
     Ok(RunPaths { ckpt, root })
@@ -59,10 +62,14 @@ pub struct Loaded {
 }
 
 pub fn load_run(run: &RunPaths) -> Result<Loaded> {
-    let cfg: ModelConfig = serde_json::from_str(&std::fs::read_to_string(run.ckpt.join("config.json"))?)?;
+    let cfg: ModelConfig =
+        serde_json::from_str(&std::fs::read_to_string(run.ckpt.join("config.json"))?)?;
     let params = params::load(&run.ckpt.join("model.safetensors"))?;
     if !params.contains_key("scorer.3.weight") {
-        bail!("{} is not a decision checkpoint (no scorer)", run.ckpt.display());
+        bail!(
+            "{} is not a decision checkpoint (no scorer)",
+            run.ckpt.display()
+        );
     }
     let tok = Tok::load(&run.ckpt.join("tokenizer.json"))?;
     let rl_path = run.ckpt.join("rl_agent_config.json");
@@ -70,7 +77,12 @@ pub fn load_run(run: &RunPaths) -> Result<Loaded> {
         Ok(t) => serde_json::from_str(&t)?,
         Err(_) => rl_agent_json(&cfg, json!({})),
     };
-    Ok(Loaded { cfg, params, tok, rl })
+    Ok(Loaded {
+        cfg,
+        params,
+        tok,
+        rl,
+    })
 }
 
 /// Temperature of a prediction under a Laya config: bucket, then type, then 1.
@@ -109,7 +121,10 @@ pub fn calibrate(run: &Path, records: &[PathBuf], split: &str, min_bucket: usize
     }
     let mut buckets: BTreeMap<String, Vec<&Pred>> = BTreeMap::new();
     for p in &preds {
-        buckets.entry(temp_bucket(p.qtype, p.logits.len())).or_default().push(p);
+        buckets
+            .entry(temp_bucket(p.qtype, p.logits.len()))
+            .or_default()
+            .push(p);
     }
     let mut by_options = BTreeMap::new();
     for (b, sel) in &buckets {
@@ -122,7 +137,9 @@ pub fn calibrate(run: &Path, records: &[PathBuf], split: &str, min_bucket: usize
     rl["temperature_by_options"] = json!(by_options);
     rl["calibration"] = json!({"split": split, "items": preds.len(), "min_bucket": min_bucket});
     let before = metrics::compute(preds.iter(), |_| 1.0);
-    let after = metrics::compute(preds.iter(), |p| temperature_of(&rl, p.qtype, p.logits.len()));
+    let after = metrics::compute(preds.iter(), |p| {
+        temperature_of(&rl, p.qtype, p.logits.len())
+    });
     println!("calibration on {} {split} items:", preds.len());
     for (q, t) in temps.iter().enumerate() {
         println!("  {:<6} T = {t:.4}", QTYPES[q]);
@@ -130,8 +147,14 @@ pub fn calibrate(run: &Path, records: &[PathBuf], split: &str, min_bucket: usize
     for (b, t) in &by_options {
         println!("  {b:<12} T = {t:.4} (n = {})", buckets[b].len());
     }
-    println!("  NLL {:.4} -> {:.4}, ECE {:.4} -> {:.4}", before.nll, after.nll, before.ece, after.ece);
-    std::fs::write(paths.ckpt.join("rl_agent_config.json"), serde_json::to_string_pretty(&rl)?)?;
+    println!(
+        "  NLL {:.4} -> {:.4}, ECE {:.4} -> {:.4}",
+        before.nll, after.nll, before.ece, after.ece
+    );
+    std::fs::write(
+        paths.ckpt.join("rl_agent_config.json"),
+        serde_json::to_string_pretty(&rl)?,
+    )?;
     Ok(rl)
 }
 
@@ -139,10 +162,17 @@ pub fn calibrate(run: &Path, records: &[PathBuf], split: &str, min_bucket: usize
 pub fn export_tensors(params: &ParamMap, rl: &Value) -> ParamMap {
     let mut out: ParamMap = params
         .iter()
-        .filter(|(k, _)| k.starts_with("encoder.") || k.starts_with("head.") || k.starts_with("scorer.") || k.as_ref() == "type_emb.weight")
+        .filter(|(k, _)| {
+            k.starts_with("encoder.")
+                || k.starts_with("head.")
+                || k.starts_with("scorer.")
+                || k.as_ref() == "type_emb.weight"
+        })
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let t: Vec<f32> = (0..3).map(|q| rl["temperature"][q].as_f64().unwrap_or(1.0) as f32).collect();
+    let t: Vec<f32> = (0..3)
+        .map(|q| rl["temperature"][q].as_f64().unwrap_or(1.0) as f32)
+        .collect();
     // Laya keeps the per-type temperatures as a buffer too (oscar has it).
     out.insert("temperature".into(), Array::from_slice(&t, &[3]));
     out
@@ -156,18 +186,29 @@ pub fn export(run: &Path, out: &Path) -> Result<()> {
     std::fs::create_dir_all(out.join("encoder"))?;
     std::fs::create_dir_all(out.join("tokenizer"))?;
     let tensors = export_tensors(&m.params, &m.rl);
-    params::save(&out.join("model.safetensors"), &tensors, Some(Dtype::Float32))?;
-    std::fs::write(out.join("encoder/config.json"), serde_json::to_string_pretty(&m.cfg.encoder_config_json())?)?;
+    params::save(
+        &out.join("model.safetensors"),
+        &tensors,
+        Some(Dtype::Float32),
+    )?;
+    std::fs::write(
+        out.join("encoder/config.json"),
+        serde_json::to_string_pretty(&m.cfg.encoder_config_json())?,
+    )?;
     let mut rl = m.rl.clone();
     rl["head_layers"] = json!(m.cfg.rl_agent.head_layers);
     rl["max_len"] = json!(m.cfg.rl_agent.max_len);
     rl["head_max_len"] = json!(m.cfg.rl_agent.head_max_len);
-    std::fs::write(out.join("rl_agent_config.json"), serde_json::to_string_pretty(&rl)?)?;
-    std::fs::copy(paths.ckpt.join("tokenizer.json"), out.join("tokenizer/tokenizer.json"))
-        .context("copying tokenizer.json")?;
-    let special = |content: &str, lstrip: bool| {
-        json!({"content": content, "lstrip": lstrip, "normalized": false, "rstrip": false, "single_word": false})
-    };
+    std::fs::write(
+        out.join("rl_agent_config.json"),
+        serde_json::to_string_pretty(&rl)?,
+    )?;
+    std::fs::copy(
+        paths.ckpt.join("tokenizer.json"),
+        out.join("tokenizer/tokenizer.json"),
+    )
+    .context("copying tokenizer.json")?;
+    let special = |content: &str, lstrip: bool| json!({"content": content, "lstrip": lstrip, "normalized": false, "rstrip": false, "single_word": false});
     let special_map = json!({
         "cls_token": special("[CLS]", false),
         "mask_token": special("[MASK]", true),
@@ -175,7 +216,10 @@ pub fn export(run: &Path, out: &Path) -> Result<()> {
         "sep_token": special("[SEP]", false),
         "unk_token": special("[UNK]", false),
     });
-    std::fs::write(out.join("tokenizer/special_tokens_map.json"), serde_json::to_string_pretty(&special_map)?)?;
+    std::fs::write(
+        out.join("tokenizer/special_tokens_map.json"),
+        serde_json::to_string_pretty(&special_map)?,
+    )?;
     let tok_cfg = json!({
         "clean_up_tokenization_spaces": true,
         "cls_token": "[CLS]",
@@ -187,7 +231,10 @@ pub fn export(run: &Path, out: &Path) -> Result<()> {
         "tokenizer_class": "PreTrainedTokenizerFast",
         "unk_token": "[UNK]",
     });
-    std::fs::write(out.join("tokenizer/tokenizer_config.json"), serde_json::to_string_pretty(&tok_cfg)?)?;
+    std::fs::write(
+        out.join("tokenizer/tokenizer_config.json"),
+        serde_json::to_string_pretty(&tok_cfg)?,
+    )?;
     let root_cfg = json!({
         "model_family": "skycmd-s1",
         "model_name": format!("skycmd-{}", m.cfg.name),
@@ -202,7 +249,10 @@ pub fn export(run: &Path, out: &Path) -> Result<()> {
         },
         "parameters": params::count(&tensors) - 3,
     });
-    std::fs::write(out.join("config.json"), serde_json::to_string_pretty(&root_cfg)?)?;
+    std::fs::write(
+        out.join("config.json"),
+        serde_json::to_string_pretty(&root_cfg)?,
+    )?;
     println!(
         "exported {} ({} parameters) to {}",
         m.cfg.name,
@@ -225,7 +275,12 @@ fn table(title: &str, m: &BTreeMap<String, metrics::Metrics>) -> String {
 }
 
 /// Evaluates the calibrated model per source and writes `report.md` in the run root.
-pub fn eval(run: &Path, records: &[PathBuf], split: &str, report: Option<&Path>) -> Result<PathBuf> {
+pub fn eval(
+    run: &Path,
+    records: &[PathBuf],
+    split: &str,
+    report: Option<&Path>,
+) -> Result<PathBuf> {
     let paths = resolve_run(run)?;
     let m = load_run(&paths)?;
     let data = decision::load(records, &m.tok, &m.cfg.rl_agent)?;
@@ -255,7 +310,9 @@ pub fn eval(run: &Path, records: &[PathBuf], split: &str, report: Option<&Path>)
     md.push_str(&table("Per data group", &by_group));
     md.push_str(&table("Per question type", &by_type));
     md.push_str(&table("Per data group, uncalibrated (T = 1)", &raw));
-    let out = report.map(Path::to_path_buf).unwrap_or_else(|| paths.root.join("report.md"));
+    let out = report
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| paths.root.join("report.md"));
     std::fs::write(&out, md)?;
     println!("{}", table("Per source (`src`)", &by_src));
     println!("report written to {}", out.display());
@@ -268,7 +325,8 @@ mod tests {
 
     #[test]
     fn temperature_lookup_falls_back() {
-        let rl = json!({"temperature": [1.5, 2.0, 0.5], "temperature_by_options": {"choice:3-5": 3.0}});
+        let rl =
+            json!({"temperature": [1.5, 2.0, 0.5], "temperature_by_options": {"choice:3-5": 3.0}});
         assert_eq!(temperature_of(&rl, 0, 4), 3.0);
         assert_eq!(temperature_of(&rl, 0, 2), 1.5);
         assert_eq!(temperature_of(&rl, 2, 2), 0.5);

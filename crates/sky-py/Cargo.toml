@@ -1,0 +1,30 @@
+[package]
+name = "sky-py"
+description = "Python bindings (PyO3) of the skycmd System One decision engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# The Python module is `skycmd` (see pyproject.toml).
+name = "skycmd"
+crate-type = ["cdylib"]
+# An extension module gets its Python symbols from the interpreter that imports it, so there is no
+# Rust test binary: the module is tested from Python on the built wheel (tests/smoke.py).
+test = false
+doctest = false
+
+[dependencies]
+sky-infer = { path = "../sky-infer" }
+pyo3 = { version = "0.29.3", features = ["abi3-py39"] }
+
+[build-dependencies]
+pyo3-build-config = "0.29.3"
+
+[features]
+# Build an extension module: do not link libpython (the interpreter provides the symbols). On by
+# default so that `cargo build --workspace` needs no Python development files; build.rs adds the
+# matching macOS linker flag. maturin builds the wheel with the same setting.
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]

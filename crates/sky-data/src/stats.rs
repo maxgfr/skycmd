@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
+use crate::commands::{summarize, CommandRecord};
 use crate::record::{argmax, entropy_bits, read_jsonl, DecisionRecord, MlmRecord};
-use crate::tok::{sequence_stats, HEAD_MAX_LEN, MAX_LEN};
+use crate::tok::{is_s2, sequence_stats, state_token_stats, HEAD_MAX_LEN, MAX_LEN};
 
 #[derive(Default, Debug, Clone)]
 pub struct DecisionSummary {
@@ -26,7 +27,10 @@ pub struct DecisionSummary {
 }
 
 pub fn summarize_decisions(recs: &[DecisionRecord]) -> DecisionSummary {
-    let mut s = DecisionSummary { n: recs.len(), ..Default::default() };
+    let mut s = DecisionSummary {
+        n: recs.len(),
+        ..Default::default()
+    };
     if recs.is_empty() {
         return s;
     }
@@ -37,7 +41,10 @@ pub fn summarize_decisions(recs: &[DecisionRecord]) -> DecisionSummary {
         s.mean_opts += r.opts.len() as f64;
         let t: Vec<f64> = r.target.iter().map(|&x| x as f64).collect();
         s.mean_target_entropy += entropy_bits(&t);
-        *pos.entry(r.opts.len()).or_default().entry(argmax(&r.target)).or_default() += 1.0;
+        *pos.entry(r.opts.len())
+            .or_default()
+            .entry(argmax(&r.target))
+            .or_default() += 1.0;
         s.mean_ins_chars += r.ins.chars().count() as f64;
         s.mean_state_chars += r.state.chars().count() as f64;
     }
@@ -61,14 +68,20 @@ pub fn summarize_decisions(recs: &[DecisionRecord]) -> DecisionSummary {
 
 fn jsonl_files(dir: &Path) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = fs::read_dir(dir)
-        .map(|rd| rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|e| e == "jsonl")).collect())
+        .map(|rd| {
+            rd.filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().is_some_and(|e| e == "jsonl"))
+                .collect()
+        })
         .unwrap_or_default();
     v.sort();
     v
 }
 
 fn stem(p: &Path) -> String {
-    p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+    p.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// Builds the Markdown report for `data/` (decisions, text, tokenizers).
@@ -115,7 +128,14 @@ pub fn build_report(data: &Path, tok_dir: Option<&Path>) -> Result<String> {
             )?;
         }
         let g = |k: &str| all.splits.get(k).copied().unwrap_or(0);
-        writeln!(md, "| **total** | {} | {} | {} | {} | | | | | | |\n", all.n, g("train"), g("val"), g("test"))?;
+        writeln!(
+            md,
+            "| **total** | {} | {} | {} | {} | | | | | | |\n",
+            all.n,
+            g("train"),
+            g("val"),
+            g("test")
+        )?;
     }
     let text_files = jsonl_files(&data.join("text"));
     if !text_files.is_empty() {
@@ -135,18 +155,98 @@ pub fn build_report(data: &Path, tok_dir: Option<&Path>) -> Result<String> {
             }
             docs_all += docs;
             bytes_all += bytes;
-            writeln!(md, "| {} | {} | {:.1} | {:.0} |", stem(f), docs, bytes as f64 / 1e6, chars as f64 / docs.max(1) as f64)?;
+            writeln!(
+                md,
+                "| {} | {} | {:.1} | {:.0} |",
+                stem(f),
+                docs,
+                bytes as f64 / 1e6,
+                chars as f64 / docs.max(1) as f64
+            )?;
         }
-        writeln!(md, "| **total** | {} | {:.1} | |\n", docs_all, bytes_all as f64 / 1e6)?;
+        writeln!(
+            md,
+            "| **total** | {} | {:.1} | |\n",
+            docs_all,
+            bytes_all as f64 / 1e6
+        )?;
+    }
+    let cmd_files = jsonl_files(&data.join("commands"));
+    if !cmd_files.is_empty() {
+        writeln!(md, "## Command records (commands)\n")?;
+        writeln!(
+            md,
+            "| source | records | train | val | test | en | fr | with calls | intents |"
+        )?;
+        writeln!(md, "|---|---:|---:|---:|---:|---:|---:|---:|---:|")?;
+        for f in &cmd_files {
+            let recs: Vec<CommandRecord> = read_jsonl(f)?;
+            let m = summarize(&recs);
+            writeln!(
+                md,
+                "| {} | {} | {} | {} | {} | {} | {} | {} | {} |",
+                stem(f),
+                m["records"],
+                m["train"],
+                m["val"],
+                m["test"],
+                m["en"],
+                m["fr"],
+                m["with_calls"],
+                m["intents"]
+            )?;
+        }
+        md.push('\n');
     }
     if let Some(tok_dir) = tok_dir {
         let mut toks: Vec<PathBuf> = fs::read_dir(tok_dir)
-            .map(|rd| rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|e| e == "json")).collect())
+            .map(|rd| {
+                rd.filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| p.extension().is_some_and(|e| e == "json"))
+                    .collect()
+            })
             .unwrap_or_default();
         toks.sort();
+        let games = data.join("games");
+        if games.exists() {
+            let mut rows = Vec::new();
+            let mut names: Vec<String> = Vec::new();
+            for t in &toks {
+                let Ok(tok) = tokenizers::Tokenizer::from_file(t) else {
+                    continue;
+                };
+                let st = state_token_stats(&tok, &games, 2000, 0)?;
+                names = st.keys().cloned().collect();
+                rows.push((stem(t), is_s2(&tok), st));
+            }
+            if !rows.is_empty() {
+                writeln!(md, "## Game state tokens per frame (`[CLS] state [SEP]`, s2 tokenizers extract numbers)\n")?;
+                writeln!(md, "| tokenizer | {} |", names.join(" | "))?;
+                writeln!(md, "|---|{}", "---:|".repeat(names.len()))?;
+                for (name, s2, st) in rows {
+                    let cells: Vec<String> = names
+                        .iter()
+                        .map(|g| st.get(g).map_or("-".into(), |v| format!("{v:.1}")))
+                        .collect();
+                    writeln!(
+                        md,
+                        "| {name}{} | {} |",
+                        if s2 { " (s2)" } else { "" },
+                        cells.join(" | ")
+                    )?;
+                }
+                md.push('\n');
+            }
+        }
         for t in toks {
-            let Ok(tok) = tokenizers::Tokenizer::from_file(&t) else { continue };
-            writeln!(md, "## Sequence lengths with `{}` (max_len {MAX_LEN}, head_max_len {HEAD_MAX_LEN})\n", stem(&t))?;
+            let Ok(tok) = tokenizers::Tokenizer::from_file(&t) else {
+                continue;
+            };
+            writeln!(
+                md,
+                "## Sequence lengths with `{}` (max_len {MAX_LEN}, head_max_len {HEAD_MAX_LEN})\n",
+                stem(&t)
+            )?;
             writeln!(md, "| source | sampled | mean tokens | mean untruncated | truncated (any part) | options cut off |")?;
             writeln!(md, "|---|---:|---:|---:|---:|---:|")?;
             for (_, dir) in &decision_dirs {
@@ -184,7 +284,10 @@ mod tests {
         assert_eq!(s.n, 2);
         assert_eq!(s.splits["train"], 1);
         assert!((s.mean_target_entropy - 0.5).abs() < 1e-9);
-        assert!((s.label_balance - 1.0).abs() < 1e-9, "argmax 1 and 0 -> balanced");
+        assert!(
+            (s.label_balance - 1.0).abs() < 1e-9,
+            "argmax 1 and 0 -> balanced"
+        );
         assert!((s.mean_state_chars - 3.0).abs() < 1e-9);
     }
 }

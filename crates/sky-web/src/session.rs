@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use sky_games::common::argmax;
 use sky_games::{make_game, DecisionGame, QuestionSpec, StepOutcome, GAMES};
-use sky_infer::QType;
+use sky_infer::{Arch, QType};
 
 use crate::clock::{now_us, summarize};
 use crate::model::Model;
@@ -74,6 +74,49 @@ pub struct Secondary {
     pub probs: Vec<OptionProb>,
 }
 
+/// How the model answered the questions of a decision frame.
+#[derive(Debug, Clone, Serialize)]
+pub struct DecisionInfo {
+    /// Model family: `s1` or `s2`.
+    pub family: &'static str,
+    /// s2: exit that answered the primary question.
+    pub exit: Option<usize>,
+    /// s2: number of exits of the model (0 for s1).
+    pub n_exits: usize,
+    /// s2: state-encoder blocks used by the primary question.
+    pub layers_used: Option<usize>,
+    /// s2: mean blocks used over the frame's questions.
+    pub mean_layers: Option<f32>,
+    /// s2: state-encoder depth of the model.
+    pub max_layers: Option<usize>,
+    /// Every question found its static part cached (s1: tokenized prefix; s2: static encoding).
+    pub static_hit: bool,
+    /// s2: the questions after the first reused the state encoding of the frame.
+    pub state_reused: bool,
+}
+
+impl DecisionInfo {
+    fn from_stats(model: &Model, stats: &[sky_infer::DecisionStats]) -> DecisionInfo {
+        let s2 = model.arch() == Arch::S2;
+        let layers: Vec<f32> = stats
+            .iter()
+            .filter_map(|s| s.layers_used)
+            .map(|l| l as f32)
+            .collect();
+        DecisionInfo {
+            family: if s2 { "s2" } else { "s1" },
+            exit: stats.first().and_then(|s| s.exit),
+            n_exits: stats.first().map_or(0, |s| s.n_exits),
+            layers_used: stats.first().and_then(|s| s.layers_used),
+            mean_layers: (!layers.is_empty())
+                .then(|| layers.iter().sum::<f32>() / layers.len() as f32),
+            max_layers: s2.then(|| model.max_layers()),
+            static_hit: !stats.is_empty() && stats.iter().all(|s| s.static_hit),
+            state_reused: s2 && stats.len() > 1 && stats[1..].iter().all(|s| s.state_hit),
+        }
+    }
+}
+
 /// Result of one AI frame.
 #[derive(Debug, Clone, Serialize)]
 pub struct AiStep {
@@ -86,6 +129,8 @@ pub struct AiStep {
     pub executed: String,
     pub probs: Vec<OptionProb>,
     pub secondary: Option<Secondary>,
+    /// How the model answered (exit, layers used, cache hits); `None` for the oracle.
+    pub info: Option<DecisionInfo>,
     /// True when the coded safety reflex replaced the requested action on this frame.
     pub vetoed: bool,
     /// Wall time of the whole frame inside WASM (decision + physics), in microseconds.
@@ -114,6 +159,7 @@ struct Held {
     action: &'static str,
     probs: Vec<OptionProb>,
     secondary: Option<Secondary>,
+    info: Option<DecisionInfo>,
     state_text: String,
 }
 
@@ -278,16 +324,22 @@ impl Session {
         })
     }
 
+    /// Probabilities of question `qi`; the model's statistics of the question go to `stats`.
     fn ask(
         &self,
         policy: &mut Policy<'_>,
         oracle: &Option<Vec<Vec<f32>>>,
         qi: usize,
         state: &str,
+        stats: &mut Vec<sky_infer::DecisionStats>,
     ) -> Result<Vec<f32>, String> {
         let q = &self.questions[qi];
         match policy {
-            Policy::Model(m) => m.probs(q.qtype, q.instructions, &q.options, state),
+            Policy::Model(m) => {
+                let p = m.probs(q.qtype, q.instructions, &q.options, state)?;
+                stats.extend(m.last_stats().cloned());
+                Ok(p)
+            }
             Policy::Oracle => Ok(oracle.as_ref().expect("oracle targets")[qi].clone()),
         }
     }
@@ -335,6 +387,7 @@ impl Session {
                 executed: "none".into(),
                 probs: held.as_ref().map(|h| h.probs.clone()).unwrap_or_default(),
                 secondary: held.as_ref().and_then(|h| h.secondary.clone()),
+                info: held.as_ref().and_then(|h| h.info.clone()),
                 vetoed: false,
                 micros: now_us() - t0,
                 state_text: held.map(|h| h.state_text).unwrap_or_default(),
@@ -355,11 +408,16 @@ impl Session {
         if decide {
             let state = self.game.state_text();
             let oracle = matches!(policy, Policy::Oracle).then(|| self.game.oracle());
-            let p0 = self.ask(&mut policy, &oracle, 0, &state)?;
+            let mut stats = Vec::with_capacity(2);
+            let p0 = self.ask(&mut policy, &oracle, 0, &state, &mut stats)?;
             let p1 = if self.questions.len() > 1 {
-                Some(self.ask(&mut policy, &oracle, 1, &state)?)
+                Some(self.ask(&mut policy, &oracle, 1, &state, &mut stats)?)
             } else {
                 None
+            };
+            let info = match &policy {
+                Policy::Model(m) => Some(DecisionInfo::from_stats(m, &stats)),
+                Policy::Oracle => None,
             };
             let choice = argmax(&p0);
             let abort = self.kind == sky_games::dodge::NAME
@@ -373,6 +431,7 @@ impl Session {
                 },
                 probs: self.option_probs(0, &p0),
                 secondary: p1.as_deref().and_then(|p| self.secondary(p)),
+                info,
                 state_text: state,
             });
         } else {
@@ -383,6 +442,7 @@ impl Session {
             action: "none",
             probs: Vec::new(),
             secondary: None,
+            info: None,
             state_text: String::new(),
         });
         let vetoed = outcome.info.vetoed;
@@ -398,6 +458,7 @@ impl Session {
             executed,
             probs: held.probs,
             secondary: held.secondary,
+            info: held.info,
             vetoed,
             micros,
             state_text: held.state_text,
@@ -416,16 +477,19 @@ const BENCH_BATCH: usize = 10;
 /// Times `n` AI decisions of a model on Flappy Drone (each decision answers both questions and
 /// steps the physics), restarting episodes as needed. Decisions are timed in batches of
 /// [`BENCH_BATCH`]; median and p95 are over the per-decision average of each batch. Returns
-/// `{n, batch, median_us, p95_us, mean_us, decisions_per_s, forwards_per_decision, game}`.
+/// `{name, family, params, file_bytes, n, batch, median_us, p95_us, mean_us, decisions_per_s,
+/// forwards_per_decision, mean_layers_used, max_layers, static_hit_rate, state_reuse_rate, game}`
+/// (`mean_layers_used` and `max_layers` are null for s1).
 pub fn bench(model: &mut Model, n: usize) -> Result<Value, String> {
     let n = n.max(1);
     let mut s = Session::new(sky_games::flappy::NAME, 0x5eed)?;
-    // Warm-up: fills the prefix and BPE caches.
+    // Warm-up: fills the prefix / static and BPE caches.
     for _ in 0..8 {
         s.step_ai(Policy::Model(model))?;
     }
     let batch = BENCH_BATCH.min(n);
     let mut samples = Vec::with_capacity(n / batch + 1);
+    let (mut layers, mut n_layers, mut static_hits, mut reuses) = (0.0f64, 0usize, 0usize, 0usize);
     let (mut done, t_start) = (0, now_us());
     while done < n {
         let k = batch.min(n - done);
@@ -435,15 +499,31 @@ pub fn bench(model: &mut Model, n: usize) -> Result<Value, String> {
             if s.done() {
                 s.reset();
             }
-            decided += s.step_ai(Policy::Model(model))?.decided as usize;
+            let step = s.step_ai(Policy::Model(model))?;
+            if step.decided {
+                decided += 1;
+                if let Some(info) = &step.info {
+                    if let Some(l) = info.mean_layers {
+                        layers += l as f64;
+                        n_layers += 1;
+                    }
+                    static_hits += info.static_hit as usize;
+                    reuses += info.state_reused as usize;
+                }
+            }
         }
         samples.push((now_us() - t0) / k as f64);
         done += k;
     }
     let mean = (now_us() - t_start) / n as f64;
     let (median, p95, _) = summarize(&samples);
+    let s2 = model.arch() == Arch::S2;
     Ok(json!({
         "game": sky_games::flappy::NAME,
+        "name": model.name(),
+        "family": if s2 { "s2" } else { "s1" },
+        "params": model.n_params(),
+        "file_bytes": model.file_bytes(),
         "n": n,
         "batch": batch,
         "median_us": median,
@@ -451,5 +531,9 @@ pub fn bench(model: &mut Model, n: usize) -> Result<Value, String> {
         "mean_us": mean,
         "decisions_per_s": if mean > 0.0 { 1e6 / mean } else { 0.0 },
         "forwards_per_decision": s.questions().len(),
+        "mean_layers_used": (n_layers > 0).then(|| layers / n_layers as f64),
+        "max_layers": s2.then(|| model.max_layers()),
+        "static_hit_rate": static_hits as f64 / n as f64,
+        "state_reuse_rate": if s2 { reuses as f64 / n as f64 } else { 0.0 },
     }))
 }

@@ -34,7 +34,10 @@ impl JsonLog {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let file = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
         Ok(Self { file })
     }
 
@@ -46,7 +49,9 @@ impl JsonLog {
 }
 
 fn peak_memory_mb() -> f64 {
-    mlx_rs::memory::peak_memory().map(|b| b as f64 / (1024.0 * 1024.0)).unwrap_or(f64::NAN)
+    mlx_rs::memory::peak_memory()
+        .map(|b| b as f64 / (1024.0 * 1024.0))
+        .unwrap_or(f64::NAN)
 }
 
 // ----------------------------------------------------------------------------- bench
@@ -80,13 +85,21 @@ pub struct BenchRow {
     pub precision: &'static str,
 }
 
-fn random_mlm_batches(cfg: &ModelConfig, b: usize, t: usize, rng: &mut Rng, n: usize) -> Vec<MlmBatch> {
+fn random_mlm_batches(
+    cfg: &ModelConfig,
+    b: usize,
+    t: usize,
+    rng: &mut Rng,
+    n: usize,
+) -> Vec<MlmBatch> {
     (0..n)
         .map(|_| {
             let rows: Vec<Vec<u32>> = (0..b)
                 .map(|_| {
                     let mut r = vec![CLS_ID];
-                    r.extend((0..t - 2).map(|_| N_SPECIAL + rng.below(cfg.vocab_size - N_SPECIAL as usize) as u32));
+                    r.extend((0..t - 2).map(|_| {
+                        N_SPECIAL + rng.below(cfg.vocab_size - N_SPECIAL as usize) as u32
+                    }));
                     r.push(SEP_ID);
                     r
                 })
@@ -96,13 +109,21 @@ fn random_mlm_batches(cfg: &ModelConfig, b: usize, t: usize, rng: &mut Rng, n: u
         .collect()
 }
 
-fn random_decision_batches(cfg: &ModelConfig, b: usize, t: usize, k: usize, rng: &mut Rng, n: usize) -> Vec<DecisionBatch> {
+fn random_decision_batches(
+    cfg: &ModelConfig,
+    b: usize,
+    t: usize,
+    k: usize,
+    rng: &mut Rng,
+    n: usize,
+) -> Vec<DecisionBatch> {
     (0..n)
         .map(|_| {
             let rows: Vec<Row> = (0..b)
                 .map(|_| {
-                    let mut ids: Vec<u32> =
-                        (0..t).map(|_| N_SPECIAL + rng.below(cfg.vocab_size - N_SPECIAL as usize) as u32).collect();
+                    let mut ids: Vec<u32> = (0..t)
+                        .map(|_| N_SPECIAL + rng.below(cfg.vocab_size - N_SPECIAL as usize) as u32)
+                        .collect();
                     ids[0] = CLS_ID;
                     let markers: Vec<usize> = (0..k).map(|i| 12 + 6 * i).collect();
                     for &m in &markers {
@@ -110,7 +131,12 @@ fn random_decision_batches(cfg: &ModelConfig, b: usize, t: usize, k: usize, rng:
                     }
                     let mut target = vec![0.0; k];
                     target[rng.below(k)] = 1.0;
-                    Row { ids, markers, qtype: rng.below(3), target }
+                    Row {
+                        ids,
+                        markers,
+                        qtype: rng.below(3),
+                        target,
+                    }
                 })
                 .collect();
             decision::make_batch(&rows, 16)
@@ -139,7 +165,11 @@ fn time_steps<B>(
         tokens += s.tokens;
     }
     let secs = t0.elapsed().as_secs_f64();
-    Ok((secs * 1000.0 / steps as f64, tokens as f64 / secs, peak_memory_mb()))
+    Ok((
+        secs * 1000.0 / steps as f64,
+        tokens as f64 / secs,
+        peak_memory_mb(),
+    ))
 }
 
 /// Measures MLM and decision training throughput on random tokens and appends
@@ -155,7 +185,9 @@ pub fn bench(a: &BenchArgs) -> Result<Vec<BenchRow>> {
     let n_params = params::count(&p);
     let mut s = Session::new(cfg.clone(), p, OptConfig::default(), "bench", 1, 0.0);
     let batches = random_mlm_batches(&cfg, a.mlm_batch, a.mlm_seq, &mut rng, 4);
-    let (ms, tok_s, mb) = time_steps(&mut s, &batches, a.warmup, a.steps, |s, b| s.mlm_step(b, 1.0))?;
+    let (ms, tok_s, mb) = time_steps(&mut s, &batches, a.warmup, a.steps, |s, b| {
+        s.mlm_step(b, 1.0)
+    })?;
     out.push(BenchRow {
         model: cfg.name.clone(),
         params: n_params,
@@ -173,7 +205,9 @@ pub fn bench(a: &BenchArgs) -> Result<Vec<BenchRow>> {
     let n_params = params::count(&p);
     let mut s = Session::new(cfg.clone(), p, OptConfig::default(), "bench", 2, 0.0);
     let batches = random_decision_batches(&cfg, a.dec_batch, a.dec_seq, a.dec_options, &mut rng, 4);
-    let (ms, tok_s, mb) = time_steps(&mut s, &batches, a.warmup, a.steps, |s, b| s.decision_step(b, 1.0))?;
+    let (ms, tok_s, mb) = time_steps(&mut s, &batches, a.warmup, a.steps, |s, b| {
+        s.decision_step(b, 1.0)
+    })?;
     out.push(BenchRow {
         model: cfg.name.clone(),
         params: n_params,
@@ -207,7 +241,17 @@ fn append_bench_md(path: &Path, rows: &[BenchRow], warmup: usize, steps: usize) 
     for r in rows {
         text.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} | {:.1} | {:.0} | {:.0} | {}+{} |\n",
-            r.model, r.params, r.phase, r.precision, r.batch, r.seq, r.step_ms, r.tok_s, r.peak_mb, warmup, steps
+            r.model,
+            r.params,
+            r.phase,
+            r.precision,
+            r.batch,
+            r.seq,
+            r.step_ms,
+            r.tok_s,
+            r.peak_mb,
+            warmup,
+            steps
         ));
     }
     std::fs::write(path, text)?;
@@ -251,11 +295,22 @@ pub fn pretrain(a: &PretrainArgs) -> Result<()> {
     cfg.bf16 = a.bf16;
     let tok = Tok::load(&a.tokenizer)?;
     if tok.vocab_size() > cfg.vocab_size {
-        bail!("tokenizer has {} tokens but {} has vocab_size {}", tok.vocab_size(), cfg.name, cfg.vocab_size);
+        bail!(
+            "tokenizer has {} tokens but {} has vocab_size {}",
+            tok.vocab_size(),
+            cfg.name,
+            cfg.vocab_size
+        );
     }
     std::fs::create_dir_all(&a.out)?;
     let t_load = Instant::now();
-    let corpus = Corpus::load(&a.text, &tok, &a.tokenizer, &a.out.join("cache"), a.max_tokens)?;
+    let corpus = Corpus::load(
+        &a.text,
+        &tok,
+        &a.tokenizer,
+        &a.out.join("cache"),
+        a.max_tokens,
+    )?;
     let rows = Rows::new(&corpus, a.seq, 0.01, a.val_batches * a.batch);
     println!(
         "corpus: {} records, {} tokens -> {} train / {} val rows of {} ({:.1}s)",
@@ -272,12 +327,25 @@ pub fn pretrain(a: &PretrainArgs) -> Result<()> {
     let last = a.out.join("last");
     let mut s = if a.resume && last.join("state.json").exists() {
         let s = Session::load(&last)?;
-        println!("resumed from {} at step {} ({:.1} min used)", last.display(), s.state.step, s.state.elapsed_secs / 60.0);
+        println!(
+            "resumed from {} at step {} ({:.1} min used)",
+            last.display(),
+            s.state.step,
+            s.state.elapsed_secs / 60.0
+        );
         s
     } else {
         let p = params::init(&cfg, Parts::PRETRAIN, a.seed)?;
-        let mut s = Session::new(cfg.clone(), p, a.opt.clone(), "pretrain", a.seed, a.minutes * 60.0);
-        s.state.extra = json!({"batch": a.batch, "seq": a.seq, "text": a.text, "tokenizer": a.tokenizer});
+        let mut s = Session::new(
+            cfg.clone(),
+            p,
+            a.opt.clone(),
+            "pretrain",
+            a.seed,
+            a.minutes * 60.0,
+        );
+        s.state.extra =
+            json!({"batch": a.batch, "seq": a.seq, "text": a.text, "tokenizer": a.tokenizer});
         s
     };
     s.state.budget_secs = a.minutes * 60.0;
@@ -303,12 +371,14 @@ pub fn pretrain(a: &PretrainArgs) -> Result<()> {
         .collect();
     let tok_json = std::fs::read(&a.tokenizer)?;
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
-    let save = |s: &Session| -> Result<()> { s.save(&last, &[("tokenizer.json", tok_json.clone())]) };
+    let save =
+        |s: &Session| -> Result<()> { s.save(&last, &[("tokenizer.json", tok_json.clone())]) };
 
     let base_elapsed = s.state.elapsed_secs;
     let t0 = Instant::now();
     let mut last_ckpt = Instant::now();
-    let (mut win_loss, mut win_tokens, mut win_steps, mut win_t) = (0.0f64, 0usize, 0u64, Instant::now());
+    let (mut win_loss, mut win_tokens, mut win_steps, mut win_t) =
+        (0.0f64, 0usize, 0u64, Instant::now());
     while s.state.elapsed_secs < s.state.budget_secs {
         let frac = s.state.elapsed_secs / s.state.budget_secs;
         let lr_scale = wsd(frac) as f32;
@@ -353,7 +423,11 @@ pub fn pretrain(a: &PretrainArgs) -> Result<()> {
             last_ckpt = Instant::now();
         }
     }
-    let vl = if val.is_empty() { f64::NAN } else { mlm_val_loss(&s, &val)? };
+    let vl = if val.is_empty() {
+        f64::NAN
+    } else {
+        mlm_val_loss(&s, &val)?
+    };
     log.write(&json!({"step": s.state.step, "val_loss": vl, "final": true}))?;
     save(&s)?;
     println!(
@@ -393,12 +467,18 @@ pub fn source_weights(groups: &[String], spec: Option<&str>) -> Result<Vec<f64>>
     if let Some(spec) = spec {
         let mut m = BTreeMap::new();
         for part in spec.split(',').filter(|p| !p.trim().is_empty()) {
-            let (k, v) = part.split_once('=').with_context(|| format!("bad weight {part:?}, want name=w"))?;
+            let (k, v) = part
+                .split_once('=')
+                .with_context(|| format!("bad weight {part:?}, want name=w"))?;
             m.insert(k.trim().to_string(), v.trim().parse::<f64>()?);
         }
         return groups
             .iter()
-            .map(|g| m.get(g).copied().with_context(|| format!("no weight for source {g}")))
+            .map(|g| {
+                m.get(g)
+                    .copied()
+                    .with_context(|| format!("no weight for source {g}"))
+            })
             .collect();
     }
     let n_games = groups.iter().filter(|g| *g == "games").count();
@@ -446,13 +526,19 @@ pub fn subset(items: &[Item], max: usize, seed: u64) -> Vec<&Item> {
 }
 
 /// Metrics per group plus `all`.
-pub fn grouped_metrics(preds: &[Pred], key: impl Fn(&Pred) -> String, temp: impl Fn(&Pred) -> f32) -> BTreeMap<String, Metrics> {
+pub fn grouped_metrics(
+    preds: &[Pred],
+    key: impl Fn(&Pred) -> String,
+    temp: impl Fn(&Pred) -> f32,
+) -> BTreeMap<String, Metrics> {
     let mut groups: BTreeMap<String, Vec<&Pred>> = BTreeMap::new();
     for p in preds {
         groups.entry(key(p)).or_default().push(p);
     }
-    let mut out: BTreeMap<String, Metrics> =
-        groups.iter().map(|(k, v)| (k.clone(), metrics::compute(v.iter().copied(), &temp))).collect();
+    let mut out: BTreeMap<String, Metrics> = groups
+        .iter()
+        .map(|(k, v)| (k.clone(), metrics::compute(v.iter().copied(), &temp)))
+        .collect();
     out.insert("all".into(), metrics::compute(preds.iter(), &temp));
     out
 }
@@ -468,13 +554,21 @@ pub fn decide(a: &DecideArgs) -> Result<()> {
     };
     let tok = Tok::load(&tok_path)?;
     if tok.vocab_size() > cfg.vocab_size {
-        bail!("tokenizer has {} tokens but {} has vocab_size {}", tok.vocab_size(), cfg.name, cfg.vocab_size);
+        bail!(
+            "tokenizer has {} tokens but {} has vocab_size {}",
+            tok.vocab_size(),
+            cfg.name,
+            cfg.vocab_size
+        );
     }
     let t_load = Instant::now();
     let data: DecisionData = decision::load(&a.records, &tok, &cfg.rl_agent)?;
     let weights = source_weights(&data.groups, a.weights.as_deref())?;
     for (g, (name, w)) in data.groups.iter().zip(&weights).enumerate() {
-        println!("source {name}: {} train items, weight {w:.3}", data.train[g].len());
+        println!(
+            "source {name}: {} train items, weight {w:.3}",
+            data.train[g].len()
+        );
     }
     println!(
         "val {} / test {} items, {} records skipped ({:.1}s)",
@@ -499,11 +593,21 @@ pub fn decide(a: &DecideArgs) -> Result<()> {
             let n = params::load_matching(&mut p, &src)?;
             let n_enc = p.keys().filter(|k| k.starts_with("encoder.")).count();
             if n < n_enc {
-                bail!("{} provides only {n} of the {n_enc} encoder tensors", init.display());
+                bail!(
+                    "{} provides only {n} of the {n_enc} encoder tensors",
+                    init.display()
+                );
             }
             println!("initialized {n} tensors from {}", init.display());
         }
-        let mut s = Session::new(cfg.clone(), p, a.opt.clone(), "decide", a.seed, a.minutes * 60.0);
+        let mut s = Session::new(
+            cfg.clone(),
+            p,
+            a.opt.clone(),
+            "decide",
+            a.seed,
+            a.minutes * 60.0,
+        );
         s.state.extra = json!({
             "batch": a.batch, "records": a.records, "weights": weights, "groups": data.groups,
             "init": a.init, "tokenizer": tok_path,
@@ -523,10 +627,16 @@ pub fn decide(a: &DecideArgs) -> Result<()> {
     let tok_json = std::fs::read(&tok_path)?;
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
     let save = |s: &Session| -> Result<()> {
-        let rl = rl_agent_json(&s.cfg, json!({"training": {"steps": s.state.step, "minutes": s.state.elapsed_secs / 60.0}}));
+        let rl = rl_agent_json(
+            &s.cfg,
+            json!({"training": {"steps": s.state.step, "minutes": s.state.elapsed_secs / 60.0}}),
+        );
         s.save(
             &last,
-            &[("tokenizer.json", tok_json.clone()), ("rl_agent_config.json", serde_json::to_vec_pretty(&rl)?)],
+            &[
+                ("tokenizer.json", tok_json.clone()),
+                ("rl_agent_config.json", serde_json::to_vec_pretty(&rl)?),
+            ],
         )
     };
     let validate = |s: &Session, log: &mut JsonLog| -> Result<()> {
@@ -548,7 +658,8 @@ pub fn decide(a: &DecideArgs) -> Result<()> {
     let base_elapsed = s.state.elapsed_secs;
     let t0 = Instant::now();
     let mut last_ckpt = Instant::now();
-    let (mut win_loss, mut win_tokens, mut win_steps, mut win_t) = (0.0f64, 0usize, 0u64, Instant::now());
+    let (mut win_loss, mut win_tokens, mut win_steps, mut win_t) =
+        (0.0f64, 0usize, 0u64, Instant::now());
     while s.state.elapsed_secs < s.state.budget_secs {
         let lr_scale = wsd(s.state.elapsed_secs / s.state.budget_secs) as f32;
         let agent = s.cfg.rl_agent.clone();
@@ -600,10 +711,19 @@ mod tests {
     #[test]
     fn default_source_weights() {
         let g = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(source_weights(&g(&["decisions", "games"]), None).unwrap(), vec![0.5, 0.5]);
-        assert_eq!(source_weights(&g(&["a", "b", "games"]), None).unwrap(), vec![0.25, 0.25, 0.5]);
+        assert_eq!(
+            source_weights(&g(&["decisions", "games"]), None).unwrap(),
+            vec![0.5, 0.5]
+        );
+        assert_eq!(
+            source_weights(&g(&["a", "b", "games"]), None).unwrap(),
+            vec![0.25, 0.25, 0.5]
+        );
         assert_eq!(source_weights(&g(&["decisions"]), None).unwrap(), vec![1.0]);
-        assert_eq!(source_weights(&g(&["decisions", "games"]), Some("games=0.8,decisions=0.2")).unwrap(), vec![0.2, 0.8]);
+        assert_eq!(
+            source_weights(&g(&["decisions", "games"]), Some("games=0.8,decisions=0.2")).unwrap(),
+            vec![0.2, 0.8]
+        );
         assert!(source_weights(&g(&["x"]), Some("games=1")).is_err());
     }
 }

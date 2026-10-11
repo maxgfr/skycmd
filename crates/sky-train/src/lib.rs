@@ -2,6 +2,10 @@
 //! ModernBERT encoder + Laya decision head, MLM pretraining, decision
 //! training (AdamW + Muon, WSD), temperature calibration, evaluation and
 //! export to the oscar / HF directory layout.
+//!
+//! [`s2`] holds the skycmd-s2 architecture (docs/SPEC-S2.md): static / state
+//! streams with native numbers, early exits, a cross-attention fusion head,
+//! ternary QAT and the `skycmd-s2` GGUF export.
 
 pub mod config;
 pub mod decision;
@@ -9,9 +13,11 @@ pub mod export;
 pub mod metrics;
 pub mod mlm;
 pub mod model;
+pub mod num;
 pub mod optim;
 pub mod params;
 pub mod rng;
+pub mod s2;
 pub mod sequence;
 pub mod session;
 pub mod train;

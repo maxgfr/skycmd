@@ -3,10 +3,12 @@
 // in-browser benchmark of every published model through the wasm `bench()` export.
 import { computed, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { formatInt, loadEngine, loadManifest, loadWasm, type ModelEntry } from '../lib/wasm'
+import { familyOf, formatInt, loadEngine, loadManifest, loadWasm, type ModelEntry } from '../lib/wasm'
 
 interface BenchRow {
   name: string
+  /** `general.architecture` (`modern-bert` or `skycmd-s2`), when known. */
+  arch?: string | null
   params: number | null
   bytes: number | null
   accuracy: number | null
@@ -24,6 +26,10 @@ interface Local {
   median_us: number
   p95_us: number
   decisions_per_s: number
+  family?: string
+  /** s2: state-encoder blocks per question (early exit); null for s1. */
+  mean_layers_used?: number | null
+  max_layers?: number | null
 }
 
 const rows = ref<BenchRow[]>([])
@@ -53,6 +59,7 @@ onMounted(async () => {
     if (!rows.value.some((r) => r.name === m.name)) {
       rows.value.push({
         name: m.name,
+        arch: m.arch ?? null,
         params: m.params,
         bytes: m.bytes,
         accuracy: null,
@@ -97,6 +104,20 @@ const fmtNum = (v: number | null, d = 3) => (v == null ? 'TBD' : v.toFixed(d))
 const fmtUs = (v: number | null | undefined) => (v == null ? 'TBD' : `${formatInt(v)} µs`)
 const fmtKB = (v: number | null) => (v == null ? 'TBD' : `${formatInt(v / 1024)} KB`)
 const fmtInt = (v: number | null) => (v == null ? 'TBD' : formatInt(v))
+
+function family(r: BenchRow): string {
+  const l = local.value[r.name]
+  if (l?.family) return l.family
+  const m = manifest.value.find((e) => e.name === r.name)
+  return familyOf({ name: r.name, arch: r.arch ?? m?.arch })
+}
+
+function depth(r: BenchRow): string {
+  const l = local.value[r.name]
+  if (!l) return '—'
+  if (l.mean_layers_used == null) return 'all'
+  return `${l.mean_layers_used.toFixed(2)} / ${l.max_layers ?? '?'}`
+}
 
 function wasmUs(r: BenchRow): number | null {
   return local.value[r.name]?.median_us ?? r.wasm_us
@@ -155,6 +176,7 @@ function kbLabel(e: number) {
         <thead>
           <tr>
             <th>model</th>
+            <th>family</th>
             <th>params</th>
             <th>file</th>
             <th>accuracy (all)</th>
@@ -167,11 +189,13 @@ function kbLabel(e: number) {
             <th>native / question</th>
             <th>WASM / decision</th>
             <th>decisions/s here</th>
+            <th>layers / question here</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="r in rows" :key="r.name">
             <td><strong>{{ r.name }}</strong></td>
+            <td>{{ family(r) }}</td>
             <td>{{ fmtInt(r.params) }}</td>
             <td>{{ fmtKB(r.bytes) }}</td>
             <td>{{ fmtPct(r.accuracy) }}</td>
@@ -184,16 +208,18 @@ function kbLabel(e: number) {
             <td>{{ fmtUs(r.native_us) }}</td>
             <td :class="{ fresh: local[r.name] }">{{ fmtUs(wasmUs(r)) }}</td>
             <td>{{ local[r.name] ? formatInt(local[r.name].decisions_per_s) : '—' }}</td>
+            <td>{{ depth(r) }}</td>
           </tr>
           <tr v-if="loaded && !rows.length">
-            <td colspan="13" class="empty">No model is published yet. Every number is TBD until training finishes.</td>
+            <td colspan="15" class="empty">No model is published yet. Every number is TBD until training finishes.</td>
           </tr>
         </tbody>
       </table>
     </div>
     <p class="note">
       <template v-if="generated">Data from {{ generated }}. </template><template v-if="note">{{ note }}. </template>A WASM decision answers both questions of
-      Flappy Drone (two forward passes) and steps the physics; the native column times a single question.
+      Flappy Drone and steps the physics: s1 runs two full forward passes, s2 encodes the state once for both questions (the
+      question and options come from its cache) and may stop at an early exit. The native column times a single question.
     </p>
 
     <figure v-if="chart" class="chart">

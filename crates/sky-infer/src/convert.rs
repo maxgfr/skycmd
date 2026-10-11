@@ -182,7 +182,7 @@ fn file_type(t: GgmlType) -> u32 {
         GgmlType::F16 => 1,
         GgmlType::Q8_0 => 7,
         GgmlType::BF16 => 32,
-        GgmlType::Other(_) => 0,
+        GgmlType::I8 | GgmlType::Other(_) => 0,
     }
 }
 

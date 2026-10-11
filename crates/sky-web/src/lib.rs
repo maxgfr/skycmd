@@ -5,7 +5,7 @@
 //! ```js
 //! import init, { Engine, GameSession, bench } from "./pkg/sky_web.js";
 //! await init();
-//! const engine = new Engine(new Uint8Array(await (await fetch("s1-pico.gguf")).arrayBuffer()));
+//! const engine = new Engine(new Uint8Array(await (await fetch("s1-pico.gguf")).arrayBuffer())); // s1 or s2
 //! const game = new GameSession("flappy", 42);
 //! const step = JSON.parse(game.step_ai(engine));   // or game.step_oracle() without a model
 //! const view = JSON.parse(game.snapshot());
@@ -27,7 +27,7 @@ fn to_json<T: serde::Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("serializable")
 }
 
-/// A loaded decision model (GGUF: f32, f16 or Q8_0; computed in f32).
+/// A loaded decision model (GGUF s1 or s2: f32, f16, Q8_0 or ternary; computed in f32).
 #[wasm_bindgen]
 pub struct Engine {
     inner: Model,
@@ -39,6 +39,29 @@ impl Engine {
     pub fn new(gguf_bytes: &[u8]) -> Result<Engine, JsError> {
         Ok(Engine {
             inner: Model::load(gguf_bytes).map_err(|e| JsError::new(&e))?,
+        })
+    }
+
+    /// Load with s2 engine options: `static_cache = false` encodes the question and options
+    /// every decision (no LRU, for benchmarks); `ternary_packed = true` computes ternary
+    /// matrices with the packed add/sub kernels instead of f32. No effect on s1 models.
+    #[wasm_bindgen(js_name = withOptions)]
+    pub fn with_options(
+        gguf_bytes: &[u8],
+        static_cache: bool,
+        ternary_packed: bool,
+    ) -> Result<Engine, JsError> {
+        let opts = sky_infer::EngineOptions {
+            prefix_cache: if static_cache { 16 } else { 0 },
+            ternary: if ternary_packed {
+                sky_infer::TernaryCompute::Packed
+            } else {
+                sky_infer::TernaryCompute::Auto
+            },
+            ..Default::default()
+        };
+        Ok(Engine {
+            inner: Model::load_with(gguf_bytes, opts).map_err(|e| JsError::new(&e))?,
         })
     }
 
@@ -59,6 +82,21 @@ impl Engine {
 
     pub fn name(&self) -> String {
         self.inner.name()
+    }
+
+    /// Model family: `s1` (ModernBERT + decision head) or `s2` (static cache, early exits).
+    pub fn family(&self) -> String {
+        match self.inner.arch() {
+            sky_infer::Arch::S1 => "s1".into(),
+            sky_infer::Arch::S2 => "s2".into(),
+        }
+    }
+
+    /// s2: override the early-exit threshold τ of every question type (undefined: the
+    /// calibrated values; 1.0: full depth). No effect on s1 models.
+    #[wasm_bindgen(js_name = setExitThreshold)]
+    pub fn set_exit_threshold(&mut self, tau: Option<f32>) {
+        self.inner.set_exit_threshold(tau)
     }
 }
 
@@ -106,8 +144,9 @@ impl GameSession {
     }
 
     /// One AI frame with the model. Returns `{policy, decided, action, executed, probs:
-    /// [{key, p}], secondary: {id, type, value, max, probs}, vetoed, micros, state_text, event,
-    /// reward, done, score}` as JSON.
+    /// [{key, p}], secondary: {id, type, value, max, probs}, info: {family, exit, n_exits,
+    /// layers_used, mean_layers, max_layers, static_hit, state_reused}, vetoed, micros,
+    /// state_text, event, reward, done, score}` as JSON.
     pub fn step_ai(&mut self, engine: &mut Engine) -> Result<String, JsError> {
         self.inner
             .step_ai(Policy::Model(&mut engine.inner))
@@ -188,8 +227,9 @@ impl GameSession {
     }
 }
 
-/// Times `n` AI decisions on Flappy Drone: `{n, median_us, p95_us, mean_us, decisions_per_s,
-/// forwards_per_decision, game}` as JSON.
+/// Times `n` AI decisions on Flappy Drone: `{name, family, params, file_bytes, n, median_us,
+/// p95_us, mean_us, decisions_per_s, forwards_per_decision, mean_layers_used, max_layers,
+/// static_hit_rate, state_reuse_rate, game}` as JSON.
 #[wasm_bindgen]
 pub fn bench(engine: &mut Engine, n: u32) -> Result<String, JsError> {
     session::bench(&mut engine.inner, n as usize)

@@ -84,7 +84,11 @@ impl Hf {
         let tmp = dest.with_extension("part");
         self.retry(url, || {
             let resp = self.agent.get(url).call()?;
-            let mut reader = resp.into_body().into_with_config().limit(max_bytes).reader();
+            let mut reader = resp
+                .into_body()
+                .into_with_config()
+                .limit(max_bytes)
+                .reader();
             let mut out = File::create(&tmp)?;
             std::io::copy(&mut reader, &mut out).with_context(|| format!("download {url}"))?;
             out.flush()?;
@@ -113,12 +117,21 @@ impl Hf {
     }
 
     /// Downloads every parquet shard of a split (small datasets) and returns the local paths.
-    pub fn parquet_split(&self, repo: &str, config: &str, split: &str, max_bytes: u64) -> Result<Vec<PathBuf>> {
+    pub fn parquet_split(
+        &self,
+        repo: &str,
+        config: &str,
+        split: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<PathBuf>> {
         let urls = self.parquet_urls(repo, config, split)?;
         urls.iter()
             .enumerate()
             .map(|(i, u)| {
-                let rel = format!("{}/{config}/{split}-{i:05}.parquet", repo.replace('/', "__"));
+                let rel = format!(
+                    "{}/{config}/{split}-{i:05}.parquet",
+                    repo.replace('/', "__")
+                );
                 self.download(u, &rel, max_bytes)
             })
             .collect()
@@ -243,7 +256,12 @@ impl<'a> RemoteParquet<'a> {
         let meta = self.reader.metadata().row_group(rg).clone();
         let mut fetched_bytes = 0;
         for col in meta.columns() {
-            let name = col.column_path().parts().first().cloned().unwrap_or_default();
+            let name = col
+                .column_path()
+                .parts()
+                .first()
+                .cloned()
+                .unwrap_or_default();
             if !columns.contains(&name.as_str()) {
                 continue;
             }
@@ -276,7 +294,11 @@ fn projection(reader: &SerializedFileReader<File>, columns: &[&str]) -> Result<O
     if columns.is_empty() {
         return Ok(None);
     }
-    let root = reader.metadata().file_metadata().schema_descr().root_schema();
+    let root = reader
+        .metadata()
+        .file_metadata()
+        .schema_descr()
+        .root_schema();
     let fields: Vec<Arc<Type>> = root
         .get_fields()
         .iter()
@@ -287,10 +309,18 @@ fn projection(reader: &SerializedFileReader<File>, columns: &[&str]) -> Result<O
         let have: Vec<&str> = root.get_fields().iter().map(|f| f.name()).collect();
         bail!("missing columns {columns:?}; file has {have:?}");
     }
-    Ok(Some(Type::group_type_builder("schema").with_fields(fields).build()?))
+    Ok(Some(
+        Type::group_type_builder("schema")
+            .with_fields(fields)
+            .build()?,
+    ))
 }
 
-fn rows_of_group(reader: &SerializedFileReader<File>, rg: usize, columns: &[&str]) -> Result<Vec<Value>> {
+fn rows_of_group(
+    reader: &SerializedFileReader<File>,
+    rg: usize,
+    columns: &[&str],
+) -> Result<Vec<Value>> {
     let proj = projection(reader, columns)?;
     let group = reader.get_row_group(rg)?;
     let mut out = Vec::with_capacity(group.metadata().num_rows() as usize);
@@ -300,9 +330,46 @@ fn rows_of_group(reader: &SerializedFileReader<File>, rg: usize, columns: &[&str
     Ok(out)
 }
 
+/// Top-level column names of a local parquet file.
+pub fn parquet_columns(path: &Path) -> Result<Vec<String>> {
+    let reader =
+        SerializedFileReader::new(File::open(path).with_context(|| format!("open {path:?}"))?)?;
+    let root = reader
+        .metadata()
+        .file_metadata()
+        .schema_descr()
+        .root_schema()
+        .clone();
+    Ok(root
+        .get_fields()
+        .iter()
+        .map(|f| f.name().to_string())
+        .collect())
+}
+
+/// Streams the rows (projected to `columns`) of a local parquet file through `f`, one row
+/// group at a time, so huge files never sit in memory as JSON.
+pub fn for_each_parquet_row(
+    path: &Path,
+    columns: &[&str],
+    mut f: impl FnMut(Value) -> Result<()>,
+) -> Result<()> {
+    let reader =
+        SerializedFileReader::new(File::open(path).with_context(|| format!("open {path:?}"))?)?;
+    let proj = projection(&reader, columns)?;
+    for rg in 0..reader.num_row_groups() {
+        let group = reader.get_row_group(rg)?;
+        for row in group.get_row_iter(proj.clone())? {
+            f(row?.to_json_value())?;
+        }
+    }
+    Ok(())
+}
+
 /// Reads up to `max_rows` rows (projected to `columns`, all when empty) of a local parquet file.
 pub fn read_parquet(path: &Path, columns: &[&str], max_rows: usize) -> Result<Vec<Value>> {
-    let reader = SerializedFileReader::new(File::open(path).with_context(|| format!("open {path:?}"))?)?;
+    let reader =
+        SerializedFileReader::new(File::open(path).with_context(|| format!("open {path:?}"))?)?;
     let mut out = Vec::new();
     for rg in 0..reader.num_row_groups() {
         if out.len() >= max_rows {
@@ -329,6 +396,9 @@ mod tests {
 
     #[test]
     fn sidecar_name() {
-        assert_eq!(ranges_path(Path::new("/tmp/a.parquet")), PathBuf::from("/tmp/a.parquet.ranges"));
+        assert_eq!(
+            ranges_path(Path::new("/tmp/a.parquet")),
+            PathBuf::from("/tmp/a.parquet.ranges")
+        );
     }
 }

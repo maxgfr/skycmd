@@ -66,7 +66,10 @@ pub enum Crit {
     /// One description per ordinal level.
     Score(Vec<String>),
     /// Optional overrides of the default false/true descriptions.
-    Noul { no: Option<String>, yes: Option<String> },
+    Noul {
+        no: Option<String>,
+        yes: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -97,7 +100,10 @@ impl Question {
         Self {
             t: QType::Noul,
             ins: ins.into(),
-            crit: Crit::Noul { no: None, yes: None },
+            crit: Crit::Noul {
+                no: None,
+                yes: None,
+            },
         }
     }
 
@@ -106,7 +112,13 @@ impl Question {
         match &self.crit {
             Crit::Choice(c) => c
                 .iter()
-                .map(|(k, v)| if v.is_empty() { k.clone() } else { format!("{k}: {v}") })
+                .map(|(k, v)| {
+                    if v.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{k}: {v}")
+                    }
+                })
                 .collect(),
             Crit::Score(levels) => levels
                 .iter()
@@ -168,12 +180,19 @@ impl Question {
             QType::Score => Crit::Score(match crit {
                 Value::Array(a) => a
                     .iter()
-                    .map(|x| x.as_str().map(str::to_string).unwrap_or_else(|| x.to_string()))
+                    .map(|x| {
+                        x.as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| x.to_string())
+                    })
                     .collect(),
                 _ => bail!("score question without a criteria list"),
             }),
             QType::Noul => Crit::Noul {
-                no: crit.get("false").and_then(Value::as_str).map(str::to_string),
+                no: crit
+                    .get("false")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
                 yes: crit.get("true").and_then(Value::as_str).map(str::to_string),
             },
         };
@@ -305,7 +324,9 @@ pub fn validate_record(r: &DecisionRecord) -> Result<()> {
         bail!("target length {} != opts {}", r.target.len(), r.opts.len());
     }
     if t == QType::Noul
-        && !(r.opts.len() == 2 && r.opts[0].starts_with("false: ") && r.opts[1].starts_with("true: "))
+        && !(r.opts.len() == 2
+            && r.opts[0].starts_with("false: ")
+            && r.opts[1].starts_with("true: "))
     {
         bail!("noul options must be [false, true]");
     }
@@ -359,40 +380,73 @@ mod tests {
 
     #[test]
     fn renders_like_rl_common() {
-        let q = Question::from_jev(&json!({"type":"choice","instructions":"Pick","criteria":{"a":"first","b":""}})).unwrap();
+        let q = Question::from_jev(
+            &json!({"type":"choice","instructions":"Pick","criteria":{"a":"first","b":""}}),
+        )
+        .unwrap();
         assert_eq!(q.options(), vec!["a: first", "b"]);
-        let q = Question::from_jev(&json!({"type":"score","instructions":"Rate","criteria":["low","high"]})).unwrap();
+        let q = Question::from_jev(
+            &json!({"type":"score","instructions":"Rate","criteria":["low","high"]}),
+        )
+        .unwrap();
         assert_eq!(q.options(), vec!["level 0: low", "level 1: high"]);
         let q = Question::from_jev(&json!({"type":"noul","instructions":"Holds?"})).unwrap();
         assert_eq!(
             q.options(),
-            vec!["false: no, the statement does not hold", "true: yes, the statement holds"]
+            vec![
+                "false: no, the statement does not hold",
+                "true: yes, the statement holds"
+            ]
         );
-        let q = Question::from_jev(&json!({"type":"noul","instructions":"x","criteria":{"true":"T","false":""}})).unwrap();
-        assert_eq!(q.options(), vec!["false: no, the statement does not hold", "true: T"]);
+        let q = Question::from_jev(
+            &json!({"type":"noul","instructions":"x","criteria":{"true":"T","false":""}}),
+        )
+        .unwrap();
+        assert_eq!(
+            q.options(),
+            vec!["false: no, the statement does not hold", "true: T"]
+        );
     }
 
     #[test]
     fn preserves_choice_key_order() {
-        let q = Question::from_jev(&json!({"type":"choice","instructions":"x","criteria":{"z":"","a":"","m":""}})).unwrap();
+        let q = Question::from_jev(
+            &json!({"type":"choice","instructions":"x","criteria":{"z":"","a":"","m":""}}),
+        )
+        .unwrap();
         assert_eq!(q.keys(), vec!["z", "a", "m"]);
     }
 
     #[test]
     fn targets_from_labels() {
         let q = Question::from_jev(&json!({"type":"noul","instructions":"x"})).unwrap();
-        assert_eq!(q.target_from(&json!({"noul": 0.25})).unwrap(), vec![0.75, 0.25]);
+        assert_eq!(
+            q.target_from(&json!({"noul": 0.25})).unwrap(),
+            vec![0.75, 0.25]
+        );
         assert_eq!(q.target_from(&json!(true)).unwrap(), vec![0.0, 1.0]);
         assert_eq!(
-            q.target_from(&json!({"probabilities":{"false":0.2,"true":0.8}})).unwrap(),
+            q.target_from(&json!({"probabilities":{"false":0.2,"true":0.8}}))
+                .unwrap(),
             vec![0.2, 0.8]
         );
-        let s = Question::from_jev(&json!({"type":"score","instructions":"x","criteria":["a","b","c"]})).unwrap();
+        let s = Question::from_jev(
+            &json!({"type":"score","instructions":"x","criteria":["a","b","c"]}),
+        )
+        .unwrap();
         assert_eq!(s.target_from(&json!(2)).unwrap(), vec![0.0, 0.0, 1.0]);
-        assert_eq!(s.target_from(&json!({"label":"1"})).unwrap(), vec![0.0, 1.0, 0.0]);
-        let t = s.target_from(&json!({"probabilities":{"0":1.0,"2":3.0}})).unwrap();
+        assert_eq!(
+            s.target_from(&json!({"label":"1"})).unwrap(),
+            vec![0.0, 1.0, 0.0]
+        );
+        let t = s
+            .target_from(&json!({"probabilities":{"0":1.0,"2":3.0}}))
+            .unwrap();
         assert_eq!(t, vec![0.25, 0.0, 0.75]);
-        let c = Question::from_jev(&json!({"type":"choice","instructions":"x","criteria":{"a":"","b":""}})).unwrap();
+        let c = Question::from_jev(
+            &json!({"type":"choice","instructions":"x","criteria":{"a":"","b":""}}),
+        )
+        .unwrap();
         assert_eq!(c.target_from(&json!("b")).unwrap(), vec![0.0, 1.0]);
         assert!(c.target_from(&json!("zz")).is_none());
     }
@@ -412,7 +466,10 @@ mod tests {
     fn jsonl_roundtrip() {
         let dir = std::env::temp_dir().join(format!("sky-data-test-{}", std::process::id()));
         let p = dir.join("x.jsonl");
-        let recs = vec![MlmRecord { src: "a".into(), text: "hello\nworld".into() }];
+        let recs = vec![MlmRecord {
+            src: "a".into(),
+            text: "hello\nworld".into(),
+        }];
         assert_eq!(write_jsonl(&p, &recs).unwrap(), 1);
         let back: Vec<MlmRecord> = read_jsonl(&p).unwrap();
         assert_eq!(back, recs);

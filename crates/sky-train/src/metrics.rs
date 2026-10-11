@@ -62,7 +62,9 @@ pub fn ece(conf: &[f64], correct: &[f64], bins: usize) -> f64 {
     for b in 0..bins {
         let lo = b as f64 / bins as f64;
         let hi = (b + 1) as f64 / bins as f64;
-        let sel: Vec<usize> = (0..conf.len()).filter(|&i| conf[i] > lo && conf[i] <= hi).collect();
+        let sel: Vec<usize> = (0..conf.len())
+            .filter(|&i| conf[i] > lo && conf[i] <= hi)
+            .collect();
         if sel.is_empty() {
             continue;
         }
@@ -74,7 +76,10 @@ pub fn ece(conf: &[f64], correct: &[f64], bins: usize) -> f64 {
 }
 
 /// Metrics of `preds`, each calibrated with the temperature returned by `temp`.
-pub fn compute<'a>(preds: impl IntoIterator<Item = &'a Pred>, temp: impl Fn(&Pred) -> f32) -> Metrics {
+pub fn compute<'a>(
+    preds: impl IntoIterator<Item = &'a Pred>,
+    temp: impl Fn(&Pred) -> f32,
+) -> Metrics {
     let (mut n, mut acc, mut nll_sum, mut brier) = (0usize, 0.0, 0.0, 0.0);
     let (mut conf, mut correct) = (Vec::new(), Vec::new());
     for p in preds {
@@ -84,7 +89,11 @@ pub fn compute<'a>(preds: impl IntoIterator<Item = &'a Pred>, temp: impl Fn(&Pre
         n += 1;
         acc += hit;
         nll_sum += nll(&p.logits, &p.target, t);
-        brier += q.iter().zip(&p.target).map(|(a, &b)| (a - b as f64).powi(2)).sum::<f64>();
+        brier += q
+            .iter()
+            .zip(&p.target)
+            .map(|(a, &b)| (a - b as f64).powi(2))
+            .sum::<f64>();
         conf.push(q[argmax(&q)]);
         correct.push(hit);
     }
@@ -92,7 +101,13 @@ pub fn compute<'a>(preds: impl IntoIterator<Item = &'a Pred>, temp: impl Fn(&Pre
         return Metrics::default();
     }
     let d = n as f64;
-    Metrics { n, accuracy: acc / d, nll: nll_sum / d, brier: brier / d, ece: ece(&conf, &correct, 15) }
+    Metrics {
+        n,
+        accuracy: acc / d,
+        nll: nll_sum / d,
+        brier: brier / d,
+        ece: ece(&conf, &correct, 15),
+    }
 }
 
 /// Temperature minimizing the mean NLL of `preds` (golden-section search on
@@ -103,7 +118,10 @@ pub fn fit_temperature(preds: &[&Pred]) -> f32 {
     }
     let f = |lt: f64| -> f64 {
         let t = lt.exp() as f32;
-        preds.iter().map(|p| nll(&p.logits, &p.target, t)).sum::<f64>()
+        preds
+            .iter()
+            .map(|p| nll(&p.logits, &p.target, t))
+            .sum::<f64>()
     };
     let (mut a, mut b) = (0.05f64.ln(), 20f64.ln());
     let g = (5f64.sqrt() - 1.0) / 2.0;
@@ -133,12 +151,21 @@ mod tests {
     use super::*;
 
     fn pred(logits: &[f32], target: &[f32]) -> Pred {
-        Pred { logits: logits.to_vec(), target: target.to_vec(), qtype: 0, src: "x".into(), group: "g".into() }
+        Pred {
+            logits: logits.to_vec(),
+            target: target.to_vec(),
+            qtype: 0,
+            src: "x".into(),
+            group: "g".into(),
+        }
     }
 
     #[test]
     fn perfect_and_uniform() {
-        let ps = [pred(&[10.0, -10.0], &[1.0, 0.0]), pred(&[-10.0, 10.0], &[0.0, 1.0])];
+        let ps = [
+            pred(&[10.0, -10.0], &[1.0, 0.0]),
+            pred(&[-10.0, 10.0], &[0.0, 1.0]),
+        ];
         let m = compute(&ps, |_| 1.0);
         assert_eq!(m.n, 2);
         assert_eq!(m.accuracy, 1.0);
