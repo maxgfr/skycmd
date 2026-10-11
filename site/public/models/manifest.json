@@ -1,8 +1,18 @@
 [
   {
     "name": "s1-pico",
-    "file": "s1-pico.gguf",
+    "arch": "modern-bert",
+    "weight_format": "f16",
     "params": 202305,
-    "bytes": 545280
+    "bytes": 545280,
+    "file": "s1-pico.gguf"
+  },
+  {
+    "name": "s2-nano",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "params": 1532033,
+    "bytes": 701568,
+    "file": "s2-nano.gguf"
   }
 ]
