@@ -13,7 +13,7 @@ This chapter sets up a Mac with an M-series chip to build every skycmd crate, tr
 | `wasm32-unknown-unknown` target and `wasm-pack` | the browser module | `scripts/build-wasm.sh` |
 | Node 20 or newer | the VitePress site | `site/package.json` |
 
-The reference training machine is an Apple M5 (`docs/SPEC.md`). Smaller chips work too, just more slowly. Training throughput on your machine is `TBD` until you run `sky-train bench` (see the end of this page).
+The reference training machine is an Apple M5 (`docs/SPEC.md`). Smaller chips work too, just more slowly. On the M5, `sky-train bench` measures 598,104 tokens/s for the s1-pico decision phase in bf16 and 243,002 for s1-nano (`BENCH.md`). Your own numbers come from the same command (see the end of this page).
 
 ## Xcode and the Metal toolchain
 

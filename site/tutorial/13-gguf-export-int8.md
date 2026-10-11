@@ -265,13 +265,15 @@ scripts/export-models.sh --type q8_0  # Q8_0 encoder matrices, for comparison
 
 Both commands overwrite the files in `site/public/models/`. To compare formats without touching what the site serves, call `sky-convert` directly with an output path under `/tmp`, as shown above.
 
-The script also runs `sky-bench` on each file and writes `site/public/models/manifest.json` and `site/public/bench.json`. A value that is not available yet is written as `null` and shown as TBD on the site.
+The script also runs `sky-bench` on each file and writes `site/public/models/manifest.json` and `site/public/bench.json`. A value that is not available yet is written as `null`, and the Bench page shows a placeholder instead of a number.
 
-| model | params | F16 GGUF bytes | Q8_0 GGUF bytes | native latency per question |
+| model | params | F16 GGUF bytes | Q8_0 GGUF bytes | native latency per question (`BENCH.md`) |
 |---|---:|---:|---:|---:|
-| s1-pico | 202,305 | 545,280 | TBD | 174.5 µs (`sky-bench` median) |
-| s1-nano | TBD | TBD | TBD | TBD |
-| s1-micro | TBD | TBD | TBD | TBD |
+| s1-pico | 202,305 | 545,280 | 468,512 | 188 µs |
+| s1-nano | 1,134,209 | 2,765,792 | 2,151,456 | 974 µs |
+| s1-micro | 6,630,913 | 16,694,464 | 13,008,128 | not in `BENCH.md` (about 4,600 µs, [chapter 12](./12-size-ladder)) |
+
+Only s1-pico is published. The other sizes come from running `sky-convert models/s1-<name> /tmp/s1-<name>.gguf [--type q8_0]` on the trained checkpoints. Q8_0 saves 14% on pico and 22% on micro: the embedding table stays F16 and the head F32, and on pico those are most of the file.
 
 To time the int8 path natively, `sky-bench` takes `--q8` (two-pass activations), `--q8-fast` (single pass) and `--no-calib`:
 
@@ -281,7 +283,15 @@ $CARGO_TARGET_DIR/release/sky-bench site/public/models/s1-pico.gguf --q8 --iters
 $CARGO_TARGET_DIR/release/sky-bench --random s1-micro --q8-fast --iters 300
 ```
 
-Q8_0 timings for the ladder: TBD.
+On these models the int8 path is not a speed-up by default. Best median of 3 rounds per mode, one question per frame, measured on the M5 for this chapter while other jobs ran (`sky-bench <file> [--q8 | --q8-fast] --questions 1 --iters 1000`):
+
+| model | F16 file, f32 compute | `--q8` | `--q8-fast` | Q8_0 file |
+|---|---:|---:|---:|---:|
+| s1-pico | 145 µs | 199 µs | 153 µs | 202 µs |
+| s1-nano | 804 µs | 878 µs | 594 µs | 927 µs |
+| s1-micro | 4,896 µs | 4,991 µs | 3,293 µs | 5,376 µs |
+
+The two-pass `--q8` activations cost more than they save at every size. The single-pass `--q8-fast` mode is about 26% faster than f32 on nano and 33% on micro, but it is also the least accurate path in the golden tests (about 0.025 probability error, against 1e-3 for f32). The Q8_0 file timings come from one round each. The site keeps F16 and f32 compute.
 
 ## Next
 

@@ -99,11 +99,11 @@ async function runBench() {
   }
 }
 
-const fmtPct = (v: number | null) => (v == null ? 'TBD' : `${(v * 100).toFixed(1)}%`)
-const fmtNum = (v: number | null, d = 3) => (v == null ? 'TBD' : v.toFixed(d))
-const fmtUs = (v: number | null | undefined) => (v == null ? 'TBD' : `${formatInt(v)} µs`)
-const fmtKB = (v: number | null) => (v == null ? 'TBD' : `${formatInt(v / 1024)} KB`)
-const fmtInt = (v: number | null) => (v == null ? 'TBD' : formatInt(v))
+const fmtPct = (v: number | null) => (v == null ? 'n/a' : `${(v * 100).toFixed(1)}%`)
+const fmtNum = (v: number | null, d = 3) => (v == null ? 'n/a' : v.toFixed(d))
+const fmtUs = (v: number | null | undefined) => (v == null ? 'n/a' : `${formatInt(v)} µs`)
+const fmtKB = (v: number | null) => (v == null ? 'n/a' : `${formatInt(v / 1024)} KB`)
+const fmtInt = (v: number | null) => (v == null ? 'n/a' : formatInt(v))
 
 function family(r: BenchRow): string {
   const l = local.value[r.name]
@@ -150,7 +150,7 @@ const chart = computed(() => {
       x: X(Math.log10(r.bytes!)),
       y: Y((r.games_accuracy ?? r.accuracy)!),
       r: us == null ? 7 : Math.max(6, Math.min(26, 4 + Math.sqrt(us) / 2)),
-      label: `${r.name} · ${us == null ? 'latency TBD' : `${formatInt(us)} µs`}`,
+      label: `${r.name} · ${us == null ? 'latency not measured' : `${formatInt(us)} µs`}`,
     }
   })
   return { X, Y, yTicks, xTicks, points }
@@ -211,7 +211,7 @@ function kbLabel(e: number) {
             <td>{{ depth(r) }}</td>
           </tr>
           <tr v-if="loaded && !rows.length">
-            <td colspan="15" class="empty">No model is published yet. Every number is TBD until training finishes.</td>
+            <td colspan="15" class="empty">No model is published yet. Run the training scripts to fill this table.</td>
           </tr>
         </tbody>
       </table>

@@ -193,8 +193,10 @@ The binary takes four flags:
 
 ```rust
 const USAGE: &str =
-    "usage: sky-games-gen --game {flappy,rescue,dodge,all} --n N --seed S [--out PATH]";
+    "usage: sky-games-gen --game {flappy,rescue,dodge,doom,all} --n N --seed S [--out PATH]";
 ```
+
+(`doom` is the fourth game, added in [chapter 18](./18-doom).)
 
 ```bash
 export CARGO_TARGET_DIR=$PWD/target/sky-games
@@ -202,7 +204,7 @@ cargo run --release -p sky-games --bin sky-games-gen -- --game all --n 20000 --s
 cargo run --release -p sky-games --bin sky-games-gen -- --game rescue --n 5000 --seed 7 --out /tmp/rescue.jsonl
 ```
 
-With `all`, `--out` is a directory (default `data/games`) and `N` records are written per game. Label-balance statistics are printed to stderr. The record counts used for the published models are `TBD`.
+With `all`, `--out` is a directory (default `data/games`) and `N` records are written per game. Label-balance statistics are printed to stderr. The published models were trained on 90,000 Flappy, 60,000 Rescue and 60,000 Dodge records, 210,000 in total, of which 189,880 are in the train split (`data/STATS.md`, "Decision records (games)").
 
 ## The rollout harness
 
@@ -248,7 +250,15 @@ For s1-pico over 30 episodes, the model against the oracle (`runs/s1-pico/arena.
 | rescue | rescue rate 0.63, completion 0.57, 130 vetoes | rescue rate 1.0, completion 1.0 |
 | dodge | completion 0.67, 4 safe aborts, 0 crashes | completion 0.87, 4 safe aborts |
 
-The gap between test accuracy and closed-loop play is what `scripts/specialize.sh` targets. It runs `sky-arena <model> --dagger N` to collect oracle labels on the states the model actually reaches, then fine-tunes on them. Results for the specialized models are `TBD`.
+The gap between test accuracy and closed-loop play is what `scripts/specialize.sh` targets. It runs `sky-arena <model> --dagger N` to collect oracle labels on the states the model actually reaches, then fine-tunes on them. After two rounds of 6 minutes each, the same s1-pico closes the gap almost entirely (`runs/s1-pico-g2/arena.json`, 30 episodes):
+
+| game | before DAgger | after 2 rounds (shipped) | oracle |
+|---|---|---|---|
+| flappy | 0.0 pipes, 30 crashes | 200.0 pipes, 0 crashes | 200.0 pipes |
+| rescue | rescue rate 0.63, 130 vetoes | rescue rate 1.0, 0 vetoes | 1.0 |
+| dodge | completion 0.67, 5,828 vetoes | completion 0.83, 1,026 vetoes | 0.87 |
+
+[Chapter 20](./20-dagger-lessons) tells the whole story, including the state-text fix that had to come first and the round that made things worse.
 
 ## Next
 

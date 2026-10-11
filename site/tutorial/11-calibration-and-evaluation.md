@@ -156,7 +156,7 @@ These rows come from `runs/s1-pico/report.md` (test split, 11,134 questions, cal
 
 Four things stand out.
 
-1. **The games are learned; open-domain decisions are not.** The three game sources reach 0.82–0.94 accuracy. On `typed_decisions_bench` (`LocalLLaMA/typed-decisions`) pico scores 0.3280. The research notes quote 0.6775 for `oscar-1-17m` on the same dataset, a model card figure for a model about 85 times larger, so the evaluation protocols may differ. `data/STATS.md` also shows that 96.8% of these benchmark sequences are truncated with the 1024 vocabulary, against 79.0% with 4096. Nano and micro results on this benchmark are TBD.
+1. **The games are learned; open-domain decisions are not.** The three game sources reach 0.82–0.94 accuracy. On `typed_decisions_bench` (`LocalLLaMA/typed-decisions`) pico scores 0.3280. The research notes quote 0.6775 for `oscar-1-17m` on the same dataset, a model card figure for a model about 85 times larger, so the evaluation protocols may differ. `data/STATS.md` also shows that 96.8% of these benchmark sequences are truncated with the 1024 vocabulary, against 79.0% with 4096. The bigger rungs barely move: s1-nano scores 0.3975 and s1-micro 0.3100 on the same 2,000 questions (`runs/s1-nano/report.md`, `runs/s1-micro/report.md`).
 2. **`score` questions are the hardest type.** By question type, `score` reaches 0.6375 accuracy against 0.8078 for `choice` and 0.8057 for `noul`. Adjacent levels are often close calls, and accuracy counts an answer that misses by one level as wrong. NLL and Brier give partial credit for those near misses.
 3. **Calibration barely moves the test numbers.** Overall NLL is 0.6449 calibrated and 0.6448 at T = 1, and ECE is 0.0738 against 0.0728. With temperatures this close to 1, this is expected. The val fit also cannot see the benchmark source, which is test-only and makes up 2000 of the 11,134 test questions.
 4. **Low ECE is not the same as useful.** `typed_decisions_bench` has the second-lowest ECE in the table (0.0611) at 0.33 accuracy. The model is honestly unsure. ECE has to be read next to accuracy and NLL.
@@ -182,10 +182,9 @@ This confidence rescales the top probability so that a uniform answer scores 0 w
 
 ## What the report does not measure yet
 
-- **Coherence without labels.** `docs/research.md` lists the check that p(X) + p(not X) ≈ 1 for a statement and its negation (paper 2609.33209) as an evaluation idea. `sky-train eval` does not compute it yet, so the result is TBD.
-- **Shuffle stability.** `eval` scores every question once in record order. Flip rates under option shuffling (paper 2610.06744) are TBD.
-- **Closed-loop play.** Accuracy on single questions does not tell you whether a model can fly a whole episode. Episode metrics come from the game harness, covered in later chapters.
-- **Nano and micro.** Their reports (`runs/s1-nano/report.md`, `runs/s1-micro/report.md`) are TBD until the ladder finishes training.
+- **Coherence without labels.** `docs/research.md` lists the check that p(X) + p(not X) ≈ 1 for a statement and its negation (paper 2609.33209) as an evaluation idea. The s1 `sky-train eval` does not compute it. The s2 evaluation (`s2-eval`) looks for such pairs, but the test split contains none, so every s2 report shows 0 pairs (`runs/s2-nano-g2/report.md`). Not measured.
+- **Shuffle stability.** `eval` scores every question once in record order, so s1 flip rates under option shuffling (paper 2610.06744) are not measured. s2 is equivariant by construction, and `s2-eval` checks it: shuffling the options of 256 questions moves the probabilities of the shipped s2-nano by at most 1.8e-7 ([chapter 19](./19-s2-architecture)).
+- **Closed-loop play.** Accuracy on single questions does not tell you whether a model can fly a whole episode. Episode metrics come from the game harness ([chapter 15](./15-wiring-the-games) and [chapter 20](./20-dagger-lessons)).
 
 ## Next
 

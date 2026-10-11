@@ -1,18 +1,18 @@
 # 17 Scaling up and troubleshooting
 
-The ladder stops at s1-micro because a decision there still fits in a browser frame, not because the recipe stops working. This chapter shows which levers to pull for a bigger model (config, data, schedule) and which constraints of the GGUF and WASM paths to respect. It ends with the failures you are most likely to meet, each tied to the line of code that produces it.
+The s1 ladder stops at s1-micro. The recipe still trains there, but a micro decision no longer fits in a browser frame (about 32.6 ms in WASM against a 16.7 ms frame) and micro is no better than pico on the games. This chapter shows which levers to pull for a bigger model (config, data, schedule) and which constraints of the GGUF and WASM paths to respect. It ends with the failures you are most likely to meet, each tied to the line of code that produces it.
 
 ## The ladder today
 
-Parameter counts and training throughput come from `BENCH.md` (`sky-train bench`, MLX on Metal, bf16, decision phase at batch 64 × 192 tokens). The other columns are not measured yet.
+Parameter counts and training throughput come from `BENCH.md` (`sky-train bench`, MLX on Metal, bf16, decision phase at batch 64 × 192 tokens). Accuracy is the `games` row of each `runs/s1-*/report.md`. WASM latency is the `bench()` median of one Flappy decision (2 questions + physics) from `BENCH.md`, except s1-micro, measured on a busy machine for [chapter 12](./12-size-ladder).
 
-| model | d | L | head layers | vocab | decision params | train tok/s (bf16) | held-out accuracy | wasm decision (Flappy) |
+| model | d | L | head layers | vocab | decision params | train tok/s (bf16) | held-out accuracy, games | wasm decision (Flappy) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| s1-pico | 64 | 2 | 1 | 1024 | 202,305 | 598,104 | TBD | about 640 µs |
-| s1-nano | 128 | 4 | 1 | 2048 | 1,134,209 | 243,002 | TBD | TBD |
-| s1-micro | 256 | 6 | 2 | 4096 | 6,630,913 | 70,881 | TBD | TBD |
+| s1-pico | 64 | 2 | 1 | 1024 | 202,305 | 598,104 | 0.8806 | 694 µs |
+| s1-nano | 128 | 4 | 1 | 2048 | 1,134,209 | 243,002 | 0.7837 | 3,541 µs |
+| s1-micro | 256 | 6 | 2 | 4096 | 6,630,913 | 70,881 | 0.8215 | about 32,600 µs |
 
-Each step multiplies the parameter count by about 5.5 to 6 and divides training throughput by about 2.5 to 3.5. Inference latency for nano and micro has not been measured yet; do not extrapolate it from the parameter count, because the embedding table (a lookup, almost free at inference) is a large share of the smaller models.
+Each step multiplies the parameter count by about 5.5 to 6 and divides training throughput by about 2.5 to 3.5. WASM latency grows faster than the parameter count from pico to nano (5.1× for 5.6× the parameters) and from nano to micro (about 9× for 5.8×), because the embedding table, a lookup that is almost free at inference, is a smaller share of the bigger models. Before scaling s1, read [chapter 20](./20-dagger-lessons): bigger was not better in closed loop either. The architecture change of [chapter 19](./19-s2-architecture) bought more than size did.
 
 ## Scaling the model
 
@@ -62,7 +62,7 @@ Set `num_attention_heads = hidden_size / 64`. That is 6 for d = 384 above.
 
 **`ModelConfig::validate`.** The hidden size must split into heads of even size, and `max_len` and `head_max_len` must be non-zero.
 
-`sky-convert --random` and `sky-bench --random` only know `s1-pico`, `s1-nano` and `s1-micro` (`ladder_config` in `convert.rs`). For a new size, measure inference speed on a trained (or briefly trained) checkpoint instead.
+`sky-convert --random` and `sky-bench --random` only know the shipped shapes: `s1-pico`, `s1-nano` and `s1-micro` for s1 (`ladder_config` in `convert.rs`), plus `s2-pico`, `s2-nano`, `s2-micro`, `s3-pico` and `s3-nano` (see `sky-convert --help`). For a new size, measure inference speed on a trained (or briefly trained) checkpoint instead.
 
 ### Match the tokenizer to the vocabulary
 
@@ -121,7 +121,7 @@ scripts/export-models.sh
 
 - **Watch the frame budget.** About 16.7 ms at 60 Hz, shared with rendering. Read `GameSession.timing()` and raise `set_decide_every(n)` when the median decision time gets close (chapter 15).
 - **Ship F16, not Q8_0.** The browser computes in f32 anyway. Q8_0 shrinks only the encoder matrices (embeddings stay F16, the head stays F32) and costs up to 3e-2 in probability on oscar (chapter 13).
-- **Measure both ways.** Run `sky-bench` for native latency per question and `bench()` from the WASM module for a full decision. Ladder values beyond s1-pico: TBD.
+- **Measure both ways.** Run `sky-bench` for native latency per question and `bench()` from the WASM module for a full decision (`node crates/sky-web/bench/bench-node.mjs <file.gguf>` runs it under Node). The ladder values are in the table at the top of this page; on a shared machine, interleave the models and keep the best median of several rounds, as `BENCH.md` does.
 
 ## Troubleshooting
 
@@ -185,7 +185,7 @@ The site is served from `https://<user>.github.io/skycmd/`, not from the domain 
 | message | where | meaning |
 |---|---|---|
 | `skipping golden test: …/models-src/oscar is absent` | `tests/golden.rs` | the oscar reference model is not downloaded; the golden tests pass without checking anything |
-| `unknown ladder configuration X` | `sky-convert --random`, `sky-bench --random` | only `s1-pico`, `s1-nano`, `s1-micro` exist there |
+| `unknown ladder configuration X` | `sky-convert --random`, `sky-bench --random` | only the shipped shapes exist there (`s1-pico`, `s1-nano`, `s1-micro`, the s2 ladder, `s3-pico`, `s3-nano`) |
 | `skip models/X/ (no model.safetensors)` | `scripts/export-models.sh` | the directory is not an exported checkpoint |
 | `no trained model under models/: the site falls back to the oracle policy` | `scripts/export-models.sh` | nothing to convert; the site plays with the oracle |
 | `unsupported GGUF feature: GGUF version N` | `sky-gguf` reader | only GGUF v2 and v3 are read |

@@ -146,7 +146,7 @@ The frame returns a serializable `AiStep`. A real Flappy frame with s1-pico:
 
 ## The frame budget and `set_decide_every`
 
-At 60 Hz a frame has about 16.7 ms. Measured on Apple Silicon with Node 24 / V8, the s1-pico `bench()` median is about 640 µs per AI decision on Flappy (two forward passes plus physics). A full frame including the JSON snapshot is about 0.7 ms. That is under 5% of the budget, so the page runs WASM **on the main thread**, with no worker and no message passing.
+At 60 Hz a frame has about 16.7 ms. Measured on an Apple M5 with Node 24 / V8, the s1-pico `bench()` median is 694 µs per AI decision on Flappy (two forward passes plus physics, `BENCH.md`). A full frame including the JSON snapshot is about 0.7 ms (the `micros` field above reads 684.62). That is under 5% of the budget, so the page runs WASM **on the main thread**, with no worker and no message passing.
 
 A bigger model may not fit. The session can then decide on every n-th due frame and hold the last decision in between:
 
@@ -163,11 +163,15 @@ From `crates/sky-web/src/session.rs`:
 
 Held frames call `game.tick()`, the game's "do nothing" step: Flappy glides, Rescue hovers, Dodge keeps its maneuver. They repeat the last probabilities, so the gauges do not flicker. `GameSession.timing()` keeps a rolling window of the last 120 decision times (`{n, median_us, p95_us, mean_us}`). The page can read it and raise `decide_every` when the median approaches the budget.
 
-| model | wasm decision (Flappy, 2 forwards) | frames per decision needed at 60 Hz |
-|---|---:|---:|
-| s1-pico | about 640 µs | 1 |
-| s1-nano | TBD | TBD |
-| s1-micro | TBD | TBD |
+| model | wasm decision (Flappy, 2 questions + physics) | share of a 16.7 ms frame | `decide_every` needed at 60 Hz |
+|---|---:|---:|---:|
+| s1-pico | 694 µs | 4% | 1 |
+| s1-nano | 3,541 µs | 21% | 1 |
+| s1-micro | about 32,600 µs | about 195% | 2 or more |
+| s2-nano (shape of the shipped model, full depth) | 501 µs | 3% | 1 |
+| s2-nano-doom (3 questions + physics) | 1,830 µs | 11% | 1 (a doom decision is due every 114 ms) |
+
+The s1 and s2 numbers are `BENCH.md` medians, except s1-micro, which was measured on a busy machine for [chapter 12](./12-size-ladder). s1-micro is the only model that would need throttling, and it is not shipped.
 
 ## Benchmarking inside the page
 
@@ -191,7 +195,7 @@ From `crates/sky-web/src/session.rs`:
     }
 ```
 
-It returns `{game, n, batch, median_us, p95_us, mean_us, decisions_per_s, forwards_per_decision}`. The `wasm_us` field of `site/public/bench.json` is meant for this number; it is still `null` (TBD) because `scripts/export-models.sh` only measures native latency.
+It returns `{game, n, batch, median_us, p95_us, mean_us, decisions_per_s, forwards_per_decision}`. The `wasm_us` field of `site/public/bench.json` is meant for this number. It is `null` in the file, because `scripts/export-models.sh` only measures native latency: the Bench page runs `bench()` in your browser and fills the column there.
 
 ## The JavaScript side
 
@@ -224,14 +228,22 @@ export CARGO_TARGET_DIR=$PWD/target/sky-web
 cargo test -p sky-web
 ```
 
-To score a trained model over many episodes without a page, `sky-arena` plays every game natively with the same engine. Its usage string is `sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all] [--json out.json] [--max-pipes N]`:
+To score a trained model over many episodes without a page, `sky-arena` plays every game natively with the same engine. Its usage string is `sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T]`. `--exit-threshold` only matters for s2 files ([chapter 19](./19-s2-architecture)). The DAgger scripts also call it with `--dagger N --out DIR`, which is not in the usage line:
 
 ```sh
 export CARGO_TARGET_DIR=$PWD/target/sky-arena
 cargo run --release -p sky-arena -- site/public/models/s1-pico.gguf --episodes 30 --game flappy
 ```
 
-Arena scores for the ladder: TBD.
+Arena scores of the published models, 30 episodes per game with the default seed (`runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`):
+
+| model | Flappy pipes (crashes) | Rescue rate | Dodge completion | Dodge reflex vetoes | Flappy p50 |
+|---|---:|---:|---:|---:|---:|
+| oracle | 200.0 (0) | 1.00 | 0.87 | 0 | |
+| s1-pico (0.2M, after 2 DAgger rounds) | 200.0 (0) | 1.00 | 0.83 | 1,026 | 201 µs |
+| s2-nano (1.5M, after 2 DAgger rounds, τ = 0.95) | 200.0 (0) | 1.00 | 0.87 | 25 | 378 µs |
+
+Flappy is capped at 200 pipes (`--max-pipes`), so 200.0 means every episode reached the cap. The other rungs of the ladder and every DAgger round are in [chapter 20](./20-dagger-lessons).
 
 ## Next
 

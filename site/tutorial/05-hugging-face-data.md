@@ -217,7 +217,7 @@ $D stats                                            # -> data/STATS.md
 $D --cache /Volumes/ssd/hf --seed 7 fetch-decisions
 ```
 
-The global flags are `--cache` (default `data/hf`) and `--seed` (default 1234). `fetch-decisions` also takes `--out` and `--val-frac` (default 0.05). `fetch-text` takes `--out`, `--min-chars` (default 64) and `--max-chars` (default 20000). Each command prints a per-source table: raw, invalid, duplicate and per-split counts for decisions, or documents, megabytes and duplicates for text. Download times and sizes on your connection are `TBD`.
+The global flags are `--cache` (default `data/hf`) and `--seed` (default 1234). `fetch-decisions` also takes `--out` and `--val-frac` (default 0.05). `fetch-text` takes `--out`, `--min-chars` (default 64) and `--max-chars` (default 20000). Each command prints a per-source table: raw, invalid, duplicate and per-split counts for decisions, or documents, megabytes and duplicates for text. Download time depends on your connection and was not measured. On the build machine the raw cache `data/hf` takes 1.3 GB (`du -sh data/hf`), and `data/STATS.md` lists what comes out of it: 776,247 decision records and 150 MB of pretraining text in 97,660 documents.
 
 The game records from [chapter 04](./04-game-cores-and-oracles) go to `data/games`. Together with `data/text` and `data/decisions`, they are the default inputs of `sky-data train-tokenizer`, covered in [07 A tokenizer with small vocabularies](./07-tokenizer).
 

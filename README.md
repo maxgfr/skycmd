@@ -2,32 +2,40 @@
 
 **Tiny "System One" decision models, trained from scratch in Rust on a MacBook and playing games live in your browser through WebAssembly.**
 
-[Play](https://maxgfr.github.io/skycmd/play/) · [Tutorial](https://maxgfr.github.io/skycmd/tutorial/) · [Bench](https://maxgfr.github.io/skycmd/bench/)
+[Play](https://maxgfr.github.io/skycmd/play/) · [Install](https://maxgfr.github.io/skycmd/install/) · [Tutorial](https://maxgfr.github.io/skycmd/tutorial/) · [Bench](https://maxgfr.github.io/skycmd/bench/)
 
 A decision model does not generate text. It receives a **state** and **typed questions** (`choice`, `score`, `noul` = probabilistic yes/no) and returns a calibrated probability for every allowed option in **one forward pass**. skycmd shows how small such a model can be:
 
-| model | parameters | GGUF size | per decision (native) |
-|---|---:|---:|---:|
-| s1-pico | 0.2M | ~0.5 MB | ~0.2 ms |
-| s1-nano | 1.1M | — | — |
-| s1-micro | 6.6M | — | — |
+| model | architecture | parameters | GGUF size | closed-loop play (`sky-arena`) | per decision |
+|---|---|---:|---:|---|---|
+| s1-pico | s1, f16 | 202,305 | 545 KB | Flappy 200/200 pipes, 0 crashes; Rescue 100%; Dodge 83% (oracle 87%), 1,026 reflex vetoes | 188 µs native (1 question), 694 µs WASM (Flappy frame) |
+| s2-nano | s2, ternary | 1,532,033 | 702 KB | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 25 reflex vetoes | 298 µs native, 501 µs WASM |
+| s2-nano-doom | s2, ternary | 1,532,033 | 702 KB | Doom-like: completion 100%, kill rate 0.75 (= oracle), 0 deaths; Flappy 197.6 pipes (2 crashes in 50); Dodge 72% (oracle 78%) | 1,055 µs native, 1,830 µs WASM (3 questions) |
 
-For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M parameters, and the others range from 144M to 27B. Final numbers will be in [`BENCH.md`](BENCH.md) and on the site.
+Sources: s1-pico and s2-nano play 30 episodes per game with the default seed (`runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`); s2-nano-doom plays 50 episodes per game with seed 7 (`BENCH.md`). Latencies are medians from [`BENCH.md`](BENCH.md) on an Apple M5; the s2-nano row there is timed on a random-init model of the same shape. Both s2 files stop at τ = 0.95 (early exit, see below).
+
+For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M parameters, and the others range from 144M to 27B.
+
+Two results took more than one try, and the tutorial tells both stories:
+- **DAgger.** The first s1-pico labelled 82% of Flappy test states correctly and crashed in all 30 episodes before the first pipe. Relative clearances in the state text plus two DAgger rounds took it to 200/200. The 5.6× larger s1-nano did worse ([chapter 20](https://maxgfr.github.io/skycmd/tutorial/20-dagger-lessons)).
+- **Early exit.** s2-nano crashed in every Flappy episode at the exit thresholds calibrated on validation questions (τ 0.62–0.69), and played at the oracle's level at full depth or with τ = 0.95, using 3.2 to 3.4 of its 4 layers. Calibrate the exit on closed-loop states ([chapter 19](https://maxgfr.github.io/skycmd/tutorial/19-s2-architecture)).
 
 ## How it works
-- **Format.** The format is the same as Laya/Julia-1 and llama.cpp `/v1/systemone` ([PR #29818](https://github.com/ggml-org/llama.cpp/pull/29818)):
+- **s1 format.** The format is the same as Laya/Julia-1 and llama.cpp `/v1/systemone` ([PR #29818](https://github.com/ggml-org/llama.cpp/pull/29818)):
   - a ModernBERT encoder;
   - a decision head, run once per question type;
   - one `[MASK]` marker per option;
   - `softmax(score / T)` with temperatures per type and per option-count bucket.
 
-  The same `.gguf` file runs in our WASM engine, in `llama-server` and in wllama.
+  The same s1 `.gguf` file runs in our engine, in `llama-server` (max probability difference 4.7e-4) and in wllama 3.8.1 (1.1e-4). Ollama 0.40.3 loads it but rejects the `laya` decision encoding ([`docs/compat.md`](docs/compat.md)).
+- **s2 format** ([`docs/SPEC-S2.md`](docs/SPEC-S2.md)). Same requests and responses, different model: a static stream (question + options) encoded once and cached, a state stream encoded once per frame, options that never attend to each other (permutation-equivariant by construction), one `[NUM]` token per number with continuous value features, early exits with deep supervision, and ternary weights trained with QAT. s2 files run only in the skycmd engine: browser, Node/Deno/Bun, Python, CLI and server.
 - **Training.** Everything is in Rust with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon:
   - MLM pretraining;
   - decision training with cross-entropy on soft targets;
   - Muon for the encoder matrices and AdamW for the rest, with a WSD schedule;
   - per-type temperature calibration;
-  - DAgger rounds on the games.
+  - DAgger rounds on the games;
+  - for s2: numeric MLM, deep supervision over the exits and ternary QAT.
 - **Data.** Most of it comes from Hugging Face:
   - typed-decision sets plus BoolQ, MNLI, ARC, CommonsenseQA and Banking77;
   - SimpleStories, TinyStories and FineWeb for pretraining;
@@ -35,7 +43,7 @@ For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M
   - paraphrases generated by GLM.
 
   See [`DATA_LICENSES.md`](DATA_LICENSES.md).
-- **Inference.** A dependency-light Rust engine (byte-level BPE, ModernBERT, decision head, f32 and Q8_0) compiled to `wasm32` with SIMD128. In the browser, one WASM call runs the game physics, turns the state into text, runs the model, applies the coded safety veto and steps the game.
+- **Inference.** A dependency-light Rust engine (byte-level BPE, ModernBERT and s2 graphs, f32, Q8_0 and ternary weights) compiled to `wasm32` with SIMD128, and packaged as the `skycmd` CLI and server, a Python wheel and an npm package ([Install](https://maxgfr.github.io/skycmd/install/)). In the browser, one WASM call runs the game physics, turns the state into text, runs the model, applies the coded safety veto and steps the game.
 
 ## The rule: the model proposes, the code decides
 The games are civil drone scenarios: Flappy Drone, Rescue Run and Obstacle Dodge. In each one the model only *advises*, and coded rules (geofence, ceiling, battery, collision reflex) always keep a veto. This is a demo and a tutorial, not flight software. The model never touches a control loop.
@@ -53,8 +61,11 @@ A fourth game is a Doom-like first-person shooter on a grid, drawn with [Freedoo
 | `sky-infer` | inference engine (native + WASM), tokenizer, converter to GGUF |
 | `sky-arena` | plays the games natively with a model, DAgger collection |
 | `sky-web` | WASM bindings used by the site (games + model) |
+| `sky-serve` | the `skycmd` CLI: `serve`, `decide`, `info`, `bench` |
+| `sky-py` | Python bindings (PyO3), the `skycmd` wheel |
+| `packages/skycmd-js` | the `skycmd` npm package (WASM) |
 
-Shared formats are in [`docs/SPEC.md`](docs/SPEC.md), and the research notes are in [`docs/research.md`](docs/research.md).
+Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](docs/SPEC-S2.md), runtime compatibility in [`docs/compat.md`](docs/compat.md), and the research notes in [`docs/research.md`](docs/research.md).
 
 ## Quick start (macOS, Apple Silicon)
 ```sh
@@ -67,7 +78,10 @@ cargo run --release -p sky-data -- train-tokenizer --vocab 1024
 scripts/train-ladder.sh pico                               # pretrain → decide → calibrate → export → eval
 scripts/specialize.sh pico 2 6                             # DAgger rounds on the games
 cargo run --release -p sky-arena -- models/s1-pico-g2 --episodes 30
+cargo run --release -p sky-data -- train-tokenizer --vocab 2048 --num   # s2 tokenizer with [NUM]
+scripts/train-s2.sh nano && scripts/specialize-s2.sh nano 2 8      # the s2 model (chapter 19)
 ```
+To use a published model without training anything, see the [Install](https://maxgfr.github.io/skycmd/install/) page.
 The step-by-step guide is the [tutorial](https://maxgfr.github.io/skycmd/tutorial/).
 
 ## License

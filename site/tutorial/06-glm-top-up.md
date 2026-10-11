@@ -207,7 +207,7 @@ $D teacher --model glm-4.6 --min-interval-ms 3000 drone-orders --n 200
 
 ## Status
 
-The number of paraphrases and orders produced so far, and their effect on accuracy, are `TBD`. `scripts/train-ladder.sh` currently trains on `data/decisions,data/games`, so teacher outputs under `data/teacher/` are not part of the default training mix yet. `DATA_LICENSES.md` notes that teacher-generated data is subject to the provider's terms of service.
+On the build machine, `paraphrase-questions` wrote 1,999 paraphrase items in 52 calls (`data/teacher/paraphrase.log`), and `drone-orders` holds 3,000 orders after dropping 51 invalid ones in its last run (`data/teacher/orders.log`). Their effect on accuracy was not measured. `scripts/train-ladder.sh` currently trains on `data/decisions,data/games`, so teacher outputs under `data/teacher/` are not part of the default training mix yet. `DATA_LICENSES.md` notes that teacher-generated data is subject to the provider's terms of service.
 
 ## Next
 

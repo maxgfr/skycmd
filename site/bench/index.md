@@ -7,7 +7,7 @@ outline: false
 
 # Bench
 
-Size, accuracy and latency of the `skycmd-s1` ladder. Accuracy, NLL and ECE come from the held-out test split (`runs/<model>/report.md`, written by `sky-train eval`). The native latency comes from `sky-bench` on the build machine. Numbers that are not measured yet show as **TBD**.
+Size, accuracy, closed-loop game results and latency of the shipped models (s1-pico, s2-nano and the Doom fine-tune). Accuracy, NLL and ECE come from the held-out test split (`runs/<model>/report.md`, written by `sky-train eval`). The native latency comes from `sky-bench` on the build machine. A value shown as **n/a** was not measured for that model. Use the button below to measure latency in your own browser.
 
 <ClientOnly>
   <BenchView />

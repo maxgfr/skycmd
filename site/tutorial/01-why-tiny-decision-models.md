@@ -115,7 +115,15 @@ Native latency of `s1-pico` per decision, measured by `sky-arena` on the build m
 | rescue | 3913 | 429.8 | 542.2 |
 | dodge | 30660 | 243.2 | 316.9 |
 
-`site/public/bench.json` records a `sky-bench` median of 174.5 µs for s1-pico. Browser (WASM) latency is `TBD`. The latencies of s1-nano and s1-micro are `TBD`.
+That table is the first s1-pico checkpoint, before the DAgger rounds of [chapter 20](./20-dagger-lessons). The shipped s1-pico decides a Flappy frame in 201 µs at the median (p95 221 µs) in `sky-arena` (`runs/ship-s1-pico.arena.json`). `BENCH.md` ("Inference") gives the cleaner `sky-bench` numbers on the same M5:
+
+| model | native, 1 question | native, 2 questions on one state | WASM, one Flappy decision (2 questions + physics) |
+|---|---:|---:|---:|
+| s1-pico | 188 µs | 407 µs | 694 µs |
+| s1-nano | 974 µs | 1,980 µs | 3,541 µs |
+| s2-nano (ternary file, full depth) | 298 µs | 329 µs | 501 µs |
+
+s1-micro (6.6M parameters) is not in `BENCH.md`. Measured for [chapter 12](./12-size-ladder) on a busy machine, it takes about 4,600 µs per question natively and about 32,600 µs per WASM decision, two full 60 Hz frames. The s2-nano row comes from a randomly initialised model of the same shape, so only its speed is meaningful ([chapter 19](./19-s2-architecture)).
 
 ## Where the size limit shows
 
@@ -130,8 +138,8 @@ Small models have clear limits, and skycmd publishes them rather than hiding the
 
 Two lessons come out of these numbers.
 
-- **General decisions need capacity.** On the external `LocalLLaMA/typed-decisions` benchmark, s1-pico scores 0.3280. The oscar-1-17m model card reports 0.6775 on the same benchmark (a vendor-reported number). The s1-nano and s1-micro scores are `TBD`.
-- **Per-decision accuracy is not policy quality.** In `runs/s1-pico/arena.json`, the same model that labels 82% of Flappy test states correctly crashes in all 30 Flappy episodes (mean score 0.0, against 200.0 for the oracle). Flappy needs a decision every frame, so one wrong frame near a pipe ends the episode. Rescue holds up better: a 0.63 rescue rate with 130 vetoes from the safety reflex, against 1.0 for the oracle. This is why skycmd evaluates in closed loop and runs DAgger rounds (`scripts/specialize.sh`), and why the safety veto exists.
+- **General decisions need capacity.** On the external `LocalLLaMA/typed-decisions` benchmark, s1-pico scores 0.3280. The oscar-1-17m model card reports 0.6775 on the same benchmark (a vendor-reported number). s1-nano scores 0.3975 and s1-micro 0.3100 (`runs/s1-nano/report.md`, `runs/s1-micro/report.md`), so a model 33 times larger than pico did not do better here.
+- **Per-decision accuracy is not policy quality.** In `runs/s1-pico/arena.json`, the same model that labels 82% of Flappy test states correctly crashes in all 30 Flappy episodes (mean score 0.0, against 200.0 for the oracle). Flappy needs a decision every frame, so one wrong frame near a pipe ends the episode. Rescue holds up better: a 0.63 rescue rate with 130 vetoes from the safety reflex, against 1.0 for the oracle. This is why skycmd evaluates in closed loop and runs DAgger rounds (`scripts/specialize.sh`), and why the safety veto exists. After two rounds the same 0.2M-parameter model flies 200 of 200 pipes in all 30 episodes (`runs/ship-s1-pico.arena.json`, [chapter 20](./20-dagger-lessons)).
 
 ## Research that shaped the recipe
 

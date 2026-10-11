@@ -271,15 +271,17 @@ export CARGO_TARGET_DIR=$PWD/target/sky-infer
 cargo run --release -p sky-infer --bin sky-bench -- site/public/models/s1-pico.gguf --iters 300
 ```
 
-Measured on Apple Silicon (Node 24 / V8 for wasm), s1-pico F16 GGUF, 202,305 parameters:
+Measured on an Apple M5 (Node 24.10 / V8 for wasm, F16 GGUF files, medians; `BENCH.md`, "Inference", except s1-micro):
 
-| model | wasm `bench()` per decision (2 forwards + physics) | native `sky-bench` per question |
-|---|---:|---:|
-| s1-pico | about 640 µs median | 174.5 µs median |
-| s1-nano | TBD | TBD |
-| s1-micro | TBD | TBD |
+| model | params | wasm `bench()` per decision (2 forwards + physics) | native `sky-bench`, 2 questions on one state | native `sky-bench`, 1 question |
+|---|---:|---:|---:|---:|
+| s1-pico | 202,305 | 694 µs | 407 µs | 188 µs |
+| s1-nano | 1,134,209 | 3,541 µs | 1,980 µs | 974 µs |
+| s1-micro | 6,630,913 | about 32,600 µs | about 9,700 µs | about 4,600 µs |
 
-The two columns do not measure the same thing. Splitting the wasm figure evenly gives roughly 320 µs per forward pass, about 1.8× the native figure. That split is an estimate, not a measurement. Expect a few percent of noise between runs, more if the machine is busy.
+The s1-micro row was measured for [chapter 12](./12-size-ladder) on the same machine while other jobs ran, so read it as an order of magnitude. The comparable columns are the first two: the same two questions on the same state, WASM against native. WASM costs 1.7× native on pico and 1.8× on nano. Expect a few percent of noise between runs, more if the machine is busy (the s1-pico WASM median moved between 631 and 697 µs across three runs on a loaded machine).
+
+The s2 architecture of [chapter 19](./19-s2-architecture) uses the same kernels and the same SIMD128 build. It does less work per frame, so its WASM decision costs 501 µs for a 1.5M-parameter s2-nano at full depth (`BENCH.md`).
 
 ## Next
 
