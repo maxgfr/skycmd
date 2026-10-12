@@ -155,6 +155,38 @@ enum Cmd {
         #[arg(long, default_value = "data/STATS.md")]
         out: PathBuf,
     },
+    /// s4: the records the Qwen3.5 teacher scores (data/s4/queue), the gold sets and the
+    /// zero-shot held-out sets (data/s4/gold, data/s4/heldout).
+    S4Corpus {
+        #[arg(long, default_value = "data")]
+        data: PathBuf,
+        #[arg(long, default_value = "data/s4")]
+        out: PathBuf,
+        /// Records sampled per typed-decision source.
+        #[arg(long, default_value_t = 4000)]
+        per_source: usize,
+        /// Generic snippet records.
+        #[arg(long, default_value_t = 60000)]
+        generic: usize,
+        /// Tool-routing, triage and moderation records each.
+        #[arg(long, default_value_t = 15000)]
+        per_case: usize,
+        /// Records per held-out set.
+        #[arg(long, default_value_t = 2000)]
+        heldout: usize,
+    },
+    /// s4: gold / teacher mix of the scored records (teacher temperature fitted on gold).
+    S4Mix {
+        #[arg(long, value_delimiter = ',')]
+        scored: Vec<PathBuf>,
+        #[arg(long, default_value = "data/s4/mix")]
+        out: PathBuf,
+        /// Weight of the gold label when there is one.
+        #[arg(long, default_value_t = 0.5)]
+        alpha: f32,
+        #[arg(long)]
+        temperature: Option<f32>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -473,6 +505,45 @@ fn main() -> Result<()> {
             std::fs::write(&out, &md)?;
             println!("{md}");
             println!("wrote {out:?}");
+        }
+        Cmd::S4Corpus {
+            data,
+            out,
+            per_source,
+            generic,
+            per_case,
+            heldout,
+        } => {
+            let hf = Hf::new(&cli.cache)?;
+            let counts = sky_data::s4::build_corpus(
+                &hf,
+                &sky_data::s4::CorpusOptions {
+                    data,
+                    out,
+                    seed: cli.seed,
+                    per_source,
+                    generic,
+                    per_case,
+                    heldout,
+                },
+            )?;
+            for (k, n) in counts {
+                println!("{k:<16} {n}");
+            }
+        }
+        Cmd::S4Mix {
+            scored,
+            out,
+            alpha,
+            temperature,
+        } => {
+            let report = sky_data::s4::mix(&sky_data::s4::MixOptions {
+                scored,
+                out,
+                alpha,
+                temperature,
+            })?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
     }
     Ok(())

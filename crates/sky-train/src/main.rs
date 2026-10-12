@@ -311,6 +311,10 @@ enum Cmd {
         /// a random earlier exit (its later loops skipped).
         #[arg(long, default_value_t = 0.0)]
         loop_dropout: f64,
+        /// s4 deep improvement supervision: exit e trains toward normalize(target^beta_e),
+        /// beta rising linearly from this value at the first exit to 1 at the last.
+        #[arg(long)]
+        dis: Option<f32>,
         /// Padding multiple of the training batch shapes (32: coarser buckets, fewer compiles).
         #[arg(long, default_value_t = 16)]
         pad_to: usize,
@@ -662,6 +666,7 @@ fn main() -> Result<()> {
             seed,
             qat_frac,
             loop_dropout,
+            dis,
             pad_to,
             seq_records,
             seq_frac,
@@ -696,6 +701,7 @@ fn main() -> Result<()> {
             seq_records,
             seq_frac,
             carry_drop,
+            dis,
         })?,
         Cmd::S2Calibrate {
             run,

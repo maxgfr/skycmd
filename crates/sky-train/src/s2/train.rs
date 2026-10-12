@@ -77,6 +77,9 @@ pub struct S2Session {
     dec_fn: BTreeMap<bool, CompiledGrad>,
     /// Compiled temporal sequence graphs keyed by QAT.
     seq_fn: BTreeMap<bool, CompiledGrad>,
+    /// s4 deep improvement supervision: per-exit sharpening exponents of the targets
+    /// (`model::exit_targets`); `None` trains every exit on the target itself.
+    pub dis_beta: Option<Vec<f32>>,
 }
 
 /// Number of arrays [`dec_arrays`] produces per batch.
@@ -189,6 +192,7 @@ impl S2Session {
             mlm_fn: None,
             dec_fn: BTreeMap::new(),
             seq_fn: BTreeMap::new(),
+            dis_beta: None,
         }
     }
 
@@ -249,15 +253,30 @@ impl S2Session {
         let (loss, grad_norm) = if self.compile {
             let names = sorted_names(&self.params);
             let cfg = self.cfg.clone();
+            let dis = self.dis_beta.is_some();
             let f = self.dec_fn.entry(qat).or_insert_with(|| {
                 CompiledGrad::new(names, move |p, b| {
-                    model::decision_loss_weighted(p, &cfg, &dec_from(b), qat, &b[15])
+                    if dis {
+                        model::decision_loss_dis(p, &cfg, &dec_from(b), qat, &b[15], &b[16])
+                    } else {
+                        model::decision_loss_weighted(p, &cfg, &dec_from(b), qat, &b[15])
+                    }
                 })
             });
             let mut inputs = dec_arrays(batch);
             inputs.push(Array::from_slice(&wv, &[wv.len() as i32]));
+            if let Some(beta) = &self.dis_beta {
+                inputs.push(Array::from_slice(beta, &[beta.len() as i32]));
+            }
             let (loss, grads) = f.call(&self.params, inputs)?;
             apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?
+        } else if let Some(beta) = &self.dis_beta {
+            let cfg = &self.cfg;
+            let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+            let beta = Array::from_slice(beta, &[beta.len() as i32]);
+            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+                model::decision_loss_dis(p, cfg, b, qat, &wts, &beta)
+            })?
         } else {
             let cfg = &self.cfg;
             train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
@@ -365,6 +384,7 @@ impl S2Session {
             mlm_fn: None,
             dec_fn: BTreeMap::new(),
             seq_fn: BTreeMap::new(),
+            dis_beta: None,
         })
     }
 }
@@ -1006,6 +1026,9 @@ pub struct S2DecideArgs {
     pub seq_frac: f64,
     /// Probability that a warm frame's carry is dropped (cold start).
     pub carry_drop: f64,
+    /// s4 deep improvement supervision: sharpening exponent of the first exit's target
+    /// (rising linearly to 1 at the last exit); `None` disables it.
+    pub dis: Option<f32>,
 }
 
 /// Validation summary of one model mode.
@@ -1117,6 +1140,10 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     s.state.budget_secs = a.minutes * 60.0;
     s.cfg.bf16 = a.bf16;
     s.compile = a.compile;
+    s.dis_beta = a.dis.map(|b0| model::dis_betas(s.cfg.n_exits(), b0));
+    if let Some(beta) = &s.dis_beta {
+        println!("deep improvement supervision: exit target exponents {beta:?}");
+    }
     println!(
         "{}: {} parameters, batch {}, budget {:.1} min, QAT over the last {:.0}%, loop dropout {}",
         s.cfg.name,
