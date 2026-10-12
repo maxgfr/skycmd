@@ -4,7 +4,7 @@
 
 ## Why write an optimizer at all
 
-`docs/research.md` lists what mlx-rs 0.32 provides: `fast::scaled_dot_product_attention`, `fast::rope`, `fast::layer_norm`, `value_and_grad` and graph compilation. It has no Muon and no transformer training example. The optimizer is about 200 lines of Rust over plain `Array`s, ported from `mlx.optimizers.Muon` (Python) and the usual AdamW.
+`docs/research.md` lists what mlx-rs 0.32 provides: `fast::scaled_dot_product_attention`, `fast::rope`, `fast::layer_norm`, `value_and_grad` and graph compilation. It has no Muon and no transformer training example. The optimizer is about 240 lines of Rust over plain `Array`s (plus its tests), ported from `mlx.optimizers.Muon` (Python) and the usual AdamW.
 
 ## Two optimizers, one parameter map
 
@@ -18,9 +18,17 @@ pub fn group_of(name: &str, ndim: usize) -> Group {
             || name.ends_with(".attn.Wo.weight")
             || name.ends_with(".mlp.Wi.weight")
             || name.ends_with(".mlp.Wo.weight"));
-    if hidden {
+    let s2_embedding = matches!(
+        name,
+        "token_embd.weight" | "type_embd.weight" | "num_proj.weight"
+    );
+    if hidden || crate::s2::model::is_hidden_matrix(name) {
         Group::Muon
-    } else if ndim == 2 && !name.contains("embeddings") && name != "type_emb.weight" {
+    } else if ndim == 2
+        && !name.contains("embeddings")
+        && name != "type_emb.weight"
+        && !s2_embedding
+    {
         Group::AdamDecay
     } else {
         Group::AdamNoDecay
@@ -33,6 +41,8 @@ Three groups:
 - **Muon**: the four matrices of every encoder layer.
 - **AdamW with weight decay**: the other matrices, meaning the decision head, the scorer and the pretraining-only `mlm.dense`.
 - **AdamW without decay**: embeddings, `type_emb`, every norm and every bias.
+
+The same function serves the s2 and s3 models of chapters 19 and 21: their encoder block matrices (`blk.*` and `static.blk.*`: `attn_qkv`, `attn_output`, `ffn_up`, `ffn_down`, see `is_hidden_matrix`) go to Muon, and their embeddings (`token_embd`, `type_embd`, `num_proj`) are never decayed.
 
 The research notes explain the split. Muon can collapse at the interface between representation and readout (paper 2608.07436), so embeddings, the head and the scorer stay on AdamW.
 
@@ -59,7 +69,9 @@ pub fn newton_schulz(g: &Array, steps: usize) -> R<Array> {
         let poly = gram
             .multiply(Array::from_f32(b))?
             .add(ops::matmul(&gram, &gram)?.multiply(Array::from_f32(c))?)?;
-        x = x.multiply(Array::from_f32(a))?.add(ops::matmul(&poly, &x)?)?;
+        x = x
+            .multiply(Array::from_f32(a))?
+            .add(ops::matmul(&poly, &x)?)?;
     }
     Ok(if transpose { x.t() } else { x })
 }
@@ -158,19 +170,27 @@ A training step is "loss and gradient of every parameter, then one optimizer upd
 ```rust
 impl CompiledGrad {
     /// Compiles `loss(params, batch_arrays)`; parameters are passed in sorted name order.
-    fn new(names: Vec<Rc<str>>, loss: impl Fn(&ParamMap, &[Array]) -> R<Array> + 'static) -> Self {
+    pub(crate) fn new(
+        names: Vec<Rc<str>>,
+        loss: impl Fn(&ParamMap, &[Array]) -> R<Array> + 'static,
+    ) -> Self {
         let keys = names.clone();
         let step = move |args: &[Array]| -> R<Vec<Array>> {
             let (pv, bv) = args.split_at(keys.len());
             let params: ParamMap = keys.iter().cloned().zip(pv.iter().cloned()).collect();
-            let f = |p: HashMap<Rc<str>, Array>, b: &[Array]| -> R<Vec<Array>> { Ok(vec![loss(&p, b)?]) };
+            let f = |p: HashMap<Rc<str>, Array>, b: &[Array]| -> R<Vec<Array>> {
+                Ok(vec![loss(&p, b)?])
+            };
             let (mut values, grads) = keyed_value_and_grad(f)(params, bv)?;
             for k in &keys {
                 values.push(grads[k].clone());
             }
             Ok(values)
         };
-        Self { names, f: Box::new(mlx_rs::transforms::compile::compile(step, false)) }
+        Self {
+            names,
+            f: Box::new(mlx_rs::transforms::compile::compile(step, false)),
+        }
     }
 ```
 
@@ -192,7 +212,11 @@ fn compute_params<'a>(p: &'a ParamMap, cfg: &ModelConfig) -> R<Cow<'a, ParamMap>
     }
     let mut out = ParamMap::with_capacity(p.len());
     for (k, v) in p {
-        let v = if v.dtype() == Dtype::Float32 { v.as_dtype(Dtype::Bfloat16)? } else { v.clone() };
+        let v = if v.dtype() == Dtype::Float32 {
+            v.as_dtype(Dtype::Bfloat16)?
+        } else {
+            v.clone()
+        };
         out.insert(k.clone(), v);
     }
     Ok(Cow::Owned(out))

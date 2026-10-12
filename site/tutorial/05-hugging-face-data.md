@@ -69,25 +69,63 @@ The file is created at full length with `set_len` but stays sparse on disk. The 
 
 ## Turning datasets into typed questions
 
-`fetch-decisions` runs a list of sources, each with a loader function:
+`fetch-decisions` runs a list of sources. Each one has a loader function, a `test_only` flag for external benchmarks, and an optional cap that overrides `--cap` (`src` uses the default cap, `capped` sets its own):
 
 `crates/sky-data/src/decisions.rs`
 
 ```rust
 pub fn sources() -> Vec<Source> {
+    use crate::nlu::*;
+    use crate::typed::*;
     vec![
-        Source { name: "typed_synth", test_only: false, load: load_typed_synth },
-        Source { name: "assistant_decisions", test_only: false, load: load_assistant_decisions },
-        Source { name: "pngwn_typed", test_only: false, load: load_pngwn },
-        Source { name: "boolq", test_only: false, load: load_boolq },
-        Source { name: "mnli", test_only: false, load: load_mnli },
-        Source { name: "arc", test_only: false, load: load_arc },
-        Source { name: "commonsense_qa", test_only: false, load: load_csqa },
-        Source { name: "banking77", test_only: false, load: load_banking77 },
-        Source { name: "typed_decisions_bench", test_only: true, load: load_bench },
+        src("typed_synth", load_typed_synth),
+        src("assistant_decisions", load_assistant_decisions),
+        src("pngwn_typed", load_pngwn),
+        src("boolq", load_boolq),
+        src("mnli", load_mnli),
+        src("arc", load_arc),
+        src("commonsense_qa", load_csqa),
+        src("banking77", load_banking77),
+        Source {
+            name: "typed_decisions_bench",
+            test_only: true,
+            cap: None,
+            load: load_bench,
+        },
+        // Typed-decision corpora on the Hub.
+        capped("tasksource_jev", 120_000, load_tasksource_jev),
+        capped("procedural_typed", 80_000, load_procedural),
+        // The loader applies its own cap (all drone/robot rows + 30k others).
+        capped("open_jev", usize::MAX, load_open_jev),
+        capped("swarm_laya", usize::MAX, load_swarm_laya),
+        src("helmo_synth", load_helmo),
+        src("tasksource_synth", load_tasksource_synth),
+        src("calibrated_typed", load_calibrated),
+        Source {
+            name: "notam",
+            test_only: true,
+            cap: Some(usize::MAX),
+            load: load_notam,
+        },
+        // Classic NLU / preference sets converted to typed questions.
+        src("helpsteer2", load_helpsteer2),
+        src("pawsx_fr", load_pawsx_fr),
+        capped("allocine", 30_000, load_allocine),
+        src("when2call", load_when2call),
+        capped("snli", 40_000, load_snli),
+        capped("hellaswag", 30_000, load_hellaswag),
+        // GLM teacher data (local, no download).
+        capped("glm_orders", usize::MAX, crate::augment::load_glm_orders),
     ]
 }
 ```
+
+`sky-data fetch-decisions --list` prints the 24 names with their caps. The first eight sources and the benchmark are described below. The others were added for the s2 and s3 models (loaders in `crates/sky-data/src/typed.rs` and `nlu.rs`):
+
+- **More typed-decision corpora**: `tasksource/tasksource-jev-typed-decisions` (only rows marked for commercial use, minus sources that duplicate a set loaded directly), `tasksource/procedural-typed-decisions`, `ZefanCai/Open-Jev` (all 18,130 drone-control rows plus 30k from its other sources), `Aditharavind/swarm-laya-decisions`, `helmo/synthetic-typed-decisions`, `tasksource/synthetic-typed-decisions` and `m-lagnajit/calibrated-typed-decisions`.
+- **More NLU and preference sets**: HelpSteer2 (one 5-level score per attribute), PAWS-X French and Allociné (French nouls), When2Call (a 4-way choice between calling a tool, asking for information, refusing and answering directly), SNLI and HellaSwag.
+- **A second external benchmark**: `AirsideLabs/notam-typed-decisions` (`notam`), evaluation only, like `typed_decisions_bench`.
+- **GLM teacher data**: `glm_orders`, the validated drone orders of [chapter 06](./06-glm-top-up), read from `data/teacher` without any download.
 
 ### Native System One datasets
 
@@ -151,9 +189,11 @@ Every source goes through `finalize`:
 
 ```rust
     for it in kept.iter_mut() {
-        it.rec.split = if test_only {
+        it.rec.split = if test_only || it.rec.split == "test" {
             "test".into()
-        } else if (hash64(format!("{src}/{}", it.group).as_bytes()) % 1_000_000) as f64 / 1e6 < opts.val_frac {
+        } else if (hash64(format!("{src}/{}", it.group).as_bytes()) % 1_000_000) as f64 / 1e6
+            < opts.val_frac
+        {
             "val".into()
         } else {
             "train".into()
@@ -161,7 +201,7 @@ Every source goes through `finalize`:
     }
 ```
 
-`LocalLLaMA/typed-decisions` is marked `test_only`. All of its records are `split = "test"`, and it is never trained on. It is the external benchmark behind the `typed_decisions_bench` row in `runs/*/report.md`.
+`LocalLLaMA/typed-decisions` (`typed_decisions_bench`) and `AirsideLabs/notam-typed-decisions` (`notam`) are marked `test_only`. All of their records are `split = "test"`, and they are never trained on. `typed_decisions_bench` is the external benchmark behind the row of the same name in `runs/*/report.md`. A loader can also keep a labelled test split of its own: When2Call keeps its `test/mcq` split (3,630 records) as `split = "test"`.
 
 ## MLM text
 
@@ -209,6 +249,7 @@ export CARGO_TARGET_DIR=$PWD/target/sky-data
 cargo build --release -p sky-data
 D=$CARGO_TARGET_DIR/release/sky-data
 
+$D fetch-decisions --list                           # source names and caps
 $D fetch-decisions                                  # all sources -> data/decisions/<src>.jsonl
 $D fetch-decisions --only boolq,mnli --cap 20000    # a subset, smaller cap
 $D fetch-text --max-mb 150                          # -> data/text/<src>.jsonl
@@ -217,7 +258,7 @@ $D stats                                            # -> data/STATS.md
 $D --cache /Volumes/ssd/hf --seed 7 fetch-decisions
 ```
 
-The global flags are `--cache` (default `data/hf`) and `--seed` (default 1234). `fetch-decisions` also takes `--out` and `--val-frac` (default 0.05). `fetch-text` takes `--out`, `--min-chars` (default 64) and `--max-chars` (default 20000). Each command prints a per-source table: raw, invalid, duplicate and per-split counts for decisions, or documents, megabytes and duplicates for text. Download time depends on your connection and was not measured. On the build machine the raw cache `data/hf` takes 1.3 GB (`du -sh data/hf`), and `data/STATS.md` lists what comes out of it: 776,247 decision records and 150 MB of pretraining text in 97,660 documents.
+The global flags are `--cache` (default `data/hf`) and `--seed` (default 1234). `fetch-decisions` also takes `--out` (default `data/decisions`), `--val-frac` (default 0.05), `--teacher` (where `glm_orders` reads the GLM output, default `data/teacher`) and `--list`. `fetch-text` takes `--out`, `--min-chars` (default 64) and `--max-chars` (default 20000). Each command prints a per-source table: raw, invalid, duplicate and per-split counts for decisions, or documents, megabytes and duplicates for text. Download time depends on your connection and was not measured. On the build machine the raw cache `data/hf` takes 1.3 GB (`du -sh data/hf`), and `data/STATS.md` (written by `sky-data stats`, gitignored like the rest of `data/`) lists what comes out of it: 776,247 decision records and 150 MB of pretraining text in 97,660 documents.
 
 The game records from [chapter 04](./04-game-cores-and-oracles) go to `data/games`. Together with `data/text` and `data/decisions`, they are the default inputs of `sky-data train-tokenizer`, covered in [07 A tokenizer with small vocabularies](./07-tokenizer).
 

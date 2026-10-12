@@ -8,6 +8,7 @@ name=$1 rounds=${2:-2} minutes=${3:-8}
 case "$name" in pico) vocab=1024 batch=128 ;; nano) vocab=2048 batch=128 ;; micro) vocab=4096 batch=64 ;; esac
 T=target/sky-train-s2/release/sky-train
 A=target/sky-infer-s2/release/sky-arena
+[ -x "$A" ] || CARGO_TARGET_DIR="${A%/release/sky-arena}" cargo build -q --release -p sky-arena
 cfg=configs/s2-$name.json
 init=${INIT:-runs/s2-$name/decide/last}
 model=${MODEL:-models/s2-$name/skycmd-s2-$name-ternary.gguf}

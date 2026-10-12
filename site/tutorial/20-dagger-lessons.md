@@ -1,6 +1,6 @@
 # 20 What DAgger taught us
 
-The first trained s1-pico labelled 82% of held-out Flappy questions correctly and then crashed in all 30 Flappy episodes, before the first pipe. This chapter is about that gap between answering questions and playing a game: why behaviour cloning leaves it open, the two fixes that closed it, the round-by-round results for s1-pico, s1-nano and s2-nano, and why the bigger s1 model did worse.
+The first trained s1-pico labelled 82% of held-out Flappy questions correctly and then crashed in all 30 Flappy episodes, before the first pipe. This chapter is about that gap between answering questions and playing a game: why behaviour cloning leaves it open, the two fixes that closed it, the round-by-round results for s1-pico, s1-nano, s2-nano and s3-pico, and why the bigger s1 model did worse.
 
 Every arena number below is `sky-arena` with 30 episodes per game and the default seed, from the `arena.json` file named next to it, unless the text says otherwise. Flappy is capped at 200 pipes.
 
@@ -87,7 +87,7 @@ The s2 script does the same with `s2-decide --qat-frac 1.0`, so every step train
 | round 3 | 14,763 | 200.0 (0) | 1.00 | 0.80 | 1,021 | `runs/s1-pico-g3/arena.json` |
 | oracle | | 200.0 (0) | 1.00 | 0.87 | 0 | |
 
-Steps per round come from the `done:` lines of `runs/specialize-pico.log` and `runs/specialize-2.log`. Round 2 is the model on the site: `site/public/models/s1-pico.gguf` is byte-identical to a fresh `sky-convert models/s1-pico-g2`, and `runs/ship-s1-pico.arena.json` replays it with the same results. Round 3 got twice as many steps and came out slightly worse on Dodge (0.80 against 0.83), so it was not shipped.
+Steps per round come from the `done:` lines of `runs/specialize-pico.log` and `runs/specialize-2.log`. Round 2 is the s1-pico on the site: `site/public/models/s1-pico.gguf` is byte-identical to a fresh `sky-convert models/s1-pico-g2`, and `runs/ship-s1-pico.arena.json` replays it with the same results. Round 3 got twice as many steps and came out slightly worse on Dodge (0.80 against 0.83), so it was not shipped.
 
 The held-out report of round 2 (`runs/s1-pico-g2/report.md`) gives 0.8113 on Flappy questions, a little below the 0.8245 of the base report (on the older, smaller split). Closed-loop play went from 0 to 200 pipes while held-out accuracy stayed flat. That is the main lesson of this chapter in one line.
 
@@ -120,6 +120,20 @@ Two more data points, from `scripts/train-doom.sh` at τ = 0.95 with 50 episodes
 
 The same procedure did not save s2-pico: after two rounds it still crashes in every Flappy episode at full depth (chapter 19, section 7).
 
+### s3-pico (445,345 parameters, ternary)
+
+s3-pico ([chapter 21](./21-s3-recursive-tiny)) applied the lesson of s2: every round is played at full depth (τ = 1), and the exit threshold is calibrated in closed loop only after the last round. `scripts/specialize-s3.sh pico 3 8` ran three rounds of 8 minutes on Flappy, Rescue and Dodge (`BENCH.md`, s3 section, seed 7):
+
+| checkpoint | Flappy pipes (crashes) | Rescue rate | Dodge completion | Dodge vetoes |
+|---|---:|---:|---:|---:|
+| base | 145.3 (14) | 0.08 | 0.567 | 9,137 |
+| round 1 | 5.4 (30) | 1.00 | 0.667 | 4,205 |
+| round 2 | 200.0 (0) | 1.00 | 0.833 | 1,030 |
+| **round 3 (shipped, τ 0.6)** | **200.0 (0)** | **1.00** | **0.867** | **14** |
+| oracle | 200.0 (0) | 1.00 | 0.867 | 0 |
+
+Round 1 made Flappy worse (5.4 pipes, 30 crashes) while Rescue and Dodge improved; rounds 2 and 3 recovered it. At its calibrated τ = 0.6 the shipped file plays exactly like round 3 at full depth, with 14 Dodge vetoes, fewer than s2-nano's 25 and s1-pico's 1,026 (`runs/ship-s3-pico.arena.json`).
+
 ## Why bigger was not better for s1
 
 s1-nano has 5.6 times the parameters of s1-pico. Its best checkpoint, round 1, flies 200 pipes like pico but completes 0.70 of Dodge against 0.83 and rescues 0.97 against 1.00. Its second round collapsed. Four things in the logs explain most of it:
@@ -127,7 +141,7 @@ s1-nano has 5.6 times the parameters of s1-pico. Its best checkpoint, round 1, f
 1. **The base model trained on the old state text.** The nano pretraining ended at 14:48 (`runs/s1-nano/pretrain/last/state.json`), and the regenerated `data/games/flappy.jsonl` is from 14:56, so the nano decision run most likely loaded the absolute-height Flappy states. Its first validation sample holds the same 1,881 game questions as the base pico run, while s1-micro, trained later, drew 1,989. Its report (written at 15:09, on the regenerated test split) gives 0.6351 on Flappy against 0.8202 for s1-micro on the same split. The base nano never had a fair start.
 2. **Fewer updates in the same time.** A nano step costs about 2.5 times a pico step (`BENCH.md`). In its 20-minute budget nano made 14,797 decision steps against 29,484 for pico in 12 minutes.
 3. **Round 2 barely trained.** It made 1,104 steps in its 8 minutes against 5,482 in round 1 (`runs/specialize-2.log`). The log does not say why; `BENCH.md` notes that the s2 runs of the same evening shared the GPU with an s1 training job. With so few steps, the round mostly shifted the model toward its newest DAgger data, and Flappy (75.8 pipes, 26 crashes) and Dodge (0.43, 10,121 vetoes) both regressed.
-4. **It is 5 times slower.** 974 µs per question natively and 3,541 µs per WASM decision, against 188 and 694 µs for pico (`BENCH.md`).
+4. **It is 5 times slower.** 974 µs per question natively and 3,541 µs per WASM decision, against 188 and 694 µs for pico, measured with the engine before the s3 release (`BENCH.md` at the time; s1-nano was not re-measured since).
 
 None of this proves that nano cannot beat pico. It shows that, at a fixed wall-clock budget, the extra capacity was not the bottleneck, and that every round needs a closed-loop check before it replaces the previous model. The capacity question was answered by s2 instead, with an architecture that does less work per frame ([chapter 19](./19-s2-architecture)).
 
@@ -141,4 +155,4 @@ None of this proves that nano cannot beat pico. It shows that, at a fixed wall-c
 
 ## Next
 
-[Back to the tutorial index](./), or [play the games](/play/) with the published models.
+[21 s3: a 251 KB model that plays four games](./21-s3-recursive-tiny)

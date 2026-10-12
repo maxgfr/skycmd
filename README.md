@@ -8,12 +8,12 @@ A decision model does not generate text. It receives a **state** and **typed que
 
 | model | architecture | parameters | GGUF size | closed-loop play (`sky-arena`) | per decision |
 |---|---|---:|---:|---|---|
-| **s3-pico** (default) | s3 = s2 + fused value tokens + 1 block × 4 loops, ternary | 445,345 | **251 KB** | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 14 vetoes; Doom-like 100% levels, kills = oracle; 1.05–1.73 of 4 loops used | **21 µs** native, **≈ 50 µs** WASM (Flappy frame) |
-| s1-pico | s1, f16 | 202,305 | 545 KB | Flappy 200/200 pipes, 0 crashes; Rescue 100%; Dodge 83% (oracle 87%), 1,026 reflex vetoes | 188 µs native (1 question), 694 µs WASM (Flappy frame) |
-| s2-nano | s2, ternary | 1,532,033 | 702 KB | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 25 reflex vetoes | 298 µs native, 501 µs WASM |
-| s2-nano-doom | s2, ternary | 1,532,033 | 702 KB | Doom-like: completion 100%, kill rate 0.75 (= oracle), 0 deaths; Flappy 197.6 pipes (2 crashes in 50); Dodge 72% (oracle 78%) | 1,055 µs native, 1,830 µs WASM (3 questions) |
+| **s3-pico** (default) | s3 = s2 + fused value tokens + 1 block × 4 loops, ternary | 445,345 | **251 KB** | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 14 vetoes; Doom-like 100% levels, kills = oracle; 1.05–1.73 of 4 loops used | **27.5 µs** native, **49.6 µs** WASM |
+| s1-pico | s1, f16 | 202,305 | 545 KB | Flappy 200/200 pipes, 0 crashes; Rescue 100%; Dodge 83% (oracle 87%), 1,026 reflex vetoes | 137.6 µs native, 588.6 µs WASM |
+| s2-nano | s2, ternary | 1,532,033 | 702 KB | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 25 reflex vetoes | 273.0 µs native, 409.1 µs WASM |
+| s2-nano-doom | s2, ternary | 1,532,033 | 702 KB | Doom-like: completion 100%, kill rate 0.75 (= oracle), 0 deaths; Flappy 197.6 pipes (2 crashes in 50); Dodge 72% (oracle 78%) | 740 µs native, 1,282 µs WASM (one Doom question) |
 
-Sources: s1-pico and s2-nano play 30 episodes per game with the default seed (`runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`); s2-nano-doom plays 50 episodes per game with seed 7 (`BENCH.md`). Latencies are medians from [`BENCH.md`](BENCH.md) on an Apple M5; the s2-nano row there is timed on a random-init model of the same shape. Both s2 files stop at τ = 0.95 (early exit, see below).
+Sources: s3-pico, s1-pico and s2-nano play 30 episodes per game with the default seed 7 (`runs/ship-s3-pico.arena.json`, `runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`); s2-nano-doom plays 50 episodes per game with seed 7 ([`BENCH.md`](BENCH.md), Doom section). Latencies are medians on an Apple M5: native is `sky-bench` per question on a Flappy frame ([`BENCH.md`](BENCH.md), s3 section; Doom: "Inference"), WASM is one Flappy frame, both questions plus the physics step, in the browser module under Node ([`site/public/bench.json`](site/public/bench.json)). s3-pico stops at τ = 0.6, calibrated in closed loop; both s2 files stop at τ = 0.95 (early exit, see below). `runs/` is gitignored: the arena files are written by `sky-arena --json` on your machine.
 
 For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M parameters, and the others range from 144M to 27B.
 
@@ -28,15 +28,17 @@ Two results took more than one try, and the tutorial tells both stories:
   - one `[MASK]` marker per option;
   - `softmax(score / T)` with temperatures per type and per option-count bucket.
 
-  The same s1 `.gguf` file runs in our engine, in `llama-server` (max probability difference 4.7e-4) and in wllama 3.8.1 (1.1e-4). Ollama 0.40.3 loads it but rejects the `laya` decision encoding ([`docs/compat.md`](docs/compat.md)).
+  The same s1 `.gguf` file runs in our engine, in `llama-server` (max probability difference 4.7e-4) and in wllama 3.8.1 (1.1e-4), measured on the s1-pico checkpoint published before the DAgger rounds. Ollama 0.40.3 loads it but rejects the `laya` decision encoding ([`docs/compat.md`](docs/compat.md)).
 - **s2 format** ([`docs/SPEC-S2.md`](docs/SPEC-S2.md)). Same requests and responses, different model: a static stream (question + options) encoded once and cached, a state stream encoded once per frame, options that never attend to each other (permutation-equivariant by construction), one `[NUM]` token per number with continuous value features, early exits with deep supervision, and ternary weights trained with QAT. s2 files run only in the skycmd engine: browser, Node/Deno/Bun, Python, CLI and server.
+- **s3 format** ([`docs/SPEC-S3.md`](docs/SPEC-S3.md)). s2 with one token per `key value` pair (the value is added to the key's embedding), one weight-shared state block applied 4 times with an exit after each pass, and an exit threshold calibrated by playing the games (`scripts/calibrate-exit.sh`). s3 files keep the `skycmd-s2` architecture tag, so they run in the same places as s2 and nowhere else.
 - **Training.** Everything is in Rust with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon:
   - MLM pretraining;
   - decision training with cross-entropy on soft targets;
   - Muon for the encoder matrices and AdamW for the rest, with a WSD schedule;
   - per-type temperature calibration;
   - DAgger rounds on the games;
-  - for s2: numeric MLM, deep supervision over the exits and ternary QAT.
+  - for s2: numeric MLM, deep supervision over the exits and ternary QAT;
+  - for s3: a numeric curriculum, loop dropout and closed-loop exit calibration.
 - **Data.** Most of it comes from Hugging Face:
   - typed-decision sets plus BoolQ, MNLI, ARC, CommonsenseQA and Banking77;
   - SimpleStories, TinyStories and FineWeb for pretraining;
@@ -66,7 +68,7 @@ A fourth game is a Doom-like first-person shooter on a grid, drawn with [Freedoo
 | `sky-py` | Python bindings (PyO3), the `skycmd` wheel |
 | `packages/skycmd-js` | the `skycmd` npm package (WASM) |
 
-Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](docs/SPEC-S2.md), runtime compatibility in [`docs/compat.md`](docs/compat.md), and the research notes in [`docs/research.md`](docs/research.md), plus the night research on recursion, early exit, numbers and ternary in [`docs/research-night.md`](docs/research-night.md) and the s3 spec in [`docs/SPEC-S3.md`](docs/SPEC-S3.md).
+Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](docs/SPEC-S2.md), runtime compatibility in [`docs/compat.md`](docs/compat.md), and the research notes in [`docs/research.md`](docs/research.md), plus the night research on recursion, early exit, numbers and ternary in [`docs/research-night.md`](docs/research-night.md), the s3 spec in [`docs/SPEC-S3.md`](docs/SPEC-S3.md) and the attempts to go below s3-pico in [`docs/night-experiments.md`](docs/night-experiments.md).
 
 ## Quick start (macOS, Apple Silicon)
 ```sh
@@ -80,7 +82,13 @@ scripts/train-ladder.sh pico                               # pretrain → decide
 scripts/specialize.sh pico 2 6                             # DAgger rounds on the games
 cargo run --release -p sky-arena -- models/s1-pico-g2 --episodes 30
 cargo run --release -p sky-data -- train-tokenizer --vocab 2048 --num   # s2 tokenizer with [NUM]
+CARGO_TARGET_DIR=$PWD/target/sky-infer-s2 cargo build --release -p sky-arena
 scripts/train-s2.sh nano && scripts/specialize-s2.sh nano 2 8      # the s2 model (chapter 19)
+cargo run --release -p sky-data -- train-tokenizer --vocab 1024 --num   # s3-pico tokenizer
+cargo run --release -p sky-games --bin sky-games-gen -- --game doom --n 100000 --seed 1 --out data/games/doom.jsonl
+CARGO_TARGET_DIR=$PWD/target/s3-arena cargo build --release -p sky-arena
+scripts/train-s3.sh numeric pico && scripts/specialize-s3.sh pico 3 8   # the s3 model (chapter 21)
+scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf s3-pico.gguf   # closed-loop τ
 ```
 To use a published model without training anything, see the [Install](https://maxgfr.github.io/skycmd/install/) page.
 The step-by-step guide is the [tutorial](https://maxgfr.github.io/skycmd/tutorial/).

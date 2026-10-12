@@ -1,6 +1,6 @@
 # 08 The encoder and the decision head
 
-A skycmd-s1 model is a small ModernBERT encoder followed by the Laya decision head. The head reads one hidden state per `[MASK]` marker and turns it into one logit per option. This chapter walks through the layout in `docs/SPEC.md`, the configs, the mlx-rs forward pass in `sky-train`, and the matching f32 path in `sky-infer`.
+A skycmd-s1 model is a small ModernBERT encoder followed by the Laya decision head. The head reads one hidden state per `[MASK]` marker and turns it into one logit per option. This chapter walks through the layout in `docs/SPEC.md`, the configs, the mlx-rs forward pass in `sky-train`, and the matching f32 path in `sky-infer`. The s2 and s3 models, including the default s3-pico of the site, use a different two-stream graph, described in [chapter 19](./19-s2-architecture) and [chapter 21](./21-s3-recursive-tiny).
 
 ## The model in one page
 

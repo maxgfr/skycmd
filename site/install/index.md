@@ -10,7 +10,7 @@ returns a probability for every allowed answer in one forward pass. The same JSO
 everywhere on this page: in the browser, in Node, Deno and Bun, in Python, on the command line
 and over HTTP.
 
-| where | package | s1 (`modern-bert`) | s2 (`skycmd-s2`) |
+| where | package | s1 (`modern-bert`) | s2 and s3 (`skycmd-s2`) |
 |---|---|:-:|:-:|
 | browser, Node >= 18, Deno, Bun | npm `skycmd` or `https://maxgfr.github.io/skycmd/lib/skycmd.js` | yes | yes |
 | Python >= 3.9 | PyPI `skycmd` (wheel) | yes | yes |
@@ -18,20 +18,27 @@ and over HTTP.
 | llama.cpp `llama-server`, wllama | upstream | yes | no |
 | Ollama, LM Studio | upstream | no `/v1/systemone` for this head yet | no |
 
-s2 models run only in the skycmd engine. Tested versions and numbers are in
-[docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/docs/compat.md).
+s2 and s3 models, including the default s3-pico, run only in the skycmd engine (browser, Node,
+Deno, Bun, Python, CLI and server). Only s1 files run in llama.cpp and wllama. Tested versions
+and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/docs/compat.md).
 
 ## Models
 
-| model | parameters | file |
-|---|---:|---|
-| s1-pico | 0.2M | [s1-pico.gguf](https://maxgfr.github.io/skycmd/models/s1-pico.gguf) (545 KB) |
+| model | architecture | parameters | file | runs in |
+|---|---|---:|---|---|
+| **s3-pico** (default) | s3, ternary | 0.45M | [s3-pico.gguf](https://maxgfr.github.io/skycmd/models/s3-pico.gguf) (251 KB) | skycmd engine only |
+| s1-pico | s1, f16 | 0.2M | [s1-pico.gguf](https://maxgfr.github.io/skycmd/models/s1-pico.gguf) (545 KB) | skycmd engine, llama.cpp, wllama |
+| s2-nano | s2, ternary | 1.5M | [s2-nano.gguf](https://maxgfr.github.io/skycmd/models/s2-nano.gguf) (702 KB) | skycmd engine only |
+| s2-nano-doom | s2, ternary | 1.5M | [s2-nano-doom.gguf](https://maxgfr.github.io/skycmd/models/s2-nano-doom.gguf) (702 KB) | skycmd engine only |
 
-Every [GitHub release](https://github.com/maxgfr/skycmd/releases) also carries the model files
-and a `SHA256SUMS` file.
+s3-pico plays the four games of the [Play](/play/) page at the oracle's level
+([chapter 21](/tutorial/21-s3-recursive-tiny)). Every
+[GitHub release](https://github.com/maxgfr/skycmd/releases) also carries the model files and a
+`SHA256SUMS` file.
 
 ```sh
-curl -LO https://maxgfr.github.io/skycmd/models/s1-pico.gguf
+curl -LO https://maxgfr.github.io/skycmd/models/s3-pico.gguf
+curl -LO https://maxgfr.github.io/skycmd/models/s1-pico.gguf   # for llama.cpp or wllama
 ```
 
 ## The request
@@ -67,44 +74,52 @@ This is the body of `POST /v1/systemone`, the same format as llama.cpp's System 
 - `score`: `criteria` lists 2 to 10 levels, from lowest to highest.
 - `noul`: a yes/no question. `criteria` is optional: `{"false": "...", "true": "..."}`.
 
-The response keeps the question order:
+The response keeps the question order. This is s3-pico's answer (`skycmd decide`, rounded to
+4 decimals):
 
 ```json
 {
-  "model": "skycmd-s1-pico",
+  "model": "skycmd-s3-pico",
   "answers": {
     "action": {
       "type": "choice",
-      "choice": "glide",
-      "probabilities": { "thrust": 0.0597, "glide": 0.9403 },
-      "confidence": 0.8806
+      "choice": "thrust",
+      "probabilities": { "thrust": 0.5190, "glide": 0.4810 },
+      "confidence": 0.0381,
+      "exit": 3,
+      "layers_used": 4
     },
-    "danger": { "type": "noul", "noul": 0.9534 },
+    "danger": { "type": "noul", "noul": 0.0563, "exit": 0, "layers_used": 1 },
     "margin": {
       "type": "score",
-      "score": 1.8128,
+      "score": 1.1346,
       "legend": { "0": "none", "1": "tight", "2": "comfortable" },
-      "probabilities": { "0": 0.0399, "1": 0.1073, "2": 0.8527 },
-      "confidence": 0.7192
+      "probabilities": { "0": 0.0436, "1": 0.7782, "2": 0.1782 },
+      "confidence": 0.6673,
+      "exit": 0,
+      "layers_used": 1
     }
   },
-  "usage": { "input_tokens": 193, "output_tokens": 0 }
+  "usage": { "input_tokens": 164, "output_tokens": 0 }
 }
 ```
 
 `choice` is the most likely key, `confidence = (pmax - 1/n) / (1 - 1/n)`, `score` is the expected
-level and `noul` is the probability of "yes". s2 models also report the early exit they took.
+level and `noul` is the probability of "yes". s2 and s3 models also report, for each answer, the
+early exit they took (`exit`, counted from 0) and the state layers it used (`layers_used`):
+here the two confident answers stopped after the first pass of s3-pico's looped block, and the
+close `action` call went to the last exit. s1 answers have neither field.
 
 ## Browser
 
 No install and no bundler: import the module from this site. The WebAssembly engine (about
-0.6 MB, SIMD128) loads from the same folder.
+0.7 MB, 0.3 MB gzipped, SIMD128) loads from the same folder.
 
 ```html
 <script type="module">
   import SkyCmd from "https://maxgfr.github.io/skycmd/lib/skycmd.js";
 
-  const model = await SkyCmd.load("https://maxgfr.github.io/skycmd/models/s1-pico.gguf");
+  const model = await SkyCmd.load("https://maxgfr.github.io/skycmd/models/s3-pico.gguf");
   const r = model.decide({
     state: "vy 0 dx 36 up 9 dn 7 nxt 10 alt 32",
     questions: {
@@ -125,8 +140,8 @@ No install and no bundler: import the module from this site. The WebAssembly eng
 `SkyCmd.load` accepts a URL, a `Response`, a `Blob` (for example from a file input), an
 `ArrayBuffer` or a `Uint8Array`.
 
-For a game loop, `decideRaw` skips the JSON and caches the question and option tokens, so only
-the state is tokenized on each frame. It takes rendered options (`"key: description"`, or
+For a game loop, `decideRaw` skips the JSON and caches the question and option tokens (s2 and s3
+models also cache their encoding), so only the state is processed on each frame. It takes rendered options (`"key: description"`, or
 `["false: ...", "true: ..."]` for noul) and returns their probabilities in order:
 
 ```js
@@ -147,7 +162,7 @@ npm install skycmd
 ```js
 import SkyCmd from "skycmd";
 
-const model = await SkyCmd.load(new URL("./s1-pico.gguf", import.meta.url));
+const model = await SkyCmd.load(new URL("./s3-pico.gguf", import.meta.url));
 ```
 
 The package is plain ESM with TypeScript declarations (`DecisionRequest`, `DecisionResponse`,
@@ -165,7 +180,7 @@ The same package runs server-side. A plain path is read from disk.
 // npm install skycmd
 import SkyCmd from "skycmd";
 
-const model = await SkyCmd.load("./s1-pico.gguf");
+const model = await SkyCmd.load("./s3-pico.gguf");
 const r = model.decide({
   state: "alt 12 vy -3",
   questions: { climb: { type: "noul", instructions: "Should the drone climb now?" } },
@@ -178,7 +193,7 @@ console.log(r.answers.climb.noul);
 import SkyCmd from "npm:skycmd";
 // or, without npm: import SkyCmd from "https://maxgfr.github.io/skycmd/lib/skycmd.js";
 
-const model = await SkyCmd.load("./s1-pico.gguf");
+const model = await SkyCmd.load("./s3-pico.gguf");
 const r = model.decide({
   state: "alt 12 vy -3",
   questions: { climb: { type: "noul", instructions: "Should the drone climb now?" } },
@@ -190,7 +205,7 @@ console.log(r.answers.climb.noul);
 // bun add skycmd && bun main.js
 import SkyCmd from "skycmd";
 
-const model = await SkyCmd.load("./s1-pico.gguf");
+const model = await SkyCmd.load("./s3-pico.gguf");
 const r = model.decide({
   state: "alt 12 vy -3",
   questions: { climb: { type: "noul", instructions: "Should the drone climb now?" } },
@@ -214,7 +229,7 @@ x86_64 and aarch64, Windows x86_64). The wheels are also attached to each GitHub
 ```python
 import skycmd
 
-model = skycmd.Model("s1-pico.gguf")      # a path, or the file content as bytes
+model = skycmd.Model("s3-pico.gguf")      # a path, or the file content as bytes
 r = model.decide({
     "state": "vy 0 dx 36 up 9 dn 7 nxt 10 alt 32",
     "questions": {
@@ -252,7 +267,8 @@ the GIL, and one `Model` can be shared between threads.
 brew install maxgfr/tap/skycmd
 ```
 
-The formula also installs `s1-pico.gguf` under `$(brew --prefix)/share/skycmd/models/`.
+The formula also installs `s1-pico.gguf` under `$(brew --prefix)/share/skycmd/models/`. Download
+`s3-pico.gguf` as shown above to use the default model.
 
 ### Release binaries
 
@@ -279,16 +295,16 @@ cargo install --git https://github.com/maxgfr/skycmd sky-serve   # installs the 
 ### Commands
 
 ```sh
-skycmd decide --model s1-pico.gguf --request req.json --pretty   # one request from a file
-cat req.json | skycmd decide --model s1-pico.gguf -               # or from stdin
-skycmd info s1-pico.gguf                                          # sizes, temperatures (JSON)
-skycmd bench s1-pico.gguf                                         # latency on a 3-question frame
+skycmd decide --model s3-pico.gguf --request req.json --pretty   # one request from a file
+cat req.json | skycmd decide --model s3-pico.gguf -               # or from stdin
+skycmd info s3-pico.gguf                                          # sizes, temperatures, exit thresholds (JSON)
+skycmd bench s3-pico.gguf                                         # latency on a 3-question frame
 ```
 
 ## HTTP server
 
 ```sh
-skycmd serve --model s1-pico.gguf --port 8080
+skycmd serve --model s3-pico.gguf --port 8080
 ```
 
 It serves `POST /v1/systemone`, `GET /health` and `GET /v1/models`, with the same request and
@@ -315,7 +331,8 @@ Errors use HTTP 400 with `{"error": {"code": 400, "message": "...", "type": "inv
 
 s1 files use llama.cpp's `modern-bert` architecture with the `laya` decision head
 ([PR #29818](https://github.com/ggml-org/llama.cpp/pull/29818)), so recent llama.cpp builds read
-them without conversion. s2 files do not run there.
+them without conversion. s2 and s3 files (`skycmd-s2`: s3-pico, s2-nano, s2-nano-doom) do not
+run there: use `s1-pico.gguf` with these runtimes.
 
 ### llama.cpp
 
@@ -325,7 +342,7 @@ curl -s http://127.0.0.1:8080/v1/systemone -H 'Content-Type: application/json' -
 ```
 
 Probabilities match the skycmd engine within about 5e-4 (llama.cpp rounds activations to F16 on
-the CPU). One difference: llama.cpp rejects a request whose state does not fit in the context
+the CPU; measured on the s1-pico checkpoint published before the DAgger rounds, `docs/compat.md`). One difference: llama.cpp rejects a request whose state does not fit in the context
 (256 tokens), while skycmd cuts the state to fit, as the models were trained.
 
 ### wllama (browser)

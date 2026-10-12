@@ -4,15 +4,15 @@ The s1 ladder stops at s1-micro. The recipe still trains there, but a micro deci
 
 ## The ladder today
 
-Parameter counts and training throughput come from `BENCH.md` (`sky-train bench`, MLX on Metal, bf16, decision phase at batch 64 × 192 tokens). Accuracy is the `games` row of each `runs/s1-*/report.md`. WASM latency is the `bench()` median of one Flappy decision (2 questions + physics) from `BENCH.md`, except s1-micro, measured on a busy machine for [chapter 12](./12-size-ladder).
+Parameter counts and training throughput come from `BENCH.md` (`sky-train bench`, MLX on Metal, bf16, decision phase at batch 64 × 192 tokens). Accuracy is the `games` row of each `runs/s1-*/report.md`. WASM latency is the `bench()` median of one Flappy decision (2 questions + physics): for s1-pico the current `wasm_us` of `site/public/bench.json`; for s1-nano and s1-micro a measurement with the engine as it was before the s3 kernel work ([chapter 21](./21-s3-recursive-tiny)), not re-measured (s1-micro on a busy machine, for [chapter 12](./12-size-ladder)).
 
 | model | d | L | head layers | vocab | decision params | train tok/s (bf16) | held-out accuracy, games | wasm decision (Flappy) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| s1-pico | 64 | 2 | 1 | 1024 | 202,305 | 598,104 | 0.8806 | 694 µs |
-| s1-nano | 128 | 4 | 1 | 2048 | 1,134,209 | 243,002 | 0.7837 | 3,541 µs |
-| s1-micro | 256 | 6 | 2 | 4096 | 6,630,913 | 70,881 | 0.8215 | about 32,600 µs |
+| s1-pico | 64 | 2 | 1 | 1024 | 202,305 | 598,104 | 0.8806 | 588.6 µs |
+| s1-nano | 128 | 4 | 1 | 2048 | 1,134,209 | 243,002 | 0.7837 | 3,541 µs (earlier engine) |
+| s1-micro | 256 | 6 | 2 | 4096 | 6,630,913 | 70,881 | 0.8215 | about 32,600 µs (earlier engine) |
 
-Each step multiplies the parameter count by about 5.5 to 6 and divides training throughput by about 2.5 to 3.5. WASM latency grows faster than the parameter count from pico to nano (5.1× for 5.6× the parameters) and from nano to micro (about 9× for 5.8×), because the embedding table, a lookup that is almost free at inference, is a smaller share of the bigger models. Before scaling s1, read [chapter 20](./20-dagger-lessons): bigger was not better in closed loop either. The architecture change of [chapter 19](./19-s2-architecture) bought more than size did.
+Each step multiplies the parameter count by about 5.5 to 6 and divides training throughput by about 2.5 to 3.5. With the earlier engine, WASM latency grew almost as fast as the parameter count from pico to nano (3,541 against 694 µs, 5.1× for 5.6× the parameters) and faster from nano to micro (about 9× for 5.8×), because the embedding table, a lookup that is almost free at inference, is a smaller share of the bigger models. Before scaling s1, read [chapter 20](./20-dagger-lessons): bigger was not better in closed loop either. The architecture changes of [chapter 19](./19-s2-architecture) and [chapter 21](./21-s3-recursive-tiny) bought more than size did: s3-pico, the site's default model, has 445,345 parameters in a 251 KB ternary file, plays all four games at the oracle's level and answers a Flappy decision in 49.6 µs in WASM.
 
 ## Scaling the model
 
@@ -100,7 +100,7 @@ ladder() {
 The levers, from cheapest to most expensive:
 
 - **Longer schedules.** `sky-train pretrain` and `decide` take `--minutes`. The WSD schedule starts its decay at 80% of the budget, so a longer run keeps the same shape. `--resume` continues from `<out>/last`. Bigger models need more steps to reach the same loss, and BENCH.md shows they also take fewer tokens per second.
-- **More game data.** `sky-games-gen --game {flappy,rescue,dodge,all} --n N --seed S [--out PATH]` writes as many oracle-labelled records as you want, at no cost.
+- **More game data.** `sky-games-gen --game {flappy,rescue,dodge,doom,all} --n N --seed S [--out PATH]` writes as many oracle-labelled records as you want, at no cost.
 - **On-policy data.** `scripts/specialize.sh <pico|nano|micro> <rounds> <minutes-per-round>` runs DAgger rounds. `sky-arena --dagger` lets the model play, the oracle labels the states the model reaches, and `decide` fine-tunes on games + DAgger + a little general data.
 - **More general data.** `sky-data fetch-decisions --cap N` (default 60,000 records per source) and `sky-data fetch-text --max-mb M` (default 150 MB) raise the size caps of the Hugging Face sources. Licenses are in `DATA_LICENSES.md`.
 - **Mixture weights.** `decide --weights "games=0.5,decisions=0.5"` sets per-source sampling weights. Bigger models have more room for general decisions; micro already uses 0.5 instead of 0.65 for games.
@@ -168,7 +168,7 @@ Two separate problems:
 
 ### Metal toolchain and `DEVELOPER_DIR` (training)
 
-`sky-train` builds MLX through mlx-rs, which compiles Metal shaders. If `xcode-select` points to the Command Line Tools rather than Xcode, the Metal compiler is not found. Both training scripts default to Xcode:
+`sky-train` builds MLX through mlx-rs, which compiles Metal shaders. If `xcode-select` points to the Command Line Tools rather than Xcode, the Metal compiler is not found. The training scripts (`train-ladder.sh`, `train-s2.sh`, `train-s3.sh`, the `specialize*.sh` scripts, `train-doom.sh`, `calibrate-exit.sh`) default to Xcode:
 
 ```sh
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -194,4 +194,4 @@ The site is served from `https://<user>.github.io/skycmd/`, not from the domain 
 
 ## Where to go from here
 
-You now have every piece: data, tokenizer, training, calibration, GGUF export, a SIMD128 engine and the games wired around it. Go back to the [tutorial index](./) for any chapter, or [play the games](/play/) with the model this tutorial built.
+You now have every piece of the s1 pipeline: data, tokenizer, training, calibration, GGUF export, a SIMD128 engine and the games wired around it. The next chapters go further: a fourth game ([chapter 18](./18-doom)), the s2 architecture ([chapter 19](./19-s2-architecture)), what DAgger taught us ([chapter 20](./20-dagger-lessons)) and s3-pico, the model the [Play page](/play/) loads by default ([chapter 21](./21-s3-recursive-tiny)). Or go back to the [tutorial index](./) for any chapter.

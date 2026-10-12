@@ -288,8 +288,9 @@ impl Flappy {
         QUESTIONS
     }
 
-    /// `alt vy dx gt gb nc`: altitude, vertical speed, distance to the next gap, gap top,
-    /// gap bottom and next-next gap center, in 8 px units (vy in 25 px/s units).
+    /// `vy dx up dn nxt alt`: vertical speed, distance to the next gap, clearance above and
+    /// below the drone inside that gap, offset of the following gap's center, and altitude,
+    /// in 8 px units (vy in 25 px/s units).
     pub fn state_text(&self) -> String {
         let i = self
             .pipes

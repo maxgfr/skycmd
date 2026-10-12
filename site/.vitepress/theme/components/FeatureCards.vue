@@ -7,7 +7,7 @@ import { formatInt } from '../lib/wasm'
 const tiny = computed(() =>
   live.status === 'model'
     ? `${live.model}: ${formatInt(live.params)} parameters in a ${formatInt(live.bytes / 1024)} KB GGUF file.`
-    : 'From about 200K parameters (s1-pico) to a few million (s1-micro), shipped as a GGUF file of a few hundred KB.',
+    : 's3-pico: 445K parameters in a 251 KB ternary GGUF file, and it plays all four games at oracle level.',
 )
 const fast = computed(() =>
   live.medianUs > 0 && live.status === 'model'

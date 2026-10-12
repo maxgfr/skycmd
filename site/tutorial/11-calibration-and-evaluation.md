@@ -1,6 +1,6 @@
 # 11 Calibration and evaluation
 
-A decision model returns probabilities, and the game controllers and safety validators use those numbers as they are. After training, `sky-train calibrate` fits softmax temperatures per question type and option count on the validation split. `sky-train eval` then writes a per-source report of accuracy, NLL, Brier score and ECE on the held-out test split.
+A decision model returns probabilities, and the game controllers and safety validators use those numbers as they are. After training, `sky-train calibrate` fits softmax temperatures per question type and option count on the validation split. `sky-train eval` then writes a per-source report of accuracy, NLL, Brier score and ECE on the held-out test split. This chapter follows the s1 commands; the s2 and s3 models use `s2-calibrate` (temperatures per exit, type and bucket, plus an exit threshold τ per type) and `s2-eval` with the same metrics ([chapter 19](./19-s2-architecture)). The exit threshold of the shipped s3-pico was then recalibrated in closed loop ([chapter 21](./21-s3-recursive-tiny)).
 
 ## Why temperatures
 
@@ -27,7 +27,11 @@ pub fn temp_bucket(qtype: usize, k: usize) -> String {
 
 /// The same bucket in the GGUF / llama.cpp server form, e.g. `"choice.3_5"`.
 pub fn gguf_bucket(laya_key: &str) -> String {
-    laya_key.replace(':', ".").replace('-', "_").trim_end_matches('+').to_string()
+    laya_key
+        .replace(':', ".")
+        .replace('-', "_")
+        .trim_end_matches('+')
+        .to_string()
 }
 ```
 
@@ -68,7 +72,10 @@ pub fn fit_temperature(preds: &[&Pred]) -> f32 {
     }
     let f = |lt: f64| -> f64 {
         let t = lt.exp() as f32;
-        preds.iter().map(|p| nll(&p.logits, &p.target, t)).sum::<f64>()
+        preds
+            .iter()
+            .map(|p| nll(&p.logits, &p.target, t))
+            .sum::<f64>()
     };
     let (mut a, mut b) = (0.05f64.ln(), 20f64.ln());
     let g = (5f64.sqrt() - 1.0) / 2.0;
@@ -123,7 +130,11 @@ Every fitted value lies between 0.94 and 1.07. Soft-target cross-entropy already
         n += 1;
         acc += hit;
         nll_sum += nll(&p.logits, &p.target, t);
-        brier += q.iter().zip(&p.target).map(|(a, &b)| (a - b as f64).powi(2)).sum::<f64>();
+        brier += q
+            .iter()
+            .zip(&p.target)
+            .map(|(a, &b)| (a - b as f64).powi(2))
+            .sum::<f64>();
         conf.push(q[argmax(&q)]);
         correct.push(hit);
     }
@@ -182,8 +193,8 @@ This confidence rescales the top probability so that a uniform answer scores 0 w
 
 ## What the report does not measure yet
 
-- **Coherence without labels.** `docs/research.md` lists the check that p(X) + p(not X) ≈ 1 for a statement and its negation (paper 2609.33209) as an evaluation idea. The s1 `sky-train eval` does not compute it. The s2 evaluation (`s2-eval`) looks for such pairs, but the test split contains none, so every s2 report shows 0 pairs (`runs/s2-nano-g2/report.md`). Not measured.
-- **Shuffle stability.** `eval` scores every question once in record order, so s1 flip rates under option shuffling (paper 2610.06744) are not measured. s2 is equivariant by construction, and `s2-eval` checks it: shuffling the options of 256 questions moves the probabilities of the shipped s2-nano by at most 1.8e-7 ([chapter 19](./19-s2-architecture)).
+- **Coherence without labels.** `docs/research.md` lists the check that p(X) + p(not X) ≈ 1 for a statement and its negation (paper 2609.33209) as an evaluation idea. The s1 `sky-train eval` does not compute it. The s2 evaluation (`s2-eval`) looks for such pairs, but the test split contains none, so every s2 and s3 report shows 0 pairs (`runs/s2-nano-g2/report.md`, `runs/night-baseline/s3-pico-heldout.md`). Not measured.
+- **Shuffle stability.** `eval` scores every question once in record order, so s1 flip rates under option shuffling (paper 2610.06744) are not measured. s2 is equivariant by construction, and `s2-eval` checks it: shuffling the options of 256 questions moves the probabilities of the shipped s2-nano by at most 1.8e-7 and those of the shipped s3-pico by at most 4.2e-17 ([chapter 19](./19-s2-architecture), `runs/night-baseline/s3-pico-heldout.md`).
 - **Closed-loop play.** Accuracy on single questions does not tell you whether a model can fly a whole episode. Episode metrics come from the game harness ([chapter 15](./15-wiring-the-games) and [chapter 20](./20-dagger-lessons)).
 
 ## Next

@@ -1,6 +1,6 @@
 # 16 Bonus: llama.cpp /v1/systemone and wllama
 
-The GGUF files from chapter 13 use the same keys and tensor names as llama.cpp's own converter, so you are not tied to our engine. This chapter shows how to serve a converted model with llama.cpp's decision server (`POST /v1/systemone`) and how to run it in the browser with wllama. It is careful about which parts are upstream, which come from a pull request, and what was actually tested. Only the s1 files (`modern-bert`) run there; the s2 files of [chapter 19](./19-s2-architecture) need the skycmd engine.
+The GGUF files from chapter 13 use the same keys and tensor names as llama.cpp's own converter, so you are not tied to our engine. This chapter shows how to serve a converted model with llama.cpp's decision server (`POST /v1/systemone`) and how to run it in the browser with wllama. It is careful about which parts are upstream, which come from a pull request, and what was actually tested. Only the s1 files (`modern-bert`, such as `s1-pico.gguf`) run there. The s2 and s3 files (`skycmd-s2`: `s2-nano.gguf`, `s2-nano-doom.gguf` and the site's default `s3-pico.gguf`, chapters [19](./19-s2-architecture) and [21](./21-s3-recursive-tiny)) run only in the skycmd engine: the `skycmd` CLI and server, the npm package, the Python wheel and the WASM module.
 
 ## What is upstream, what is not, what is untested
 
@@ -13,9 +13,9 @@ The GGUF files from chapter 13 use the same keys and tensor names as llama.cpp's
 | skycmd s1 GGUF served by `llama-server` | tested: max probability difference 4.7e-4 over 103 values, same choices | `docs/compat.md` (a) |
 | skycmd s1 GGUF in wllama 3.8.1 | tested: `createSystemOne()` works, max difference 1.1e-4 | `docs/compat.md` (d) |
 | skycmd s1 GGUF in Ollama 0.40.3 | loads, but `/v1/systemone` answers `unsupported decision encoding "laya"` | `docs/compat.md` (b) |
-| skycmd s2 GGUF anywhere but skycmd | not possible: no other runtime knows `skycmd-s2` | `docs/compat.md` |
+| skycmd s2 or s3 GGUF anywhere but skycmd | not possible: no other runtime knows `skycmd-s2` | `docs/compat.md` |
 
-The tests in `docs/compat.md` used `site/public/models/s1-pico.gguf` on an Apple M5 on 2026-10-11. The files under `models-src/` are local, gitignored, read-only copies that we used as the specification. Whether a given llama.cpp release contains exactly this code is something you should check against the release you install. Everything this repo verifies runs through `sky-infer`: the golden tests against the Python Laya runtime (chapter 13), and our own reader of our own GGUF files.
+The tests in `docs/compat.md` used `site/public/models/s1-pico.gguf` on an Apple M5 on 2026-10-11, before that file was replaced by the DAgger-trained s1-pico (commit `a6ab1fd`, the same day). The agreement figures below therefore describe the earlier s1-pico checkpoint; the comparison with llama.cpp and wllama has not been re-run on the current file. The files under `models-src/` are local, gitignored, read-only copies that we used as the specification. Whether a given llama.cpp release contains exactly this code is something you should check against the release you install. Everything this repo verifies runs through `sky-infer`: the golden tests against the Python Laya runtime (chapter 13), and our own reader of our own GGUF files.
 
 ## One file, two readers
 
@@ -209,13 +209,15 @@ cargo run --release -p sky-infer --example decide -- site/public/models/s1-pico.
 | `skycmd.tokenizer.*` keys (NFC normalizer, lstrip/rstrip) | applied | ignored |
 | tokenizer equality with HF `tokenizers` | tested (`tests/tokenizer.rs`) | not tested for our vocabularies |
 
-Probability agreement between the two runtimes on s1-pico, from `docs/compat.md`: 18 requests (15 Flappy Drone states with three questions each, a 6-option choice, a JSON-object state and a 400-token state) give a maximum absolute difference of **4.7e-4** over 103 probabilities, with the same `choice` everywhere and the same `input_tokens` counts. The gap comes from ggml's CPU path, which rounds activations to F16 for the F16 matrices, while `sky-infer` dequantizes them to f32 at load. On the three-question sample request:
+Probability agreement between the two runtimes on the earlier s1-pico file, from `docs/compat.md`: 18 requests (15 Flappy Drone states with three questions each, a 6-option choice, a JSON-object state and a 400-token state) give a maximum absolute difference of **4.7e-4** over 103 probabilities, with the same `choice` everywhere and the same `input_tokens` counts. The gap comes from ggml's CPU path, which rounds activations to F16 for the F16 matrices, while `sky-infer` dequantizes them to f32 at load. On the three-question sample request:
 
 | answer | skycmd (native) | llama-server | wllama 3.8.1 |
 |---|---:|---:|---:|
 | `action` p(thrust) | 0.0597123 | 0.0598046 | 0.0596021 |
 | `danger` noul | 0.9533952 | 0.9532889 | 0.9533593 |
 | `margin` score | 1.8128099 | 1.8128024 | 1.8128236 |
+
+The current `s1-pico.gguf` gives different answers to the same request in skycmd (`skycmd decide`: p(thrust) 0.0744, danger 0.1645, margin 1.8987), because it is a different checkpoint.
 
 One behaviour differs: `llama-server` rejects a prompt longer than its context (`400 exceed_context_size_error`), while skycmd cuts the state to fit, as the Laya runtime does. Over HTTP, with one client and keep-alive, `skycmd serve` answered the sample request in 0.79 ms at the median and `llama-server -ngl 0` in 4.9 ms.
 
@@ -237,12 +239,12 @@ How it compares with our `sky-web` module, as far as we know:
 | | `sky-web` (this project) | wllama |
 |---|---|---|
 | what runs in WASM | engine and game cores, one frame per call | llama.cpp (any supported GGUF) |
-| model support | Laya / ModernBERT decision models only | everything llama.cpp supports |
+| model support | Laya / ModernBERT decision models (s1) and the `skycmd-s2` models (s2, s3) | everything llama.cpp supports, s1 files only among ours |
 | SIMD | SIMD128, f32 compute | not measured |
 | threads | single-threaded, main thread | multi-threading needs cross-origin isolation (COOP/COEP headers); GitHub Pages cannot set headers |
-| module size | 837,853 bytes of `.wasm` (348,341 gzipped) plus 33,707 bytes of JS glue, games included | not measured |
-| latency per decision for s1-pico | 694 µs (2 questions + physics, Node 24, `BENCH.md`) | not measured |
-| s2 models | yes | no |
+| module size | 932,931 bytes of `.wasm` (about 383 KB gzipped) plus 33,707 bytes of JS glue for the build in `site/public/pkg`, all four games included | not measured |
+| latency per Flappy decision (2 questions + physics, Node 24, `site/public/bench.json`) | 588.6 µs for s1-pico, 49.6 µs for s3-pico | not measured |
+| s2 and s3 models | yes | no |
 
 Use wllama when you want one browser runtime for many model families, or the exact llama.cpp numerics. Use `sky-web` when the model must step a game at 60 frames per second next to the physics, which is what this site does.
 

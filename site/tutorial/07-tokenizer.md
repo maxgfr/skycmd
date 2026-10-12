@@ -1,6 +1,6 @@
 # 07 A tokenizer with small vocabularies
 
-skycmd trains its own byte-level BPE tokenizers with 1024, 2048 and 4096 entries, one per rung of the size ladder. This chapter covers how `sky-data` builds the training corpus and trains them, why small integers get a vocabulary prior, and how `sky-infer` reproduces the same encodings in plain Rust for the browser.
+skycmd trains its own byte-level BPE tokenizers with 1024, 2048 and 4096 entries, one per rung of the size ladder. This chapter covers how `sky-data` builds the training corpus and trains them, why small integers get a vocabulary prior, the `[NUM]` variant used by the s2 and s3 models (including the default site model, s3-pico, [chapter 21](./21-s3-recursive-tiny)), and how `sky-infer` reproduces the same encodings in plain Rust for the browser.
 
 ## Why the vocabulary is the first size decision
 
@@ -107,7 +107,24 @@ The pre-tokenizer cuts it into `d`, ` 35`, ` v`, ` 11`, ` dz`, ` 2`, ` hr`, ` 1`
 `crates/sky-data/src/tok.rs`
 ```rust
 pub fn train_tokenizer(segments: &[String], vocab: usize, min_frequency: u64) -> Result<Tokenizer> {
-    let specials: Vec<AddedToken> = SPECIALS.iter().map(|s| AddedToken::from(*s, true)).collect();
+    train_tokenizer_with(segments, vocab, min_frequency, &SPECIALS)
+}
+```
+
+`train_tokenizer_with` takes the list of special tokens, so the s2 variant below reuses it:
+
+`crates/sky-data/src/tok.rs`
+```rust
+fn train_tokenizer_with(
+    segments: &[String],
+    vocab: usize,
+    min_frequency: u64,
+    specials_list: &[&str],
+) -> Result<Tokenizer> {
+    let specials: Vec<AddedToken> = specials_list
+        .iter()
+        .map(|s| AddedToken::from(*s, true))
+        .collect();
     let mut trainer = BpeTrainerBuilder::new()
         .vocab_size(vocab)
         .min_frequency(min_frequency)
@@ -120,7 +137,10 @@ pub fn train_tokenizer(segments: &[String], vocab: usize, min_frequency: u64) ->
         .map_err(|e| anyhow!(e))?
         .try_pair("[CLS] $A [SEP] $B:0 [SEP]:0")
         .map_err(|e| anyhow!(e))?
-        .special_tokens(vec![("[CLS]".to_string(), CLS_ID), ("[SEP]".to_string(), SEP_ID)])
+        .special_tokens(vec![
+            ("[CLS]".to_string(), CLS_ID),
+            ("[SEP]".to_string(), SEP_ID),
+        ])
         .build()?;
 ```
 
@@ -138,7 +158,19 @@ for v in 1024 2048 4096; do
 done
 ```
 
-The other flags are `--inputs`, `--game-weight`, `--max-text-mb`, `--max-decisions-per-file`, `--min-frequency` (default 2) and `--int-prior`, plus the global `--seed` (default 1234). A vocabulary below 300 is rejected.
+The other flags are `--inputs`, `--game-weight`, `--max-text-mb`, `--max-decisions-per-file`, `--min-frequency` (default 2), `--int-prior` and `--num` (next section), plus the global `--seed` (default 1234). A vocabulary below 300 is rejected.
+
+## The s2 and s3 tokenizers: one `[NUM]` per number
+
+The s2 architecture ([chapter 19](./19-s2-architecture)) and s3 ([chapter 21](./21-s3-recursive-tiny)) do not spell numbers with BPE pieces at all. `--num` trains an s2 tokenizer (SPEC-S2 §2): before BPE, every number matching `-?\d+(?:\.\d+)?` that does not follow an ASCII letter is replaced by the special token `[NUM]`, and its value travels next to the token ids as a continuous feature (`crates/sky-data/src/num.rs`, mirrored bit for bit by `sky-train` and `sky-infer`). The specials become `[PAD] [UNK] [CLS] [SEP] [MASK] [NUM]`, with `[NUM]` fixed at id 5 (`SPECIALS_S2`). The corpus segments are split around `[NUM]`, so no merge is ever learned across it, and no integer prior is added because digits never reach the BPE. `train_tokenizer_s2` refuses a result in which `[NUM]` is not matched as a special token.
+
+```bash
+for v in 1024 2048 4096; do
+  $CARGO_TARGET_DIR/release/sky-data train-tokenizer --vocab $v --num   # -> data/tok/tok-s2-<vocab>.json
+done
+```
+
+s2-pico and s3-pico use `tok-s2-1024.json`, s2-nano uses `tok-s2-2048.json` (`scripts/train-s2.sh`, `scripts/train-s3.sh`). The overnight experiments also trained `tok-s2-512.json` with `--num --vocab 512` for the `s3-femto-v512` candidate ([`docs/night-experiments.md`](https://github.com/maxgfr/skycmd/blob/main/docs/night-experiments.md)). s3 uses the same tokenizers and goes one step further: with `fuse_numbers`, each `[NUM]` is removed right after tokenization and its value moves onto the token before it, so a pair such as `vy -1` costs one token instead of two (`crates/sky-infer/src/s2/prompt.rs`, chapter 21).
 
 ## Reading the sequence-length table
 
@@ -152,13 +184,13 @@ Here are a few rows from `data/STATS.md` on the build machine (`max_len` 256, `h
 
 | source | mean tokens, 1024 | 2048 | 4096 | truncated, 1024 | 4096 |
 |---|---:|---:|---:|---:|---:|
-| flappy | 62.8 | 49.9 | 48.2 | 0.0% | 0.0% |
+| flappy | 66.0 | 54.7 | 53.0 | 0.0% | 0.0% |
 | dodge | 73.7 | 60.0 | 58.7 | 0.0% | 0.0% |
 | rescue | 102.5 | 89.7 | 86.9 | 9.4% | 0.0% |
 | boolq | 230.7 | 218.2 | 204.8 | 60.6% | 34.6% |
 | typed_decisions_bench | 255.3 | 252.4 | 247.0 | 96.8% | 79.0% |
 
-Game prompts fit easily at every size. Long-context benchmark questions get truncated much more with the 1024 vocabulary, which matters when we read the evaluation reports in [chapter 11](./11-calibration-and-evaluation). The column "options cut off" stays at 0.0% for every source, because the head budget protects the options (chapter 08).
+Game prompts fit easily at every size. Long-context benchmark questions get truncated much more with the 1024 vocabulary, which matters when we read the evaluation reports in [chapter 11](./11-calibration-and-evaluation). The column "options cut off" stays at 0.0% for every source except `tasksource_jev` (1.9% at every vocabulary size), the source with the most options per question (8.15 on average, `data/STATS.md`). Elsewhere the head budget protects the options (chapter 08).
 
 ## The same tokenizer at inference: `sky-infer`
 

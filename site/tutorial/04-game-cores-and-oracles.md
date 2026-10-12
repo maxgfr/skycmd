@@ -1,6 +1,6 @@
 # 04 Game cores and oracles
 
-The three skycmd games are pure-Rust simulators. They expose their state as compact text, ask typed questions, and come with an oracle that reads the full simulator to produce soft targets. This chapter covers the `sky-games` crate: the shared game interface, each game and its oracle, the dataset generator, and the rollout harness that tests whether a policy can actually play.
+The skycmd games are pure-Rust simulators. They expose their state as compact text, ask typed questions, and come with an oracle that reads the full simulator to produce soft targets. This chapter covers the `sky-games` crate: the shared game interface, the three drone games and their oracles, the dataset generator, and the rollout harness that tests whether a policy can actually play.
 
 ## Design constraints
 
@@ -11,17 +11,18 @@ The games run in three places: the browser at 60 Hz (through `sky-web`), the nat
 ```rust
 //! Deterministic game cores for skycmd's System One agents.
 //!
-//! Three seedable games with fixed-timestep `f32` physics and no I/O, threads or clocks, so
-//! the browser can step them at 60 Hz through WASM:
+//! Four seedable games with fixed-timestep `f32` physics and no I/O, threads or clocks, so
+//! the browser can step them in real time through WASM:
 //! - [`flappy`]: "Flappy Drone", a decision every frame (`thrust` / `glide`).
 //! - [`rescue`]: "Rescue Run", a grid mission with battery management and sensor dropouts.
 //! - [`dodge`]: "Obstacle Dodge", a side-scroller with maneuvers and a coded safety reflex.
+//! - [`doom`]: a Doom-like first-person shooter on a grid at 35 Hz, a decision every 4 ticks.
 //!
 //! Each game exposes its System One questions, a compact state text, and an oracle computed
 //! from the full simulator. [`rollout`] evaluates policies; [`gen`] builds training records.
 ```
 
-The timestep is `DT = 1.0 / 60.0` (`crates/sky-games/src/common.rs`). Each game owns a `SmallRng`, and `reset()` derives the next course from `(seed, episode)` with splitmix64. The same seed therefore replays the same courses on every platform. `rand` is built without its `std` feature so that the crate compiles for `wasm32-unknown-unknown` (`crates/sky-games/Cargo.toml`).
+The fourth game, the Doom-like shooter, has its own chapter ([chapter 18](./18-doom)); this chapter covers the three drone games. Their timestep is `DT = 1.0 / 60.0` (`crates/sky-games/src/common.rs`). Each game owns a `SmallRng`, and `reset()` derives the next course from `(seed, episode)` with splitmix64. The same seed therefore replays the same courses on every platform. `rand` is built without its `std` feature so that the crate compiles for `wasm32-unknown-unknown` (`crates/sky-games/Cargo.toml`).
 
 ## One interface for every game
 
@@ -55,7 +56,7 @@ pub trait DecisionGame {
 }
 ```
 
-Every game asks exactly two questions: a primary action question and a secondary one. Each `QuestionSpec` carries English and French instruction variants, and each `OptionSpec` carries synonyms and description variants. Index 0 is always the canonical wording, which the runtime and the UI use.
+Each drone game asks exactly two questions: a primary action question and a secondary one (the Doom-like game asks three). Each `QuestionSpec` carries English and French instruction variants, and each `OptionSpec` carries synonyms and description variants. Index 0 is always the canonical wording, which the runtime and the UI use.
 
 | game | primary question | secondary question | decision rate |
 |---|---|---|---|
@@ -81,7 +82,7 @@ pub(crate) fn bin_floor(v: f32, scale: f32, lo: i32, hi: i32) -> i32 {
 }
 ```
 
-The test `state_text_fits_token_budget` (`crates/sky-games/tests/games.rs`) plays 3000 mixed oracle/random decisions per game. It checks that every state text has at most 24 pieces, that the pieces form key/value pairs, and that every value is either an integer in `-20..=99` or a token of at most two characters, such as `x`, `?` or `ok`.
+The test `state_text_fits_token_budget` (`crates/sky-games/tests/games.rs`) plays 3000 mixed oracle/random decisions per game. It checks that every state text has at most 24 pieces (30 for Doom), that the pieces form key/value pairs, and that every value is either an integer in `-20..=99` or a token of at most two characters, such as `x`, `?` or `ok`.
 
 ## Flappy Drone
 
@@ -204,7 +205,7 @@ cargo run --release -p sky-games --bin sky-games-gen -- --game all --n 20000 --s
 cargo run --release -p sky-games --bin sky-games-gen -- --game rescue --n 5000 --seed 7 --out /tmp/rescue.jsonl
 ```
 
-With `all`, `--out` is a directory (default `data/games`) and `N` records are written per game. Label-balance statistics are printed to stderr. The published models were trained on 90,000 Flappy, 60,000 Rescue and 60,000 Dodge records, 210,000 in total, of which 189,880 are in the train split (`data/STATS.md`, "Decision records (games)").
+With `all`, `--out` is a directory (default `data/games`) and `N` records are written per game. Label-balance statistics are printed to stderr. The s1 and s2 models were trained on 90,000 Flappy, 60,000 Rescue and 60,000 Dodge records, 210,000 in total, of which 189,880 are in the train split (`data/STATS.md`, written by `sky-data stats`, "Decision records (games)"). `scripts/train-doom.sh` later added 100,000 Doom records (`data/games/doom.jsonl`), which s3-pico also trained on ([chapter 21](./21-s3-recursive-tiny)).
 
 ## The rollout harness
 

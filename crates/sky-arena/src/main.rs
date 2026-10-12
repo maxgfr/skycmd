@@ -164,7 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .cloned()
     };
     let Some(model) = args.first().filter(|a| !a.starts_with("--")) else {
-        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T]");
+        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T] [--dagger N --out DIR]");
         std::process::exit(2);
     };
     let episodes: usize = flag("--episodes").map_or(Ok(100), |v| v.parse())?;

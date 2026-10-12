@@ -11,6 +11,7 @@ name=$1 rounds=${2:-3} minutes=${3:-8}
 case "$name" in pico) vocab=1024 batch=128 ;; nano) vocab=2048 batch=128 ;; *) echo "unknown $name" >&2; exit 1 ;; esac
 T=${T:-target/s3-train/release/sky-train}
 A=${A:-target/s3-arena/release/sky-arena}
+[ -x "$A" ] || CARGO_TARGET_DIR="${A%/release/sky-arena}" cargo build -q --release -p sky-arena
 games=${GAMES:-flappy,rescue,dodge}
 cfg=configs/s3-$name.json
 start=${START:-1}

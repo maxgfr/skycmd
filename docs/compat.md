@@ -41,6 +41,20 @@ The three-question Flappy Drone frame (`SAMPLE_REQUEST` in `crates/sky-serve/src
 }
 ```
 
+Current published file (`site/public/models/s1-pico.gguf`, the DAgger-trained s1-pico shipped in
+commit a6ab1fd), re-measured on 2026-10-12 with `skycmd decide` and llama-server (`-ngl 0`):
+
+| answer | skycmd (native) | llama-server |
+|---|---|---|
+| `action` p(thrust) | 0.0743545 | 0.0743950 |
+| `danger` noul | 0.1645060 | 0.1645364 |
+| `margin` score | 1.8986974 | 1.8986165 |
+| max abs. probability difference | | 6.9e-5, same `choice` (glide) |
+
+The first compatibility run (below, and in the summary table) used the earlier, pre-DAgger
+s1-pico of commit 60f1c0c. Its values are kept for the WASM and wllama columns, which were not
+re-run on the new file:
+
 | answer | skycmd (native) | skycmd (WASM, Node/Deno/Bun/Chrome) | llama-server | wllama 3.8.1 |
 |---|---|---|---|---|
 | `action` p(thrust) | 0.0597123 | 0.0597122 | 0.0598046 | 0.0596021 |

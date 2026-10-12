@@ -1,6 +1,6 @@
 # 18 A Doom-like shooter
 
-The first three games are 2D and small: one drone, a handful of numbers. This chapter adds a game with a first-person view, monsters that hunt the player, doors, pickups and an exit switch, and asks the same kind of model to play it: a text state plus typed questions in, calibrated probabilities out, one forward pass per question. It is not a reinforcement-learning policy network. The model is s2-nano (chapter 12), fine-tuned so it plays the three earlier games too.
+The first three games are 2D and small: one drone, a handful of numbers. This chapter adds a game with a first-person view, monsters that hunt the player, doors, pickups and an exit switch, and asks the same kind of model to play it: a text state plus typed questions in, calibrated probabilities out, one forward pass per question. It is not a reinforcement-learning policy network. The model of this chapter is s2-nano ([chapter 19](./19-s2-architecture)), fine-tuned so it plays the three earlier games too. The later s3-pico ([chapter 21](./21-s3-recursive-tiny)) plays all four games with one file, and the Play page picks it for Doom when it is published (see the end of this chapter).
 
 [Play it](/play/?game=doom). The tab is labelled "Doom-like (Freedoom assets)": the code, rules and levels are ours, the art comes from [Freedoom](https://github.com/freedoom/freedoom) (BSD-3-Clause), and nothing comes from id Software's Doom.
 
@@ -50,7 +50,7 @@ ea -3 ed 6 al 0 en 1 hp 8 am 17 wf 12 wl 2 wr 5 dr 0 gb 1 gd 4 pb 0 pd 0
 
 The waypoint comes from an A* path computed in code (8-connected, no corner cutting, closed doors cost extra), string-pulled to the farthest path cell the player can walk to in a straight line, and stopped at the first closed door. The goal is the exit switch, or the nearest stimpack or medikit at 40 health or less, or ammo at 2 shells or less. Only "incoming" projectiles count: those whose closest approach passes within the player's radius.
 
-These are 28 pieces, above the 24 of the 2D games: `state_text_fits_token_budget` allows 30 for doom (and still checks the key/value pairs and the value range). With s2's `[NUM]` tokens this is about 30 tokens, half of the state budget.
+These are 28 pieces, above the 24 of the 2D games: `state_text_fits_token_budget` allows 30 for doom (and still checks the key/value pairs and the value range). With s2's `[NUM]` tokens this is about 38 tokens (`BENCH.md`), more than half of the 64-token state budget; s3's value-fused tokens bring it down to 26.
 
 ## The oracle
 
@@ -114,9 +114,13 @@ On 100 fresh doom levels (seed 2026) the published model matches the oracle exac
 
 The model is the s2-nano shape: 1,532,033 parameters, 702 KB as a ternary GGUF (`models/s2-nano-doom/`, `site/public/models/s2-nano-doom.gguf`).
 
-- **Latency.** A doom state is about 38 tokens against about 16 for Flappy Drone, and closed-loop play keeps almost every question at full depth (3.99 of 4 layers). One action question takes about 1.05 ms natively (`sky-arena` p50 on a busy machine). A full decision in WASM, with the 3 questions on one state encoding plus the physics, takes about 1.8 ms (`node crates/sky-web/bench/bench-node.mjs --game doom`, Node 24).
+- **Latency.** A doom state is about 38 tokens against about 16 for Flappy Drone, and closed-loop play keeps almost every question at full depth (3.99 of 4 layers). One action question takes about 1.05 ms natively (`sky-arena` p50 on a busy machine). A full decision in WASM, with the 3 questions on one state encoding plus the physics, takes about 1.8 ms (`node crates/sky-web/bench/bench-node.mjs --game doom`, Node 24). Both were measured before the engine work of the s3 release; with it, one Doom question costs 740 µs natively and 1,282 µs in WASM SIMD128 (`BENCH.md`, "Inference").
 - **Time budget.** A decision is due every 114 ms, so the browser has room to spare.
 - **Caching.** An untrained model that stays stuck measures 0.5 ms, because its state string repeats and the s2 engine reuses the cached state encoding: benchmark a model that actually plays.
+
+## s3-pico plays it too
+
+s3-pico ([chapter 21](./21-s3-recursive-tiny)) was trained with `data/games/doom.jsonl` in its decision data, without a Doom-specific fine-tune or Doom DAgger round. In `sky-arena`, 30 episodes per game at its own τ = 0.6 (seed 7), it completes every level with the oracle's kill rate (0.77) and no death, with 10 reflex vetoes, using 1.73 of its 4 loops per Doom decision at a median of 71 µs (`runs/ship-s3-pico.arena.json`). It keeps the three drone games at the oracle's level too, with a 251 KB file instead of 702 KB. A Doom frame is 26 value-fused tokens for s3-pico and costs 77 µs natively and 138 µs in WASM SIMD128 per question (`BENCH.md`, "Inference").
 
 ## Limits
 

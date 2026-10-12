@@ -54,10 +54,22 @@ pub fn choose_model(list: &Value) -> Option<String> {
         .get("data")?
         .as_array()?
         .iter()
-        .filter_map(|m| Some((m.get("id")?.as_str()?.to_string(), m.get("created_at").and_then(Value::as_str).unwrap_or("").to_string())))
+        .filter_map(|m| {
+            Some((
+                m.get("id")?.as_str()?.to_string(),
+                m.get("created_at")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            ))
+        })
         .filter(|(id, _)| id.to_ascii_lowercase().contains("glm"))
         .collect();
-    let lite = |id: &str| ["air", "flash", "turbo", "mini", "lite"].iter().any(|w| id.to_ascii_lowercase().contains(w));
+    let lite = |id: &str| {
+        ["air", "flash", "turbo", "mini", "lite"]
+            .iter()
+            .any(|w| id.to_ascii_lowercase().contains(w))
+    };
     models.sort_by(|a, b| (!lite(&a.0), &a.1, &a.0).cmp(&(!lite(&b.0), &b.1, &b.0)));
     models.pop().map(|m| m.0)
 }
@@ -103,7 +115,9 @@ pub fn parse_strict_json(text: &str) -> Result<Value> {
     let t = text.trim();
     let t = if let Some(rest) = t.strip_prefix("```") {
         let rest = rest.strip_prefix("json").unwrap_or(rest);
-        rest.strip_suffix("```").ok_or_else(|| anyhow!("unterminated code fence"))?.trim()
+        rest.strip_suffix("```")
+            .ok_or_else(|| anyhow!("unterminated code fence"))?
+            .trim()
     } else {
         t
     };
@@ -142,7 +156,14 @@ Unknown ids are ignored, as are empty strings, strings over 400 characters, and 
 `crates/sky-data/src/teacher.rs`
 
 ```rust
-pub const CATEGORIES: [&str; 6] = ["inspection", "mapping", "agriculture", "search_rescue", "ambiguous", "unsafe"];
+pub const CATEGORIES: [&str; 6] = [
+    "inspection",
+    "mapping",
+    "agriculture",
+    "search_rescue",
+    "ambiguous",
+    "unsafe",
+];
 ```
 
 Each request picks 5 of 24 built-in civil themes, such as bridge pillars, wind turbine blades, a vineyard or a flooded village. An `ambiguous` order lacks essential information, and its plan must be a single `clarify` action. An `unsafe` order is anything outside civil drone work, and its plan must be a single `refuse` action. The model therefore learns that asking and declining are normal answers.
@@ -162,7 +183,10 @@ pub fn validate_plan(v: &Value) -> Result<Vec<String>> {
     }
     .ok_or_else(|| anyhow!("plan must be {{\"plan\": [...]}} or a list"))?;
     if list.is_empty() || list.len() > MAX_ACTIONS {
-        bail!("plan must have 1..={MAX_ACTIONS} actions, got {}", list.len());
+        bail!(
+            "plan must have 1..={MAX_ACTIONS} actions, got {}",
+            list.len()
+        );
     }
 ```
 
@@ -189,6 +213,13 @@ pub fn first_mission_action(names: &[String]) -> Option<&str> {
 
 The order text becomes the state and the source tag is `teacher_drone_orders`. About 5% of orders go to `val`, chosen by a hash of the order text. Orders are deduplicated case-insensitively across runs, and the decision file is rebuilt from every order collected so far.
 
+### Into the training data
+
+Neither file is read by the trainers directly. Two `sky-data` steps turn them into decision records under `data/decisions`, which every training script reads (`crates/sky-data/src/augment.rs`):
+
+- `fetch-decisions --only glm_orders` reads `data/teacher/orders_decisions.jsonl` and writes `data/decisions/glm_orders.jsonl` with `src = glm_orders`, re-split 95/5 by order text like every other source ([chapter 05](./05-hugging-face-data)).
+- `augment-paraphrases` takes the non-test records of `data/decisions` and `data/games` whose instructions have a paraphrase in `data/teacher/paraphrases.jsonl`, and writes copies with a randomly drawn paraphrase as `ins` (options, state, target and split unchanged) to `data/decisions/paraphrased.jsonl`, `src = para:<src>`, capped at 40,000 records (`--cap`).
+
 ## Commands
 
 ```bash
@@ -201,13 +232,16 @@ $D teacher export-questions --max 2000
 $D teacher paraphrase-questions --in data/teacher/questions.json --n 3 --max-calls 60
 $D teacher drone-orders --n 2000 --batch 40 --max-calls 100
 $D teacher --model glm-4.6 --min-interval-ms 3000 drone-orders --n 200
+
+$D fetch-decisions --only glm_orders    # -> data/decisions/glm_orders.jsonl
+$D augment-paraphrases                  # -> data/decisions/paraphrased.jsonl
 ```
 
-`--model`, `--max-calls`, `--batch` and `--min-interval-ms` are global to the `teacher` subcommand. `export-questions` makes no network call and needs no key.
+`--model`, `--max-calls`, `--batch` and `--min-interval-ms` are global to the `teacher` subcommand. `export-questions` makes no network call and needs no key, and neither do the last two commands.
 
 ## Status
 
-On the build machine, `paraphrase-questions` wrote 1,999 paraphrase items in 52 calls (`data/teacher/paraphrase.log`), and `drone-orders` holds 3,000 orders after dropping 51 invalid ones in its last run (`data/teacher/orders.log`). Their effect on accuracy was not measured. `scripts/train-ladder.sh` currently trains on `data/decisions,data/games`, so teacher outputs under `data/teacher/` are not part of the default training mix yet. `DATA_LICENSES.md` notes that teacher-generated data is subject to the provider's terms of service.
+On the build machine, `paraphrase-questions` wrote 1,999 paraphrase items in 52 calls (`data/teacher/paraphrase.log`), and `drone-orders` holds 3,000 orders after dropping 51 invalid ones in its last run (`data/teacher/orders.log`). `data/STATS.md` (written by `sky-data stats`) counts 3,000 `glm_orders` records and 40,000 `paraphrased` records in `data/decisions` (`DATA_LICENSES.md` gives the same counts: the paraphrases cover 932 distinct instructions). The training scripts read every file in `data/decisions`, so a run started after these two steps trains on them. Their effect on accuracy was not measured on its own. `DATA_LICENSES.md` notes that teacher-generated data is subject to the provider's terms of service.
 
 ## Next
 

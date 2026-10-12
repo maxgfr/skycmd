@@ -135,9 +135,10 @@ The usage string is `gguf-inspect <file.gguf> [--max-array N]`.
 export CARGO_TARGET_DIR=$PWD/target/sky-infer
 cargo test -p sky-infer
 cargo run --release -p sky-infer --bin sky-bench -- --random s1-pico
+cargo run --release -p sky-infer --bin sky-bench -- site/public/models/s3-pico.gguf
 ```
 
-The golden tests compare against the reference model in `models-src/oscar`, which is gitignored. Without it they print `skipping golden test: ... is absent` and pass. `sky-bench` takes a GGUF file, a Laya directory, or `--random s1-pico|s1-nano|s1-micro`.
+The s1 golden tests compare against the reference model in `models-src/oscar`, which is gitignored. Without it they print `skipping golden test: ... is absent` and pass. The s2 and s3 golden files are committed under `crates/sky-infer/tests/golden/`. `sky-bench` takes a GGUF file, a Laya directory, or `--random NAME` with `s1-pico|s1-nano|s1-micro` or `s2-pico|s2-nano|s2-micro|s3-pico|s3-nano`.
 
 ### sky-data: Hugging Face pipeline, tokenizer, teacher
 
@@ -158,7 +159,7 @@ cargo build --release -p sky-train
 $CARGO_TARGET_DIR/release/sky-train --help
 ```
 
-The first build compiles MLX and its Metal kernels, which takes a while. Its subcommands are `bench`, `pretrain`, `decide`, `calibrate`, `export` and `eval`. `scripts/train-ladder.sh` chains them for each model size.
+The first build compiles MLX and its Metal kernels, which takes a while. The s1 subcommands are `bench`, `pretrain`, `decide`, `calibrate`, `export` and `eval`; `scripts/train-ladder.sh` chains them for each model size. The s2 and s3 models use `s2-bench`, `s2-pretrain`, `s2-decide`, `s2-calibrate`, `s2-export`, `s2-eval`, `s2-golden`, `s2-play`, `s2-seqgen` and `s2-numeric` ([chapter 19](./19-s2-architecture), [chapter 21](./21-s3-recursive-tiny)).
 
 ### sky-web and sky-arena
 
@@ -171,7 +172,7 @@ export CARGO_TARGET_DIR=$PWD/target/sky-arena
 cargo build --release -p sky-arena
 ```
 
-`sky-arena` plays every game with a model and prints game metrics and latency. Its usage line is `sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game flappy|rescue|dodge|all] [--json out.json]`.
+`sky-arena` plays every game with a model and prints game metrics and latency. Its usage line is `sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T]`, where `G` is `flappy`, `rescue`, `dodge` or `doom`. It also takes `--dagger N --out DIR` to collect DAgger data ([chapter 20](./20-dagger-lessons)).
 
 ## Build the browser module
 
@@ -199,13 +200,15 @@ The output is `sky_web.js` plus `sky_web_bg.wasm`. `site/public/pkg` is gitignor
 
 ## Models for the site
 
-`scripts/export-models.sh` converts each trained model in `models/<name>/` to `site/public/models/<name>.gguf`, then writes `manifest.json` and `bench.json`. Encoder matrices are stored in f16 by default. `--type f16|q8_0|f32` overrides this.
+The published models are already in the repository: `site/public/models/` holds `s3-pico.gguf` (the default), `s1-pico.gguf`, `s2-nano.gguf` and `s2-nano-doom.gguf`, listed in `manifest.json`.
+
+`scripts/export-models.sh` converts each trained s1 model in `models/<name>/` (the Laya layout written by `sky-train export`) to `site/public/models/<name>.gguf`, then rewrites `manifest.json` and `bench.json`. Encoder matrices are stored in f16 by default. `--type f16|q8_0|f32` overrides this. The script only knows s1 directories: the s2 and s3 files are GGUFs written by `sky-train s2-export` and copied to `site/public/models/`, and running the script replaces the published manifest with the s1 models it finds.
 
 ```bash
 scripts/export-models.sh
 ```
 
-When no trained model exists, the script says so and the site falls back to the oracle policy. You can still play the games.
+When no model is listed, the site falls back to the oracle policy. You can still play the games.
 
 ## Run the site
 
@@ -220,7 +223,7 @@ VitePress prints a local URL. `npm run docs:build` produces the static build.
 - **`xcrun: error: unable to find utility "metal"`**: `DEVELOPER_DIR` points at the Command Line Tools. Export the Xcode path shown above, or run `xcodebuild -downloadComponent MetalToolchain` again.
 - **CMake not found while building `mlx-sys`**: run `brew install cmake`.
 - **Builds block each other ("Blocking waiting for file lock")**: two shells share a target directory. Give each crate its own `CARGO_TARGET_DIR`.
-- **The site shows no model**: run `scripts/build-wasm.sh` and `scripts/export-models.sh`, then reload.
+- **The site shows no model**: run `scripts/build-wasm.sh`, check that `site/public/models/manifest.json` lists the models, then reload.
 - **Measuring your own machine**: `sky-train bench` appends throughput rows to `BENCH.md`. The rows already there were measured on the reference machine with mlx-rs 0.32 and MLX 0.32.2.
 
 ## Next

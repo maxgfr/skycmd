@@ -30,7 +30,7 @@ wasm-bindgen = "0.2.117"
 
 | file | role |
 |---|---|
-| `src/lib.rs` | the `#[wasm_bindgen]` surface: `Engine`, `GameSession`, `bench`, `version` |
+| `src/lib.rs` | the `#[wasm_bindgen]` surface: `Engine`, `GameSession`, `bench`, `benchGame`, `version` |
 | `src/model.rs` | `Model`: a `sky_infer::Engine` loaded with f32 compute, plus the file size |
 | `src/session.rs` | `Session`: one game, its questions, the decision schedule, timing statistics |
 | `src/clock.rs` | a microsecond clock: `performance.now()` in WASM, `Instant` natively |
@@ -39,16 +39,21 @@ The Rust types (`Model`, `Session`, `session::bench`) work natively too, so `car
 
 ## Loading the model
 
-`Model::load` always asks the engine for f32 compute. As chapter 14 explains, baseline SIMD128 has no fast int8 dot product, so Q8_0 weights are dequantized at load.
+`Model::load` always asks the engine for f32 compute. As chapter 14 explains, baseline SIMD128 has no fast int8 dot product, so Q8_0 weights are dequantized at load, and the 2-bit weights of s2 and s3 files are expanded to f32 the same way.
 
 From `crates/sky-web/src/model.rs`:
 
 ```rust
 impl Model {
     pub fn load(gguf: &[u8]) -> Result<Model, String> {
+        Self::load_with(gguf, EngineOptions::default())
+    }
+
+    /// Load with explicit engine options (`dequantize` is always set: f32 compute).
+    pub fn load_with(gguf: &[u8], opts: EngineOptions) -> Result<Model, String> {
         let opts = EngineOptions {
             dequantize: true,
-            ..Default::default()
+            ..opts
         };
         let inner = sky_infer::Engine::from_gguf_with(gguf, opts).map_err(|e| e.to_string())?;
         Ok(Model {
@@ -58,7 +63,7 @@ impl Model {
     }
 ```
 
-`Engine.info()` returns the model description as JSON (`name`, `n_params`, `hidden_size`, the fitted temperatures, `file_bytes`), and the page shows it next to the game. For the shipped s1-pico file it starts with `{"name":"skycmd-s1-pico","n_params":202305,"vocab_size":1024,"hidden_size":64,...`.
+`Engine.info()` returns the model description as JSON (`name`, `n_params`, `hidden_size`, the fitted temperatures, `file_bytes`), and the page shows it next to the game. For s3-pico, the first model in `site/public/models/manifest.json` and the one the page loads by default, it starts with `{"name":"skycmd-s3-pico","arch":"skycmd-s2","n_params":445345,"vocab_size":1024,"hidden_size":96,...`; for s1-pico with `{"name":"skycmd-s1-pico","arch":"modern-bert","n_params":202305,...`.
 
 ## Questions come from the game
 
@@ -93,7 +98,7 @@ For Flappy Drone, `game.questions()` returns two questions:
 
 The model sees the state as compact text, for example `vy 0 dx 36 up 9 dn 7 nxt 10 alt 32`. `Flappy::state_text` measures clearances relative to the drone (`up`, `dn`), so the model reads "room above / below" directly: the code measures, the model decides.
 
-Rescue asks `move` (a 7-way choice) and `risk` (a 5-level score). Dodge asks `maneuver` (a 4-way choice) and `abort` (a noul). The first question is always the action. The second, called "secondary" in the JSON, is shown as a gauge.
+Rescue asks `move` (a 7-way choice) and `risk` (a 5-level score). Dodge asks `maneuver` (a 4-way choice) and `abort` (a noul). The Doom-like game of [chapter 18](./18-doom) asks three questions. The first question is always the action. The second, called "secondary" in the JSON, is shown as a gauge; any further ones go to `others`.
 
 ## One AI frame
 
@@ -112,11 +117,21 @@ From `crates/sky-web/src/session.rs`:
         if decide {
             let state = self.game.state_text();
             let oracle = matches!(policy, Policy::Oracle).then(|| self.game.oracle());
-            let p0 = self.ask(&mut policy, &oracle, 0, &state)?;
+            let mut stats = Vec::with_capacity(2);
+            let p0 = self.ask(&mut policy, &oracle, 0, &state, &mut stats)?;
             let p1 = if self.questions.len() > 1 {
-                Some(self.ask(&mut policy, &oracle, 1, &state)?)
+                Some(self.ask(&mut policy, &oracle, 1, &state, &mut stats)?)
             } else {
                 None
+            };
+            let mut others = Vec::new();
+            for qi in 2..self.questions.len() {
+                let p = self.ask(&mut policy, &oracle, qi, &state, &mut stats)?;
+                others.extend(self.secondary(qi, &p));
+            }
+            let info = match &policy {
+                Policy::Model(m) => Some(DecisionInfo::from_stats(m, &stats)),
+                Policy::Oracle => None,
             };
             let choice = argmax(&p0);
             let abort = self.kind == sky_games::dodge::NAME
@@ -131,22 +146,25 @@ Points worth noticing:
 - **The oracle is a policy too.** `Policy::Oracle` returns the soft targets of the full simulator, which the training records also use. The page falls back to it when no model is available, for example before `models/` holds a trained model (`scripts/export-models.sh` prints "the site falls back to the oracle policy").
 - **Decisions are not always due every frame.** Flappy decides every frame; Dodge decides every sixth frame (`dodge_decides_every_sixth_frame` in `crates/sky-web/tests/session.rs`).
 
-The frame returns a serializable `AiStep`. A real Flappy frame with s1-pico:
+The frame returns a serializable `AiStep`. A real Flappy frame with s3-pico (`GameSession("flappy", 42)`, 90th step, Node 24):
 
 ```json
 {"policy":"model","decided":true,"action":"glide","executed":"glide",
- "probs":[{"key":"thrust","p":0.05971221},{"key":"glide","p":0.94028777}],
- "secondary":{"id":"danger","type":"noul","value":0.9533952,"max":1.0,
-              "probs":[{"key":"false","p":0.046604827},{"key":"true","p":0.9533952}]},
- "vetoed":false,"micros":684.62,"state_text":"vy 0 dx 36 up 9 dn 7 nxt 10 alt 32",
+ "probs":[{"key":"thrust","p":0.26800653},{"key":"glide","p":0.7319935}],
+ "secondary":{"id":"danger","type":"noul","value":0.061188255,"max":1.0,
+              "probs":[{"key":"false","p":0.9388117},{"key":"true","p":0.061188255}]},
+ "others":[],
+ "info":{"family":"s2","exit":0,"n_exits":4,"layers_used":1,"mean_layers":1.0,"max_layers":4,
+         "static_hit":true,"state_reused":true},
+ "vetoed":false,"micros":52.75,"state_text":"vy 9 dx 12 up 5 dn 11 nxt 10 alt 36",
  "event":"none","reward":0.01,"done":false,"score":0}
 ```
 
-`micros` is the wall time of the whole frame inside WASM: decision plus physics.
+`micros` is the wall time of the whole frame inside WASM: decision plus physics. `info` says how the model answered: here s3-pico stopped at its first exit, after one pass of its shared block (an s1 model reports `"family":"s1"` and no exit). The same step with s1-pico took 588 µs.
 
 ## The frame budget and `set_decide_every`
 
-At 60 Hz a frame has about 16.7 ms. Measured on an Apple M5 with Node 24 / V8, the s1-pico `bench()` median is 694 µs per AI decision on Flappy (two forward passes plus physics, `BENCH.md`). A full frame including the JSON snapshot is about 0.7 ms (the `micros` field above reads 684.62). That is under 5% of the budget, so the page runs WASM **on the main thread**, with no worker and no message passing.
+At 60 Hz a frame has about 16.7 ms. Measured on an Apple M5 with Node 24 / V8, the `bench()` median per AI decision on Flappy (two forward passes plus physics, `wasm_us` in `site/public/bench.json`) is 49.6 µs for s3-pico, the default model, and 588.6 µs for s1-pico. Even the slower s1-pico uses under 4% of the budget, so the page runs WASM **on the main thread**, with no worker and no message passing.
 
 A bigger model may not fit. The session can then decide on every n-th due frame and hold the last decision in between:
 
@@ -165,13 +183,14 @@ Held frames call `game.tick()`, the game's "do nothing" step: Flappy glides, Res
 
 | model | wasm decision (Flappy, 2 questions + physics) | share of a 16.7 ms frame | `decide_every` needed at 60 Hz |
 |---|---:|---:|---:|
-| s1-pico | 694 µs | 4% | 1 |
-| s1-nano | 3,541 µs | 21% | 1 |
-| s1-micro | about 32,600 µs | about 195% | 2 or more |
-| s2-nano (shape of the shipped model, full depth) | 501 µs | 3% | 1 |
+| s3-pico (default) | 49.6 µs | 0.3% | 1 |
+| s1-pico | 588.6 µs | 3.5% | 1 |
+| s1-nano (earlier engine) | 3,541 µs | 21% | 1 |
+| s1-micro (earlier engine) | about 32,600 µs | about 195% | 2 or more |
+| s2-nano (τ = 0.95) | 409.1 µs | 2.5% | 1 |
 | s2-nano-doom (3 questions + physics) | 1,830 µs | 11% | 1 (a doom decision is due every 114 ms) |
 
-The s1 and s2 numbers are `BENCH.md` medians, except s1-micro, which was measured on a busy machine for [chapter 12](./12-size-ladder). s1-micro is the only model that would need throttling, and it is not shipped.
+The s3-pico, s1-pico and s2-nano numbers are the `wasm_us` medians of `site/public/bench.json`; s2-nano-doom is from the Doom section of `BENCH.md`. The s1-nano and s1-micro numbers were measured with the engine as it was before the s3 kernel work ([chapter 21](./21-s3-recursive-tiny)) and not re-measured; s1-micro was measured on a busy machine for [chapter 12](./12-size-ladder). s1-micro is the only model that would need throttling, and it is not shipped.
 
 ## Benchmarking inside the page
 
@@ -195,13 +214,13 @@ From `crates/sky-web/src/session.rs`:
     }
 ```
 
-It returns `{game, n, batch, median_us, p95_us, mean_us, decisions_per_s, forwards_per_decision}`. The `wasm_us` field of `site/public/bench.json` is meant for this number. It is `null` in the file, because `scripts/export-models.sh` only measures native latency: the Bench page runs `bench()` in your browser and fills the column there.
+It returns `{game, name, family, params, file_bytes, n, batch, median_us, p95_us, mean_us, decisions_per_s, forwards_per_decision, mean_layers_used, max_layers, static_hit_rate, state_reuse_rate}`. `benchGame(engine, game, n)` does the same for another game (`crates/sky-web/bench/bench-node.mjs --game doom` uses it). The `wasm_us` field of `site/public/bench.json` holds this number as measured under Node on the build machine (`scripts/export-models.sh` itself only measures native latency and writes `null` there), and the Bench page can also run `bench()` in your browser.
 
 ## The JavaScript side
 
 The page code lives in the VitePress theme:
 
-- `site/.vitepress/theme/lib/wasm.ts` loads `pkg/sky_web.js` once, fetches the GGUF listed in `site/public/models/manifest.json`, and creates `Engine` and `GameSession` objects.
+- `site/.vitepress/theme/lib/wasm.ts` loads `pkg/sky_web.js` once, fetches the GGUF files listed in `site/public/models/manifest.json`, and creates `Engine` and `GameSession` objects. The page starts with the first entry of the manifest, s3-pico.
 - `site/.vitepress/theme/lib/render.ts` draws the `view` field of `game.snapshot()` on a canvas.
 - `site/.vitepress/theme/components/PlayGame.vue` is the full game on `/play/` (human, model or oracle, veto toggle, probability bars, timing).
 - `site/.vitepress/theme/components/HeroGame.vue` is the self-playing game on the home page.
@@ -217,7 +236,7 @@ const step = JSON.parse(game.step_ai(engine));   // or game.step_oracle() withou
 const view = JSON.parse(game.snapshot());
 ```
 
-The snippet is the doc comment of `crates/sky-web/src/lib.rs`. On the deployed site, every URL must carry the GitHub Pages base path `/skycmd/`; chapter 17 covers this. A human player calls `game.step_human(key)` with one of `game.action_keys()` (`""` holds), and the reflex applies to humans too.
+The snippet is the doc comment of `crates/sky-web/src/lib.rs`; any GGUF on the site (s1, s2 or s3) loads the same way. On the deployed site, every URL must carry the GitHub Pages base path `/skycmd/`; chapter 17 covers this. A human player calls `game.step_human(key)` with one of `game.action_keys()` (`""` holds), and the reflex applies to humans too.
 
 ## Testing without a browser
 
@@ -228,22 +247,25 @@ export CARGO_TARGET_DIR=$PWD/target/sky-web
 cargo test -p sky-web
 ```
 
-To score a trained model over many episodes without a page, `sky-arena` plays every game natively with the same engine. Its usage string is `sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T]`. `--exit-threshold` only matters for s2 files ([chapter 19](./19-s2-architecture)). The DAgger scripts also call it with `--dagger N --out DIR`, which is not in the usage line:
+To score a trained model over many episodes without a page, `sky-arena` plays every game natively with the same engine. Its usage string is `sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T]`. `--exit-threshold` only matters for s2 and s3 files ([chapter 19](./19-s2-architecture)). `--game` also accepts `doom`, and `--seed` defaults to 7. The DAgger scripts also call it with `--dagger N --out DIR`, which is not in the usage line:
 
 ```sh
 export CARGO_TARGET_DIR=$PWD/target/sky-arena
 cargo run --release -p sky-arena -- site/public/models/s1-pico.gguf --episodes 30 --game flappy
 ```
 
-Arena scores of the published models, 30 episodes per game with the default seed (`runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`):
+Arena scores of the published models, 30 episodes per game with the default seed (`runs/ship-s3-pico.arena.json`, `runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`; `runs/` is local and gitignored, `sky-arena --json` writes these files):
 
 | model | Flappy pipes (crashes) | Rescue rate | Dodge completion | Dodge reflex vetoes | Flappy p50 |
 |---|---:|---:|---:|---:|---:|
 | oracle | 200.0 (0) | 1.00 | 0.87 | 0 | |
+| s3-pico (0.45M, default, 3 DAgger rounds, τ = 0.6) | 200.0 (0) | 1.00 | 0.87 | 14 | 21 µs |
 | s1-pico (0.2M, after 2 DAgger rounds) | 200.0 (0) | 1.00 | 0.83 | 1,026 | 201 µs |
 | s2-nano (1.5M, after 2 DAgger rounds, τ = 0.95) | 200.0 (0) | 1.00 | 0.87 | 25 | 378 µs |
 
-Flappy is capped at 200 pipes (`--max-pipes`), so 200.0 means every episode reached the cap. The other rungs of the ladder and every DAgger round are in [chapter 20](./20-dagger-lessons).
+s3-pico also plays the Doom-like game in the same run: completion 1.00 and kill rate 0.77, both equal to the oracle's.
+
+Flappy is capped at 200 pipes (`--max-pipes`), so 200.0 means every episode reached the cap. The other rungs of the ladder and every DAgger round are in [chapter 20](./20-dagger-lessons), and the s3-pico rounds in [chapter 21](./21-s3-recursive-tiny).
 
 ## Next
 

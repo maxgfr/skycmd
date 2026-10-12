@@ -2,6 +2,8 @@
 
 A trained skycmd model leaves `sky-train` as a Laya-layout directory of safetensors and JSON configs. This chapter turns it into one self-contained GGUF file that both our WASM engine and llama.cpp can read, and shows how far you can push the weights down to int8 (Q8_0) before the probabilities move.
 
+Everything here is about s1 files (`modern-bert`). The s2 and s3 models, including the site's default s3-pico, are written directly as GGUF by `sky-train s2-export` with the `skycmd-s2` architecture and ternary weights ([chapter 19](./19-s2-architecture), [chapter 21](./21-s3-recursive-tiny)); those files run only in the skycmd engine (CLI, server, npm, Python, WASM), not in llama.cpp.
+
 ## Where we are in the pipeline
 
 ```text
@@ -99,7 +101,7 @@ site/public/models/s1-pico.gguf: GGUF v3, 545280 bytes, alignment 32
   modern-bert.decision.type (string) = "laya"
   modern-bert.decision.block_count (u32) = 1
   modern-bert.decision.max_head_tokens (u32) = 96
-  modern-bert.decision.temperature.choice.2 (f32) = 1.0647699
+  modern-bert.decision.temperature.choice.2 (f32) = 1.0013216
   tokenizer.ggml.model (string) = "gpt2"
   tokenizer.ggml.mask_token_id (u32) = 4
   ...
@@ -119,6 +121,7 @@ Note `block_count = 3`: two encoder layers plus one decision-head layer. The hea
 
 ```text
 usage: sky-convert <laya_dir | --random s1-pico|s1-nano|s1-micro> <out.gguf> [--type f32|f16|bf16|q8_0] [--head-type f32|f16|bf16|q8_0] [--pre NAME] [--name NAME]
+       sky-convert --random s2-pico|s2-nano|s2-micro|s3-pico|s3-nano <out.gguf> [--format f32|f16|ternary] [--tokenizer tok-s2.json] [--name NAME]
 ```
 
 ```sh
@@ -128,7 +131,7 @@ $CARGO_TARGET_DIR/release/sky-convert models/s1-pico /tmp/s1-pico-f16.gguf --nam
 $CARGO_TARGET_DIR/release/sky-convert models/s1-pico /tmp/s1-pico-q8.gguf --type q8_0 --name skycmd-s1-pico
 ```
 
-`--random s1-nano` writes a model with random weights and a small test tokenizer instead. Use it to exercise the runtime before a real model exists.
+`--random s1-nano` writes a model with random weights and a small test tokenizer instead. Use it to exercise the runtime before a real model exists. The second form does the same for the s2 and s3 shapes (`--tokenizer` takes a real s2 tokenizer such as `data/tok/tok-s2-1024.json`).
 
 ### Which tensor gets which type
 
@@ -256,7 +259,7 @@ cargo test --release -p sky-gguf
 
 ## What the site ships, and why
 
-`scripts/export-models.sh` converts every `models/*/` directory with the default types: F16 encoder, F32 head. The script's header explains the choice. The golden tests measure 1e-3 for F16 against 3e-2 for Q8_0, and the browser engine computes in f32 anyway (chapter 14). On models this small, Q8_0 would save little download for a visible accuracy cost.
+`scripts/export-models.sh` converts every `models/*/` directory that holds an s1 export (`model.safetensors`) with the default types: F16 encoder, F32 head. The script's header explains the choice. The golden tests measure 1e-3 for F16 against 3e-2 for Q8_0, and the browser engine computes in f32 anyway (chapter 14). On models this small, Q8_0 would save little download for a visible accuracy cost.
 
 ```sh
 scripts/export-models.sh              # f16 (default)
@@ -265,15 +268,15 @@ scripts/export-models.sh --type q8_0  # Q8_0 encoder matrices, for comparison
 
 Both commands overwrite the files in `site/public/models/`. To compare formats without touching what the site serves, call `sky-convert` directly with an output path under `/tmp`, as shown above.
 
-The script also runs `sky-bench` on each file and writes `site/public/models/manifest.json` and `site/public/bench.json`. A value that is not available yet is written as `null`, and the Bench page shows a placeholder instead of a number.
+The script also runs `sky-bench` on each file and writes `site/public/models/manifest.json` and `site/public/bench.json`. A value that is not available yet is written as `null`, and the Bench page shows `n/a` instead of a number. The script only knows s1 directories: the s2 and s3 files on the site (`s3-pico.gguf`, `s2-nano.gguf`, `s2-nano-doom.gguf`) come from `sky-train s2-export`, and the current `manifest.json` and `bench.json` also carry closed-loop and WASM columns that the script does not write.
 
-| model | params | F16 GGUF bytes | Q8_0 GGUF bytes | native latency per question (`BENCH.md`) |
+| model | params | F16 GGUF bytes | Q8_0 GGUF bytes | native latency per question |
 |---|---:|---:|---:|---:|
-| s1-pico | 202,305 | 545,280 | 468,512 | 188 µs |
-| s1-nano | 1,134,209 | 2,765,792 | 2,151,456 | 974 µs |
-| s1-micro | 6,630,913 | 16,694,464 | 13,008,128 | not in `BENCH.md` (about 4,600 µs, [chapter 12](./12-size-ladder)) |
+| s1-pico | 202,305 | 545,280 | 468,512 | 137.6 µs (`BENCH.md`) |
+| s1-nano | 1,134,209 | 2,765,792 | 2,151,456 | 974 µs (earlier engine) |
+| s1-micro | 6,630,913 | 16,694,464 | 13,008,128 | about 4,600 µs (earlier engine, [chapter 12](./12-size-ladder)) |
 
-Only s1-pico is published. The other sizes come from running `sky-convert models/s1-<name> /tmp/s1-<name>.gguf [--type q8_0]` on the trained checkpoints. Q8_0 saves 14% on pico and 22% on micro: the embedding table stays F16 and the head F32, and on pico those are most of the file.
+Of the s1 sizes, only s1-pico is published. "Earlier engine" marks numbers measured before the s3 kernel work of [chapter 21](./21-s3-recursive-tiny) and not re-measured since. The other sizes come from running `sky-convert models/s1-<name> /tmp/s1-<name>.gguf [--type q8_0]` on the trained checkpoints. Q8_0 saves 14% on pico and 22% on micro: the embedding table stays F16 and the head F32, and on pico those are most of the file.
 
 To time the int8 path natively, `sky-bench` takes `--q8` (two-pass activations), `--q8-fast` (single pass) and `--no-calib`:
 
@@ -283,7 +286,7 @@ $CARGO_TARGET_DIR/release/sky-bench site/public/models/s1-pico.gguf --q8 --iters
 $CARGO_TARGET_DIR/release/sky-bench --random s1-micro --q8-fast --iters 300
 ```
 
-On these models the int8 path is not a speed-up by default. Best median of 3 rounds per mode, one question per frame, measured on the M5 for this chapter while other jobs ran (`sky-bench <file> [--q8 | --q8-fast] --questions 1 --iters 1000`):
+On these models the int8 path is not a speed-up by default. Best median of 3 rounds per mode, one question per frame, measured on the M5 for this chapter while other jobs ran, with the engine as it was before the s3 kernel work (`sky-bench <file> [--q8 | --q8-fast] --questions 1 --iters 1000`; not re-measured since):
 
 | model | F16 file, f32 compute | `--q8` | `--q8-fast` | Q8_0 file |
 |---|---:|---:|---:|---:|

@@ -13,6 +13,7 @@ export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer
 model=$1
 out=${2:-$1}
 A=${A:-target/s3-arena/release/sky-arena}
+[ -x "$A" ] || CARGO_TARGET_DIR="${A%/release/sky-arena}" cargo build -q --release -p sky-arena
 episodes=${EPISODES:-20}
 games=${GAMES:-flappy,rescue,dodge}
 seed=${SEED:-7}

@@ -29,7 +29,7 @@ const groups: [string, number, number][] = [
   ['Data', 4, 7],
   ['Model and training', 7, 12],
   ['Shipping', 12, 17],
-  ['Going further', 17, 20],
+  ['Going further', 17, 21],
 ]
 
 export default defineConfig({
@@ -59,6 +59,8 @@ export default defineConfig({
       { text: 'Tutorial', link: '/tutorial/' },
       { text: 'Bench', link: '/bench/' },
       { text: 'Install', link: '/install/' },
+      { text: 'What\'s new', link: '/novelty/' },
+      { text: 'Sources', link: '/sources/' },
     ],
     socialLinks: [{ icon: 'github', link: 'https://github.com/maxgfr/skycmd' }],
     sidebar: {

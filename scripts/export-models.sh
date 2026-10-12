@@ -12,12 +12,18 @@
 # (from runs/<name>/report.md, `all` / `games` rows) and the native latency of `sky-bench`.
 # Values that are not available yet are written as null and shown as "TBD" by the site.
 #
-# Usage: scripts/export-models.sh [--type f16|q8_0|f32]
+# Usage: scripts/export-models.sh [--type f16|q8_0|f32] <models/dir>[:<site-name>] ...
+#   e.g. scripts/export-models.sh models/s1-pico-g2:s1-pico   (s2/s3 GGUFs are copied by hand)
+#
+# Published files are never overwritten: a model whose site/public/models/<name>.gguf already
+# exists is skipped (FORCE=1 re-exports it), and the existing manifest.json / bench.json entries
+# (s2/s3 models written by other scripts included) are kept; new s1 models are appended.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ftype=f16
-if [[ "${1:-}" == "--type" ]]; then ftype=${2:?--type needs a value}; fi
+if [[ "${1:-}" == "--type" ]]; then ftype=${2:?--type needs a value}; shift 2; fi
+if [[ $# -eq 0 ]]; then sed -n 2,20p "$0" >&2; exit 2; fi
 
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/sky-web-tools}
 cargo build -q --release -p sky-infer --bin sky-convert --bin sky-bench
@@ -27,10 +33,12 @@ out=site/public/models
 mkdir -p "$out"
 rows=()
 shopt -s nullglob
-for dir in models/*/; do
-  name=$(basename "$dir")
+for spec in "$@"; do
+  dir=${spec%%:*}; dir=${dir%/}
+  name=$(basename "$dir"); [[ "$spec" == *:* ]] && name=${spec#*:}
   [[ -f "$dir/model.safetensors" ]] || { echo "skip $dir (no model.safetensors)"; continue; }
   gguf=$out/$name.gguf
+  if [[ -f "$gguf" && "${FORCE:-0}" != 1 ]]; then echo "keep $gguf (already published; FORCE=1 to re-export)"; continue; fi
   log=$("$bin/sky-convert" "$dir" "$gguf" --type "$ftype" --name "skycmd-$name")
   echo "$log"
   params=$(sed -nE 's/.* ([0-9]+) parameters.*/\1/p' <<<"$log")
@@ -42,7 +50,7 @@ for dir in models/*/; do
 done
 
 if [[ ${#rows[@]} -eq 0 ]]; then
-  echo "no trained model under models/: the site falls back to the oracle policy"
+  echo "nothing new to export: manifest.json and bench.json are unchanged"; exit 0
 fi
 
 printf '%s\n' "${rows[@]+"${rows[@]}"}" | node --input-type=module -e '
@@ -67,7 +75,12 @@ function report(name) {
   return metrics;
 }
 
-const manifest = rows.map(({ name, params, bytes }) => ({ name, file: `${name}.gguf`, params, bytes }));
+const readJson = (p, fallback) => (existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : fallback);
+const oldManifest = readJson("site/public/models/manifest.json", []);
+const known = new Set(oldManifest.map((m) => m.name));
+const manifest = oldManifest.concat(
+  rows.filter((r) => !known.has(r.name)).map(({ name, params, bytes }) => ({ name, arch: "modern-bert", weight_format: "f16", file: `${name}.gguf`, params, bytes })),
+);
 writeFileSync("site/public/models/manifest.json", JSON.stringify(manifest, null, 2) + "\n");
 
 const bench = {
@@ -90,6 +103,9 @@ const bench = {
     };
   }),
 };
+const oldBench = readJson("site/public/bench.json", { models: [] });
+const fresh = new Set(bench.models.map((m) => m.name));
+bench.models = oldBench.models.filter((m) => !fresh.has(m.name)).concat(bench.models.filter((m) => !oldBench.models.some((o) => o.name === m.name)));
 writeFileSync("site/public/bench.json", JSON.stringify(bench, null, 2) + "\n");
 console.log(`wrote site/public/models/manifest.json (${manifest.length} models) and site/public/bench.json`);
 '

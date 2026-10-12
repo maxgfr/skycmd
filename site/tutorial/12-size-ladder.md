@@ -1,6 +1,6 @@
 # 12 The size ladder
 
-skycmd trains the same architecture at three sizes, from 0.2M to 6.6M parameters: s1-pico, s1-nano and s1-micro. This chapter puts the configs, parameter budgets, training budgets and measured results side by side and shows where each model's parameters go. Only s1-pico ships on the site; the closed-loop results of the ladder are in [chapter 20](./20-dagger-lessons), and the s2 architecture that replaced the bigger rungs is in [chapter 19](./19-s2-architecture).
+skycmd trains the same architecture at three sizes, from 0.2M to 6.6M parameters: s1-pico, s1-nano and s1-micro. This chapter puts the configs, parameter budgets, training budgets and measured results side by side and shows where each model's parameters go. Of the three rungs only s1-pico ships on the site; the closed-loop results of the ladder are in [chapter 20](./20-dagger-lessons), and the s2 and s3 architectures that replaced the bigger rungs are in [chapter 19](./19-s2-architecture) and [chapter 21](./21-s3-recursive-tiny). The site's default model today is s3-pico (445,345 parameters, 251 KB ternary).
 
 ## The three configs
 
@@ -36,15 +36,15 @@ All three share `global_attn_every_n_layers = 3`, `local_attention = 128`, RoPE 
 | test accuracy, games | 0.8806 | 0.7837 | 0.8215 |
 | test accuracy, `typed_decisions_bench` | 0.3280 | 0.3975 | 0.3100 |
 | test NLL / ECE, all sources | 0.6449 / 0.0738 | 0.6917 / 0.0478 | 0.6712 / 0.0544 |
-| native latency, 1 question | 188 µs | 974 µs | about 4,600 µs |
-| browser (WASM) latency, one Flappy decision | 694 µs | 3,541 µs | about 32,600 µs |
+| native latency, 1 question | 137.6 µs | 974 µs (earlier engine) | about 4,600 µs (earlier engine) |
+| browser (WASM) latency, one Flappy decision | 588.6 µs | 3,541 µs (earlier engine) | about 32,600 µs (earlier engine) |
 
 Sources:
 
 - **Parameter counts**: `BENCH.md`, matching the `exact_parameter_counts` test in `crates/sky-train/src/params.rs`.
 - **GGUF size**: `site/public/models/manifest.json` for pico. nano and micro are not on the site; their sizes come from converting `models/s1-nano` and `models/s1-micro` with `sky-convert` (default types: encoder matrices in f16, head in f32, see `scripts/export-models.sh`).
 - **Accuracy, NLL and ECE**: `runs/s1-{pico,nano,micro}/report.md`, test split, calibrated. The pico report was written before the data was regenerated, so its test split is smaller (11,134 against 12,638 questions; 3,100 Flappy questions against 4,604). Compare the rows with that in mind.
-- **Latency**: `BENCH.md` ("Inference") for pico and nano, `sky-bench --questions 1` natively and `bench()` in Node 24 for WASM. micro is not in `BENCH.md`; its two numbers were measured for this chapter on the same M5 while other jobs ran: `sky-bench /tmp/s1-micro.gguf --questions 1` (best median of 3 rounds: 4,595 µs, while s1-pico measured 148 µs in the same rounds) and `node crates/sky-web/bench/bench-node.mjs --n 500 --repeat 3` (32,556 µs, s1-pico 631 µs in the same run). A micro decision in WASM takes about two 60 Hz frames.
+- **Latency**: for pico, the native number is `sky-bench --questions 1` in `BENCH.md` (s3 section, "s3-pico vs s2-nano vs s1-pico") and the WASM number is `wasm_us` in `site/public/bench.json` (`bench()` of the Play page in Node 24: both questions plus the physics step). The nano and micro numbers were measured with the engine as it was before the s3 kernel work (chapter 21) and have not been re-measured since: nano with the same two commands in the `BENCH.md` of that time, micro for this chapter on the same M5 while other jobs ran: `sky-bench /tmp/s1-micro.gguf --questions 1` (best median of 3 rounds: 4,595 µs, while s1-pico measured 148 µs in the same rounds) and `node crates/sky-web/bench/bench-node.mjs --n 500 --repeat 3` (32,556 µs, s1-pico 631 µs in the same run). A micro decision in WASM takes about two 60 Hz frames.
 
 These are the checkpoints straight out of `scripts/train-ladder.sh`, before any DAgger round. The shipped s1-pico is the DAgger round-2 checkpoint (`runs/s1-pico-g2/report.md`): 0.8707 on the game questions of the larger test split, and 200 of 200 Flappy pipes in closed loop.
 
@@ -68,7 +68,7 @@ Three observations:
 
 - **The vocabulary grows with the model, not ahead of it.** Doubling `d` and the vocabulary together quadruples the embedding table, while the encoder grows faster because it also gains layers. The embedding share therefore falls from 32% to 16%. In `oscar-1-17m`, about 12.9M of 17M parameters (76%) sit in the embeddings (`docs/research.md`).
 - **The head is a big fixed cost.** One head layer has a `4d` ReLU feed-forward plus full attention, about `12d²` weights, more than the `10d²` of an encoder layer at `intermediate = 2d`. micro has two head layers, which is why its head share goes back up to 25%.
-- **Local attention rarely limits game prompts.** A local layer sees `|i − j| ≤ 64`. Sequences up to 65 tokens are covered entirely, and the mean game prompt is 48 to 103 tokens depending on game and vocabulary (`data/STATS.md`). The global layers 0 and 3 carry the long-range work on the longer text questions.
+- **Local attention rarely limits game prompts.** A local layer sees `|i − j| ≤ 64`. Sequences up to 65 tokens are covered entirely, and the mean game prompt is 53 to 103 tokens depending on game and vocabulary (`data/STATS.md`, written by `sky-data stats`). The global layers 0 and 3 carry the long-range work on the longer text questions.
 
 ## Training budgets
 
@@ -103,7 +103,7 @@ The measured counts come from `runs/s1-*/pretrain/last/state.json` and the `trai
 
 ## The vocabulary changes what fits
 
-The vocabulary affects more than the parameter count. With `max_len = 256`, a richer vocabulary leaves more of a long question in the window. From `data/STATS.md` on the build machine:
+The vocabulary affects more than the parameter count. With `max_len = 256`, a richer vocabulary leaves more of a long question in the window. From `data/STATS.md` on the build machine (`data/` is gitignored; `sky-data stats` writes the file):
 
 | source | truncated, tok-1024 | tok-2048 | tok-4096 |
 |---|---:|---:|---:|
@@ -118,30 +118,30 @@ On the games, every rung sees the full prompt. On open-domain benchmarks, pico r
 
 Our games ask small questions about compact integer states, so the ladder is built to answer one question: how small can a decision model be and still play them? Here are the trade-offs as far as they are known:
 
-- **s1-pico** is the s1 model in `site/public/models/manifest.json`. The GGUF file is 545,280 bytes, one question takes 188 µs natively and a Flappy decision 694 µs in WASM (`BENCH.md`), and after two DAgger rounds it plays Flappy and Rescue at oracle level and Dodge at 0.83 completion against 0.87 ([chapter 20](./20-dagger-lessons)).
-- **s1-nano** costs about 5.6 times more parameters and about 5 times more time per decision. It is better on `typed_decisions_bench` (0.3975 against 0.3280) and worse on the games. Its first DAgger round reached 200 Flappy pipes but only 0.70 Dodge completion, and its second round regressed ([chapter 20](./20-dagger-lessons)). It is not shipped.
+- **s1-pico** is the s1 model in `site/public/models/manifest.json`. The GGUF file is 545,280 bytes, one question takes 137.6 µs natively (`BENCH.md`) and a Flappy decision 588.6 µs in WASM (`site/public/bench.json`), and after two DAgger rounds it plays Flappy and Rescue at oracle level and Dodge at 0.83 completion against 0.87 ([chapter 20](./20-dagger-lessons)).
+- **s1-nano** costs about 5.6 times more parameters and took about 5 times more time per decision on the earlier engine. It is better on `typed_decisions_bench` (0.3975 against 0.3280) and worse on the games. Its first DAgger round reached 200 Flappy pipes but only 0.70 Dodge completion, and its second round regressed ([chapter 20](./20-dagger-lessons)). It is not shipped.
 - **s1-micro** is the largest rung: 16.7 MB as an F16 GGUF and no better than pico on games or on the benchmark. It never got DAgger rounds and is not shipped.
 
-The next step for speed and size was not a bigger s1 but a different architecture: s2-nano has 1.5M parameters, a 701,568-byte ternary file, and plays at oracle level ([chapter 19](./19-s2-architecture)).
+The next step for speed and size was not a bigger s1 but a different architecture: s2-nano has 1.5M parameters, a 701,568-byte ternary file, and plays at oracle level ([chapter 19](./19-s2-architecture)). s3-pico, the site's default model, goes further: 445,345 parameters in a 251,104-byte ternary file, all four games at oracle level, and 49.6 µs per Flappy frame in WASM ([chapter 21](./21-s3-recursive-tiny)).
 
 Once the reports exist, compare rungs on the `games` and `decisions` group rows of each `runs/s1-*/report.md` rather than on `all`. The `all` row is weighted by how many test questions each source happens to have.
 
 ## Commands
 
-Train one or more rungs. Name them explicitly, because the script's default argument does not split into separate names (see [chapter 10](./10-pretraining-and-decision-training)):
+Train one or more rungs. Without arguments the script trains all three in turn:
 
 ```bash
 scripts/train-ladder.sh pico
 scripts/train-ladder.sh nano micro
 ```
 
-For each rung, the script writes the HF-layout export to `models/s1-<name>/` and the report to `runs/s1-<name>/report.md`. To regenerate the site's GGUF files, `manifest.json` and `bench.json` from everything in `models/`:
+For each rung, the script writes the HF-layout export to `models/s1-<name>/` and the report to `runs/s1-<name>/report.md`. `scripts/export-models.sh` converts every s1 export in `models/` (a directory with `model.safetensors`) to `site/public/models/<name>.gguf` and rewrites `manifest.json` and `bench.json`:
 
 ```bash
 scripts/export-models.sh
 ```
 
-The next chapter covers what that conversion does: the GGUF layout, the f16 and Q8_0 storage types, and the int8 path of the engine.
+The script only knows the s1 layout: the s2 and s3 files on the site (`s3-pico.gguf`, `s2-nano.gguf`, `s2-nano-doom.gguf`) are written by `sky-train s2-export` and copied into `site/public/models/`, and the rewritten `manifest.json` and `bench.json` would list only the s1 models, without the arena and WASM columns of the current files. The next chapter covers what the conversion does: the GGUF layout, the f16 and Q8_0 storage types, and the int8 path of the engine.
 
 ## Next
 

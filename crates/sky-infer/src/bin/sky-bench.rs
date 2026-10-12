@@ -62,7 +62,7 @@ mod native {
     ];
 
     fn usage() -> ! {
-        eprintln!("usage: sky-bench <model.gguf | laya_dir | --random NAME> [--format f32|f16|ternary] [--q8 | --q8-fast] [--no-calib] [--ternary-compute auto|packed|f32|int8|lut] [--exit-threshold T] [--no-static-cache] [--questions 1|2] [--iters N] [--state TEXT] [--options a,b,c] [--json] | --kernels");
+        eprintln!("usage: sky-bench <model.gguf | laya_dir | --random NAME> [--format f32|f16|ternary] [--q8 | --q8-fast] [--no-calib] [--ternary-compute auto|packed|f32|int8|lut] [--exit-threshold T] [--no-static-cache] [--questions 1|2] [--iters N] [--state TEXT] [--options a,b,c] [--game doom] [--json] | --kernels");
         std::process::exit(2);
     }
 

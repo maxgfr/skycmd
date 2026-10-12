@@ -1,6 +1,6 @@
 # 14 A WASM inference engine with SIMD128
 
-`sky-infer` is a small, dependency-light inference engine for Laya-format decision models: ModernBERT encoder plus decision head. It compiles to native code for tools and to `wasm32` with SIMD128 for the browser. This chapter covers how it loads a GGUF file, runs one forward pass per question without allocating, and why the browser build computes in f32 even when the file is int8.
+`sky-infer` is a small, dependency-light inference engine for Laya-format decision models (ModernBERT encoder plus decision head) and, since chapter 19, for the s2 and s3 models (`skycmd-s2` architecture, `src/s2/`). It compiles to native code for tools and to `wasm32` with SIMD128 for the browser. This chapter covers the s1 path: how it loads a GGUF file, runs one forward pass per question without allocating, and why the browser build computes in f32 even when the file is int8.
 
 ## Why a dedicated engine
 
@@ -26,6 +26,8 @@ Besides `sky-gguf`, the default build depends only on `unicode-normalization` an
 | `api.rs` | System One request/response types (JSON behind the `json` feature) |
 | `wasm.rs` | `SkyEngine`, the wasm-bindgen API (feature `wasm`) |
 | `convert.rs` | Laya directory to GGUF (chapter 13) |
+| `ternary.rs`, `lut.rs`, `num.rs` | 2-bit ternary weights, lookup-table kernels and number value features for s2/s3 (chapters 19 and 21) |
+| `s2/` | the s2/s3 model, prompt and engine (static cache, early exits, loops) |
 
 ## Loading a GGUF file
 
@@ -126,7 +128,7 @@ mod simd {
     }
 ```
 
-Baseline SIMD128 has no fused multiply-add, so `fma(acc, a, b)` is `f32x4_add(acc, f32x4_mul(a, b))`. The `cfg` also means a wasm build without `+simd128` still compiles and silently uses the scalar fallback. Chapter 17 shows how to make sure the flag is set.
+Baseline SIMD128 has no fused multiply-add, so `fma(acc, a, b)` is `f32x4_add(acc, f32x4_mul(a, b))`; a build with `+relaxed-simd` uses `f32x4.relaxed_madd` instead (Chrome, Edge and Node run it, Safari does not; `BENCH.md`). The `cfg` also means a wasm build without `+simd128` still compiles and silently uses the scalar fallback. Chapter 17 shows how to make sure the flag is set.
 
 ### int8 products on SIMD128
 
@@ -164,9 +166,9 @@ That widening, plus the activation quantization, costs as much as it saves. Nati
 From `crates/sky-infer/src/wasm.rs`:
 
 ```rust
-    /// Load a GGUF model (f32, f16 or Q8_0 file) and compute in f32: with baseline SIMD128,
-    /// int8 dot products are not faster than f32 in browsers, so Q8_0 files are dequantized at
-    /// load (smaller download, f32 speed and accuracy).
+    /// Load a GGUF model (s1 or s2; f32, f16, Q8_0 or ternary file) and compute in f32: with
+    /// baseline SIMD128, int8 dot products are not faster than f32 in browsers, so Q8_0 files are
+    /// dequantized at load (smaller download, f32 speed and accuracy).
     #[wasm_bindgen(constructor)]
     pub fn new(gguf_bytes: &[u8]) -> Result<SkyEngine, JsError> {
         Self::with_options(gguf_bytes, false, false)
@@ -248,7 +250,7 @@ scripts/build-wasm.sh          # release, writes site/public/pkg/sky_web.js + sk
 scripts/build-wasm.sh --dev    # unoptimized, faster to build
 ```
 
-The release module currently on disk (`site/public/pkg/sky_web_bg.wasm`) is about 0.6 MB and contains all three games and the engine.
+The release module currently on disk (`site/public/pkg/sky_web_bg.wasm`) is about 0.9 MB and contains all four games and the s1, s2 and s3 engine.
 
 ## Measuring
 
@@ -271,17 +273,17 @@ export CARGO_TARGET_DIR=$PWD/target/sky-infer
 cargo run --release -p sky-infer --bin sky-bench -- site/public/models/s1-pico.gguf --iters 300
 ```
 
-Measured on an Apple M5 (Node 24.10 / V8 for wasm, F16 GGUF files, medians; `BENCH.md`, "Inference", except s1-micro):
+Measured on an Apple M5 (Node 24 / V8 for wasm, F16 GGUF files, medians). The s1-pico row is current: the WASM number is `wasm_us` in `site/public/bench.json`, the native ones are `sky-bench --questions 2|1` in `BENCH.md` (s3 section). The s1-nano and s1-micro rows were measured with the engine as it was before the s3 kernel work of [chapter 21](./21-s3-recursive-tiny) and have not been re-measured:
 
 | model | params | wasm `bench()` per decision (2 forwards + physics) | native `sky-bench`, 2 questions on one state | native `sky-bench`, 1 question |
 |---|---:|---:|---:|---:|
-| s1-pico | 202,305 | 694 µs | 407 µs | 188 µs |
-| s1-nano | 1,134,209 | 3,541 µs | 1,980 µs | 974 µs |
-| s1-micro | 6,630,913 | about 32,600 µs | about 9,700 µs | about 4,600 µs |
+| s1-pico | 202,305 | 588.6 µs | 300.6 µs | 137.6 µs |
+| s1-nano (earlier engine) | 1,134,209 | 3,541 µs | 1,980 µs | 974 µs |
+| s1-micro (earlier engine) | 6,630,913 | about 32,600 µs | about 9,700 µs | about 4,600 µs |
 
-The s1-micro row was measured for [chapter 12](./12-size-ladder) on the same machine while other jobs ran, so read it as an order of magnitude. The comparable columns are the first two: the same two questions on the same state, WASM against native. WASM costs 1.7× native on pico and 1.8× on nano. Expect a few percent of noise between runs, more if the machine is busy (the s1-pico WASM median moved between 631 and 697 µs across three runs on a loaded machine).
+The s1-micro row was measured for [chapter 12](./12-size-ladder) on the same machine while other jobs ran, so read it as an order of magnitude. The comparable columns are the first two: the same two questions on the same state, WASM against native. WASM costs about 2× native on pico today (1.8× on nano with the earlier engine). Expect a few percent of noise between runs, more if the machine is busy (with the earlier engine, the s1-pico WASM median moved between 631 and 697 µs across three runs on a loaded machine).
 
-The s2 architecture of [chapter 19](./19-s2-architecture) uses the same kernels and the same SIMD128 build. It does less work per frame, so its WASM decision costs 501 µs for a 1.5M-parameter s2-nano at full depth (`BENCH.md`).
+The s2 and s3 architectures of [chapter 19](./19-s2-architecture) and [chapter 21](./21-s3-recursive-tiny) use the same SIMD layer and the same SIMD128 build, plus panel kernels for products with few rows (`kernels::PanelMatrix`). They do less work per frame: the same `bench()` costs 409.1 µs for the 1.5M-parameter s2-nano and 49.6 µs for s3-pico, the site's default model (`site/public/bench.json`). `BENCH.md` ("Inference") breaks these down per question, with and without relaxed SIMD.
 
 ## Next
 

@@ -1,6 +1,6 @@
 # 10 Pretraining and decision training
 
-Every skycmd-s1 model is trained in two phases. First the encoder learns language from plain FR/EN text by masked-language modelling. Then a decision head is attached and the whole model is trained with cross-entropy on typed decision questions, from datasets and from the games. Both phases are commands of the `sky-train` binary. This chapter covers what each one feeds the model and how the ladder script chains them.
+Every skycmd-s1 model is trained in two phases. First the encoder learns language from plain FR/EN text by masked-language modelling. Then a decision head is attached and the whole model is trained with cross-entropy on typed decision questions, from datasets and from the games. Both phases are commands of the `sky-train` binary. This chapter covers what each one feeds the model and how the ladder script chains them. The s2 and s3 models follow the same two phases with their own subcommands (`s2-pretrain`, `s2-decide`) and the same learning rates; [chapter 19](./19-s2-architecture) and [chapter 21](./21-s3-recursive-tiny) cover what changes.
 
 ## Overview
 
@@ -36,7 +36,8 @@ The stream is cut into fixed chunks of `seq − 2` tokens, each wrapped as `[CLS
 
 `crates/sky-train/src/mlm.rs`
 ```rust
-        let n_mask = ((cand.len() as f64 * ratio).round() as usize).max(usize::from(!cand.is_empty()));
+        let n_mask =
+            ((cand.len() as f64 * ratio).round() as usize).max(usize::from(!cand.is_empty()));
         // Partial Fisher–Yates: the first n_mask candidates are the chosen ones.
         for s in 0..n_mask {
             let k = s + rng.below(cand.len() - s);
@@ -101,7 +102,7 @@ Training writes one JSON line per log window to `<out>/log.jsonl` (`loss`, `grad
 
 ### Loading and validating records
 
-`decision::load` reads every `*.jsonl` under each `--records` path. The path's directory name becomes the record **group** (`decisions`, `games`). The loader tokenizes the head, options and state of every record in large parallel batches and keeps a record only if:
+`decision::load` reads every `*.jsonl` under each `--records` path, which can be a directory or a single file. The directory name, or the file stem for a file, becomes the record **group** (`decisions`, `games`, or `flappy` for `data/games/flappy.jsonl`). The loader tokenizes the head, options and state of every record in large parallel batches and keeps a record only if:
 
 - `t` is `choice`, `score` or `noul`;
 - `opts` is non-empty and `target` has one non-negative finite entry per option, with a positive sum (the target is then normalised to sum to 1);
@@ -115,7 +116,13 @@ Each batch draws its rows independently. A group is picked with the source weigh
 
 `crates/sky-train/src/decision.rs`
 ```rust
-pub fn sample_batch(data: &DecisionData, weights: &[f64], batch: usize, rng: &mut Rng, agent: &AgentConfig) -> DecisionBatch {
+pub fn sample_batch(
+    data: &DecisionData,
+    weights: &[f64],
+    batch: usize,
+    rng: &mut Rng,
+    agent: &AgentConfig,
+) -> DecisionBatch {
     let w: Vec<f64> = weights
         .iter()
         .zip(&data.train)
@@ -179,7 +186,11 @@ pub fn masked_logits(logits: &Array, marker_mask: &Array) -> R<Array> {
 pub fn soft_cross_entropy(masked_logits: &Array, target: &Array) -> R<Array> {
     let lse = masked_logits.logsumexp_axis(-1, true)?;
     let logp = masked_logits.subtract(&lse)?;
-    target.multiply(&logp)?.sum_axis(-1, None)?.mean(None)?.negative()
+    target
+        .multiply(&logp)?
+        .sum_axis(-1, None)?
+        .mean(None)?
+        .negative()
 }
 ```
 
@@ -197,7 +208,10 @@ Soft targets matter for us. `pngwn/typed-decisions` ships soft `gold_probs`, and
             let n = params::load_matching(&mut p, &src)?;
             let n_enc = p.keys().filter(|k| k.starts_with("encoder.")).count();
             if n < n_enc {
-                bail!("{} provides only {n} of the {n_enc} encoder tensors", init.display());
+                bail!(
+                    "{} provides only {n} of the {n_enc} encoder tensors",
+                    init.display()
+                );
             }
             println!("initialized {n} tensors from {}", init.display());
         }
@@ -244,14 +258,13 @@ ladder() {
   $T eval --run "$run" --records data/decisions,data/games
 ```
 
-Pass the rung names explicitly:
+Name the rungs you want, or pass none to train all three:
 
 ```bash
 scripts/train-ladder.sh pico
 scripts/train-ladder.sh nano micro
+scripts/train-ladder.sh            # pico, nano and micro
 ```
-
-The loop is written as `for name in "${@:-pico nano micro}"`. With no arguments, the quoted default expands to the single word `pico nano micro`, which matches no rung. Always name the rungs you want.
 
 The script expects the tokenizers from [chapter 07](./07-tokenizer) in `data/tok/` and the data from the earlier chapters in `data/text`, `data/decisions` and `data/games`. Total time is the sum of the budgets plus loading, calibration and evaluation: 20 minutes of training for pico, 32 for nano and 40 for micro.
 
