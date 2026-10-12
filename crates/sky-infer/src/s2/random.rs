@@ -65,6 +65,7 @@ pub fn ladder_config(name: &str) -> Option<S2Config> {
         state_loops: loops,
         fuse_numbers: fuse,
         temporal_carry: false,
+        ffn_es: None,
         static_layers: stat,
         fusion_layers: fusion,
         exits: exits.to_vec(),

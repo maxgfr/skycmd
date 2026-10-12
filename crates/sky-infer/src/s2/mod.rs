@@ -12,6 +12,7 @@
 //! * [`random`]: ladder configurations and random-weight GGUF files for tests and benchmarks.
 
 pub mod engine;
+pub mod es;
 pub mod model;
 pub mod prompt;
 pub mod random;
@@ -51,6 +52,9 @@ pub struct S2Config {
     /// Carry the final state latent of a stream's previous frame into the next one (GGUF
     /// `temporal_carry`, default false; SPEC-S3 §7).
     pub temporal_carry: bool,
+    /// Expand-and-sparsify FFN in the encoder blocks (GGUF `ffn_es_*`, absent by default;
+    /// SPEC-S3 §9 ablation, see [`es`]).
+    pub ffn_es: Option<es::EsSpec>,
     pub static_layers: usize,
     pub fusion_layers: usize,
     /// State-encoder depth (1-based block count) after which each exit sits, increasing; the
@@ -143,6 +147,17 @@ impl S2Config {
         if self.max_head_tokens == 0 || self.max_head_tokens > MAX_DIM {
             return bad("max_head_tokens");
         }
+        if let Some(es) = &self.ffn_es {
+            if es.units == 0
+                || es.units > MAX_DIM
+                || es.k == 0
+                || es.k > es.units
+                || es.fan_in == 0
+                || es.fan_in > d
+            {
+                return bad("ffn_es units / k / fan_in");
+            }
+        }
         Ok(())
     }
 
@@ -174,6 +189,15 @@ impl S2Config {
         };
         let fuse_numbers = flag("fuse_numbers");
         let temporal_carry = flag("temporal_carry");
+        let ffn_es = match g.get(&key("ffn_es_seed")).and_then(|v| v.as_u64()) {
+            None => None,
+            Some(seed) => Some(es::EsSpec {
+                seed,
+                units: req("ffn_es_units")?,
+                k: req("ffn_es_k")?,
+                fan_in: req("ffn_es_fan_in")?,
+            }),
+        };
         let vocab_size = ["token_embd.weight", "token_embd.q8"]
             .iter()
             .find_map(|n| g.tensor(n))
@@ -203,6 +227,7 @@ impl S2Config {
             state_loops,
             fuse_numbers,
             temporal_carry,
+            ffn_es,
             static_layers: req("static_block_count")?,
             fusion_layers: req("fusion_block_count")?,
             exits,

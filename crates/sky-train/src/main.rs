@@ -370,6 +370,9 @@ enum Cmd {
         gguf: Option<String>,
         #[arg(long)]
         report: Option<PathBuf>,
+        /// Evaluate only the --gguf files (skip the checkpoint's latent f32 and fake-quant rows).
+        #[arg(long)]
+        gguf_only: bool,
     },
     /// s2: tiny random model -> GGUF (f32 + ternary) and golden outputs for sky-infer.
     S2Golden {
@@ -711,9 +714,14 @@ fn main() -> Result<()> {
             split,
             gguf,
             report,
+            gguf_only,
         } => {
             let ggufs = gguf.as_deref().map(split_paths).unwrap_or_default();
-            s2::eval::eval(
+            if gguf_only && ggufs.is_empty() {
+                anyhow::bail!("--gguf-only needs --gguf");
+            }
+            s2::eval::eval_with(
+                gguf_only,
                 &run,
                 &split_paths(&records),
                 &split,

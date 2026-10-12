@@ -17,6 +17,7 @@
 
 use sky_gguf::{GgmlType, Gguf};
 
+use super::es::EsFfn;
 use super::S2Config;
 use crate::kernels::{
     self, Attention, AttnPartial, AttnScratch, I8Panels, I8Scratch, KvSeg, PanelMatrix, Rope,
@@ -221,8 +222,12 @@ pub struct Block {
     pub qkv: Lin,
     pub out: Lin,
     pub ffn_norm: Ln,
-    pub up: Lin,
+    /// GeGLU up-projection (`None` with the expand-and-sparsify FFN, whose up-projection is the
+    /// seeded fixed matrix of [`EsFfn`]).
+    pub up: Option<Lin>,
     pub down: Lin,
+    /// SPEC-S3 §9 expand-and-sparsify FFN (reads `down`'s weights, transposed).
+    pub es: Option<EsFfn>,
 }
 
 /// A fusion block: cross-attention of the option markers to (state ⊕ question) tokens.
@@ -521,13 +526,27 @@ impl Src<'_, '_> {
         } else {
             Some(self.ln(&p("attn_norm"), d, false)?)
         };
+        if let Some(spec) = cfg.ffn_es {
+            let down = self.lin(&p("ffn_down"), d, spec.units, false)?;
+            let es = EsFfn::new(spec, d, &down.weight_f32());
+            return Ok(Block {
+                attn_norm,
+                qkv: self.lin(&p("attn_qkv"), 3 * d, d, false)?,
+                out: self.lin(&p("attn_output"), d, d, false)?,
+                ffn_norm: self.ln(&p("ffn_norm"), d, false)?,
+                up: None,
+                down,
+                es: Some(es),
+            });
+        }
         Ok(Block {
             attn_norm,
             qkv: self.lin(&p("attn_qkv"), 3 * d, d, false)?,
             out: self.lin(&p("attn_output"), d, d, false)?,
             ffn_norm: self.ln(&p("ffn_norm"), d, false)?,
-            up: self.lin(&p("ffn_up"), 2 * ff, d, false)?,
+            up: Some(self.lin(&p("ffn_up"), 2 * ff, d, false)?),
             down: self.lin(&p("ffn_down"), d, ff, false)?,
+            es: None,
         })
     }
 
@@ -646,7 +665,10 @@ impl S2Model {
             .iter_mut()
             .chain(self.state_blocks.iter_mut())
         {
-            v.extend([&mut b.qkv, &mut b.out, &mut b.up, &mut b.down]);
+            v.extend([&mut b.qkv, &mut b.out, &mut b.down]);
+            if let Some(up) = &mut b.up {
+                v.push(up);
+            }
         }
         for f in &mut self.fusion {
             v.extend([&mut f.q, &mut f.kv, &mut f.out, &mut f.up, &mut f.down]);
@@ -791,7 +813,7 @@ impl S2Model {
                 + b.qkv.n_params()
                 + b.out.n_params()
                 + b.ffn_norm.n_params()
-                + b.up.n_params()
+                + b.up.as_ref().map_or(0, Lin::n_params)
                 + b.down.n_params()
         };
         let mut n = v * d + self.num_proj.n_params() + self.type_emb.len();
@@ -1010,8 +1032,17 @@ impl S2Model {
         }
         blk.out.forward(att, t, x, true);
         blk.ffn_norm.apply(x, d, eps, hn);
+        if let Some(es) = &blk.es {
+            let u = grow(up, t * es.units);
+            let cand = grow(act, es.units);
+            es.forward(hn, t, x, u, cand);
+            return;
+        }
         let up = grow(up, t * 2 * ff);
-        blk.up.forward(hn, t, up, false);
+        blk.up
+            .as_ref()
+            .expect("GeGLU block has ffn_up")
+            .forward(hn, t, up, false);
         let act = grow(act, t * ff);
         for r in 0..t {
             kernels::geglu(

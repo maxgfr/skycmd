@@ -369,6 +369,13 @@ pub fn to_gguf(
     if cfg.temporal_carry {
         w.add_kv(k("temporal_carry"), true);
     }
+    // SPEC-S3 §9: the fixed up-projection is the seed alone (no tensor).
+    if let Some(es) = &cfg.ffn_es {
+        w.add_kv(k("ffn_es_seed"), OwnedValue::U64(es.seed));
+        w.add_kv(k("ffn_es_units"), u(es.units(cfg.hidden_size)));
+        w.add_kv(k("ffn_es_k"), u(es.k(cfg.hidden_size)));
+        w.add_kv(k("ffn_es_fan_in"), u(es.fan_in));
+    }
     w.add_kv(
         k("exits"),
         OwnedValue::Array(cfg.exits.iter().map(|&e| u(e)).collect()),
@@ -505,7 +512,23 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
     let state_loops = g
         .get_u64(&format!("{ARCH}.state_loops"))
         .map_or(1, |v| v as usize);
+    let ffn_es = match g.get_u64(&format!("{ARCH}.ffn_es_seed")) {
+        None => None,
+        Some(seed) => {
+            let units = u32_key(g, "ffn_es_units")?;
+            if units == 0 || !units.is_multiple_of(hidden_size) {
+                bail!("{ARCH}.ffn_es_units {units} is not a multiple of {hidden_size}");
+            }
+            Some(crate::s2::config::EsFfn {
+                seed,
+                expand: units / hidden_size,
+                k_frac: u32_key(g, "ffn_es_k")? as f32 / units as f32,
+                fan_in: u32_key(g, "ffn_es_fan_in")?,
+            })
+        }
+    };
     let cfg = S2Config {
+        ffn_es,
         name: g.get_str("general.name").unwrap_or("s2").to_string(),
         head_count,
         fuse_numbers,
@@ -598,6 +621,42 @@ mod tests {
         assert_eq!(packed[0], 0b01_00_10_01);
         assert_eq!(unpack_ternary(&packed, 2, 7).unwrap(), codes);
         assert!(unpack_ternary(&[0xff], 1, 4).is_err());
+    }
+
+    #[test]
+    fn es_ffn_keys_round_trip() {
+        let _g = test_util::lock();
+        let tok = s2_tokenizer_json();
+        let es = crate::s2::config::EsFfn {
+            seed: 0xfeed_beef_0123_4567,
+            expand: 8,
+            k_frac: 0.05,
+            fan_in: 8,
+        };
+        let cfg = S2Config {
+            ffn_es: Some(es),
+            ..S2Config::tiny(262)
+        };
+        let p = init(&cfg, S2Parts::DECISION, 2).unwrap();
+        let b = to_gguf(&p, &cfg, &tok, WeightFormat::Ternary, "es").unwrap();
+        let g = Gguf::parse(&b).unwrap();
+        assert_eq!(g.get_u64("skycmd-s2.ffn_es_seed"), Some(es.seed));
+        assert_eq!(g.get_u64("skycmd-s2.ffn_es_units"), Some(1024));
+        assert_eq!(g.get_u64("skycmd-s2.ffn_es_k"), Some(51));
+        assert!(g.tensor("blk.0.ffn_up.tq").is_none() && g.tensor("blk.0.ffn_down.tq").is_some());
+        let back = config_from_gguf(&g).unwrap();
+        let bes = back.ffn_es.unwrap();
+        assert_eq!(
+            (bes.seed, bes.units(128), bes.k(128), bes.fan_in),
+            (es.seed, 1024, 51, 8)
+        );
+        assert_eq!(params_from_gguf(&g, &back).unwrap().len(), p.len());
+        // Off by default: no key at all.
+        let p2 = init(&S2Config::tiny(262), S2Parts::DECISION, 1).unwrap();
+        let g2b = to_gguf(&p2, &S2Config::tiny(262), &tok, WeightFormat::F32, "s2").unwrap();
+        let g2 = Gguf::parse(&g2b).unwrap();
+        assert!(g2.get("skycmd-s2.ffn_es_seed").is_none());
+        assert!(config_from_gguf(&g2).unwrap().ffn_es.is_none());
     }
 
     #[test]

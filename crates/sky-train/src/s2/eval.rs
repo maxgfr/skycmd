@@ -491,6 +491,19 @@ pub fn eval(
     ggufs: &[PathBuf],
     report: Option<&Path>,
 ) -> Result<PathBuf> {
+    eval_with(false, run, records, split, ggufs, report)
+}
+
+/// [`eval`]; with `gguf_only` the checkpoint itself (latent f32, fake-quant ternary) is not
+/// evaluated, only the GGUF files (the run still provides the tokenizer and records layout).
+pub fn eval_with(
+    gguf_only: bool,
+    run: &Path,
+    records: &[PathBuf],
+    split: &str,
+    ggufs: &[PathBuf],
+    report: Option<&Path>,
+) -> Result<PathBuf> {
     let m = S2Model::load(run)?;
     let data = records_data(&m, records)?;
     let mut used = split.to_string();
@@ -528,6 +541,9 @@ pub fn eval(
             true,
         ),
     ];
+    if gguf_only {
+        variants.clear();
+    }
     for path in ggufs {
         let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
         let g = Gguf::parse(&bytes)?;

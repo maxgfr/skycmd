@@ -90,6 +90,8 @@ pub fn is_hidden_matrix(name: &str) -> bool {
         && BLOCK_MATRICES.iter().any(|m| name.ends_with(m))
 }
 
+/// Encoder block parameters. With `es_units` (SPEC-S3 §9 expand-and-sparsify FFN) the block has
+/// no `ffn_up` (the up-projection is a fixed seeded matrix) and `ffn_down` reads `es_units` units.
 fn encoder_specs(
     out: &mut Vec<(String, Vec<i32>, Init)>,
     prefix: &str,
@@ -97,6 +99,7 @@ fn encoder_specs(
     d: i32,
     ff: i32,
     depth: usize,
+    es_units: Option<i32>,
 ) {
     let std = 0.02f32;
     let std_out = std / (2.0 * depth as f32).sqrt();
@@ -116,6 +119,14 @@ fn encoder_specs(
             Init::TruncNormal(std_out),
         ));
         out.push((format!("{p}.ffn_norm.weight"), vec![d], Init::Ones));
+        if let Some(units) = es_units {
+            out.push((
+                format!("{p}.ffn_down.weight"),
+                vec![d, units],
+                Init::TruncNormal(std_out),
+            ));
+            continue;
+        }
         out.push((
             format!("{p}.ffn_up.weight"),
             vec![2 * ff, d],
@@ -149,7 +160,16 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
         ),
         ("num_proj.bias".to_string(), vec![d], Init::Zeros),
     ];
-    encoder_specs(&mut out, "blk.", cfg.state_layers, d, ff, cfg.depth());
+    let es_units = cfg.ffn_es.map(|es| es.units(cfg.hidden_size) as i32);
+    encoder_specs(
+        &mut out,
+        "blk.",
+        cfg.state_layers,
+        d,
+        ff,
+        cfg.depth(),
+        es_units,
+    );
     if cfg.state_loops > 1 {
         // SPEC-S3 §2: block 0's attention norm from the second loop on, and
         // the per-loop embedding added before each loop l >= 1.
@@ -183,6 +203,7 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
             d,
             ff,
             cfg.static_layers,
+            es_units,
         );
         out.push(("static_norm.weight".to_string(), vec![d], Init::Ones));
         for e in 0..cfg.n_exits() {
@@ -474,10 +495,31 @@ fn block(
         None,
     )?)?;
     let y = layer_norm(&x, w(p, &format!("{pre}.ffn_norm.weight"))?, None, eps)?;
-    let u = linear(&y, w(p, &format!("{pre}.ffn_up.weight"))?, None)?;
-    let g = u.split_at_indices(&[cfg.intermediate_size as i32], -1)?;
-    let m = gelu_erf(&g[0])?.multiply(&g[1])?;
+    let m = match &cfg.ffn_es {
+        Some(es) => es_sparse(cfg, es, &y)?,
+        None => {
+            let u = linear(&y, w(p, &format!("{pre}.ffn_up.weight"))?, None)?;
+            let g = u.split_at_indices(&[cfg.intermediate_size as i32], -1)?;
+            gelu_erf(&g[0])?.multiply(&g[1])?
+        }
+    };
     x.add(linear(&m, w(p, &format!("{pre}.ffn_down.weight"))?, None)?)
+}
+
+/// SPEC-S3 §9: `kWTA(P · y)` with the fixed seeded sparse ±1 projection `P` (`s2::es`). Each
+/// token keeps the units `>=` its k-th largest pre-activation; the threshold carries no
+/// gradient, the kept units pass theirs to `y`.
+fn es_sparse(cfg: &S2Config, es: &crate::s2::config::EsFfn, y: &Array) -> R<Array> {
+    let d = cfg.hidden_size;
+    let (units, k) = (es.units(d), es.k(d));
+    let proj = crate::s2::es::dense(es.seed, d, units, es.fan_in);
+    let proj = cast_like(Array::from_slice(&proj, &[units as i32, d as i32]), y)?;
+    let u = ops::matmul(y, proj.t())?;
+    let kth = (units - k) as i32;
+    let sorted = ops::partition_axis(stop_gradient(&u)?, kth, -1)?;
+    let thr = sorted.take_axis(Array::from_slice(&[kth], &[1]), -1)?;
+    let keep = u.ge(&thr)?;
+    u.multiply(cast_like(keep.as_dtype(Dtype::Float32)?, &u)?)
 }
 
 /// `e = tok_embd[id] + has_value · (num_proj · φ(v) + num_proj.bias)`;
@@ -1064,6 +1106,103 @@ mod tests {
         );
         assert!(!is_ternary("loop_embd.weight") && !is_ternary("blk.0.attn_norm_loop.weight"));
         assert!(!is_hidden_matrix("blk.0.attn_norm_loop.weight"));
+    }
+
+    #[test]
+    fn es_ffn_parameters_sparsity_and_forward() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let es = crate::s2::config::EsFfn {
+                seed: 3,
+                expand: 8,
+                k_frac: 0.05,
+                fan_in: 8,
+            };
+            let cfg = S2Config {
+                ffn_es: Some(es),
+                ..looped(1, 2)
+            };
+            let (units, k) = (es.units(96), es.k(96));
+            assert_eq!((units, k), (768, 38));
+            let p = init(&cfg, S2Parts::DECISION, 0).unwrap();
+            assert_eq!(
+                crate::params::count(&p),
+                expected_count(&cfg, S2Parts::DECISION)
+            );
+            for b in ["blk.0", "static.blk.0"] {
+                assert!(!p.contains_key(format!("{b}.ffn_up.weight").as_str()));
+                assert_eq!(
+                    p[format!("{b}.ffn_down.weight").as_str()].shape(),
+                    &[96, 768]
+                );
+            }
+            assert!(is_ternary("blk.0.ffn_down.weight"));
+            // GeGLU counterpart: 2·ff·d + d·ff per block instead of d·units.
+            let plain = expected_count(&looped(1, 2), S2Parts::DECISION);
+            assert_eq!(
+                expected_count(&cfg, S2Parts::DECISION) + 2 * 3 * 40 * 96,
+                plain + 2 * 96 * 768
+            );
+            // k-WTA: exactly k active units per token (no ties on random inputs).
+            let y = random::normal::<f32>(&[2, 5, 96], 0.0, 1.0, &random::key(1).unwrap()).unwrap();
+            let h = es_sparse(&cfg, &es, &y).unwrap();
+            let nz = h
+                .ne(Array::from_f32(0.0))
+                .unwrap()
+                .as_dtype(Dtype::Int32)
+                .unwrap();
+            let per_row: Vec<i32> = nz.sum_axis(-1, false).unwrap().as_slice().to_vec();
+            assert!(per_row.iter().all(|&n| n == k as i32), "{per_row:?}");
+            // The kept units are the largest pre-activations of the fixed projection.
+            let proj = crate::s2::es::dense(3, 96, 768, 8);
+            let yv: Vec<f32> = y.as_slice().to_vec();
+            let hv: Vec<f32> = h.as_slice().to_vec();
+            let mut u: Vec<f32> = (0..768)
+                .map(|j| (0..96).map(|i| proj[j * 96 + i] * yv[i]).sum())
+                .collect();
+            for j in 0..768 {
+                if hv[j] != 0.0 {
+                    assert!((hv[j] - u[j]).abs() < 1e-4);
+                }
+            }
+            u.sort_by(|a, b| b.total_cmp(a));
+            let kept_min = hv[..768]
+                .iter()
+                .filter(|&&v| v != 0.0)
+                .fold(f32::MAX, |m, &v| m.min(v));
+            assert!((kept_min - u[k - 1]).abs() < 1e-4);
+            // The decision forward runs and depends on ffn_down.
+            let (_d, tok) = s2_tok();
+            let (st, state) = crate::s2::data::encode_record_cfg(
+                &tok,
+                &rec(
+                    "choice",
+                    "go 2?",
+                    &["up 1", "down", "x"],
+                    "vy -3 alt 12 gap 4",
+                ),
+                &cfg,
+            )
+            .unwrap();
+            let statics = vec![st];
+            let it = item(0, &state, 3, 0);
+            let b = make_batch(&statics, &[&it], 1);
+            let gp = crate::s2::golden::golden_params(&cfg, 4).unwrap();
+            let a = logits_per_row(&forward(&gp, &cfg, &b, true).unwrap(), &[3]).unwrap();
+            let mut zp = gp.clone();
+            zp.insert(
+                "blk.0.ffn_down.weight".into(),
+                ops::zeros::<f32>(&[96, 768]).unwrap(),
+            );
+            let z = logits_per_row(&forward(&zp, &cfg, &b, true).unwrap(), &[3]).unwrap();
+            assert!(a.iter().flatten().flatten().all(|v| v.is_finite()));
+            assert!(a
+                .iter()
+                .flatten()
+                .flatten()
+                .zip(z.iter().flatten().flatten())
+                .any(|(x, y)| (x - y).abs() > 1e-4));
+        });
     }
 
     /// A tiny looped, fused configuration with head_dim 48.

@@ -40,6 +40,9 @@ pub struct S2Config {
     /// frame's final latent through `carry_gate ⊙ LN(carry_norm)`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub temporal_carry: bool,
+    /// SPEC-S3 §9 ablation: expand-and-sparsify FFN in the encoder blocks (see `s2::es`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ffn_es: Option<EsFfn>,
     #[serde(default = "default_max_state")]
     pub max_state_tokens: usize,
     #[serde(default = "default_max_head")]
@@ -58,6 +61,45 @@ pub struct S2Config {
     /// Run matmuls and activations in bfloat16 (runtime only).
     #[serde(skip)]
     pub bf16: bool,
+}
+
+/// Expand-and-sparsify FFN (SPEC-S3 §9): a fixed seeded sparse ±1 up-projection to
+/// `expand · d` units, k-WTA keeping the top `k_frac`, a learned down-projection.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct EsFfn {
+    /// Seed of the fixed projection (GGUF `ffn_es_seed`, u64).
+    pub seed: u64,
+    /// Expansion factor: `units = expand · hidden_size`.
+    #[serde(default = "default_es_expand")]
+    pub expand: usize,
+    /// Fraction of the units kept active by k-WTA.
+    #[serde(default = "default_es_k_frac")]
+    pub k_frac: f32,
+    /// Inputs read by each unit.
+    #[serde(default = "default_es_fan_in")]
+    pub fan_in: usize,
+}
+
+fn default_es_expand() -> usize {
+    8
+}
+fn default_es_k_frac() -> f32 {
+    0.05
+}
+fn default_es_fan_in() -> usize {
+    8
+}
+
+impl EsFfn {
+    /// Expansion units for hidden size `d`.
+    pub fn units(&self, d: usize) -> usize {
+        self.expand * d
+    }
+
+    /// Active units per token: `round(k_frac · units)`, at least 1.
+    pub fn k(&self, d: usize) -> usize {
+        ((self.k_frac * self.units(d) as f32).round() as usize).clamp(1, self.units(d))
+    }
 }
 
 fn default_loops() -> usize {
@@ -156,6 +198,14 @@ impl S2Config {
         if self.max_state_tokens < 3 {
             bail!("max_state_tokens too small");
         }
+        if let Some(es) = &self.ffn_es {
+            if es.expand == 0 || es.fan_in == 0 || es.fan_in > self.hidden_size {
+                bail!("ffn_es: expand must be >= 1 and fan_in in 1..=hidden_size");
+            }
+            if !(es.k_frac > 0.0 && es.k_frac <= 1.0) {
+                bail!("ffn_es: k_frac must be in (0, 1]");
+            }
+        }
         Ok(())
     }
 
@@ -230,6 +280,7 @@ impl S2Config {
             fuse_numbers: false,
             state_loops: 1,
             temporal_carry: false,
+            ffn_es: None,
             max_state_tokens: 24,
             max_head_tokens: 40,
             rope_theta: 10_000.0,

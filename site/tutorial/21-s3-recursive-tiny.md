@@ -58,3 +58,10 @@ scripts/specialize-s3.sh pico 3 8   # three DAgger rounds of 8 minutes
 scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf models/ship/s3-pico.gguf
 cargo run --release -p sky-arena -- models/ship/s3-pico.gguf --game flappy,rescue,dodge,doom --episodes 30
 ```
+
+## How small can it go? (overnight experiments)
+
+We then tried to go below s3-pico. The full table is in [`docs/night-experiments.md`](https://github.com/maxgfr/skycmd/blob/main/docs/night-experiments.md).
+- **s3-femto** (d = 64, 221,121 params, 161 KB, 1.75× faster than s3-pico) plays Rescue, Dodge and the Doom-like game at oracle level. In Flappy Drone it still crashed about 6 times in 30 episodes after 7 DAgger rounds, so the floor for "every game at oracle level" lies between d = 64 and d = 96.
+- **Expand-and-sparsify FFN** (`ffn_es`, after the fly mushroom body: a fixed seeded ±1 expansion and k-winner-take-all at 5 %) works end to end. Its GGUF stores only a seed for the expansion. At this scale it failed the gate and was slower than GeGLU, because the 512-wide fixed projection costs more than the 256-wide learned one it replaces.
+- **A longer s3-pico schedule** kept the same size and speed and passed the gate, but did not raise accuracy on the external typed-decisions benchmark. s3-pico stays the shipped model.

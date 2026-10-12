@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod data;
+pub mod es;
 pub mod eval;
 pub mod gguf;
 pub mod golden;
