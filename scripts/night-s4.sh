@@ -137,6 +137,7 @@ teacher_eval() {
   for f in data/decisions/typed_decisions_bench.jsonl "$S4"/heldout/*.jsonl; do
     local b
     b=$(basename "$f" .jsonl)
+    [ -s "$run/teacher/$b.summary.json" ] && continue
     gpu "$PY" -I scripts/teacher-score.py --model "$TEACHER" --in "$f" --out "$run/teacher/$b.jsonl" --eval \
       | tail -1 >"$run/teacher/$b.summary.json"
   done
