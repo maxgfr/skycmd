@@ -6,7 +6,7 @@ options in one forward pass, without generating any text. The bindings load `s1`
 and `s2` (`skycmd-s2`) GGUF files.
 
 ```sh
-pip install skycmd            # or: uv add skycmd
+pip install "skycmd @ git+https://github.com/maxgfr/skycmd#subdirectory=crates/sky-py"   # not on PyPI yet, needs Rust
 ```
 
 ```python

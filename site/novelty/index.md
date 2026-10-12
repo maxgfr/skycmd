@@ -43,7 +43,7 @@ What s3-pico does with that budget, over 30 seeded episodes per game, with the s
    - a GGUF writer;
    - an inference engine compiled to WebAssembly.
 
-   The same file runs in the browser, in a CLI that speaks the `/v1/systemone` API, from npm and from Python. Our s1 models also run in llama.cpp and wllama.
+   The same file runs in the browser, in a CLI that speaks the `/v1/systemone` API, in Node and in Python (built from source). Our s1 models also run in llama.cpp and wllama.
 5. **Imitation that holds up in closed loop.** DAgger, where the model plays and the oracle labels the states it reaches, turned "crashes before the first pipe" into "200/200" in two to three rounds of 8 minutes each.
 
 ## What it is not (honestly)

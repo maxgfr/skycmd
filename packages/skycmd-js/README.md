@@ -7,7 +7,7 @@ Rust engine compiled to WebAssembly (SIMD128) plus a small ESM wrapper; it needs
 loads both `s1` (`modern-bert`) and `s2` (`skycmd-s2`) GGUF files.
 
 ```sh
-npm install skycmd
+npm run build && npm pack     # not on npm yet: build from this folder (Rust + wasm-pack), then npm install ./skycmd-0.1.0.tgz
 ```
 
 ```js

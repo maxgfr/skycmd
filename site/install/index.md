@@ -12,11 +12,15 @@ and over HTTP.
 
 | where | package | s1 (`modern-bert`) | s2 and s3 (`skycmd-s2`) |
 |---|---|:-:|:-:|
-| browser, Node >= 18, Deno, Bun | npm `skycmd` or `https://maxgfr.github.io/skycmd/lib/skycmd.js` | yes | yes |
-| Python >= 3.9 | PyPI `skycmd` (wheel) | yes | yes |
-| command line, HTTP server | `skycmd` binary (Homebrew, release archives, cargo) | yes | yes |
+| browser, Deno | `https://maxgfr.github.io/skycmd/lib/skycmd.js` | yes | yes |
+| Node >= 18, Bun | `packages/skycmd-js`, built from source | yes | yes |
+| Python >= 3.9 | `crates/sky-py`, built from source | yes | yes |
+| command line, HTTP server | `skycmd` binary, built from source with cargo | yes | yes |
 | llama.cpp `llama-server`, wllama | upstream | yes | no |
 | Ollama, LM Studio | upstream | no `/v1/systemone` for this head yet | no |
+
+Nothing is published to npm, PyPI or Homebrew yet, and there are no prebuilt binaries: outside
+the browser, build from this repository as shown below.
 
 s2 and s3 models, including the default s3-pico, run only in the skycmd engine (browser, Node,
 Deno, Bun, Python, CLI and server). Only s1 files run in llama.cpp and wllama. Tested versions
@@ -32,9 +36,7 @@ and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/d
 | s2-nano-doom | s2, ternary | 1.5M | [s2-nano-doom.gguf](https://maxgfr.github.io/skycmd/models/s2-nano-doom.gguf) (702 KB) | skycmd engine only |
 
 s3-pico plays the four games of the [Play](/play/) page at the oracle's level
-([chapter 21](/tutorial/21-s3-recursive-tiny)). Every
-[GitHub release](https://github.com/maxgfr/skycmd/releases) also carries the model files and a
-`SHA256SUMS` file.
+([chapter 21](/tutorial/21-s3-recursive-tiny)).
 
 ```sh
 curl -LO https://maxgfr.github.io/skycmd/models/s3-pico.gguf
@@ -153,45 +155,13 @@ const [pThrust, pGlide] = model.decideRaw(
 );
 ```
 
-## npm
-
-```sh
-npm install skycmd
-```
-
-```js
-import SkyCmd from "skycmd";
-
-const model = await SkyCmd.load(new URL("./s3-pico.gguf", import.meta.url));
-```
-
-The package is plain ESM with TypeScript declarations (`DecisionRequest`, `DecisionResponse`,
-`Answer`, ...). Bundlers (Vite, webpack, esbuild) pick up `sky_infer_bg.wasm` through
-`new URL(..., import.meta.url)`; if yours does not, serve the file yourself and pass its URL:
-`SkyCmd.load(model, { wasm: "/assets/sky_infer_bg.wasm" })`.
-
 ## Node, Deno and Bun
 
-The same package runs server-side. A plain path is read from disk.
+Deno imports the browser module directly:
 
-::: code-group
-
-```js [Node >= 18]
-// npm install skycmd
-import SkyCmd from "skycmd";
-
-const model = await SkyCmd.load("./s3-pico.gguf");
-const r = model.decide({
-  state: "alt 12 vy -3",
-  questions: { climb: { type: "noul", instructions: "Should the drone climb now?" } },
-});
-console.log(r.answers.climb.noul);
-```
-
-```js [Deno]
+```js
 // deno run --allow-read --allow-net main.js
-import SkyCmd from "npm:skycmd";
-// or, without npm: import SkyCmd from "https://maxgfr.github.io/skycmd/lib/skycmd.js";
+import SkyCmd from "https://maxgfr.github.io/skycmd/lib/skycmd.js";
 
 const model = await SkyCmd.load("./s3-pico.gguf");
 const r = model.decide({
@@ -201,30 +171,30 @@ const r = model.decide({
 console.log(r.answers.climb.noul);
 ```
 
-```js [Bun]
-// bun add skycmd && bun main.js
-import SkyCmd from "skycmd";
+Node and Bun need the package built from the repository (Rust and
+[wasm-pack](https://github.com/rustwasm/wasm-pack)):
 
-const model = await SkyCmd.load("./s3-pico.gguf");
-const r = model.decide({
-  state: "alt 12 vy -3",
-  questions: { climb: { type: "noul", instructions: "Should the drone climb now?" } },
-});
-console.log(r.answers.climb.noul);
+```sh
+git clone https://github.com/maxgfr/skycmd && cd skycmd/packages/skycmd-js
+npm run build && npm pack                # writes skycmd-0.1.0.tgz
+cd /your/project && npm install /path/to/skycmd-0.1.0.tgz
 ```
 
-:::
+Then `import SkyCmd from "skycmd"` works as above, and a plain path is read from disk. The package
+is plain ESM with TypeScript declarations (`DecisionRequest`, `DecisionResponse`, `Answer`, ...).
+Bundlers (Vite, webpack, esbuild) pick up `sky_infer_bg.wasm` through
+`new URL(..., import.meta.url)`; if yours does not, serve the file yourself and pass its URL:
+`SkyCmd.load(model, { wasm: "/assets/sky_infer_bg.wasm" })`.
 
 Call `model.free()` when you are done with a model to release its WebAssembly memory.
 
 ## Python
 
-```sh
-pip install skycmd        # or: uv add skycmd
-```
+Build the wheel from the repository (needs Rust, and pip >= 21.3 or uv):
 
-One abi3 wheel per platform covers CPython 3.9 and later (macOS arm64 and x86_64, manylinux
-x86_64 and aarch64, Windows x86_64). The wheels are also attached to each GitHub release.
+```sh
+pip install "skycmd @ git+https://github.com/maxgfr/skycmd#subdirectory=crates/sky-py"
+```
 
 ```python
 import skycmd
@@ -260,33 +230,6 @@ p = model.decide_raw("noul", "Should the drone climb now?",
 the GIL, and one `Model` can be shared between threads.
 
 ## Command line
-
-### Homebrew (macOS, Linux)
-
-```sh
-brew install maxgfr/tap/skycmd
-```
-
-The formula also installs `s1-pico.gguf` under `$(brew --prefix)/share/skycmd/models/`. Download
-`s3-pico.gguf` as shown above to use the default model.
-
-### Release binaries
-
-Download the archive for your platform from the
-[releases](https://github.com/maxgfr/skycmd/releases): `skycmd-<version>-<target>.tar.gz` for
-`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`,
-`aarch64-unknown-linux-gnu`, and a `.zip` for `x86_64-pc-windows-msvc`. Check it against
-`SHA256SUMS`:
-
-```sh
-v=0.1.0; t=aarch64-apple-darwin
-curl -LO https://github.com/maxgfr/skycmd/releases/download/v$v/skycmd-$v-$t.tar.gz
-curl -LO https://github.com/maxgfr/skycmd/releases/download/v$v/SHA256SUMS
-shasum -a 256 -c SHA256SUMS --ignore-missing
-tar xzf skycmd-$v-$t.tar.gz && sudo mv skycmd-$v-$t/skycmd /usr/local/bin/
-```
-
-### From source
 
 ```sh
 cargo install --git https://github.com/maxgfr/skycmd sky-serve   # installs the `skycmd` binary
