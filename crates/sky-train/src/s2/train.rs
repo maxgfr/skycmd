@@ -1029,6 +1029,8 @@ pub struct S2DecideArgs {
     /// s4 deep improvement supervision: sharpening exponent of the first exit's target
     /// (rising linearly to 1 at the last exit); `None` disables it.
     pub dis: Option<f32>,
+    /// Batches drawn at once and grouped by state length (1: every batch drawn alone).
+    pub length_pool: usize,
 }
 
 /// Validation summary of one model mode.
@@ -1164,6 +1166,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     let (mut wl, mut wt, mut ws, mut wq, mut wtime) =
         (0.0f64, 0usize, 0u64, 0usize, Instant::now());
     let qat_start = 1.0 - a.qat_frac.clamp(0.0, 1.0);
+    let mut pending: std::collections::VecDeque<S2Batch> = Default::default();
     let seqs = match &a.seq_records {
         Some(path) => {
             if !s.cfg.temporal_carry {
@@ -1220,7 +1223,22 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 continue;
             }
         }
-        let batch = data::sample_batch(&data, &weights, a.batch, &mut s.state.rng, a.pad_to);
+        let batch = if a.length_pool > 1 {
+            if pending.is_empty() {
+                pending = data::sample_batches_by_length(
+                    &data,
+                    &weights,
+                    a.batch,
+                    a.length_pool,
+                    &mut s.state.rng,
+                    a.pad_to,
+                )
+                .into();
+            }
+            pending.pop_front().expect("a pooled batch")
+        } else {
+            data::sample_batch(&data, &weights, a.batch, &mut s.state.rng, a.pad_to)
+        };
         let n_exits = s.cfg.n_exits();
         let used = if n_exits > 1 && a.loop_dropout > 0.0 && s.state.rng.f64() < a.loop_dropout {
             Some(1 + s.state.rng.below(n_exits - 1))
@@ -1241,8 +1259,12 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         let step = s.state.step;
         if step % a.log_every == 0 {
             let dt = wtime.elapsed().as_secs_f64();
+            let mb =
+                |r: std::result::Result<usize, _>| r.map(|b| b as f64 / 1e6).unwrap_or(f64::NAN);
             log.write(&json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale, "qat": qat,
-                "tok_s": wt as f64 / dt, "q_s": wq as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0}))?;
+                "tok_s": wt as f64 / dt, "q_s": wq as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0,
+                "mlx_active_mb": mb(mlx_rs::memory::active_memory()),
+                "mlx_cache_mb": mb(mlx_rs::memory::cache_memory())}))?;
             println!(
                 "step {step:>6} loss {:.4} lr x{lr_scale:.3}{} {:.0} tok/s {:.0} q/s ({:.1}/{:.1} min)",
                 wl / ws as f64,
@@ -1329,6 +1351,23 @@ mod tests {
         let path = dir.path().join("syn.jsonl");
         std::fs::write(&path, lines.join("\n")).unwrap();
         data::load_cfg(&[path], tok, cfg).unwrap()
+    }
+
+    #[test]
+    fn length_pooled_batches_cover_the_pool() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let cfg = S2Config {
+                hidden_size: 64,
+                intermediate_size: 32,
+                ..S2Config::tiny(262)
+            };
+            let data = synthetic(&tok, &cfg, 60, 1);
+            let bs = data::sample_batches_by_length(&data, &[1.0], 8, 4, &mut Rng::new(2), 16);
+            assert_eq!(bs.len(), 4);
+            assert!(bs.iter().all(|b| b.n_rows == 8));
+        });
     }
 
     #[test]

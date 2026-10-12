@@ -55,10 +55,16 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 - [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (Apache-2.0)
 - [AirsideLabs/notam-typed-decisions](https://huggingface.co/datasets/AirsideLabs/notam-typed-decisions) (CC-BY-4.0)
 
-### Collected for a future command decoder (not used by the shipped models)
-- [NousResearch/hermes-function-calling-v1](https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1)
-- [glaiveai/glaive-function-calling-v2](https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2)
-- [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr)
+### s4: teacher, real cases and zero-shot held-out sets
+| Dataset or model | Licence | Used as |
+|---|---|---|
+| [Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) ([MLX 4-bit](https://huggingface.co/mlx-community/Qwen3.5-4B-4bit)) | Apache-2.0 | teacher: soft labels from the option-letter logits |
+| [glaiveai/glaive-function-calling-v2](https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2) | Apache-2.0 | tool routing (choice over tools + `no_tool`) |
+| [NousResearch/hermes-function-calling-v1](https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1) | Apache-2.0 | tool routing |
+| [bitext/Bitext-customer-support-llm-chatbot-training-dataset](https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset) | CDLA-Sharing-1.0 | ticket triage with an `unsure` option |
+| [google/civil_comments](https://huggingface.co/datasets/google/civil_comments) | CC0-1.0 | moderation on a written rule (noul) |
+| [PolyAI/banking77](https://huggingface.co/datasets/PolyAI/banking77) | CC-BY-4.0 | **held out** from s4: zero-shot evaluation |
+| [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation |
 
 ## Libraries and technologies
 
@@ -93,3 +99,12 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 - **Ternary weights at small scale:** [When are 1.58 bits enough?](https://arxiv.org/abs/2411.05882). **Lookup-table kernels:** [T-MAC](https://arxiv.org/abs/2407.00088) and [bitnet.cpp](https://arxiv.org/abs/2502.11880).
 - **Imitation learning:** DAgger (Ross, Gordon & Bagnell, 2011) and [on-policy distillation](https://www.thinkingmachines.ai/blog/on-policy-distillation/).
 - **Bio-inspired ablations:** [Neural Circuit Policies](https://arxiv.org/abs/1809.04423) and [expand-and-sparsify / FlyHash](https://arxiv.org/abs/2001.04907).
+
+### s4
+- **Teacher:** [Qwen3.5](https://huggingface.co/collections/Qwen/qwen35) through [mlx-lm](https://github.com/ml-explore/mlx-lm); the teacher scores option letters in one pass and never generates.
+- **Encoders over decoders for classification at equal size:** [Ettin, Seq vs Seq](https://arxiv.org/abs/2507.11412).
+- **Ternary distillation from a teacher:** [BitNet Distillation](https://arxiv.org/abs/2510.13998).
+- **Supervising every loop toward an improving target:** [Deep Improvement Supervision](https://arxiv.org/abs/2511.16886), applied to the exits of the looped state stack (`--dis`).
+- **Hard and soft labels together:** [arXiv 2605.26246](https://arxiv.org/abs/2605.26246).
+- **Answer bias of LLM option scoring and its correction:** [Calibrate Before Use](https://arxiv.org/abs/2102.09690) (contextual calibration) and [Large Language Models Are Not Robust Multiple Choice Selectors](https://arxiv.org/abs/2309.03882).
+- **Small function-calling reference:** [Extending FunctionGemma](https://arxiv.org/abs/2609.25373).

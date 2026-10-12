@@ -86,6 +86,8 @@ pub struct CorpusOptions {
     pub per_case: usize,
     /// Records per held-out set.
     pub heldout: usize,
+    /// Cap on the train/val records of each gold file (0: symlinks to `data/decisions`).
+    pub gold_cap: usize,
 }
 
 fn uniform(n: usize) -> Vec<f32> {
@@ -167,8 +169,6 @@ pub fn randomize_choice(r: &DecisionRecord, pool: &[String], rng: &mut Rng) -> D
 /// records label-randomized. Also links the gold files the student trains on into `gold/`.
 fn p1_decisions(o: &CorpusOptions) -> Result<Vec<S4Record>> {
     let dir = o.data.join("decisions");
-    let gold_dir = o.out.join("gold");
-    fs::create_dir_all(&gold_dir)?;
     let mut out = Vec::new();
     let mut files: Vec<PathBuf> = fs::read_dir(&dir)
         .with_context(|| format!("read {dir:?}"))?
@@ -178,12 +178,6 @@ fn p1_decisions(o: &CorpusOptions) -> Result<Vec<S4Record>> {
     files.sort();
     for f in files {
         let src = f.file_stem().unwrap().to_string_lossy().to_string();
-        let link = gold_dir.join(f.file_name().unwrap());
-        // The benchmark stays in gold/ (test split only) so s2-eval reports it.
-        if (!EXCLUDED.contains(&src.as_str()) || src == "typed_decisions_bench") && !link.exists() {
-            let abs = fs::canonicalize(&f)?;
-            std::os::unix::fs::symlink(abs, &link)?;
-        }
         if EXCLUDED.contains(&src.as_str()) {
             continue;
         }
@@ -210,6 +204,46 @@ fn p1_decisions(o: &CorpusOptions) -> Result<Vec<S4Record>> {
         eprintln!("[s4] p1 {src}: {n}");
     }
     Ok(out)
+}
+
+/// The gold sets the student trains on directly (`gold/`): every typed-decision file except
+/// the held-out ones, the benchmark kept for its test split. With `gold_cap > 0` each file is
+/// a copy with at most `gold_cap` train/val records (a seeded random sample, every test record
+/// kept), which bounds the training set held in memory; otherwise a symlink.
+pub fn write_gold(o: &CorpusOptions) -> Result<BTreeMap<String, usize>> {
+    let dir = o.data.join("decisions");
+    let gold_dir = o.out.join("gold");
+    fs::create_dir_all(&gold_dir)?;
+    let mut files: Vec<PathBuf> = fs::read_dir(&dir)
+        .with_context(|| format!("read {dir:?}"))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .collect();
+    files.sort();
+    let mut counts = BTreeMap::new();
+    for f in files {
+        let src = f.file_stem().unwrap().to_string_lossy().to_string();
+        if EXCLUDED.contains(&src.as_str()) && src != "typed_decisions_bench" {
+            continue;
+        }
+        let dst = gold_dir.join(f.file_name().unwrap());
+        if dst.symlink_metadata().is_ok() {
+            fs::remove_file(&dst)?;
+        }
+        if o.gold_cap == 0 {
+            std::os::unix::fs::symlink(fs::canonicalize(&f)?, &dst)?;
+            continue;
+        }
+        let recs: Vec<DecisionRecord> = read_jsonl(&f)?;
+        let (test, mut rest): (Vec<DecisionRecord>, Vec<DecisionRecord>) =
+            recs.into_iter().partition(|r| r.split == "test");
+        let mut rng = Rng::derived(o.seed, &format!("s4/gold/{src}"));
+        rng.shuffle(&mut rest);
+        rest.truncate(o.gold_cap);
+        rest.extend(test);
+        counts.insert(src, write_jsonl(&dst, &rest)?);
+    }
+    Ok(counts)
 }
 
 /// Label sets of the generic snippets (p2). None of them is the label set of a held-out
@@ -848,6 +882,9 @@ pub fn build_corpus(hf: &Hf, o: &CorpusOptions) -> Result<BTreeMap<String, usize
     let q = o.out.join("queue");
     fs::create_dir_all(&q)?;
     let mut counts = BTreeMap::new();
+    for (k, n) in write_gold(o)? {
+        counts.insert(format!("gold/{k}"), n);
+    }
     let p1 = p1_decisions(o)?;
     counts.insert(
         "p1-decisions".to_string(),

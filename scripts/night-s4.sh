@@ -18,8 +18,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s4}
+# MLX keeps freed buffers for reuse: capped so that the student and the teacher fit in 16 GB.
+export SKY_MLX_CACHE_GB=${SKY_MLX_CACHE_GB:-2}
 T=${T:-$CARGO_TARGET_DIR/release/sky-train}
 D=${D:-$CARGO_TARGET_DIR/release/sky-data}
+E=${E:-$CARGO_TARGET_DIR/release/sky-eval}
 PY=${PY:-.venv-teacher/bin/python}
 TEACHER=${TEACHER:-mlx-community/Qwen3.5-4B-4bit}
 NAME=${NAME:-s4-micro}
@@ -47,7 +50,8 @@ gpu() {
 }
 
 corpus() {
-  "$D" s4-corpus --generic "${GENERIC:-30000}" --per-case "${PER_CASE:-15000}"
+  # --gold-cap bounds the gold set held in RAM by s2-decide (40k train/val records per source).
+  "$D" s4-corpus --generic "${GENERIC:-30000}" --per-case "${PER_CASE:-15000}" --gold-cap "${GOLD_CAP:-40000}"
 }
 
 # Minutes left until LABEL_UNTIL (HH:MM, today or tomorrow), 0 when unset.
@@ -102,7 +106,7 @@ decide() {
   rm -rf "$run/decide"
   gpu "$T" s2-decide --config "$cfg" --init "$run/pretrain/init" --tokenizer "$tok" --records "$RECORDS" \
     --weights "$WEIGHTS" --batch "$batch" --minutes "$dec" \
-    --qat-frac 0.9 --loop-dropout 0.25 --dis "$dis" --pad-to 32 --out "$run/decide"
+    --qat-frac 0.9 --loop-dropout 0.25 --dis "$dis" --length-pool "${POOL:-16}" --pad-to 32 --out "$run/decide"
 }
 
 post() {
@@ -112,12 +116,19 @@ post() {
   gpu "$T" s2-export --run "$run/decide/last" --format ternary --out "$m/skycmd-$NAME-ternary.gguf"
 }
 
-# Test split of every record directory: typed_decisions_bench, the zero-shot held-out sets
-# and the labelled test splits, for the s4 GGUFs and the s3-pico baseline of the games.
+# s2-eval report of the s4 checkpoint and GGUFs (per exit, early exit, permutation check), then
+# sky-eval of every GGUF with its own tokenizer on the test sets (typed_decisions_bench, the
+# zero-shot held-out sets, When2Call test), the s3-pico baseline included, and the gate.
 eval_() {
-  local ggufs=$m/skycmd-$NAME-ternary.gguf,$m/skycmd-$NAME-f32.gguf
-  [ -f "${BASELINE:-site/public/models/s3-pico.gguf}" ] && ggufs=$ggufs,${BASELINE:-site/public/models/s3-pico.gguf}
-  gpu "$T" s2-eval --run "$run/decide/last" --records "$RECORDS" --gguf "$ggufs" --report "$run/report.md"
+  gpu "$T" s2-eval --run "$run/decide/last" --records "$RECORDS" \
+    --gguf "$m/skycmd-$NAME-ternary.gguf,$m/skycmd-$NAME-f32.gguf" --report "$run/report.md"
+  local tests=data/decisions/typed_decisions_bench.jsonl,$S4/heldout,data/decisions/when2call.jsonl
+  local g
+  for g in "$m/skycmd-$NAME-ternary.gguf" "$m/skycmd-$NAME-f32.gguf" "${BASELINE:-site/public/models/s3-pico.gguf}"; do
+    [ -f "$g" ] || continue
+    "$E" "$g" --records "$tests" --json "$run/eval-$(basename "$g" .gguf).json"
+  done
+  python3 -I scripts/s4-gate.py "$run" --out "$run/results.md" || true
 }
 
 # The teacher on the same test sets (accuracy of the letter scoring, raw temperature 1).

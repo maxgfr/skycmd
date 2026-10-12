@@ -174,6 +174,12 @@ enum Cmd {
         /// Records per held-out set.
         #[arg(long, default_value_t = 2000)]
         heldout: usize,
+        /// Cap on the train/val records of each gold file (0: symlinks to data/decisions).
+        #[arg(long, default_value_t = 0)]
+        gold_cap: usize,
+        /// Only (re)write data/s4/gold.
+        #[arg(long)]
+        only_gold: bool,
     },
     /// s4: gold / teacher mix of the scored records (teacher temperature fitted on gold).
     S4Mix {
@@ -516,20 +522,24 @@ fn main() -> Result<()> {
             generic,
             per_case,
             heldout,
+            gold_cap,
+            only_gold,
         } => {
-            let hf = Hf::new(&cli.cache)?;
-            let counts = sky_data::s4::build_corpus(
-                &hf,
-                &sky_data::s4::CorpusOptions {
-                    data,
-                    out,
-                    seed: cli.seed,
-                    per_source,
-                    generic,
-                    per_case,
-                    heldout,
-                },
-            )?;
+            let o = sky_data::s4::CorpusOptions {
+                data,
+                out,
+                seed: cli.seed,
+                per_source,
+                generic,
+                per_case,
+                heldout,
+                gold_cap,
+            };
+            let counts = if only_gold {
+                sky_data::s4::write_gold(&o)?
+            } else {
+                sky_data::s4::build_corpus(&Hf::new(&cli.cache)?, &o)?
+            };
             for (k, n) in counts {
                 println!("{k:<16} {n}");
             }

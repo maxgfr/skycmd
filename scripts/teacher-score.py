@@ -100,7 +100,11 @@ def main():
     ap.add_argument("--window", type=int, default=2048, help="records sorted by length per window")
     ap.add_argument("--eval", action="store_true", help="print accuracy / NLL against target argmax")
     ap.add_argument("--deadline", type=float, default=0, help="stop after this many minutes")
+    ap.add_argument("--cache-gb", type=float, default=2.0, help="MLX buffer cache limit")
     a = ap.parse_args()
+    # MLX keeps freed buffers in a cache that otherwise grows to most of the RAM (12 GB on a
+    # 16 GB Mac after an hour of variable batch shapes), which pushes the student into swap.
+    mx.set_cache_limit(int(a.cache_gb * (1 << 30)))
 
     model, tok = load(a.model)
     lids = letter_ids(tok)
