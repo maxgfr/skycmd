@@ -572,7 +572,7 @@ fn tool_routing(o: &CorpusOptions, rng: &mut Rng) -> Result<Vec<S4Record>> {
         let mut target = vec![0.0; crit.len()];
         target[gi] = 1.0;
         let q = Question::choice(TOOL_INS[rng.below(TOOL_INS.len())], crit);
-        let mut rec = q.record("s4_tools", &clip(&r.user, 900), target);
+        let mut rec = q.record("s4_tools", clip(&r.user, 900), target);
         rec.split = if r.split == "train" {
             "train".into()
         } else {
@@ -798,7 +798,7 @@ fn moderation(hf: &Hf, o: &CorpusOptions, rng: &mut Rng) -> Result<Vec<S4Record>
             Some(s) => (vec![1.0 - s as f32, s as f32], true),
             None => (uniform(2), false),
         };
-        let mut rec = q.record("s4_moderation", &clip(text, 900), target);
+        let mut rec = q.record("s4_moderation", clip(text, 900), target);
         rec.split = split_of(text, o.seed, 0.03);
         out.push(S4Record {
             rec,
@@ -1019,6 +1019,9 @@ pub fn fit_calib(items: &[(&[f32], &[f32])], n: usize, t0: f32) -> Calib {
     }
 }
 
+/// Teacher logits and gold target of one record.
+type LogitsGold<'a> = (&'a [f32], &'a [f32]);
+
 /// Calibration group of a record: source, type and option count.
 fn group_key(r: &DecisionRecord) -> String {
     format!("{}/{}/{}", r.src, r.t, r.opts.len())
@@ -1086,7 +1089,7 @@ pub fn mix(o: &MixOptions) -> Result<Value> {
     let owned: Vec<S4Record> = flat.iter().map(|r| (*r).clone()).collect();
     let t = o.temperature.unwrap_or_else(|| fit_temperature(&owned));
     // Per-group calibrations on the gold train records.
-    let mut groups: BTreeMap<String, Vec<(&[f32], &[f32])>> = BTreeMap::new();
+    let mut groups: BTreeMap<String, Vec<LogitsGold>> = BTreeMap::new();
     for r in flat.iter().filter(|r| r.gold && r.rec.split == "train") {
         groups
             .entry(group_key(&r.rec))
