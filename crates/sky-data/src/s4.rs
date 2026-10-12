@@ -915,17 +915,99 @@ pub fn fit_temperature(recs: &[S4Record]) -> f32 {
     best.1
 }
 
+/// Calibration of the teacher's letter logits for one group of questions:
+/// `p = softmax(logits / temperature + bias)`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Calib {
+    pub temperature: f32,
+    pub bias: Vec<f32>,
+}
+
+impl Calib {
+    pub fn probs(&self, logits: &[f32]) -> Vec<f32> {
+        let z: Vec<f32> = logits
+            .iter()
+            .enumerate()
+            .map(|(i, l)| l / self.temperature + self.bias.get(i).copied().unwrap_or(0.0))
+            .collect();
+        softmax_t(&z, 1.0)
+    }
+}
+
+/// Fits a temperature and a per-option bias (contextual calibration) minimizing the soft
+/// cross-entropy against the gold labels, starting from temperature `t0` (Adam, 400 steps).
+/// The bias corrects a teacher that favours one answer whatever the input: Qwen3.5-4B
+/// answers "true" to 99% of the escalation nouls of typed_decisions_bench. A small L2
+/// keeps the bias near zero.
+pub fn fit_calib(items: &[(&[f32], &[f32])], n: usize, t0: f32) -> Calib {
+    let mut s = 1.0 / t0 as f64; // inverse temperature
+    let mut b = vec![0.0f64; n];
+    let (lr, l2, steps) = (0.05, 1e-3, 400);
+    let (beta1, beta2, eps) = (0.9f64, 0.999f64, 1e-8);
+    let (mut ms, mut vs) = (0.0f64, 0.0f64);
+    let (mut mb, mut vb) = (vec![0.0f64; n], vec![0.0f64; n]);
+    let m = items.len().max(1) as f64;
+    for step in 1..=steps {
+        let mut gs = 0.0;
+        let mut gb = vec![0.0f64; n];
+        for (lg, gold) in items {
+            let mx = lg.iter().cloned().fold(f32::MIN, f32::max) as f64;
+            let z: Vec<f64> = (0..n).map(|i| (lg[i] as f64 - mx) * s + b[i]).collect();
+            let zm = z.iter().cloned().fold(f64::MIN, f64::max);
+            let e: Vec<f64> = z.iter().map(|x| (x - zm).exp()).collect();
+            let se: f64 = e.iter().sum();
+            for i in 0..n {
+                let d = e[i] / se - gold[i] as f64;
+                gs += d * (lg[i] as f64 - mx);
+                gb[i] += d;
+            }
+        }
+        gs /= m;
+        let c1 = 1.0 - beta1.powi(step);
+        let c2 = 1.0 - beta2.powi(step);
+        ms = beta1 * ms + (1.0 - beta1) * gs;
+        vs = beta2 * vs + (1.0 - beta2) * gs * gs;
+        s = (s - lr * (ms / c1) / ((vs / c2).sqrt() + eps)).clamp(0.02, 20.0);
+        for i in 0..n {
+            let g = gb[i] / m + l2 * b[i];
+            mb[i] = beta1 * mb[i] + (1.0 - beta1) * g;
+            vb[i] = beta2 * vb[i] + (1.0 - beta2) * g * g;
+            b[i] -= lr * (mb[i] / c1) / ((vb[i] / c2).sqrt() + eps);
+        }
+    }
+    let mean = b.iter().sum::<f64>() / n as f64;
+    Calib {
+        temperature: (1.0 / s) as f32,
+        bias: b.iter().map(|x| (x - mean) as f32).collect(),
+    }
+}
+
+/// Calibration group of a record: source, type and option count.
+fn group_key(r: &DecisionRecord) -> String {
+    format!("{}/{}/{}", r.src, r.t, r.opts.len())
+}
+
+/// Minimum gold training records for a group calibration (else the global temperature).
+const MIN_GROUP: usize = 150;
+
 #[derive(Clone, Debug)]
 pub struct MixOptions {
     pub scored: Vec<PathBuf>,
     pub out: PathBuf,
     pub alpha: f32,
-    /// Fixed temperature (default: fitted on the gold records).
+    /// Fixed global temperature (default: fitted on the gold records).
     pub temperature: Option<f32>,
 }
 
+fn scored_ok(r: &S4Record) -> bool {
+    r.tlogits
+        .as_ref()
+        .is_some_and(|l| l.len() == r.rec.opts.len())
+}
+
 /// Writes the mixed training records, one file per scored input, and returns the teacher
-/// report (temperature, accuracy against gold per source).
+/// report: global temperature, per-group calibrations and the teacher's accuracy against
+/// gold on the val split before and after calibration, per source.
 pub fn mix(o: &MixOptions) -> Result<Value> {
     let mut all: Vec<(String, Vec<S4Record>)> = Vec::new();
     for p in &o.scored {
@@ -939,29 +1021,56 @@ pub fn mix(o: &MixOptions) -> Result<Value> {
     if all.is_empty() {
         bail!("no scored file found");
     }
-    let flat: Vec<S4Record> = all.iter().flat_map(|(_, v)| v.iter().cloned()).collect();
-    let t = o.temperature.unwrap_or_else(|| fit_temperature(&flat));
-    let mut per_src: BTreeMap<String, (usize, usize, f64)> = BTreeMap::new();
-    for r in flat.iter().filter(|r| r.gold) {
-        let Some(lg) = &r.tlogits else { continue };
-        let p = softmax_t(lg, t);
+    let flat: Vec<&S4Record> = all
+        .iter()
+        .flat_map(|(_, v)| v.iter())
+        .filter(|r| scored_ok(r))
+        .collect();
+    let owned: Vec<S4Record> = flat.iter().map(|r| (*r).clone()).collect();
+    let t = o.temperature.unwrap_or_else(|| fit_temperature(&owned));
+    // Per-group calibrations on the gold train records.
+    let mut groups: BTreeMap<String, Vec<(&[f32], &[f32])>> = BTreeMap::new();
+    for r in flat.iter().filter(|r| r.gold && r.rec.split == "train") {
+        groups
+            .entry(group_key(&r.rec))
+            .or_default()
+            .push((r.tlogits.as_ref().unwrap(), &r.rec.target));
+    }
+    let mut calib: BTreeMap<String, Calib> = BTreeMap::new();
+    for (k, items) in &groups {
+        if items.len() >= MIN_GROUP {
+            let n = items[0].0.len();
+            calib.insert(k.clone(), fit_calib(items, n, t));
+        }
+    }
+    let probs = |r: &S4Record| -> Vec<f32> {
+        let lg = r.tlogits.as_ref().unwrap();
+        match calib.get(&group_key(&r.rec)) {
+            Some(c) => c.probs(lg),
+            None => softmax_t(lg, t),
+        }
+    };
+    // Teacher vs gold on the val split: raw (temperature only) and calibrated.
+    let mut per_src: BTreeMap<String, [f64; 4]> = BTreeMap::new();
+    for r in flat.iter().filter(|r| r.gold && r.rec.split == "val") {
+        let g = argmax(&r.rec.target);
+        let raw = softmax_t(r.tlogits.as_ref().unwrap(), t);
+        let cal = probs(r);
         let e = per_src.entry(r.rec.src.clone()).or_default();
-        e.0 += 1;
-        e.1 += (argmax(&p) == argmax(&r.rec.target)) as usize;
-        e.2 += soft_ce(&r.rec.target, &p);
+        e[0] += 1.0;
+        e[1] += (argmax(&raw) == g) as u8 as f64;
+        e[2] += (argmax(&cal) == g) as u8 as f64;
+        e[3] += soft_ce(&r.rec.target, &cal);
     }
     fs::create_dir_all(&o.out)?;
     let mut written = BTreeMap::new();
-    for (name, recs) in all {
+    for (name, recs) in &all {
         let out: Vec<DecisionRecord> = recs
-            .into_iter()
-            .filter_map(|r| {
-                let lg = r.tlogits.as_ref()?;
-                if lg.len() != r.rec.opts.len() {
-                    return None;
-                }
-                let p = softmax_t(lg, t);
-                let mut rec = r.rec;
+            .iter()
+            .filter(|r| scored_ok(r))
+            .map(|r| {
+                let p = probs(r);
+                let mut rec = r.rec.clone();
                 rec.target = if r.gold {
                     rec.target
                         .iter()
@@ -971,18 +1080,19 @@ pub fn mix(o: &MixOptions) -> Result<Value> {
                 } else {
                     p
                 };
-                Some(rec)
+                rec
             })
             .collect();
         let n = write_jsonl(&o.out.join(format!("{name}.jsonl")), &out)?;
-        written.insert(name, n);
+        written.insert(name.clone(), n);
     }
     let report = json!({
         "temperature": t,
         "alpha": o.alpha,
         "written": written,
-        "teacher_vs_gold": per_src.iter().map(|(k, (n, h, ce))| (k.clone(), json!({
-            "n": n, "acc": *h as f64 / *n as f64, "ce": ce / *n as f64
+        "groups": calib,
+        "teacher_vs_gold_val": per_src.iter().map(|(k, v)| (k.clone(), json!({
+            "n": v[0], "acc_raw": v[1] / v[0], "acc_calibrated": v[2] / v[0], "ce_calibrated": v[3] / v[0]
         }))).collect::<serde_json::Map<_, _>>(),
     });
     fs::write(
@@ -1054,6 +1164,35 @@ mod tests {
         }
         let t = fit_temperature(&recs);
         assert!((0.35..=0.7).contains(&t), "{t}");
+    }
+
+    #[test]
+    fn calibration_removes_a_constant_answer_bias() {
+        // The teacher adds +3 to "true" whatever the input; gold is balanced.
+        let mut rng = Rng::new(9);
+        let mut data: Vec<(Vec<f32>, Vec<f32>)> = Vec::new();
+        for _ in 0..600 {
+            let y = rng.below(2);
+            let signal = if y == 1 { 1.5 } else { -1.5 };
+            let gold = if y == 1 {
+                vec![0.0, 1.0]
+            } else {
+                vec![1.0, 0.0]
+            };
+            data.push((vec![0.0, signal + 3.0], gold));
+        }
+        let items: Vec<(&[f32], &[f32])> = data
+            .iter()
+            .map(|(l, g)| (l.as_slice(), g.as_slice()))
+            .collect();
+        let raw = data.iter().filter(|(l, g)| argmax(l) == argmax(g)).count();
+        assert_eq!(raw, data.iter().filter(|(_, g)| g[1] == 1.0).count());
+        let c = fit_calib(&items, 2, 1.0);
+        let acc = data
+            .iter()
+            .filter(|(l, g)| argmax(&c.probs(l)) == argmax(g))
+            .count();
+        assert_eq!(acc, 600, "{c:?}");
     }
 
     #[test]

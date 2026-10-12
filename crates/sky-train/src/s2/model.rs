@@ -1399,7 +1399,13 @@ mod tests {
     fn dis_targets_soften_early_exits_and_keep_the_last() {
         let _g = test_util::lock();
         mlx_rs::with_device(mlx_rs::Device::cpu(), || {
-            assert_eq!(dis_betas(3, 0.4), vec![0.4, 0.7, 1.0]);
+            let b = dis_betas(3, 0.4);
+            assert!(
+                b.iter()
+                    .zip([0.4, 0.7, 1.0])
+                    .all(|(x, y)| (x - y).abs() < 1e-6),
+                "{b:?}"
+            );
             assert_eq!(dis_betas(1, 0.4), vec![1.0]);
             // Two rows: a soft target and a one-hot target with a padded option.
             let t = Array::from_slice(&[0.7f32, 0.2, 0.1, 0.0, 1.0, 0.0], &[2, 3]);
