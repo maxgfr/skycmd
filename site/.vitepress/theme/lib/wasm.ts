@@ -55,6 +55,13 @@ export interface ModelEntry {
   arch?: string
   /** `f32`, `f16`, `q8_0` or `ternary`. */
   weight_format?: string
+  /** `generic`: a decision model for free-text questions (s4, the Live page), not for the games. */
+  task?: string
+}
+
+/** The models that play the games (every manifest entry but the generic ones). */
+export function gameModels(list: ModelEntry[]): ModelEntry[] {
+  return list.filter((m) => m.task !== 'generic')
 }
 
 /** Model family of a manifest entry (from `arch`, else from the name). */
