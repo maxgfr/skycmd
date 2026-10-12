@@ -49,6 +49,24 @@ MASSIVE keeps its official splits.
 | glaiveai/glaive-function-calling-v2 | Apache-2.0 | https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2 | system prompt parsed into the tool list, first USER turn + the assistant's `<functioncall>` (single-quoted arguments parsed) or `[]`; conversations without any function capped to 10k; deduplicated (the set repeats many first turns) | 24,042 (8,674 with calls) |
 | mteb/amazon_massive_intent (MASSIVE, `en` + `fr`) | MASSIVE: CC-BY-4.0 (the mteb mirror is tagged Apache-2.0) | https://huggingface.co/datasets/mteb/amazon_massive_intent | train / validation / test utterances as intent records (`intent` = label) | 32,341 |
 
+## s4 teacher corpus (`data/s4/`, `sky-data s4-corpus`)
+
+The records the Qwen3.5 teacher scores (`queue/`), the gold sets the s4 student trains on
+(`gold/`, symlinks to `data/decisions` minus the held-out sets) and the zero-shot held-out sets
+(`heldout/`, `split = "test"`, never trained on). The teacher only adds soft labels; its
+outputs are not redistributed.
+
+| dataset / model | license | URL | how it is used | rows used |
+|---|---|---|---|---|
+| Qwen/Qwen3.5-4B (MLX 4-bit conversion `mlx-community/Qwen3.5-4B-4bit`) | Apache-2.0 | https://huggingface.co/Qwen/Qwen3.5-4B | teacher: letter logits of the options in one non-thinking pass (`scripts/teacher-score.py`) | — |
+| glaiveai/glaive-function-calling-v2, NousResearch/hermes-function-calling-v1 | Apache-2.0 | see the command data above | tool routing: the user turn, the conversation's tools plus distractor tools from other conversations and a `no_tool` option; gold = the first call (or `no_tool`) | 15,000 |
+| bitext/Bitext-customer-support-llm-chatbot-training-dataset | CDLA-Sharing-1.0 | https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset | ticket triage: random subsets of its 11 categories (or 27 intents) with an `unsure` option, which is the answer when the gold category is left out (15%) | 15,000 |
+| google/civil_comments | CC0-1.0 | https://huggingface.co/datasets/google/civil_comments | rule-based moderation (`validation` split): noul "the message violates this rule"; for the six rules that match a column (insult, threat, obscene, identity attack, toxicity, sexual explicit) the annotator fraction is the soft gold label, the five other rules are teacher only; toxic comments oversampled | 14,721 |
+| MLM text above (`data/text`) | see below | — | generic snippets (200–700 chars) under random label sets (topic, genre, audience, tone, …), teacher only | 30,000 |
+| typed-decision sets above (`data/decisions`) | see above | — | 4,000 per source (train / val), choice records label-randomized: shuffled options, distractors from other questions, an abstention option, and 12% with the gold option removed so that the abstention option is the answer | 80,000 |
+| PolyAI/banking77 | CC-BY-4.0 | see above | **held out**: excluded from s4 training, 2,000 of its 8-way choices kept as `zs_banking77` | 2,000 |
+| MASSIVE (`en`, `fr`) | CC-BY-4.0 | see above | **held out**: test utterances, gold intent + 7 random intents, `zs_massive_en` / `zs_massive_fr` | 2,000 + 1,000 |
+
 ## MLM text (`data/text/*.jsonl`)
 
 | dataset | license | URL | how it is used | docs used |

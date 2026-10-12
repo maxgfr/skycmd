@@ -22,6 +22,7 @@ const chapters: [string, string][] = [
   ['19-s2-architecture', '19 The s2 architecture'],
   ['20-dagger-lessons', '20 What DAgger taught us'],
   ['21-s3-recursive-tiny', '21 s3: a 251 KB model that plays four games'],
+  ['22-s4-generic-decisions', '22 s4: a generic decision model distilled from Qwen3.5'],
 ]
 
 const groups: [string, number, number][] = [
@@ -29,7 +30,7 @@ const groups: [string, number, number][] = [
   ['Data', 4, 7],
   ['Model and training', 7, 12],
   ['Shipping', 12, 17],
-  ['Going further', 17, 21],
+  ['Going further', 17, 22],
 ]
 
 export default defineConfig({
@@ -56,6 +57,7 @@ export default defineConfig({
     logo: { src: '/favicon.svg', alt: '' },
     nav: [
       { text: 'Play', link: '/play/' },
+      { text: 'Live', link: '/live/' },
       { text: 'Tutorial', link: '/tutorial/' },
       { text: 'Bench', link: '/bench/' },
       { text: 'Install', link: '/install/' },

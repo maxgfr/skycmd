@@ -997,6 +997,9 @@ pub struct MixOptions {
     pub alpha: f32,
     /// Fixed global temperature (default: fitted on the gold records).
     pub temperature: Option<f32>,
+    /// Queue directory (`s4-corpus` output): gold records of `<stem>.jsonl` that are not in
+    /// the scored file are written with their gold target alone.
+    pub queue: Option<PathBuf>,
 }
 
 fn scored_ok(r: &S4Record) -> bool {
@@ -1011,15 +1014,32 @@ fn scored_ok(r: &S4Record) -> bool {
 pub fn mix(o: &MixOptions) -> Result<Value> {
     let mut all: Vec<(String, Vec<S4Record>)> = Vec::new();
     for p in &o.scored {
-        if !p.exists() {
-            continue;
-        }
-        let recs: Vec<S4Record> = read_jsonl(p)?;
         let name = p.file_stem().unwrap().to_string_lossy().to_string();
-        all.push((name, recs));
+        let mut recs: Vec<S4Record> = if p.exists() {
+            read_jsonl(p)?
+        } else {
+            Vec::new()
+        };
+        // Queue records the teacher did not reach: the gold ones pass through unchanged.
+        if let Some(q) = o.queue.as_ref().map(|d| d.join(format!("{name}.jsonl"))) {
+            if q.exists() {
+                let done: HashSet<u64> = recs.iter().filter_map(|r| r.uid).collect();
+                let queued: Vec<S4Record> = read_jsonl(&q)?;
+                recs.extend(
+                    queued
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(i, r)| r.gold && !done.contains(&(*i as u64)))
+                        .map(|(_, r)| r),
+                );
+            }
+        }
+        if !recs.is_empty() {
+            all.push((name, recs));
+        }
     }
     if all.is_empty() {
-        bail!("no scored file found");
+        bail!("no scored or queued record found");
     }
     let flat: Vec<&S4Record> = all
         .iter()
@@ -1067,8 +1087,11 @@ pub fn mix(o: &MixOptions) -> Result<Value> {
     for (name, recs) in &all {
         let out: Vec<DecisionRecord> = recs
             .iter()
-            .filter(|r| scored_ok(r))
+            .filter(|r| scored_ok(r) || (r.gold && r.tlogits.is_none()))
             .map(|r| {
+                if r.tlogits.is_none() {
+                    return r.rec.clone();
+                }
                 let p = probs(r);
                 let mut rec = r.rec.clone();
                 rec.target = if r.gold {

@@ -11,6 +11,9 @@ export interface WasmEngine {
   family(): string
   /** s2: early-exit threshold override (undefined = calibrated, 1 = full depth). */
   setExitThreshold(tau?: number): void
+  /** Generic decision over rendered option texts (JSON array); returns the JSON answer
+   * `{probs, exit, n_exits, layers_used, static_hit, micros}`. */
+  decide(qtype: string, instructions: string, optionsJson: string, state: string): string
   free(): void
 }
 

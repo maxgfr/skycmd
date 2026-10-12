@@ -6,6 +6,7 @@ import LiveStats from './components/LiveStats.vue'
 import FeatureCards from './components/FeatureCards.vue'
 import PlayGame from './components/PlayGame.vue'
 import BenchView from './components/BenchView.vue'
+import LiveDecide from './components/LiveDecide.vue'
 import './custom.css'
 
 export default {
@@ -20,5 +21,6 @@ export default {
     app.component('FeatureCards', FeatureCards)
     app.component('PlayGame', PlayGame)
     app.component('BenchView', BenchView)
+    app.component('LiveDecide', LiveDecide)
   },
 } satisfies Theme

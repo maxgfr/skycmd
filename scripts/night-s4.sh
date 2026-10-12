@@ -7,7 +7,8 @@
 # Every GPU phase takes the global lock of scripts/night-s3.sh, so only one GPU job runs.
 #
 # Usage: scripts/night-s4.sh [stage ...]   (default: all)
-#   stages: corpus label mix tokenizer pretrain decide post eval all
+#   stages: corpus label mix tokenizer pretrain decide post evaluate teacher-eval train all
+#   train = mix and pretraining side by side (mix is CPU only), then decide, post, evaluate
 # Environment:
 #   TEACHER=mlx-community/Qwen3.5-4B-4bit   LABEL_UNTIL=HH:MM (stop labelling at this time)
 #   PRE=30 DEC=110 BATCH=64 ALPHA=0.5 DIS=0.5
@@ -31,7 +32,7 @@ m=models/$NAME
 S4=data/s4
 QUEUE=(p3-cases p2-generic p1-decisions)
 RECORDS=$S4/gold,$S4/mix,$S4/heldout,data/numeric
-WEIGHTS=${WEIGHTS:-gold=0.45,mix=0.5,numeric=0.05}
+WEIGHTS=${WEIGHTS:-gold=0.45,mix=0.5,heldout=0,numeric=0.05}
 mkdir -p "$run" "$m" "$S4/scored"
 
 LOCK=${GPU_LOCK:-/tmp/skycmd-night-gpu.lock}
@@ -79,7 +80,7 @@ label() {
 mix() {
   local scored=()
   for q in "${QUEUE[@]}"; do scored+=("$S4/scored/$q.jsonl"); done
-  "$D" s4-mix --scored "$(IFS=,; echo "${scored[*]}")" --out "$S4/mix" --alpha "$alpha"
+  "$D" s4-mix --scored "$(IFS=,; echo "${scored[*]}")" --queue "$S4/queue" --out "$S4/mix" --alpha "$alpha"
 }
 
 tokenizer() {
@@ -92,6 +93,7 @@ tokenizer() {
 pretrain() {
   echo "== $NAME: pretrain ${pre}m"
   gpu "$T" s2-pretrain --config "$cfg" --tokenizer "$tok" --text data/text --minutes "$pre" --num-weight 0.05 \
+    --seq "${SEQ:-256}" --batch "${PBATCH:-64}" \
     --numeric data/numeric --numeric-weight 0.1 --out "$run/pretrain"
 }
 
@@ -110,9 +112,34 @@ post() {
   gpu "$T" s2-export --run "$run/decide/last" --format ternary --out "$m/skycmd-$NAME-ternary.gguf"
 }
 
+# Test split of every record directory: typed_decisions_bench, the zero-shot held-out sets
+# and the labelled test splits, for the s4 GGUFs and the s3-pico baseline of the games.
 eval_() {
-  gpu "$T" s2-eval --run "$run/decide/last" --records "$RECORDS" \
-    --gguf "$m/skycmd-$NAME-ternary.gguf" --report "$run/report.md"
+  local ggufs=$m/skycmd-$NAME-ternary.gguf,$m/skycmd-$NAME-f32.gguf
+  [ -f "${BASELINE:-site/public/models/s3-pico.gguf}" ] && ggufs=$ggufs,${BASELINE:-site/public/models/s3-pico.gguf}
+  gpu "$T" s2-eval --run "$run/decide/last" --records "$RECORDS" --gguf "$ggufs" --report "$run/report.md"
+}
+
+# The teacher on the same test sets (accuracy of the letter scoring, raw temperature 1).
+teacher_eval() {
+  mkdir -p "$run/teacher"
+  for f in data/decisions/typed_decisions_bench.jsonl "$S4"/heldout/*.jsonl; do
+    local b
+    b=$(basename "$f" .jsonl)
+    gpu "$PY" -I scripts/teacher-score.py --model "$TEACHER" --in "$f" --out "$run/teacher/$b.jsonl" --eval \
+      | tail -1 >"$run/teacher/$b.summary.json"
+  done
+}
+
+train() {
+  mix &
+  local mix_pid=$!
+  [ -f "$tok" ] || tokenizer
+  pretrain
+  wait "$mix_pid"
+  decide
+  post
+  eval_
 }
 
 stages=("$@")
@@ -126,16 +153,13 @@ for s in "${stages[@]}"; do
     pretrain) pretrain ;;
     decide) decide ;;
     post) post ;;
-    eval) eval_ ;;
+    evaluate) eval_ ;;
+    teacher-eval) teacher_eval ;;
+    train) train ;;
     all)
       [ -f "$S4/queue/p1-decisions.jsonl" ] || corpus
       label
-      mix
-      [ -f "$tok" ] || tokenizer
-      pretrain
-      decide
-      post
-      eval_
+      train
       ;;
     *) echo "unknown stage $s" >&2; exit 1 ;;
   esac

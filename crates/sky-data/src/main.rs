@@ -186,6 +186,9 @@ enum Cmd {
         alpha: f32,
         #[arg(long)]
         temperature: Option<f32>,
+        /// s4-corpus queue: unscored gold records pass through with their gold target.
+        #[arg(long)]
+        queue: Option<PathBuf>,
     },
 }
 
@@ -536,12 +539,14 @@ fn main() -> Result<()> {
             out,
             alpha,
             temperature,
+            queue,
         } => {
             let report = sky_data::s4::mix(&sky_data::s4::MixOptions {
                 scored,
                 out,
                 alpha,
                 temperature,
+                queue,
             })?;
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
