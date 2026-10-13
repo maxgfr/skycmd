@@ -9,8 +9,9 @@
 //! - `final`: A′ and B* (B-i or B-ii, the lower val NLL at that configuration) × seeds 0, 1, 2,
 //!   and A × seed 0 at the configuration of A′, [`FINAL_STEPS`] steps.
 //! - `eval` (CPU): for each finished run (`--runs a,b` or every run of `final` and `lambda*`):
-//!   f32 and q8_0 exports, temperatures fitted on the English `cal` split of each format, every
-//!   test set in f32, the fitted bench in q8_0 (Phase 5), the demo cases in both formats.
+//!   f32 and q8_0 exports, temperatures fitted on the English `val` split of each format, the
+//!   calibrated model on the `cal` split (escalation thresholds), every test set in f32, the
+//!   fitted bench in q8_0 (Phase 5), the demo cases in both formats.
 //! - `eval-q8` (CPU, `--runs`): the other test sets in q8_0, for the shipped model.
 //! - `lambda`: bet 2, λ ∈ {0.1, 0.3} at seed 0 on its support (B* when bet 1 succeeded in
 //!   `runs/s5-report/pari1.json`, else A′); `lambda-final`: λ* × seeds 1 and 2, λ* the lower val
@@ -474,11 +475,44 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
     }
     let sets = eval_sets(store)?;
     for f in ["f32", "q8_0"] {
+        // Temperatures on the English val split (already spent on model selection), so that the
+        // cal split stays independent for the escalation thresholds of the calibrated model.
+        v.push(Step::new(
+            &format!("{run}-val-{f}"),
+            "sky-eval",
+            &[
+                &format!("{md}/raw.{f}.gguf"),
+                "--records",
+                "data/s5/train",
+                "--split",
+                "val",
+                "--lang",
+                "en",
+                "--json",
+                &format!("{rd}/val.{f}.json"),
+                "--dump-probs",
+                &format!("{rd}/val.{f}.dump.jsonl"),
+            ],
+        ));
+        v.push(Step::new(
+            &format!("{run}-calibrate-{f}"),
+            "sky-s5-report",
+            &[
+                "calibrate",
+                &format!("{rd}/val.{f}.dump.jsonl"),
+                "--gguf",
+                &format!("{md}/raw.{f}.gguf"),
+                "--out",
+                &format!("{md}/{f}.gguf"),
+                "--json",
+                &format!("{rd}/temperatures.{f}.json"),
+            ],
+        ));
         v.push(Step::new(
             &format!("{run}-cal-{f}"),
             "sky-eval",
             &[
-                &format!("{md}/raw.{f}.gguf"),
+                &format!("{md}/{f}.gguf"),
                 "--records",
                 "data/s5/train",
                 "--split",
@@ -489,20 +523,6 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
                 &format!("{rd}/cal.{f}.json"),
                 "--dump-probs",
                 &format!("{rd}/cal.{f}.dump.jsonl"),
-            ],
-        ));
-        v.push(Step::new(
-            &format!("{run}-calibrate-{f}"),
-            "sky-s5-report",
-            &[
-                "calibrate",
-                &format!("{rd}/cal.{f}.dump.jsonl"),
-                "--gguf",
-                &format!("{md}/raw.{f}.gguf"),
-                "--out",
-                &format!("{md}/{f}.gguf"),
-                "--json",
-                &format!("{rd}/temperatures.{f}.json"),
             ],
         ));
         for s in &sets {
