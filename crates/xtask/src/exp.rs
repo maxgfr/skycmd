@@ -41,12 +41,16 @@ pub const MLX_CACHE_GB: &str = "1";
 /// Weight of the symmetric KL on the pairs, the same for every variant.
 pub const KL: &str = "0.5";
 pub const LAMBDAS: [&str; 2] = ["0.1", "0.3"];
+/// Steps of the long run of the /live demo (amendment 3, outside the bets).
+pub const LONG_STEPS: u64 = 8000;
+/// Name of that run.
+pub const LONG_RUN: &str = "long-b-s0";
 pub const SEEDS: [u64; 3] = [0, 1, 2];
 /// The original coherence battery of 2609.33209 as s5 records (`sky-data s5-battery`).
 pub const BATTERY: &str = "data/s5/battery/coherence_2609_33209.jsonl";
 
 /// The dynamic stages, in pipeline order.
-pub const STAGES: [(&str, &str); 9] = [
+pub const STAGES: [(&str, &str); 10] = [
     (
         "explore",
         "bet 1 exploration: A′ and B-i × 3 LR × 2 inits, seed 0 [GPU]",
@@ -59,6 +63,10 @@ pub const STAGES: [(&str, &str); 9] = [
     (
         "sens",
         "bet 1 sensitivity (amendment 2): A′ at the next lower LR × 3 seeds [GPU]",
+    ),
+    (
+        "long",
+        "the /live demo candidate (amendment 3, outside the bets): B* for 8000 steps [GPU]",
     ),
     (
         "eval",
@@ -358,6 +366,13 @@ fn support(store: &Path, sel: &Value) -> Result<(String, String, Value)> {
 /// lower LR of the grid, three seeds, as many steps as the finalists. Decided on the training
 /// curves of the A′ finalists (gradient spikes and a loss plateau at the selected LR), before any
 /// test result of bet 1.
+/// The long run of amendment 3: B* at its configuration, seed 0, λ = 0, [`LONG_STEPS`] steps.
+/// Outside the bets; it serves /live when its val NLL is below that of the shipped model.
+pub fn long_run(sel: &Value) -> Run {
+    let b = sel["b"]["variant"].as_str().unwrap_or("b-i").to_string();
+    cfg_run(LONG_RUN.into(), &b, &sel["b"], 0, "0", LONG_STEPS)
+}
+
 pub fn sens_runs(sel: &Value, steps: u64) -> Vec<Run> {
     let lr = sel["a-prime"]["lr"].as_str().unwrap_or("2e-4");
     let lower = LRS
@@ -898,6 +913,7 @@ pub fn stage(name: &str, store: &Path, runs: Option<&str>) -> Result<Option<Stag
             .iter()
             .map(Run::train)
             .collect(),
+        "long" => vec![long_run(&final_selection(store)?).train()],
         "sens" => sens_runs(&final_selection(store)?, final_steps(store)?)
             .iter()
             .map(Run::train)

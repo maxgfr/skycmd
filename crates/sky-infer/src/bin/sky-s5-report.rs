@@ -56,7 +56,8 @@
 //!   frozen selections of `runs/s5-select/`, the validation summary of every s5 run, the log of
 //!   the test passes, and the shipped model by the pre-registered rule (lowest val NLL among the
 //!   three seeds of the retained arm: λ* when bet 2 succeeded, else B* when bet 1 succeeded,
-//!   else A′).
+//!   else A′), and the model of the /live demo (amendment 3: the long run `long-b-s0` when its
+//!   val NLL is lower).
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
@@ -1301,6 +1302,17 @@ mod native {
             .map(|(n, _)| n)
     }
 
+    /// The model of the /live demo: the shipped one, or the long run of amendment 3
+    /// (`long-b-s0`) when its val NLL is lower.
+    fn live(runs: &serde_json::Map<String, Value>, shipped: Option<&str>) -> Option<String> {
+        let nll = |r: &str| runs.get(r).and_then(|v| v["all"]["nll"].as_f64());
+        let ship = shipped?;
+        match (nll(ship), nll("long-b-s0")) {
+            (Some(a), Some(b)) if b < a => Some("long-b-s0".into()),
+            _ => Some(ship.to_string()),
+        }
+    }
+
     pub fn summary(store: &Path) -> Value {
         let mut runs = serde_json::Map::new();
         let mut dirs: Vec<PathBuf> = std::fs::read_dir(store.join("runs"))
@@ -1350,6 +1362,8 @@ mod native {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
             "shipped": ship,
+            // Amendment 3: /live serves the long run when its val NLL is lower (outside the bets).
+            "live": live(&runs, ship.as_deref()),
             "test_log": {"passes": log.len(), "prereg_commits": commits,
                          "first_unix": times.iter().min(), "last_unix": times.iter().max()},
             "selection": selection,

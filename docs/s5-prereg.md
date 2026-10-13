@@ -451,3 +451,25 @@ B-i, graine 0, atteint 0,529 sur la même validation. Sélectionner sur des runs
 **Ce qui ne change pas.** Le verdict principal du pari 1 reste celui de la comparaison pré-enregistrée (B\* contre l'A′ sélectionné). La sensibilité est rapportée à côté. Si elle le contredit, les deux sont publiés, et aucune supériorité de B n'est revendiquée.
 
 **Résultats de test vus avant cette décision.** Un seul : la précision de f-b-s0 sur amazonpolarity (0,679), un jeu zero-shot secondaire. Aucun résultat de test d'A′, aucun résultat du bench, aucune comparaison.
+
+### Amendement 3 : 14/10/2026 vers 01 h 20, modèle de la démo /live, hors paris
+
+**Constat, après les résultats de test de f-b-s0** (une seule graine de B\*, aucune comparaison) :
+
+- le gate du bench passe (0,667) ;
+- celui des cas de démo anglais échoue (70 %, contre 90 % requis) ;
+- cinq jeux restent sous leur baseline majoritaire.
+
+**Run long, hors paris.** Un run B\* supplémentaire, `long-b-s0` (`cargo xtask s5 long`) :
+
+- même configuration que les finalistes de B\* (init, LR), graine 0, λ = 0 ;
+- 8000 pas au lieu de 2000 ;
+- évalué sur les mêmes jeux.
+
+**Règle, fixée avant son résultat.** /live sert, entre le modèle livré par la règle pré-enregistrée et `long-b-s0`, celui dont la NLL de validation est la plus basse. Le choix n'utilise pas le test.
+
+**Ce qui ne change pas :**
+
+- aucun pari n'utilise ce run ;
+- les verdicts, les gates de s5-lite et les revendications portent sur le modèle livré par la règle pré-enregistrée ;
+- les chiffres du run long sont publiés à part, marqués « hors pré-enregistrement, décidé après avoir vu les résultats de test d'une graine ».
