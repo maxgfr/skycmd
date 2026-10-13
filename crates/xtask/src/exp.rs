@@ -9,8 +9,9 @@
 //! - `final`: A′ and B* (B-i or B-ii, the lower val NLL at that configuration) × seeds 0, 1, 2,
 //!   and A × seed 0 at the configuration of A′, [`FINAL_STEPS`] steps.
 //! - `eval` (CPU): for each finished run (`--runs a,b` or every run of `final` and `lambda*`):
-//!   f32 and q8_0 exports, temperatures fitted on the English `cal` split, the test sets and the
-//!   demo cases in both formats.
+//!   f32 and q8_0 exports, temperatures fitted on the English `cal` split of each format, every
+//!   test set in f32, the fitted bench in q8_0 (Phase 5), the demo cases in both formats.
+//! - `eval-q8` (CPU, `--runs`): the other test sets in q8_0, for the shipped model.
 //! - `lambda`: bet 2, λ ∈ {0.1, 0.3} at seed 0 on its support (B* when bet 1 succeeded in
 //!   `runs/s5-report/pari1.json`, else A′); `lambda-final`: λ* × seeds 1 and 2, λ* the lower val
 //!   MAD_neg among the λ whose val accuracy is at least that of λ = 0 (seed 0) − 0.01.
@@ -34,7 +35,7 @@ pub const LAMBDAS: [&str; 2] = ["0.1", "0.3"];
 pub const SEEDS: [u64; 3] = [0, 1, 2];
 
 /// The dynamic stages, in pipeline order.
-pub const STAGES: [(&str, &str); 7] = [
+pub const STAGES: [(&str, &str); 8] = [
     (
         "explore",
         "bet 1 exploration: A′ and B-i × 3 LR × 2 inits, seed 0 [GPU]",
@@ -47,6 +48,10 @@ pub const STAGES: [(&str, &str); 7] = [
     (
         "eval",
         "exports, calibration and test evaluations of the finished runs (--runs a,b)",
+    ),
+    (
+        "eval-q8",
+        "every test set in q8_0 for the given runs (--runs a,b), after eval",
     ),
     (
         "lambda",
@@ -376,6 +381,38 @@ fn variant_of(store: &Path, run: &str) -> Result<String> {
         .context("s5.json has no args.variant")
 }
 
+/// `sky-eval` of one frozen test set, guarded by the pre-registration.
+fn test_step(run: &str, f: &str, set: &str) -> Step {
+    let (rd, md) = (format!("runs/s5-{run}"), format!("models/s5-{run}"));
+    Step::new(
+        &format!("{run}-test-{f}-{set}"),
+        "sky-eval",
+        &[
+            &format!("{md}/{f}.gguf"),
+            "--records",
+            &format!("data/s5/eval/{set}.jsonl"),
+            "--split",
+            "test",
+            "--prereg",
+            "{checkout}/docs/s5-prereg.md",
+            "--metrics",
+            "--json",
+            &format!("{rd}/eval-{f}/{set}.json"),
+            "--dump-probs",
+            &format!("{rd}/eval-{f}/{set}.dump.jsonl"),
+        ],
+    )
+}
+
+/// The q8_0 test sets that `eval` leaves out (all but the fitted bench).
+fn eval_q8_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
+    Ok(eval_sets(store)?
+        .iter()
+        .filter(|s| *s != "typed_decisions_test")
+        .map(|s| test_step(run, "q8_0", s))
+        .collect())
+}
+
 fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
     let variant = variant_of(store, run)?;
     let (rd, md) = (format!("runs/s5-{run}"), format!("models/s5-{run}"));
@@ -466,24 +503,10 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
             ],
         ));
         for s in &sets {
-            v.push(Step::new(
-                &format!("{run}-test-{f}-{s}"),
-                "sky-eval",
-                &[
-                    &format!("{md}/{f}.gguf"),
-                    "--records",
-                    &format!("data/s5/eval/{s}.jsonl"),
-                    "--split",
-                    "test",
-                    "--prereg",
-                    "{checkout}/docs/s5-prereg.md",
-                    "--metrics",
-                    "--json",
-                    &format!("{rd}/eval-{f}/{s}.json"),
-                    "--dump-probs",
-                    &format!("{rd}/eval-{f}/{s}.dump.jsonl"),
-                ],
-            ));
+            // q8_0: the fitted bench only (Phase 5); `eval-q8` adds the rest for the shipped model.
+            if f == "f32" || s == "typed_decisions_test" {
+                v.push(test_step(run, f, s));
+            }
         }
         v.push(Step::new(
             &format!("{run}-demo-{f}"),
@@ -508,14 +531,17 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
 fn report_steps(store: &Path) -> Result<Vec<Step>> {
     let mut v = vec![Step::new("mkdir", "mkdir", &["-p", "runs/s5-report"])];
     let runs = finished(store);
-    let evaluated = |r: &str, f: &str| {
+    let has = |r: &str, f: &str, set: &str| {
         store
-            .join(format!("runs/s5-{r}/eval-{f}/demo-cases.dump.jsonl"))
+            .join(format!("runs/s5-{r}/eval-{f}/{set}.dump.jsonl"))
             .exists()
     };
+    // Every test set (the last one `eval` writes) or only the fitted bench.
+    let full = |r: &str, f: &str| has(r, f, "yahootopics") && has(r, f, "demo-cases");
+    let bench = |r: &str, f: &str| has(r, f, "typed_decisions_test");
     for (r, _) in &runs {
         for f in ["f32", "q8_0"] {
-            if !evaluated(r, f) {
+            if !full(r, f) {
                 continue;
             }
             let dir = format!("runs/s5-{r}/eval-{f}");
@@ -578,16 +604,16 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
             ));
         }
     }
-    let dirs = |prefix: &str, f: &str| -> Option<String> {
+    let dirs = |prefix: &str, f: &str, ready: &dyn Fn(&str, &str) -> bool| -> Option<String> {
         let d: Vec<String> = SEEDS.iter().map(|s| format!("{prefix}-s{s}")).collect();
-        d.iter().all(|r| evaluated(r, f)).then(|| {
+        d.iter().all(|r| ready(r, f)).then(|| {
             d.iter()
                 .map(|r| format!("runs/s5-{r}/eval-{f}"))
                 .collect::<Vec<_>>()
                 .join(",")
         })
     };
-    if let (Some(a), Some(b)) = (dirs("f-ap", "f32"), dirs("f-b", "f32")) {
+    if let (Some(a), Some(b)) = (dirs("f-ap", "f32", &full), dirs("f-b", "f32", &full)) {
         v.push(Step::new(
             "pari1",
             "sky-s5-report",
@@ -603,7 +629,7 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
         ));
     }
     for arm in ["f-ap", "f-b"] {
-        if let (Some(a), Some(q)) = (dirs(arm, "f32"), dirs(arm, "q8_0")) {
+        if let (Some(a), Some(q)) = (dirs(arm, "f32", &bench), dirs(arm, "q8_0", &bench)) {
             // Phase 5: q8_0 (recalibrated) against f32 on the same items; bench_ece is the criterion.
             v.push(Step::new(
                 &format!("phase5-{arm}"),
@@ -618,6 +644,8 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
                     &format!("runs/s5-report/phase5-{arm}.json"),
                 ],
             ));
+        }
+        if let Some(a) = dirs(arm, "f32", &full) {
             v.push(Step::new(
                 &format!("coherence-{arm}"),
                 "sky-s5-report",
@@ -633,11 +661,12 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
     if let Ok(sel) = final_selection(store) {
         if let Ok(ls) = lambda_selection(store, &sel) {
             let tag = ls["support"].as_str().unwrap_or("b");
-            if let (Some(l), Some(r)) =
-                (ls["lambda_star"].as_str(), dirs(&format!("f-{tag}"), "f32"))
-            {
+            if let (Some(l), Some(r)) = (
+                ls["lambda_star"].as_str(),
+                dirs(&format!("f-{tag}"), "f32", &full),
+            ) {
                 let lam: Vec<String> = SEEDS.iter().map(|s| format!("l-{tag}-{l}-s{s}")).collect();
-                if lam.iter().all(|x| evaluated(x, "f32")) {
+                if lam.iter().all(|x| full(x, "f32")) {
                     let ld = lam
                         .iter()
                         .map(|x| format!("runs/s5-{x}/eval-f32"))
@@ -713,6 +742,16 @@ pub fn stage(name: &str, store: &Path, runs: Option<&str>) -> Result<Option<Stag
             let mut v = Vec::new();
             for r in &list {
                 v.extend(eval_steps(store, r)?);
+            }
+            v
+        }
+        "eval-q8" => {
+            let Some(r) = runs else {
+                bail!("eval-q8 needs --runs a,b");
+            };
+            let mut v = Vec::new();
+            for r in r.split(',').filter(|s| !s.is_empty()) {
+                v.extend(eval_q8_steps(store, r)?);
             }
             v
         }
