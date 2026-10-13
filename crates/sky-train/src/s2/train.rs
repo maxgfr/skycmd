@@ -1167,6 +1167,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         (0.0f64, 0usize, 0u64, 0usize, Instant::now());
     let qat_start = 1.0 - a.qat_frac.clamp(0.0, 1.0);
     let mut pending: std::collections::VecDeque<S2Batch> = Default::default();
+    let (mut skipped, mut consecutive) = (0usize, 0usize);
     let seqs = match &a.seq_records {
         Some(path) => {
             if !s.cfg.temporal_carry {
@@ -1247,8 +1248,29 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         };
         let st = s.decision_step_exits(&batch, lr_scale, qat, used)?;
         if !st.loss.is_finite() {
-            bail!("non-finite loss at step {}", s.state.step);
+            // The update was not applied (`apply_update`): skip the batch, unless the
+            // training itself has diverged.
+            skipped += 1;
+            consecutive += 1;
+            println!(
+                "step {}: non-finite loss, batch skipped ({} rows, state shape {:?}, static shape {:?})",
+                s.state.step,
+                batch.n_rows,
+                batch.ids.shape(),
+                batch.st_ids.shape()
+            );
+            log.write(
+                &json!({"step": s.state.step, "skipped_batch": true, "skipped_total": skipped}),
+            )?;
+            if consecutive >= 20 {
+                bail!(
+                    "non-finite loss on 20 consecutive batches at step {}",
+                    s.state.step
+                );
+            }
+            continue;
         }
+        consecutive = 0;
         s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
         (wl, wt, ws, wq) = (
             wl + st.loss as f64,

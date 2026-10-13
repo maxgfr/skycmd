@@ -137,6 +137,13 @@ pub(crate) fn apply_update(
     grads: &ParamMap,
     lr_scale: f32,
 ) -> Result<(f32, f32)> {
+    // A non-finite loss leaves the parameters and the optimizer state untouched, so the
+    // caller can skip the batch instead of training on NaN gradients.
+    mlx_rs::transforms::eval([&loss])?;
+    let l = loss.item_exact::<f32>();
+    if !l.is_finite() {
+        return Ok((l, f32::NAN));
+    }
     let gnorm = opt.update(params, grads, lr_scale)?;
     let state = opt.state_arrays();
     mlx_rs::transforms::eval(params.values().chain(state.values()).chain([&loss, &gnorm]))?;
@@ -406,6 +413,25 @@ mod tests {
             f(&q)
         };
         (at(1.0) - at(-1.0)) / (2.0 * eps as f64)
+    }
+
+    #[test]
+    fn non_finite_loss_leaves_the_parameters_untouched() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let mut p = ParamMap::new();
+            p.insert("w".into(), Array::from_slice(&[1.0f32, 2.0], &[2]));
+            let mut g = ParamMap::new();
+            g.insert("w".into(), Array::from_slice(&[0.5f32, 0.5], &[2]));
+            let mut opt = Optimizer::new(OptConfig::default());
+            let (l, n) =
+                apply_update(&mut p, &mut opt, Array::from_f32(f32::NAN), &g, 1.0).unwrap();
+            assert!(l.is_nan() && n.is_nan());
+            assert_eq!(model::host_f32(&p["w"]).unwrap(), vec![1.0, 2.0]);
+            let (l, _) = apply_update(&mut p, &mut opt, Array::from_f32(0.3), &g, 1.0).unwrap();
+            assert!((l - 0.3).abs() < 1e-6);
+            assert_ne!(model::host_f32(&p["w"]).unwrap(), vec![1.0, 2.0]);
+        });
     }
 
     #[test]
