@@ -13,6 +13,7 @@
 //! The binaries are built in release mode from the checkout `cargo xtask` runs in, and run with
 //! the store as their working directory.
 
+mod regress;
 mod stages;
 
 use std::fs::{self, File, OpenOptions};
@@ -28,7 +29,8 @@ use stages::{stages, Stage, Step};
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run]\n  cargo xtask store\n\n\
+        "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run]\n  cargo xtask store\n  \
+         cargo xtask regress [--update]\n\n\
          SKYCMD_STORE must point at the main checkout of this repository."
     );
     std::process::exit(2)
@@ -40,6 +42,14 @@ fn main() -> Result<()> {
         Some("store") => {
             println!("{}", store()?.display());
             Ok(())
+        }
+        Some("regress") => {
+            let update = match args.get(1).map(String::as_str) {
+                None => false,
+                Some("--update") => true,
+                Some(bad) => bail!("unknown argument {bad:?}"),
+            };
+            regress::regress(&checkout(), &store()?, update)
         }
         Some("s5") => {
             let Some(name) = args.get(1) else { usage() };
@@ -199,7 +209,12 @@ fn run_stage(stage: &Stage, force: bool, dry: bool) -> Result<()> {
     let mut _gpu: Option<File> = None;
     for (i, step) in stage.steps.iter().enumerate() {
         let argv = step.argv(&store, &bin);
-        let line = argv.join(" ");
+        // The resume key names our programs without the checkout path, so that a step done
+        // from one worktree is not redone from another.
+        let line = std::iter::once(step.prog)
+            .chain(argv[1..].iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ");
         let done = state.join(format!("{i:02}-{}.done", step.name));
         if !force && fs::read_to_string(&done).is_ok_and(|s| s.trim() == line) {
             log.line(&format!("[xtask] skip {} (done)", step.name));

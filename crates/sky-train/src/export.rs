@@ -71,7 +71,7 @@ pub fn load_run(run: &RunPaths) -> Result<Loaded> {
             run.ckpt.display()
         );
     }
-    let tok = Tok::load(&run.ckpt.join("tokenizer.json"))?;
+    let tok = Tok::load_with(&run.ckpt.join("tokenizer.json"), &cfg.special)?;
     let rl_path = run.ckpt.join("rl_agent_config.json");
     let rl = match std::fs::read_to_string(&rl_path) {
         Ok(t) => serde_json::from_str(&t)?,
@@ -106,7 +106,7 @@ fn split_items<'a>(data: &'a decision::DecisionData, split: &str) -> Vec<&'a Ite
 pub fn calibrate(run: &Path, records: &[PathBuf], split: &str, min_bucket: usize) -> Result<Value> {
     let paths = resolve_run(run)?;
     let m = load_run(&paths)?;
-    let data = decision::load(records, &m.tok, &m.cfg.rl_agent)?;
+    let data = decision::load(records, &m.tok, &m.cfg.rl_agent, &m.cfg.special)?;
     let items = split_items(&data, split);
     if items.is_empty() {
         bail!("no {split} items to calibrate on");
@@ -208,13 +208,14 @@ pub fn export(run: &Path, out: &Path) -> Result<()> {
         out.join("tokenizer/tokenizer.json"),
     )
     .context("copying tokenizer.json")?;
+    let sp = &m.cfg.special;
     let special = |content: &str, lstrip: bool| json!({"content": content, "lstrip": lstrip, "normalized": false, "rstrip": false, "single_word": false});
     let special_map = json!({
-        "cls_token": special("[CLS]", false),
-        "mask_token": special("[MASK]", true),
-        "pad_token": special("[PAD]", false),
-        "sep_token": special("[SEP]", false),
-        "unk_token": special("[UNK]", false),
+        "cls_token": special(&sp.cls_text, false),
+        "mask_token": special(&sp.mask_text, true),
+        "pad_token": special(&sp.pad_text, false),
+        "sep_token": special(&sp.sep_text, false),
+        "unk_token": special(&sp.unk_text, false),
     });
     std::fs::write(
         out.join("tokenizer/special_tokens_map.json"),
@@ -222,14 +223,14 @@ pub fn export(run: &Path, out: &Path) -> Result<()> {
     )?;
     let tok_cfg = json!({
         "clean_up_tokenization_spaces": true,
-        "cls_token": "[CLS]",
-        "mask_token": "[MASK]",
+        "cls_token": sp.cls_text,
+        "mask_token": sp.mask_text,
         "model_input_names": ["input_ids", "attention_mask"],
         "model_max_length": m.cfg.rl_agent.max_len,
-        "pad_token": "[PAD]",
-        "sep_token": "[SEP]",
+        "pad_token": sp.pad_text,
+        "sep_token": sp.sep_text,
         "tokenizer_class": "PreTrainedTokenizerFast",
-        "unk_token": "[UNK]",
+        "unk_token": sp.unk_text,
     });
     std::fs::write(
         out.join("tokenizer/tokenizer_config.json"),
@@ -283,7 +284,7 @@ pub fn eval(
 ) -> Result<PathBuf> {
     let paths = resolve_run(run)?;
     let m = load_run(&paths)?;
-    let data = decision::load(records, &m.tok, &m.cfg.rl_agent)?;
+    let data = decision::load(records, &m.tok, &m.cfg.rl_agent, &m.cfg.special)?;
     let mut used = split.to_string();
     let mut items = split_items(&data, split);
     if items.is_empty() && split == "test" {

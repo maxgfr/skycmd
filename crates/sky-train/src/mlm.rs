@@ -11,7 +11,7 @@ use mlx_rs::Array;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::{CLS_ID, MASK_ID, N_SPECIAL, PAD_ID, SEP_ID},
+    config::{SpecialTokens, CLS_ID, N_SPECIAL, SEP_ID},
     decision::list_jsonl,
     model::MlmBatch,
     rng::Rng,
@@ -211,9 +211,31 @@ impl Cursor {
 /// predicted; of those 80% become `[MASK]`, 10% a random token and 10% stay.
 /// The prediction list is padded to a multiple of 256 with zero weights.
 pub fn mask_batch(rows: &[Vec<u32>], vocab: usize, ratio: f64, rng: &mut Rng) -> MlmBatch {
+    mask_batch_with(rows, vocab, ratio, rng, &SpecialTokens::default())
+}
+
+/// [`mask_batch`] for a tokenizer with the special tokens of `sp`. With the skycmd layout the
+/// random stream is exactly that of [`mask_batch`] (every id below [`N_SPECIAL`] is special);
+/// otherwise the special ids are the five of `sp` and a random replacement is redrawn until
+/// it is not one of them.
+pub fn mask_batch_with(
+    rows: &[Vec<u32>],
+    vocab: usize,
+    ratio: f64,
+    rng: &mut Rng,
+    sp: &SpecialTokens,
+) -> MlmBatch {
+    let skycmd = sp.is_skycmd();
+    let maskable = |id: u32| {
+        if skycmd {
+            id >= N_SPECIAL
+        } else {
+            !sp.is_special(id)
+        }
+    };
     let b = rows.len();
     let t = rows.iter().map(Vec::len).max().unwrap_or(1).max(1);
-    let mut ids = vec![PAD_ID as i32; b * t];
+    let mut ids = vec![sp.pad as i32; b * t];
     let mut valid = vec![false; b * t];
     let (mut positions, mut labels) = (Vec::new(), Vec::new());
     let mut n_tokens = 0;
@@ -223,7 +245,7 @@ pub fn mask_batch(rows: &[Vec<u32>], vocab: usize, ratio: f64, rng: &mut Rng) ->
         for (j, &id) in r.iter().enumerate() {
             ids[i * t + j] = id as i32;
             valid[i * t + j] = true;
-            if id >= N_SPECIAL {
+            if maskable(id) {
                 cand.push(j);
             }
         }
@@ -242,9 +264,18 @@ pub fn mask_batch(rows: &[Vec<u32>], vocab: usize, ratio: f64, rng: &mut Rng) ->
             positions.push(flat as i32);
             let u = rng.f64();
             if u < 0.8 {
-                ids[flat] = MASK_ID as i32;
+                ids[flat] = sp.mask as i32;
             } else if u < 0.9 {
-                ids[flat] = (N_SPECIAL as usize + rng.below(vocab - N_SPECIAL as usize)) as i32;
+                ids[flat] = if skycmd {
+                    (N_SPECIAL as usize + rng.below(vocab - N_SPECIAL as usize)) as i32
+                } else {
+                    loop {
+                        let r = rng.below(vocab) as u32;
+                        if !sp.is_special(r) {
+                            break r as i32;
+                        }
+                    }
+                };
             }
         }
     }
@@ -273,6 +304,7 @@ pub fn mask_batch(rows: &[Vec<u32>], vocab: usize, ratio: f64, rng: &mut Rng) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::MASK_ID;
 
     #[test]
     fn masking_statistics() {

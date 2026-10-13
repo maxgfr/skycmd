@@ -552,7 +552,7 @@ pub fn decide(a: &DecideArgs) -> Result<()> {
         (None, Some(init)) => init.join("tokenizer.json"),
         (None, None) => bail!("--tokenizer is required without --init"),
     };
-    let tok = Tok::load(&tok_path)?;
+    let tok = Tok::load_with(&tok_path, &cfg.special)?;
     if tok.vocab_size() > cfg.vocab_size {
         bail!(
             "tokenizer has {} tokens but {} has vocab_size {}",
@@ -562,7 +562,7 @@ pub fn decide(a: &DecideArgs) -> Result<()> {
         );
     }
     let t_load = Instant::now();
-    let data: DecisionData = decision::load(&a.records, &tok, &cfg.rl_agent)?;
+    let data: DecisionData = decision::load(&a.records, &tok, &cfg.rl_agent, &cfg.special)?;
     let weights = source_weights(&data.groups, a.weights.as_deref())?;
     for (g, (name, w)) in data.groups.iter().zip(&weights).enumerate() {
         println!(

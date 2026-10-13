@@ -1,0 +1,146 @@
+[
+ {
+  "t": "choice",
+  "ins": "What is this customer conversation primarily about?",
+  "opts": [
+   "account: Login, plan changes, profile or access management.",
+   "billing: A charge, invoice, subscription or payment problem.",
+   "delivery: Shipping, fulfilment or delivery of a physical item.",
+   "refund: The customer is explicitly asking for money back.",
+   "technical: The product or service is not working as expected."
+  ],
+  "state": "{\"account\": {\"lifetime_value_usd\": 228, \"prior_tickets_90d\": 0, \"seats\": 1, \"tenure_months\": 3, \"tier\": \"standard\"}, \"thread\": [{\"role\": \"customer\", \"text\": \"My payment didn’t go through, and I’m now locked out of my account.\"}]}"
+ },
+ {
+  "t": "choice",
+  "ins": "How should this security alert be dispositioned?",
+  "opts": [
+   "close_benign: Expected, explainable activity; close without analyst time.",
+   "contain: Contain the host or account immediately; do not wait for triage.",
+   "investigate: Warrants an analyst opening an investigation.",
+   "monitor: Not clearly malicious, but worth watching for recurrence."
+  ],
+  "state": "{\"alert\": {\"description\": \"an unusual volume of files read in a short window\", \"evidence\": \"At 2026-09-15 03:12 UTC a CI runner on host ci-runner-07 performed 4,732 read operations on files under \\\"/var/lib/containers/\\\" (average size 150 KB) within a five‑minute span. The runner used an unprivileged CI account with MFA enabled, the credentials for which were rotated three days ago, and the host is not listed in the asset allowlist; no change window was active.\", \"rule\": \"mass_download\"}, \"context\": {\"asset_criticality\": \"crown_jewel\", \"change_window_active\": false, \"source_on_allowlist\": fals"
+ },
+ {
+  "t": "choice",
+  "ins": "How did this agent run turn out?",
+  "opts": [
+   "failure: The agent did not accomplish the task.",
+   "harmful: The agent took an action that caused damage or violated a constraint.",
+   "partial: The agent made progress but did not fully complete the task.",
+   "success: The agent completed the task correctly."
+  ],
+  "state": "{\"agent\": {\"autonomy\": \"dry_run\", \"model\": \"internal-agent-v3\"}, \"constraints\": [\"Never modify production without an approved change ticket\", \"Never delete anything matching release/*\", \"Do not touch customer data outside the named accounts\"], \"task\": \"Migrate the user table to the new schema without downtime.\", \"trace_summary\": {\"constraint_violations\": 1, \"duration_s\": 724.9, \"irreversible_actions\": 1, \"steps\": 6, \"tool_errors\": 3}}"
+ },
+ {
+  "t": "choice",
+  "ins": "How did this agent run turn out?",
+  "opts": [
+   "failure: The agent did not accomplish the task.",
+   "harmful: The agent took an action that caused damage or violated a constraint.",
+   "partial: The agent made progress but did not fully complete the task.",
+   "success: The agent completed the task correctly."
+  ],
+  "state": "{\"agent\": {\"autonomy\": \"checkpointed\", \"model\": \"internal-agent-v2\"}, \"constraints\": [\"Do not force-push to any branch\", \"Never modify production without an approved change ticket\"], \"task\": \"Backfill missing analytics events for the last seven days.\", \"trace_summary\": {\"constraint_violations\": 0, \"duration_s\": 175.2, \"irreversible_actions\": 0, \"steps\": 7, \"tool_errors\": 0}}"
+ },
+ {
+  "t": "score",
+  "ins": "How severe is the potential impact if this alert is real?",
+  "opts": [
+   "level 0: Negligible: no access to anything sensitive.",
+   "level 1: Low: limited access, easily reversed.",
+   "level 2: Moderate: access to internal systems or non-public data.",
+   "level 3: High: access to production, secrets or customer data.",
+   "level 4: Critical: active compromise of crown-jewel systems."
+  ],
+  "state": "{\"alert\": {\"description\": \"two successful logins from distant locations too close together\", \"evidence\": \"A shared mailbox account registered two successful logins from New York and Singapore within a 30-minute window. Both access requests originated from allowlisted IP addresses while MFA was enabled. The account's credentials have remained unchanged for 180 days.\", \"rule\": \"impossible_travel\"}, \"context\": {\"asset_criticality\": \"medium\", \"change_window_active\": false, \"source_on_allowlist\": true}, \"history\": {\"credential_rotation_days_ago\": 180, \"distinct_countries_30d\": 2, \"logins_30d\": 1564"
+ },
+ {
+  "t": "score",
+  "ins": "How quickly does this trace need attention?",
+  "opts": [
+   "level 0: No time pressure; can wait indefinitely.",
+   "level 1: Routine; handle within the normal queue.",
+   "level 2: Elevated; should be handled within the same week.",
+   "level 3: Critical; requires action within the same day."
+  ],
+  "state": "{\"agent\": {\"autonomy\": \"unsupervised\", \"model\": \"internal-agent-v1\"}, \"constraints\": [\"Never disable monitoring or alerting\"], \"task\": \"Reduce the nightly report job's runtime below fifteen minutes.\", \"trace_summary\": {\"constraint_violations\": 0, \"duration_s\": 532.0, \"irreversible_actions\": 0, \"steps\": 11, \"tool_errors\": 3}}"
+ },
+ {
+  "t": "score",
+  "ins": "How likely is this customer to stop doing business with us because of this interaction?",
+  "opts": [
+   "level 0: No sign of dissatisfaction.",
+   "level 1: Mild frustration, but the relationship is intact.",
+   "level 2: Clearly unhappy; repeat problems or explicit complaints.",
+   "level 3: Imminent: threatening to cancel, dispute or leave."
+  ],
+  "state": "{\"account\": {\"lifetime_value_usd\": 32, \"prior_tickets_90d\": 1, \"seats\": 1, \"tenure_months\": 1, \"tier\": \"free\"}, \"orders\": [{\"amount_usd\": 1998, \"date\": \"2026-02-04\", \"id\": \"A-24918\", \"status\": \"pending\"}, {\"amount_usd\": 1998, \"date\": \"2026-02-17\", \"id\": \"A-47125\", \"status\": \"refunded\"}, {\"amount_usd\": 1998, \"date\": \"2026-01-08\", \"id\": \"A-97442\", \"status\": \"pending\"}], \"thread\": [{\"role\": \"customer\", \"text\": \"Hello, I hope you're having a pleasant week. I'm reaching back out because I'm still having some trouble managing the seats for my team members, which we had discussed in my previous ticke"
+ },
+ {
+  "t": "score",
+  "ins": "How material is any discrepancy between the invoice, the order and the delivery?",
+  "opts": [
+   "level 0: None: everything reconciles.",
+   "level 1: Trivial: rounding or a cosmetic difference.",
+   "level 2: Moderate: a real difference worth confirming.",
+   "level 3: Material: a large or unexplained difference."
+  ],
+  "state": "{\"delivery\": {\"condition\": \"accepted\", \"date\": \"2026-03-08\", \"received_qty\": 50}, \"invoice\": {\"currency\": \"USD\", \"id\": \"INV-2026-4266\", \"lines\": [{\"qty\": 50, \"sku\": \"SKU-736\", \"total_usd\": 5103.0, \"unit_usd\": 102.06}], \"total_usd\": 5103.0, \"vendor\": \"Northwind Components\"}, \"payment\": {\"days_until_due\": -21, \"discount_expires_in_days\": null, \"early_payment_discount_pct\": null, \"status\": \"overdue\", \"terms\": \"net 15\"}, \"purchase_order\": {\"freight_terms\": \"freight prepaid by vendor, not separately billable\", \"id\": \"PO-3496\", \"lines\": [{\"qty\": 50, \"unit_usd\": 102.06}], \"total_usd\": 5103.0}, \"vendo"
+ },
+ {
+  "t": "noul",
+  "ins": "This conversation requires a human agent rather than automated handling.",
+  "opts": [
+   "false: Automation can carry this to resolution.",
+   "true: A human must take over: judgement, authority or empathy is required."
+  ],
+  "state": "{\"account\": {\"lifetime_value_usd\": 228, \"prior_tickets_90d\": 0, \"seats\": 1, \"tenure_months\": 3, \"tier\": \"standard\"}, \"thread\": [{\"role\": \"customer\", \"text\": \"My payment didn’t go through, and I’m now locked out of my account.\"}]}"
+ },
+ {
+  "t": "noul",
+  "ins": "This alert reflects genuinely malicious or unauthorised activity.",
+  "opts": [
+   "false: Benign activity, a misconfiguration, or a known false positive.",
+   "true: The underlying behaviour is malicious or unauthorised."
+  ],
+  "state": "{\"alert\": {\"description\": \"a session token was presented from a second address\", \"evidence\": \"A privileged administrative session token was used from an unrecognized secondary source while a change window was currently open. The account associated with the token has MFA enforced and last rotated its credentials 90 days ago.\", \"rule\": \"token_reuse\"}, \"context\": {\"asset_criticality\": \"high\", \"change_window_active\": true, \"source_on_allowlist\": false}, \"history\": {\"credential_rotation_days_ago\": 90, \"distinct_countries_30d\": 4, \"logins_30d\": 1528, \"prior_alerts_90d\": 1}, \"principal\": {\"mfa_enroll"
+ },
+ {
+  "t": "noul",
+  "ins": "This alert reflects genuinely malicious or unauthorised activity.",
+  "opts": [
+   "false: Benign activity, a misconfiguration, or a known false positive.",
+   "true: The underlying behaviour is malicious or unauthorised."
+  ],
+  "state": "{\"alert\": {\"description\": \"many failed authentications followed by a success\", \"evidence\": \"Between 01:02:10 UTC and 01:07:45 UTC on 2026‑09‑12, 27 failed authentication attempts were logged for a privileged admin account, followed by a successful login from IP 192.0.2.88. The source IP is unrecognised, MFA was enforced, and the credentials had been rotated 14 days earlier.\", \"rule\": \"brute_force\"}, \"context\": {\"asset_criticality\": \"crown_jewel\", \"change_window_active\": false, \"source_on_allowlist\": false}, \"history\": {\"credential_rotation_days_ago\": 14, \"distinct_countries_30d\": 3, \"logins_30"
+ },
+ {
+  "t": "noul",
+  "ins": "The invoice reconciles with the purchase order and the recorded delivery.",
+  "opts": [
+   "false: There is a discrepancy against the order or the delivery.",
+   "true: Line items, quantities and amounts reconcile."
+  ],
+  "state": "{\"delivery\": {\"condition\": \"accepted\", \"date\": \"2026-03-09\", \"received_qty\": 250}, \"invoice\": {\"currency\": \"USD\", \"id\": \"INV-2026-5543\", \"lines\": [{\"qty\": 250, \"sku\": \"SKU-596\", \"total_usd\": 56417.5, \"unit_usd\": 225.67}], \"total_usd\": 56417.5, \"vendor\": \"Vantage Materials\"}, \"payment\": {\"days_until_due\": 18, \"discount_expires_in_days\": null, \"early_payment_discount_pct\": null, \"status\": \"scheduled\", \"terms\": \"net 45\"}, \"purchase_order\": {\"freight_terms\": \"freight prepaid by vendor, not separately billable\", \"id\": \"PO-4919\", \"lines\": [{\"qty\": 250, \"unit_usd\": 201.49}], \"total_usd\": 50372.5}, \"v"
+ },
+ {
+  "t": "choice",
+  "ins": "Flap now or wait?",
+  "opts": [
+   "flap: push the bird up",
+   "wait: let the bird fall"
+  ],
+  "state": "alt 12 vy -3 dx 40 gt 20 gb 35"
+ },
+ {
+  "t": "choice",
+  "ins": "Je suis fatigué",
+  "opts": [
+   "dormir: pour se reposer",
+   "faire la fete: pour kiffer"
+  ],
+  "state": "je suis ko"
+ }
+]

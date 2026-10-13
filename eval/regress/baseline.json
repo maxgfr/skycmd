@@ -1,0 +1,545 @@
+{
+  "s1-pico": {
+    "sky_arena": {
+      "arch": "modern-bert",
+      "dodge": {
+        "decisions": 6954,
+        "exit_counts": [],
+        "mean_layers_used": null,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 10.0,
+          "mean_steps": 2079.60009765625,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "doom": {
+        "decisions": 12111,
+        "exit_counts": [],
+        "mean_layers_used": null,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.7272727489471436,
+          "mean_score": 3.200000047683716,
+          "mean_steps": 549.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "flappy": {
+        "decisions": 213000,
+        "exit_counts": [],
+        "mean_layers_used": null,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 0.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 200.0,
+          "mean_steps": 21300.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "rescue": {
+        "decisions": 378,
+        "exit_counts": [],
+        "mean_layers_used": null,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 3.0,
+          "mean_steps": 37.099998474121094,
+          "rescue_rate": 1.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      }
+    },
+    "sky_eval": {
+      "n_params": 202305,
+      "sources": {
+        "all": {
+          "accuracy": 0.318,
+          "early_exit_rate": 0.0,
+          "ece": 0.0937889339327812,
+          "mean_layers": 0.0,
+          "n": 2000,
+          "nll": 1.237740452428466
+        },
+        "typed_decisions_bench": {
+          "accuracy": 0.318,
+          "early_exit_rate": 0.0,
+          "ece": 0.0937889339327812,
+          "mean_layers": 0.0,
+          "n": 2000,
+          "nll": 1.237740452428466
+        }
+      },
+      "split": "test"
+    }
+  },
+  "s2-nano": {
+    "sky_arena": {
+      "arch": "skycmd-s2",
+      "dodge": {
+        "decisions": 6978,
+        "exit_counts": [
+          1164,
+          893,
+          4921
+        ],
+        "mean_layers_used": 3.243622814560046,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 10.0,
+          "mean_steps": 2079.60009765625,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "doom": {
+        "decisions": 12134,
+        "exit_counts": [
+          0,
+          0,
+          12134
+        ],
+        "mean_layers_used": 4.0,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.7272727489471436,
+          "mean_score": 3.200000047683716,
+          "mean_steps": 549.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "flappy": {
+        "decisions": 213000,
+        "exit_counts": [
+          3316,
+          55683,
+          154001
+        ],
+        "mean_layers_used": 3.4304507042253523,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 0.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 200.0,
+          "mean_steps": 21300.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "rescue": {
+        "decisions": 371,
+        "exit_counts": [
+          113,
+          1,
+          257
+        ],
+        "mean_layers_used": 3.0808625336927222,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 3.0,
+          "mean_steps": 37.099998474121094,
+          "rescue_rate": 1.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      }
+    },
+    "sky_eval": {
+      "n_params": 1532033,
+      "sources": {
+        "all": {
+          "accuracy": 0.336,
+          "early_exit_rate": 0.0,
+          "ece": 0.05478371691703797,
+          "mean_layers": 4.0,
+          "n": 2000,
+          "nll": 1.22726764691077
+        },
+        "typed_decisions_bench": {
+          "accuracy": 0.336,
+          "early_exit_rate": 0.0,
+          "ece": 0.05478371691703797,
+          "mean_layers": 4.0,
+          "n": 2000,
+          "nll": 1.22726764691077
+        }
+      },
+      "split": "test"
+    }
+  },
+  "s2-nano-doom": {
+    "sky_arena": {
+      "arch": "skycmd-s2",
+      "dodge": {
+        "decisions": 6980,
+        "exit_counts": [
+          701,
+          973,
+          5306
+        ],
+        "mean_layers_used": 3.4199140401146133,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 10.0,
+          "mean_steps": 2079.60009765625,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "doom": {
+        "decisions": 1486,
+        "exit_counts": [
+          2,
+          1,
+          1483
+        ],
+        "mean_layers_used": 3.994616419919246,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.7272727489471436,
+          "mean_score": 3.200000047683716,
+          "mean_steps": 549.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "flappy": {
+        "decisions": 206337,
+        "exit_counts": [
+          1785,
+          4820,
+          199732
+        ],
+        "mean_layers_used": 3.927327624226387,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 0.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 200.0,
+          "mean_steps": 21300.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "rescue": {
+        "decisions": 371,
+        "exit_counts": [
+          29,
+          9,
+          333
+        ],
+        "mean_layers_used": 3.716981132075471,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 3.0,
+          "mean_steps": 37.099998474121094,
+          "rescue_rate": 1.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      }
+    },
+    "sky_eval": {
+      "n_params": 1532033,
+      "sources": {
+        "all": {
+          "accuracy": 0.3005,
+          "early_exit_rate": 0.0,
+          "ece": 0.08719182339310647,
+          "mean_layers": 4.0,
+          "n": 2000,
+          "nll": 1.2215165076320462
+        },
+        "typed_decisions_bench": {
+          "accuracy": 0.3005,
+          "early_exit_rate": 0.0,
+          "ece": 0.08719182339310647,
+          "mean_layers": 4.0,
+          "n": 2000,
+          "nll": 1.2215165076320462
+        }
+      },
+      "split": "test"
+    }
+  },
+  "s3-pico": {
+    "sky_arena": {
+      "arch": "skycmd-s2",
+      "dodge": {
+        "decisions": 6974,
+        "exit_counts": [
+          6899,
+          8,
+          3,
+          64
+        ],
+        "mean_layers_used": 1.0295382850587895,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 10.0,
+          "mean_steps": 2079.60009765625,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "doom": {
+        "decisions": 1442,
+        "exit_counts": [
+          1076,
+          0,
+          14,
+          352
+        ],
+        "mean_layers_used": 1.751733703190014,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.7272727489471436,
+          "mean_score": 3.200000047683716,
+          "mean_steps": 549.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "flappy": {
+        "decisions": 213000,
+        "exit_counts": [
+          181080,
+          477,
+          197,
+          31246
+        ],
+        "mean_layers_used": 1.4441737089201878,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 0.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 200.0,
+          "mean_steps": 21300.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "rescue": {
+        "decisions": 371,
+        "exit_counts": [
+          302,
+          0,
+          0,
+          69
+        ],
+        "mean_layers_used": 1.5579514824797844,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 3.0,
+          "mean_steps": 37.099998474121094,
+          "rescue_rate": 1.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      }
+    },
+    "sky_eval": {
+      "n_params": 445345,
+      "sources": {
+        "all": {
+          "accuracy": 0.382,
+          "early_exit_rate": 0.0475,
+          "ece": 0.03931442833691836,
+          "mean_layers": 3.866,
+          "n": 2000,
+          "nll": 1.210809888092577
+        },
+        "typed_decisions_bench": {
+          "accuracy": 0.382,
+          "early_exit_rate": 0.0475,
+          "ece": 0.03931442833691836,
+          "mean_layers": 3.866,
+          "n": 2000,
+          "nll": 1.210809888092577
+        }
+      },
+      "split": "test"
+    }
+  },
+  "s4-micro": {
+    "sky_arena": {
+      "arch": "skycmd-s2",
+      "dodge": {
+        "decisions": 24000,
+        "exit_counts": [
+          12000,
+          0,
+          12000
+        ],
+        "mean_layers_used": 4.0,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 10.0,
+          "mean_steps": 2079.60009765625,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "doom": {
+        "decisions": 12134,
+        "exit_counts": [
+          0,
+          0,
+          12134
+        ],
+        "mean_layers_used": 6.0,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.7272727489471436,
+          "mean_score": 3.200000047683716,
+          "mean_steps": 549.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "flappy": {
+        "decisions": 520,
+        "exit_counts": [
+          520,
+          0,
+          0
+        ],
+        "mean_layers_used": 2.0,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 0.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 200.0,
+          "mean_steps": 21300.0,
+          "rescue_rate": 0.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      },
+      "rescue": {
+        "decisions": 2400,
+        "exit_counts": [
+          0,
+          0,
+          2400
+        ],
+        "mean_layers_used": 6.0,
+        "oracle": {
+          "aborts": 0,
+          "completion_rate": 1.0,
+          "crashes": 0,
+          "episodes": 10,
+          "kill_rate": 0.0,
+          "mean_score": 3.0,
+          "mean_steps": 37.099998474121094,
+          "rescue_rate": 1.0,
+          "safe_aborts": 0,
+          "vetoes": 0
+        }
+      }
+    },
+    "sky_eval": {
+      "n_params": 5587201,
+      "sources": {
+        "all": {
+          "accuracy": 0.343,
+          "early_exit_rate": 0.3,
+          "ece": 0.03736723906546831,
+          "mean_layers": 4.8,
+          "n": 2000,
+          "nll": 1.1976759286132213
+        },
+        "typed_decisions_bench": {
+          "accuracy": 0.343,
+          "early_exit_rate": 0.3,
+          "ece": 0.03736723906546831,
+          "mean_layers": 4.8,
+          "n": 2000,
+          "nll": 1.1976759286132213
+        }
+      },
+      "split": "test"
+    }
+  }
+}

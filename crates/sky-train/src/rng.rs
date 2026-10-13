@@ -17,6 +17,13 @@ fn splitmix64(x: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
+/// FNV-1a hash of a string, for seeding per-item generators.
+pub fn hash_str(s: &str) -> u64 {
+    s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
 impl Rng {
     pub fn new(seed: u64) -> Self {
         let mut x = seed;
