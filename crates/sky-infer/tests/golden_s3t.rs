@@ -57,8 +57,7 @@ fn question(state: &str, q: &Value) -> (QType, String, Vec<String>) {
 #[test]
 fn s3t_golden() {
     let Ok(bytes) = std::fs::read(dir().join("s3t.json")) else {
-        eprintln!("skipped: tests/golden/s3t.json not found");
-        return;
+        panic!("tests/golden/s3t.json not found");
     };
     let g: Value = serde_json::from_slice(&bytes).expect("valid s3t.json");
     for file in g["meta"]["files"].as_array().unwrap() {

@@ -7,13 +7,14 @@ use sky_gguf::{Gguf, GgufWriter, OwnedValue};
 use sky_infer::json::Json;
 use sky_infer::tokenizer::{token_type, Tokenizer};
 
+mod models;
+
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
 fn oscar_tokenizer_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../models-src/oscar/tokenizer/tokenizer.json")
+    models::oscar_dir().join("tokenizer/tokenizer.json")
 }
 
 fn cases(set: &str) -> Vec<(String, Vec<u32>)> {
@@ -85,10 +86,6 @@ fn string_merges_form_is_equivalent() {
 #[test]
 fn oscar_tokenizer_matches_hf() {
     let path = oscar_tokenizer_path();
-    if !path.exists() {
-        eprintln!("skipping: {} is absent", path.display());
-        return;
-    }
     let tok = Tokenizer::from_tokenizer_json(&std::fs::read_to_string(path).unwrap()).unwrap();
     assert!(tok.is_nfc());
     let sp = tok.special();
@@ -167,10 +164,6 @@ fn gguf_round_trip_small() {
 #[test]
 fn gguf_round_trip_oscar() {
     let path = oscar_tokenizer_path();
-    if !path.exists() {
-        eprintln!("skipping: {} is absent", path.display());
-        return;
-    }
     let tok = Tokenizer::from_tokenizer_json(&std::fs::read_to_string(path).unwrap()).unwrap();
     let g = through_gguf(&tok);
     assert_eq!(g.special().mask, tok.special().mask);
