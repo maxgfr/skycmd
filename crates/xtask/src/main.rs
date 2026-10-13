@@ -11,7 +11,8 @@
 //!   line; a rerun skips the steps whose command line is unchanged (`--force` reruns them).
 //! - **Experiments.** The stages of [`exp`] are built against the store (their runs depend on
 //!   earlier validation results); `--jobs N` runs up to N of their independent steps at once
-//!   under one GPU lock, `--runs a,b` names the runs of `eval`.
+//!   under one GPU lock (a failed step does not stop the others), `--runs a,b` names the runs
+//!   of `eval`.
 //!
 //! The binaries are built in release mode from the checkout `cargo xtask` runs in, and run with
 //! the store as their working directory.
@@ -262,7 +263,8 @@ fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
     if pending.iter().any(|p| p.0.gpu) {
         _gpu = Some(gpu_lock(&store, &log)?);
     }
-    // Up to `jobs` steps at once (in order); after a failure no new step starts.
+    // Up to `jobs` steps at once (in order). With one job the steps form a chain and a failure
+    // stops the stage; with several they are independent runs and the others go on.
     let failed: Mutex<Vec<String>> = Mutex::new(Vec::new());
     std::thread::scope(|scope| {
         let (tx, rx) = std::sync::mpsc::channel::<()>();
@@ -272,7 +274,7 @@ fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
                 let _ = rx.recv();
                 running -= 1;
             }
-            if !failed.lock().map(|f| f.is_empty()).unwrap_or(false) {
+            if jobs == 1 && !failed.lock().map(|f| f.is_empty()).unwrap_or(false) {
                 break;
             }
             running += 1;
