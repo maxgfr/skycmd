@@ -433,3 +433,21 @@ Aucun critère n'en dépend.
 | `corpus.jsonl` | 157005 | `86342e24bce543b70c93159e2e6f5054a6cc6a4e76855a75e326775707250825` |
 | `gen.jsonl` | 25328 | `505ffef41c2fcc6269c968bcf000200ac1e789e768132dc6f8f1f2ea4df6ad72` |
 | `pairs.jsonl` | 7828 | `6151b962dca5b1a921ce7183c2600a8bdb5ee1aa59e545fb1d742ed651836720` |
+
+### Amendement 2 : 14/10/2026 vers 01 h 05, avant tout résultat du pari 1
+
+**Constat, sur l'entraînement et la validation seulement.** Les finalistes A′ sont instables sur 2000 pas, au LR de 2e-4 choisi sur 600 pas :
+
+- **graine 1 :** pic de norme de gradient (22) au pas 400, puis la perte reste vers 1,3 ; précision de validation 0,373 ;
+- **graine 0 :** pics jusqu'à 36 entre les pas 1000 et 1400 ; précision de validation 0,426.
+
+B-i, graine 0, atteint 0,529 sur la même validation. Sélectionner sur des runs courts favorise un LR trop élevé pour des runs longs : ce biais connu peut avantager B contre un A′ mal réglé.
+
+**Analyse de sensibilité ajoutée (secondaire) :**
+
+- **runs :** A′ à l'initialisation retenue et au LR immédiatement inférieur de la grille (1e-4), graines 0, 1 et 2, même nombre de pas que les finalistes (`cargo xtask s5 sens`), évalués comme les finalistes ;
+- **comparaison :** B\* contre cet A′, avec les critères et les marges du pari 1 (`runs/s5-report/pari1-sensitivity.json`).
+
+**Ce qui ne change pas.** Le verdict principal du pari 1 reste celui de la comparaison pré-enregistrée (B\* contre l'A′ sélectionné). La sensibilité est rapportée à côté. Si elle le contredit, les deux sont publiés, et aucune supériorité de B n'est revendiquée.
+
+**Résultats de test vus avant cette décision.** Un seul : la précision de f-b-s0 sur amazonpolarity (0,679), un jeu zero-shot secondaire. Aucun résultat de test d'A′, aucun résultat du bench, aucune comparaison.

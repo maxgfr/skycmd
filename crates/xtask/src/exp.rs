@@ -46,7 +46,7 @@ pub const SEEDS: [u64; 3] = [0, 1, 2];
 pub const BATTERY: &str = "data/s5/battery/coherence_2609_33209.jsonl";
 
 /// The dynamic stages, in pipeline order.
-pub const STAGES: [(&str, &str); 8] = [
+pub const STAGES: [(&str, &str); 9] = [
     (
         "explore",
         "bet 1 exploration: A′ and B-i × 3 LR × 2 inits, seed 0 [GPU]",
@@ -56,6 +56,10 @@ pub const STAGES: [(&str, &str); 8] = [
         "B-ii at the best configuration of B-i [GPU]",
     ),
     ("final", "A′ and B* × 3 seeds, A × 1 seed [GPU]"),
+    (
+        "sens",
+        "bet 1 sensitivity (amendment 2): A′ at the next lower LR × 3 seeds [GPU]",
+    ),
     (
         "eval",
         "exports, calibration and test evaluations of the finished runs (--runs a,b)",
@@ -348,6 +352,34 @@ fn support(store: &Path, sel: &Value) -> Result<(String, String, Value)> {
     } else {
         ("ap".into(), "a-prime".into(), sel["a-prime"].clone())
     })
+}
+
+/// Bet 1 sensitivity (amendment 2, secondary): A′ at the init of its selection and the next
+/// lower LR of the grid, three seeds, as many steps as the finalists. Decided on the training
+/// curves of the A′ finalists (gradient spikes and a loss plateau at the selected LR), before any
+/// test result of bet 1.
+pub fn sens_runs(sel: &Value, steps: u64) -> Vec<Run> {
+    let lr = sel["a-prime"]["lr"].as_str().unwrap_or("2e-4");
+    let lower = LRS
+        .iter()
+        .position(|l| *l == lr)
+        .and_then(|i| i.checked_sub(1))
+        .map_or(LRS[0], |i| LRS[i]);
+    SEEDS
+        .iter()
+        .map(|&s| {
+            let mut r = cfg_run(
+                format!("s-ap-{lower}-s{s}"),
+                "a-prime",
+                &sel["a-prime"],
+                s,
+                "0",
+                steps,
+            );
+            r.lr = lower.to_string();
+            r
+        })
+        .collect()
 }
 
 fn lambda_runs(store: &Path, sel: &Value) -> Result<Vec<Run>> {
@@ -736,6 +768,27 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
                 .join(",")
         })
     };
+    // Amendment 2: B* against A′ at the next lower LR (secondary, same margins).
+    if let Ok(sel) = final_selection(store) {
+        if let Some(r) = sens_runs(&sel, FINAL_STEP_CHOICES[0]).first() {
+            let prefix = r.name.trim_end_matches("-s0").to_string();
+            if let (Some(a), Some(b)) = (dirs(&prefix, "f32", &full), dirs("f-b", "f32", &full)) {
+                v.push(Step::new(
+                    "pari1-sensitivity",
+                    "sky-s5-report",
+                    &[
+                        "pari1",
+                        "--ref",
+                        &a,
+                        "--variant",
+                        &b,
+                        "--json",
+                        "runs/s5-report/pari1-sensitivity.json",
+                    ],
+                ));
+            }
+        }
+    }
     if let (Some(a), Some(b)) = (dirs("f-ap", "f32", &full), dirs("f-b", "f32", &full)) {
         v.push(Step::new(
             "pari1",
@@ -845,6 +898,10 @@ pub fn stage(name: &str, store: &Path, runs: Option<&str>) -> Result<Option<Stag
             .iter()
             .map(Run::train)
             .collect(),
+        "sens" => sens_runs(&final_selection(store)?, final_steps(store)?)
+            .iter()
+            .map(Run::train)
+            .collect(),
         "lambda" => lambda_runs(store, &final_selection(store)?)?
             .iter()
             .map(Run::train)
@@ -915,6 +972,19 @@ mod tests {
             .args
             .windows(2)
             .any(|w| w[0] == "--p-names" && w[1] == "0"));
+    }
+
+    #[test]
+    fn sensitivity_runs_take_the_next_lower_lr() {
+        let sel = json!({"a-prime": {"init": "ettin-reranker-17m", "lr": "2e-4"}});
+        let v = sens_runs(&sel, 2000);
+        assert_eq!(v.len(), 3);
+        assert!(v
+            .iter()
+            .all(|r| r.lr == "1e-4" && r.variant == "a-prime" && r.steps == 2000));
+        assert_eq!(v[0].name, "s-ap-1e-4-s0");
+        let low = json!({"a-prime": {"init": "ettin-17m", "lr": "5e-5"}});
+        assert!(sens_runs(&low, 2000).iter().all(|r| r.lr == "5e-5"));
     }
 
     #[test]
