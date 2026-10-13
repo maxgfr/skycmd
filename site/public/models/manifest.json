@@ -8,6 +8,15 @@
     "file": "s3-pico.gguf"
   },
   {
+    "name": "s4-micro",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "generic",
+    "params": 5587201,
+    "bytes": 2419456,
+    "file": "s4-micro.gguf"
+  },
+  {
     "name": "s1-pico",
     "arch": "modern-bert",
     "weight_format": "f16",

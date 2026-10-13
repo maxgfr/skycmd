@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-11",
-  "note": "accuracy/NLL/ECE: held-out test split; games: 30 seeded episodes per game in sky-arena (flappy capped at 200 pipes); native_us: median per flappy decision on the build machine while other jobs ran; wasm_us: measured in your browser on the Bench page; s3-pico accuracy is the test split without Doom questions (BENCH.md s3 section); wasm_us: median per Flappy frame (2 questions + physics) in the browser WASM module under Node 24 on the build machine",
+  "generated": "2026-10-13",
+  "note": "accuracy/NLL/ECE: held-out test split; games: 30 seeded episodes per game in sky-arena (flappy capped at 200 pipes); native_us: median per flappy decision on the build machine while other jobs ran; wasm_us: measured in your browser on the Bench page; s3-pico accuracy is the test split without Doom questions (BENCH.md s3 section); wasm_us: median per Flappy frame (2 questions + physics) in the browser WASM module under Node 24 on the build machine; s4-micro (generic decisions, experimental): accuracy/NLL/ECE on the s4 test sets (bench, when2call, zero-shot Banking77 and MASSIVE), no game metrics, native_us is the median over those sets (BENCH.md s4 section)",
   "models": [
     {
       "name": "s3-pico",
@@ -75,6 +75,28 @@
       "native_us": 377.875,
       "mean_layers": 3.29,
       "mean_layers_eval": 3.8
+    },
+    {
+      "name": "s4-micro",
+      "arch": "skycmd-s2",
+      "weight_format": "ternary",
+      "params": 5587201,
+      "bytes": 2419456,
+      "accuracy": null,
+      "games_accuracy": null,
+      "flappy_accuracy": null,
+      "rescue_accuracy": null,
+      "dodge_accuracy": null,
+      "typed_decisions_accuracy": 0.343,
+      "zero_shot_banking77": 0.3035,
+      "zero_shot_massive_en": 0.335,
+      "zero_shot_massive_fr": 0.24,
+      "nll": 1.4862,
+      "ece": 0.0657,
+      "wasm_us": null,
+      "native_us": 4532.6,
+      "mean_layers": 4.92,
+      "status": "experimental"
     }
   ]
 }
