@@ -76,6 +76,60 @@ enum Cmd {
         #[arg(long, default_value_t = 4.0)]
         max_gb: f64,
     },
+    /// s5: evaluation sets, training corpus, generators, coherence families, pairs,
+    /// decontamination and the class-balance gate; writes <out>/MANIFEST.json.
+    S5Build {
+        #[arg(long, default_value = "data/decisions")]
+        decisions: PathBuf,
+        #[arg(long, default_value = "data/text")]
+        text: PathBuf,
+        #[arg(long, default_value = "data/s5/src")]
+        src: PathBuf,
+        #[arg(long)]
+        defs: PathBuf,
+        #[arg(long)]
+        demo: PathBuf,
+        #[arg(long, default_value = "data/s5")]
+        out: PathBuf,
+        /// Languages (en, fr).
+        #[arg(long, value_delimiter = ',', default_value = "en")]
+        langs: Vec<String>,
+        #[arg(long, default_value_t = 1000)]
+        per_source: usize,
+        #[arg(long, default_value_t = 1000)]
+        per_eval_set: usize,
+        #[arg(long, default_value_t = 6000)]
+        rules: usize,
+        #[arg(long, default_value_t = 3000)]
+        tone: usize,
+        #[arg(long, default_value_t = 4000)]
+        buried: usize,
+        /// Paraphrase pairs and distractor pairs, each.
+        #[arg(long, default_value_t = 2000)]
+        pairs: usize,
+    },
+    /// s5: training targets from gold and the teachers' soft labels (calibrated per group,
+    /// teacher chosen per group on val, agreement filter); writes <out>/REPORT.json.
+    S5Mix {
+        #[arg(long, default_value = "data/s5/train")]
+        train: PathBuf,
+        #[arg(long, default_value = "data/s5/scored")]
+        scored: PathBuf,
+        #[arg(long, value_delimiter = ',', default_value = "laya-td")]
+        teachers: Vec<String>,
+        #[arg(long, default_value = "data/s5/mixed")]
+        out: PathBuf,
+        #[arg(long, default_value_t = 0.5)]
+        alpha: f32,
+    },
+    /// Print the first rows of a parquet file as JSON (all columns unless --columns).
+    Peek {
+        file: PathBuf,
+        #[arg(long, default_value_t = 3)]
+        n: usize,
+        #[arg(long, value_delimiter = ',')]
+        columns: Vec<String>,
+    },
     /// Download NL → command data (function calling + MASSIVE intents) into JSONL.
     FetchCommands {
         #[arg(long, default_value = "data/commands")]
@@ -345,6 +399,64 @@ fn main() -> Result<()> {
                 r.bytes as f64 / 1e6,
                 r.downloaded
             );
+        }
+        Cmd::S5Build {
+            decisions,
+            text,
+            src,
+            defs,
+            demo,
+            out,
+            langs,
+            per_source,
+            per_eval_set,
+            rules,
+            tone,
+            buried,
+            pairs,
+        } => {
+            let m = sky_data::s5::build::build(&sky_data::s5::build::BuildOptions {
+                decisions,
+                text,
+                src,
+                defs,
+                demo,
+                out: out.clone(),
+                seed: cli.seed,
+                langs,
+                per_source,
+                per_eval_set,
+                n_rules: rules,
+                n_tone: tone,
+                n_buried: buried,
+                n_pairs: pairs,
+            })?;
+            println!("{}", serde_json::to_string_pretty(&m["train"])?);
+            println!("{}", serde_json::to_string_pretty(&m["decontamination"])?);
+            println!("wrote {}", out.join("MANIFEST.json").display());
+        }
+        Cmd::S5Mix {
+            train,
+            scored,
+            teachers,
+            out,
+            alpha,
+        } => {
+            let r = sky_data::s5::mix::mix(&sky_data::s5::mix::MixOptions {
+                train,
+                scored,
+                teachers,
+                out: out.clone(),
+                alpha,
+            })?;
+            println!("{}", serde_json::to_string_pretty(&r["targets"])?);
+            println!("wrote {}", out.join("REPORT.json").display());
+        }
+        Cmd::Peek { file, n, columns } => {
+            let cols: Vec<&str> = columns.iter().map(String::as_str).collect();
+            for row in sky_data::hf::read_parquet_any(&file, &cols, n)? {
+                println!("{row}");
+            }
         }
         Cmd::FetchCommands {
             out,

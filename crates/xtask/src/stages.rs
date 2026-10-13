@@ -174,6 +174,14 @@ fn fetch_evals() -> Vec<Step> {
             "README.md,fr/*,en/*",
         ),
         fetch(
+            "hwu64",
+            "DeepPavlov/hwu64",
+            "0dd289ccdeb185ec065d1ebcf5de1c443cd1620f",
+            "data/s5/src/hwu64",
+            "--dataset",
+            "README.md,data/*,intents/intents-00000-of-00001.parquet",
+        ),
+        fetch(
             "coherence-battery",
             "bro789/typed-decision-coherence",
             "8898ef7bc3c151c7b4827a6afbc294907a1c7a64",
@@ -207,6 +215,74 @@ fn import_bases() -> Vec<Step> {
     .collect()
 }
 
+/// The s5 data (`data/s5/`): the typed-decisions train split, then `sky-data s5-build`.
+fn data_steps() -> Vec<Step> {
+    vec![
+        Step::new(
+            "typed-decisions-train",
+            "sky-data",
+            &[
+                "--cache",
+                "data/hf",
+                "fetch-decisions",
+                "--only",
+                "typed_decisions_train",
+            ],
+        ),
+        Step::new(
+            "s5-build",
+            "sky-data",
+            &[
+                "s5-build",
+                "--defs",
+                "{checkout}/eval/s5/defs.json",
+                "--demo",
+                "{checkout}/eval/s5/demo-cases.jsonl",
+                "--langs",
+                "en,fr",
+            ],
+        ),
+    ]
+}
+
+/// Teacher soft labels of the English records that `s5-mix` labels (`data/s5/scored/`): the
+/// corpus and the pairs, two option orders averaged (generated records and coherence families
+/// keep their exact gold targets). Only laya-typed-decisions: oscar-1-150m (fetched, a close
+/// second on the bench) would have cost about 45 more minutes of GPU, which the s5-lite budget of
+/// 2026-10-13 left out; with one teacher there is no teacher to choose per group, so the gold val
+/// records are not scored in both renderings either (docs/s5-prereg.md).
+fn teacher_steps() -> Vec<Step> {
+    let (name, dir) = ("laya-td", "models-src/laya-typed-decisions");
+    ["corpus", "pairs"]
+        .into_iter()
+        .map(|file| {
+            let out = format!("data/s5/scored/{name}.native.{file}.jsonl");
+            let rec = format!("data/s5/train/{file}.jsonl");
+            Step::new(
+                &format!("score-{name}-{file}"),
+                "sky-train",
+                &[
+                    "score",
+                    "--teacher",
+                    dir,
+                    "--records",
+                    &rec,
+                    "--out",
+                    &out,
+                    "--render",
+                    "native",
+                    "--perms",
+                    "2",
+                    "--lang",
+                    "en",
+                    "--bf16",
+                ],
+            )
+            .gpu()
+        })
+        .collect()
+}
+
 pub fn stages() -> Vec<Stage> {
     vec![
         Stage {
@@ -218,6 +294,22 @@ pub fn stages() -> Vec<Stage> {
             name: "fetch-evals",
             about: "typed-decisions, zero-shot sets and the coherence battery into data/s5/src/",
             steps: fetch_evals(),
+        },
+        Stage {
+            name: "data",
+            about:
+                "typed-decisions train split, then the s5 corpus, generators, eval sets (data/s5/)",
+            steps: data_steps(),
+        },
+        Stage {
+            name: "teachers",
+            about: "soft labels of laya-typed-decisions on the English records",
+            steps: teacher_steps(),
+        },
+        Stage {
+            name: "mix",
+            about: "training targets: gold + calibrated teacher soft labels (data/s5/mixed/)",
+            steps: vec![Step::new("s5-mix", "sky-data", &["s5-mix"])],
         },
         Stage {
             name: "import",
