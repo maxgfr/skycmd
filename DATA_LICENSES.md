@@ -117,6 +117,7 @@ host publishes; the commit and hashes are recorded in `.skycmd-fetch.json` next 
 | LocalLLaMA/typed-decisions | Apache-2.0 | `c806f6c6` | train split for training and coherence families; test split for the bench |
 | btzsc/btzsc (wikitoxic ×4, biasframes ×3, amazonpolarity, yahootopics) | per source: wikitoxic CC0-1.0, biasframes CC-BY-4.0, amazonpolarity Apache-2.0, yahootopics unverified | `fef2a2ac` | English zero-shot evaluation only; yahootopics is reported only if its license is confirmed |
 | Davlan/sib200 (`fra_Latn`, `eng_Latn`) | CC-BY-SA-4.0 | `38977a66` | French zero-shot evaluation only |
+| DeepPavlov/hwu64 (HWU64 of Liu et al. 2019, reformatted) | CC-BY-4.0 (the original data, [xliuhw/NLU-Evaluation-Data](https://github.com/xliuhw/NLU-Evaluation-Data); the mirror carries no license tag) | `0dd289cc` | s5-lite zero-shot evaluation only (its training excludes MASSIVE and SLURP in every language); reported with "contamination through the teachers not excluded" |
 | mteb/mtop_intent (`fr`, `en`) | tagged `unknown` on the Hub | `9a200bf9` | French zero-shot evaluation, only if the license is confirmed |
 | bro789/typed-decision-coherence (GitHub) | code MIT; stimuli derived from ChaosNLI and PubMedQA under their own terms | `8898ef7b` | the 2609.33209 coherence battery: evaluation only, never redistributed |
 
