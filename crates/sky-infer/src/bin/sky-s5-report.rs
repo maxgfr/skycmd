@@ -5,7 +5,7 @@
 //! ```text
 //! sky-s5-report calibrate <cal.dump> --gguf in.gguf --out out.gguf [--json t.json] [--min-bucket 100]
 //! sky-s5-report gates <eval dir> --records <data/s5/eval> [--json out.json]
-//! sky-s5-report coherence <eval dir>[,<eval dir>...] [--json out.json]
+//! sky-s5-report coherence <eval dir>[,<eval dir>...] [--set coherence_test] [--json out.json]
 //! sky-s5-report robust <eval dir> [--json out.json]
 //! sky-s5-report selective <cal.dump> <eval dir> [--cal-src typed_decisions_train] [--json out.json]
 //! sky-s5-report pari1 --ref <dirs> --variant <dirs> [--json out.json]
@@ -31,7 +31,8 @@
 //!   `|s_k − c_k|`; and the identities never trained on: disjunction additivity
 //!   `|d_ij − (s_i + s_j)|`, description invariance `|d_ij − n_m|` (K = 3), monotonicity
 //!   `s_i ≤ d_ij` (share of checks violated by more than 0.05, mean excess), and the accuracy of
-//!   the D questions against the gold with its majority-class rate (competence).
+//!   the D questions against the gold with its majority-class rate (competence). `--set
+//!   battery_2609_33209` runs it on the original battery of the paper (comparison with Jev).
 //! - `robust`: the two-call paraphrase test, JevOut-lite (the attack keeps, per base, the
 //!   distractor that lowers p(gold) most for the evaluated model), the reassignment of
 //!   2609.26758 (flip rate per arm minus the 0/1 control, AUC per arm), mini-PolicyBench and
@@ -669,8 +670,8 @@ mod native {
         }
     }
 
-    fn fam_runs(dirs: &[PathBuf]) -> Vec<Vec<FamStats>> {
-        runs(dirs, COHERENCE)
+    fn fam_runs(dirs: &[PathBuf], set: &str) -> Vec<Vec<FamStats>> {
+        runs(dirs, set)
             .iter()
             .map(|r| families(r).iter().map(fam_stats).collect())
             .collect()
@@ -688,8 +689,8 @@ mod native {
         }
     }
 
-    pub fn coherence(dirs: &[PathBuf]) -> Value {
-        let st = fam_runs(dirs);
+    pub fn coherence(dirs: &[PathBuf], set: &str) -> Value {
+        let st = fam_runs(dirs, set);
         let m = |f: fn(&FamStats) -> f64| iv(ci_runs(&st, |s, idx| fmean(s, idx, f)));
         json!({
             "runs": dirs.len(),
@@ -1190,7 +1191,7 @@ mod native {
     }
 
     pub fn pari2(rd: &[PathBuf], vd: &[PathBuf], acc_margin: f64) -> Value {
-        let (rf, vf) = (fam_runs(rd), fam_runs(vd));
+        let (rf, vf) = (fam_runs(rd, COHERENCE), fam_runs(vd, COHERENCE));
         let d_acc = ci_runs(&rf, |s, idx| ratio(s, idx, |x| x.d_correct, |x| x.d_n));
         let d_maj = d_majority(&rf[0]);
         let competent = d_acc.lo > d_maj + 0.10;
@@ -1411,7 +1412,10 @@ mod native {
                 gates(Path::new(&pos(1)), Path::new(&need("--records"))),
                 &args,
             ),
-            "coherence" => emit(coherence(&list(&pos(1))), &args),
+            "coherence" => {
+                let set = arg(&args, "--set").unwrap_or_else(|| COHERENCE.to_string());
+                emit(coherence(&list(&pos(1)), &set), &args)
+            }
             "robust" => emit(robust(Path::new(&pos(1))), &args),
             "selective" => {
                 let src = arg(&args, "--cal-src");

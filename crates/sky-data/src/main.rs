@@ -122,6 +122,17 @@ enum Cmd {
         #[arg(long, default_value_t = 0.5)]
         alpha: f32,
     },
+    /// s5: the original coherence battery of 2609.33209 as s5 records (evaluation only, never
+    /// redistributed), for the comparison with Jev on the same items.
+    S5Battery {
+        #[arg(
+            long,
+            default_value = "data/s5/src/coherence/02_probability_axioms/stimuli/items.jsonl"
+        )]
+        items: PathBuf,
+        #[arg(long, default_value = "data/s5/battery/coherence_2609_33209.jsonl")]
+        out: PathBuf,
+    },
     /// Print the first rows of a parquet file as JSON (all columns unless --columns).
     Peek {
         file: PathBuf,
@@ -451,6 +462,14 @@ fn main() -> Result<()> {
             })?;
             println!("{}", serde_json::to_string_pretty(&r["targets"])?);
             println!("wrote {}", out.join("REPORT.json").display());
+        }
+        Cmd::S5Battery { items, out } => {
+            let n = sky_data::s5::battery::convert(&items, &out)?;
+            println!(
+                "wrote {n} records to {} (sha256 {})",
+                out.display(),
+                sky_data::s5::sha256_file(&out)?
+            );
         }
         Cmd::Peek { file, n, columns } => {
             let cols: Vec<&str> = columns.iter().map(String::as_str).collect();

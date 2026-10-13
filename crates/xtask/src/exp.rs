@@ -33,6 +33,8 @@ pub const INITS: [(&str, &str); 2] = [("e17", "ettin-17m"), ("r17", "ettin-reran
 pub const KL: &str = "0.5";
 pub const LAMBDAS: [&str; 2] = ["0.1", "0.3"];
 pub const SEEDS: [u64; 3] = [0, 1, 2];
+/// The original coherence battery of 2609.33209 as s5 records (`sky-data s5-battery`).
+pub const BATTERY: &str = "data/s5/battery/coherence_2609_33209.jsonl";
 
 /// The dynamic stages, in pipeline order.
 pub const STAGES: [(&str, &str); 8] = [
@@ -509,6 +511,27 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
                 v.push(test_step(run, f, s));
             }
         }
+        if f == "f32" {
+            // The original 2609.33209 battery (comparison with Jev), in the store only.
+            v.push(Step::new(
+                &format!("{run}-battery-{f}"),
+                "sky-eval",
+                &[
+                    &format!("{md}/{f}.gguf"),
+                    "--records",
+                    BATTERY,
+                    "--split",
+                    "test",
+                    "--prereg",
+                    "{checkout}/docs/s5-prereg.md",
+                    "--metrics",
+                    "--json",
+                    &format!("{rd}/eval-{f}/battery_2609_33209.json"),
+                    "--dump-probs",
+                    &format!("{rd}/eval-{f}/battery_2609_33209.dump.jsonl"),
+                ],
+            ));
+        }
         v.push(Step::new(
             &format!("{run}-demo-{f}"),
             "sky-eval",
@@ -578,6 +601,20 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
                     &format!("runs/s5-report/coherence-{r}-{f}.json"),
                 ],
             ));
+            if has(r, f, "battery_2609_33209") {
+                v.push(Step::new(
+                    &format!("battery-{r}-{f}"),
+                    "sky-s5-report",
+                    &[
+                        "coherence",
+                        &dir,
+                        "--set",
+                        "battery_2609_33209",
+                        "--json",
+                        &format!("runs/s5-report/battery-{r}-{f}.json"),
+                    ],
+                ));
+            }
             v.push(Step::new(
                 &format!("selective-{r}-{f}"),
                 "sky-s5-report",

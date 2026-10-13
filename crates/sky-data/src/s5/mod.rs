@@ -11,6 +11,7 @@
 //! before the pre-registration). Splits are assigned by a hash of the state, so all the
 //! questions about one state fall in the same split.
 
+pub mod battery;
 pub mod build;
 pub mod coherence;
 pub mod corpus;

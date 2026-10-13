@@ -242,6 +242,8 @@ fn data_steps() -> Vec<Step> {
                 "en,fr",
             ],
         ),
+        // The original 2609.33209 battery, for the comparison with Jev (evaluation only).
+        Step::new("s5-battery", "sky-data", &["s5-battery"]),
     ]
 }
 
