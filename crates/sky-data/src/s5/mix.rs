@@ -7,12 +7,14 @@
 //! 2. **Teacher choice per group**: the teacher with the lowest Brier score after calibration
 //!    on the group's gold `val` records (ties: lower ECE); a group with no val record keeps the
 //!    global best teacher.
-//! 3. **Agreement filter**: a record takes the teacher's soft label only when the two teachers
-//!    agree on the argmax, or the chosen teacher agrees with the gold argmax; otherwise it keeps
-//!    its gold target.
-//! 4. **Target** = `alpha · gold + (1 − alpha) · teacher`. Generated records (programmatic,
-//!    exact labels, including the uniform targets of missing evidence) and coherence families
-//!    keep their gold target; the second member of a pair takes the target of the first.
+//! 3. **Agreement filter**: a record takes the teacher's soft label only when at least two
+//!    teachers agree on the argmax, or the chosen teacher agrees with the gold argmax; otherwise
+//!    it keeps its gold target. With a single teacher, only the agreement with the gold counts.
+//! 4. **Target** = `alpha · gold + (1 − alpha) · teacher`, for the `train` split only: `val` and
+//!    `cal` keep their gold targets, so that model selection and calibration are judged against
+//!    the gold. Generated records (programmatic, exact labels, including the uniform targets of
+//!    missing evidence) and coherence families keep their gold target; the second member of a
+//!    pair takes the target of the first.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -73,6 +75,13 @@ fn ece(items: &[(Vec<f32>, &[f32])]) -> f64 {
         .filter(|b| b.2 > 0)
         .map(|b| (b.2 as f64 / n) * ((b.0 - b.1) / b.2 as f64).abs())
         .sum()
+}
+
+/// At least two teachers scored the record and they share the argmax (a single teacher never
+/// agrees with itself: it needs the gold).
+fn teachers_agree(ps: &[Option<Vec<f32>>]) -> bool {
+    let scored: Vec<usize> = ps.iter().flatten().map(|q| argmax(q)).collect();
+    scored.len() >= 2 && scored.iter().all(|&a| a == scored[0])
 }
 
 /// `uid -> tlogits` of a teacher (every scored file of that teacher, native rendering).
@@ -210,6 +219,9 @@ pub fn mix(o: &MixOptions) -> Result<Value> {
         if f == "corpus" || f == "pairs" {
             let (mut soft, mut kept_gold, mut missing) = (0usize, 0usize, 0usize);
             for r in v.iter_mut() {
+                if r.split != "train" {
+                    continue;
+                }
                 // The second member of a pair takes the first member's target.
                 if let Some((key, idx)) = r.uid.split_once('#') {
                     if idx != "0" {
@@ -226,14 +238,7 @@ pub fn mix(o: &MixOptions) -> Result<Value> {
                     missing += 1;
                     continue;
                 };
-                let agree = ps
-                    .iter()
-                    .flatten()
-                    .map(|q| argmax(q))
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .len()
-                    == 1
-                    || argmax(&p) == argmax(&r.target);
+                let agree = teachers_agree(&ps) || argmax(&p) == argmax(&r.target);
                 if agree {
                     let s: f32 = r.target.iter().sum();
                     r.target = r
@@ -290,5 +295,15 @@ mod tests {
             (vec![0.9f32, 0.1], &[0.0f32, 1.0][..]),
         ];
         assert!((ece(&items) - 0.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn one_teacher_needs_the_gold() {
+        let a = Some(vec![0.9f32, 0.1]);
+        let b = Some(vec![0.2f32, 0.8]);
+        assert!(!teachers_agree(std::slice::from_ref(&a)));
+        assert!(teachers_agree(&[a.clone(), a.clone()]));
+        assert!(!teachers_agree(&[a.clone(), b]));
+        assert!(!teachers_agree(&[a, None]));
     }
 }
