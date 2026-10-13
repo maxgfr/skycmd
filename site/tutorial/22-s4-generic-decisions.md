@@ -157,3 +157,20 @@ In order of expected gain:
 4. **Find the 160-token NaN.**
 
 Porting the teacher's forward pass to mlx-rs would make the whole pipeline Rust.
+
+## Afterwards: what s5 changed
+
+Two facts reframed this chapter after the fact.
+
+**The majority class beats s4.** Always answering the majority class scores 0.398 on `typed_decisions_bench`, above the 0.343 of s4-micro: the model learned less than the class prior.
+
+**The z.ai terms rule out GLM.** They forbid using GLM outputs to develop or train models (§ 1(f)(xii), updated 2026-04-14). s5 therefore uses no GLM output anywhere. Its labels come from:
+
+- the gold labels of permissive datasets;
+- Apache-2.0 teachers run locally;
+- code generators.
+
+The `glm_orders` and `paraphrased` files of the earlier models are flagged in `DATA_LICENSES.md`.
+
+[Chapter 23](/tutorial/23-s5-lite) starts from a pretrained encoder, as point 1 above suggested. It also fixes every claim in advance.
+
