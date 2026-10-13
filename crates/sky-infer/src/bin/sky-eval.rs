@@ -5,6 +5,7 @@
 //! sky-eval <model.gguf> --records a.jsonl,dir/ [--split test] [--max N] [--exit-threshold T]
 //!          [--json out.json] [--dump probs.jsonl] [--metrics] [--bootstrap B]
 //!          [--max-options N] [--seed S] [--dump-probs items.jsonl] [--latency]
+//!          [--prereg docs/s5-prereg.md] [--lang en]
 //! ```
 //!
 //! Records are SPEC decision records (`docs/SPEC.md`); a directory means every `*.jsonl` in it.
@@ -29,11 +30,22 @@
 //!   target) and N − 1 others drawn uniformly, in their original order; the target is
 //!   renormalized over them. The draw depends on `--seed` (default 0) and the record's line
 //!   only, not on the other records. The JSON reports `max_options` and `seed`.
-//! - `--dump-probs PATH`: one line per evaluated question, `{src, t, k, probs, target, gold}`,
-//!   the input of `sky-compare`.
+//! - `--dump-probs PATH`: one line per evaluated question, `{src, t, k, probs, target, gold}`
+//!   (and `uid` for s5 records), the input of `sky-compare` and `sky-s5-report`.
 //! - `--latency`: decision latency (batch 1: one question per call, in record order) of a fresh
 //!   engine with the default options and of one with its caches off (`prefix_cache: 0,
 //!   state_cache: 0`): `latency.default` and `latency.no_cache`, `p50_us` and `p95_us`.
+//!
+//! **s5 records** (`opts_kv: [[id, definition], ...]`) are rendered natively (`id: definition`,
+//! `level i: …`, `false: …`); an iso model drops the ids and reads the definitions only.
+//! `--lang L` keeps the records of one language (`lang`, English when absent).
+//!
+//! **Pre-registration guard.** A records file under a directory holding a `MANIFEST.json` (the
+//! s5 evaluation sets, `data/s5/eval`) is frozen: evaluating its `test` split needs
+//! `--prereg docs/s5-prereg.md`, a file committed in its git checkout without local changes
+//! that lists the sha256 of the evaluated file; otherwise sky-eval refuses to run. Each such run
+//! is appended to `runs/s5-test-log.jsonl` of the store (the directory above `data/`): time,
+//! model sha256, records sha256, prereg commit, arguments.
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
@@ -48,7 +60,7 @@ mod native {
     };
 
     fn usage() -> ! {
-        eprintln!("usage: sky-eval <model.gguf> --records a.jsonl,dir/ [--split test] [--max N] [--exit-threshold T] [--json out.json] [--dump probs.jsonl] [--metrics] [--bootstrap B] [--max-options N] [--seed S] [--dump-probs items.jsonl] [--latency]");
+        eprintln!("usage: sky-eval <model.gguf> --records a.jsonl,dir/ [--split test] [--max N] [--exit-threshold T] [--json out.json] [--dump probs.jsonl] [--metrics] [--bootstrap B] [--max-options N] [--seed S] [--dump-probs items.jsonl] [--latency] [--prereg docs/s5-prereg.md] [--lang en]");
         std::process::exit(2);
     }
 
@@ -112,6 +124,8 @@ mod native {
     /// An evaluated question, kept for the s5 options.
     struct Item {
         src: String,
+        /// The record's `uid` (s5 records), to pair items across protocols.
+        uid: String,
         qt: QType,
         pred: Pred,
         /// Instructions, options and state, kept for `--latency`.
@@ -276,6 +290,203 @@ mod native {
             "no_cache": {"p50_us": o50, "p95_us": o95}})
     }
 
+    /// Native rendering of s5 options (the s1 option texts).
+    fn native_options(t: &str, kv: &[Value]) -> Vec<String> {
+        kv.iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let id = p[0].as_str().unwrap_or_default();
+                let def = p[1].as_str().unwrap_or_default();
+                match t {
+                    "score" => format!("level {i}: {def}"),
+                    _ if def.is_empty() => id.to_string(),
+                    _ => format!("{id}: {def}"),
+                }
+            })
+            .collect()
+    }
+
+    /// The pre-registration guard of the s5 test split.
+    mod guard {
+        use std::path::{Path, PathBuf};
+        use std::process::Command;
+
+        fn sha256(bytes: &[u8]) -> String {
+            // FIPS 180-4, enough for a check of a few files.
+            let k: [u32; 64] = [
+                0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+                0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+                0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+                0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+                0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+                0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+                0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+                0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+                0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+                0xc67178f2,
+            ];
+            let mut h: [u32; 8] = [
+                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+                0x5be0cd19,
+            ];
+            let mut msg = bytes.to_vec();
+            let bits = (bytes.len() as u64).wrapping_mul(8);
+            msg.push(0x80);
+            while msg.len() % 64 != 56 {
+                msg.push(0);
+            }
+            msg.extend_from_slice(&bits.to_be_bytes());
+            for chunk in msg.chunks(64) {
+                let mut w = [0u32; 64];
+                for i in 0..16 {
+                    w[i] = u32::from_be_bytes([
+                        chunk[4 * i],
+                        chunk[4 * i + 1],
+                        chunk[4 * i + 2],
+                        chunk[4 * i + 3],
+                    ]);
+                }
+                for i in 16..64 {
+                    let s0 =
+                        w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+                    let s1 =
+                        w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+                    w[i] = w[i - 16]
+                        .wrapping_add(s0)
+                        .wrapping_add(w[i - 7])
+                        .wrapping_add(s1);
+                }
+                let mut v = h;
+                for i in 0..64 {
+                    let s1 = v[4].rotate_right(6) ^ v[4].rotate_right(11) ^ v[4].rotate_right(25);
+                    let ch = (v[4] & v[5]) ^ (!v[4] & v[6]);
+                    let t1 = v[7]
+                        .wrapping_add(s1)
+                        .wrapping_add(ch)
+                        .wrapping_add(k[i])
+                        .wrapping_add(w[i]);
+                    let s0 = v[0].rotate_right(2) ^ v[0].rotate_right(13) ^ v[0].rotate_right(22);
+                    let maj = (v[0] & v[1]) ^ (v[0] & v[2]) ^ (v[1] & v[2]);
+                    let t2 = s0.wrapping_add(maj);
+                    v = [
+                        t1.wrapping_add(t2),
+                        v[0],
+                        v[1],
+                        v[2],
+                        v[3].wrapping_add(t1),
+                        v[4],
+                        v[5],
+                        v[6],
+                    ];
+                }
+                for (a, b) in h.iter_mut().zip(v) {
+                    *a = a.wrapping_add(b);
+                }
+            }
+            h.iter().map(|x| format!("{x:08x}")).collect()
+        }
+
+        fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .output()
+                .map_err(|e| format!("git: {e}"))?;
+            if !out.status.success() {
+                return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+            }
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        }
+
+        /// Checks the pre-registration, then logs the run.
+        pub fn check(
+            prereg: Option<&str>,
+            frozen: &[PathBuf],
+            model: &str,
+            model_bytes: &[u8],
+        ) -> Result<(), String> {
+            let prereg = prereg.ok_or(
+                "these records are an s5 evaluation set: the test split needs --prereg docs/s5-prereg.md",
+            )?;
+            let path = Path::new(prereg)
+                .canonicalize()
+                .map_err(|e| format!("{prereg}: {e}"))?;
+            let dir = path.parent().ok_or("prereg path")?;
+            let name = path
+                .file_name()
+                .ok_or("prereg path")?
+                .to_string_lossy()
+                .to_string();
+            git(dir, &["ls-files", "--error-unmatch", &name])
+                .map_err(|_| format!("{prereg} is not committed"))?;
+            if !git(dir, &["status", "--porcelain", "--", &name])?.is_empty() {
+                return Err(format!("{prereg} has uncommitted changes"));
+            }
+            let commit = git(dir, &["log", "-1", "--format=%H", "--", &name])?;
+            let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let mut files = Vec::new();
+            for f in frozen {
+                let bytes = std::fs::read(f).map_err(|e| format!("{}: {e}", f.display()))?;
+                let h = sha256(&bytes);
+                if !text.contains(&h) {
+                    return Err(format!(
+                        "{} (sha256 {h}) is not listed in {prereg}: the evaluation set changed after the pre-registration",
+                        f.display()
+                    ));
+                }
+                files.push(serde_json::json!({"file": f.display().to_string(), "sha256": h}));
+            }
+            // The store is the directory above `data/`.
+            let store = frozen[0]
+                .canonicalize()
+                .ok()
+                .and_then(|p| {
+                    p.ancestors()
+                        .find(|a| a.file_name().is_some_and(|n| n == "data"))
+                        .and_then(|d| d.parent().map(Path::to_path_buf))
+                })
+                .ok_or("cannot locate the store of the records")?;
+            let log = store.join("runs/s5-test-log.jsonl");
+            std::fs::create_dir_all(log.parent().unwrap()).map_err(|e| e.to_string())?;
+            let line = serde_json::json!({
+                "unix_time": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()),
+                "model": model,
+                "model_sha256": sha256(model_bytes),
+                "records": files,
+                "prereg_commit": commit,
+                "args": std::env::args().collect::<Vec<_>>(),
+            });
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log)
+                .map_err(|e| e.to_string())?;
+            writeln!(f, "{line}").map_err(|e| e.to_string())?;
+            eprintln!(
+                "sky-eval: test run logged in {} (prereg {commit})",
+                log.display()
+            );
+            Ok(())
+        }
+
+        #[cfg(test)]
+        mod tests {
+            #[test]
+            fn sha256_vectors() {
+                assert_eq!(
+                    super::sha256(b""),
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                );
+                assert_eq!(
+                    super::sha256(b"abc"),
+                    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                );
+            }
+        }
+    }
+
     pub fn main() {
         let mut args = std::env::args().skip(1);
         let mut model = None;
@@ -283,6 +494,8 @@ mod native {
         let (mut tau, mut json_out, mut dump) = (None, None, None);
         let (mut metrics, mut resamples, mut seed) = (false, 2000usize, 0u64);
         let (mut max_options, mut dump_probs, mut timing) = (None, None, false);
+        let mut prereg: Option<String> = None;
+        let mut lang: Option<String> = None;
         while let Some(a) = args.next() {
             match a.as_str() {
                 "--records" => records = args.next(),
@@ -320,6 +533,8 @@ mod native {
                 }
                 "--dump-probs" => dump_probs = args.next(),
                 "--latency" => timing = true,
+                "--prereg" => prereg = args.next(),
+                "--lang" => lang = args.next(),
                 "-h" | "--help" => usage(),
                 _ if model.is_none() => model = Some(a),
                 _ => usage(),
@@ -329,6 +544,21 @@ mod native {
             usage()
         };
         let bytes = std::fs::read(&model).unwrap_or_else(|e| panic!("{model}: {e}"));
+        let frozen: Vec<PathBuf> = files(&records)
+            .into_iter()
+            .filter(|f| {
+                f.parent().is_some_and(|d| {
+                    d.join("MANIFEST.json").exists()
+                        || d.parent().is_some_and(|p| p.join("MANIFEST.json").exists())
+                })
+            })
+            .collect();
+        if split == "test" && !frozen.is_empty() {
+            if let Err(e) = guard::check(prereg.as_deref(), &frozen, &model, &bytes) {
+                eprintln!("sky-eval: refused: {e}");
+                std::process::exit(3);
+            }
+        }
         let mut eng = Engine::from_gguf_with(&bytes, EngineOptions::default())
             .unwrap_or_else(|e| panic!("{model}: {e}"));
         eng.set_exit_threshold(tau);
@@ -343,6 +573,12 @@ mod native {
                 if r["split"].as_str() != Some(split.as_str()) {
                     continue;
                 }
+                if lang
+                    .as_deref()
+                    .is_some_and(|l| r["lang"].as_str().unwrap_or("en") != l)
+                {
+                    continue;
+                }
                 let src = r["src"].as_str().unwrap_or("?").to_string();
                 let c = counts.entry(src.clone()).or_default();
                 if *c >= max {
@@ -352,14 +588,17 @@ mod native {
                 let Some(qt) = r["t"].as_str().and_then(QType::from_name) else {
                     continue;
                 };
-                let mut opts: Vec<String> = r["opts"]
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|o| o.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let mut opts: Vec<String> = match r["opts_kv"].as_array() {
+                    Some(kv) => native_options(r["t"].as_str().unwrap_or("choice"), kv),
+                    None => r["opts"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|o| o.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                };
                 let target: Vec<f64> = r["target"]
                     .as_array()
                     .map(|a| a.iter().filter_map(Value::as_f64).collect())
@@ -413,6 +652,7 @@ mod native {
                 items.push(Item {
                     pred: Pred::new(p, target, src.as_str()),
                     src,
+                    uid: r["uid"].as_str().unwrap_or_default().to_string(),
                     qt,
                     input,
                 });
@@ -484,9 +724,12 @@ mod native {
                 .iter()
                 .map(|it| {
                     let p = &it.pred;
-                    json!({"src": it.src, "t": it.qt.name(), "k": p.k(), "probs": p.probs,
-                        "target": p.target, "gold": p.gold})
-                    .to_string()
+                    let mut v = json!({"src": it.src, "t": it.qt.name(), "k": p.k(),
+                        "probs": p.probs, "target": p.target, "gold": p.gold});
+                    if !it.uid.is_empty() {
+                        v["uid"] = json!(it.uid);
+                    }
+                    v.to_string()
                 })
                 .collect();
             std::fs::write(&path, lines.join("\n") + "\n").unwrap();

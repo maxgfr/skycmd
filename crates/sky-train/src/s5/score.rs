@@ -44,6 +44,12 @@ pub struct ScoreArgs {
     /// Only records of this split.
     #[arg(long)]
     pub split: Option<String>,
+    /// Only records of this language (`en`: records without `lang`).
+    #[arg(long)]
+    pub lang: Option<String>,
+    /// Only records whose source starts with none of these prefixes (comma separated).
+    #[arg(long, value_delimiter = ',')]
+    pub skip_src: Vec<String>,
     /// At most this many records (the first ones).
     #[arg(long)]
     pub max: Option<usize>,
@@ -188,6 +194,18 @@ pub fn score(a: &ScoreArgs) -> Result<()> {
     let mut recs = read_s5(&a.records)?;
     if let Some(s) = &a.split {
         recs.retain(|r| &r.split == s);
+    }
+    if let Some(l) = &a.lang {
+        recs.retain(|r| {
+            (if r.lang.is_empty() {
+                "en"
+            } else {
+                r.lang.as_str()
+            }) == l
+        });
+    }
+    if !a.skip_src.is_empty() {
+        recs.retain(|r| !a.skip_src.iter().any(|p| r.src.starts_with(p.as_str())));
     }
     if let Some(m) = a.max {
         recs.truncate(m);

@@ -7,6 +7,7 @@
 //! - [`data`], [`loss`], [`train`]: `sky-train s5-train`, the fine-tuning recipe;
 //! - [`iso`]: variant B, invariant by construction (segment mask, shared positions).
 
+pub mod coh;
 pub mod data;
 pub mod export;
 pub mod golden;

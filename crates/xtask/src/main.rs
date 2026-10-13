@@ -9,10 +9,14 @@
 //! - **Logs.** Each run tees its output to `runs/s5-logs/<stage>-<unix time>.log`.
 //! - **Resume.** A finished step leaves `runs/s5-state/<stage>/<step>.done` holding its command
 //!   line; a rerun skips the steps whose command line is unchanged (`--force` reruns them).
+//! - **Experiments.** The stages of [`exp`] are built against the store (their runs depend on
+//!   earlier validation results); `--jobs N` runs up to N of their independent steps at once
+//!   under one GPU lock, `--runs a,b` names the runs of `eval`.
 //!
 //! The binaries are built in release mode from the checkout `cargo xtask` runs in, and run with
 //! the store as their working directory.
 
+mod exp;
 mod regress;
 mod stages;
 
@@ -32,7 +36,7 @@ const XCODE: &str = "/Applications/Xcode.app/Contents/Developer";
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run]\n  cargo xtask store\n  \
+        "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run] [--jobs N] [--runs a,b]\n  cargo xtask store\n  \
          cargo xtask regress [--update]\n\n\
          SKYCMD_STORE must point at the main checkout of this repository."
     );
@@ -69,21 +73,36 @@ fn main() -> Result<()> {
                         }
                     );
                 }
+                for (n, about) in exp::STAGES {
+                    println!("{n:<16} {about}");
+                }
                 return Ok(());
             }
-            let force = args.iter().any(|a| a == "--force");
-            let dry = args.iter().any(|a| a == "--dry-run");
-            if let Some(bad) = args[2..]
-                .iter()
-                .find(|a| *a != "--force" && *a != "--dry-run")
-            {
-                bail!("unknown argument {bad:?}");
+            let (mut force, mut dry, mut jobs, mut runs) = (false, false, 1usize, None);
+            let mut it = args[2..].iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--force" => force = true,
+                    "--dry-run" => dry = true,
+                    "--jobs" => {
+                        jobs = it
+                            .next()
+                            .and_then(|v| v.parse().ok())
+                            .filter(|&n| n >= 1)
+                            .context("--jobs N (N >= 1)")?
+                    }
+                    "--runs" => runs = Some(it.next().context("--runs a,b")?.clone()),
+                    bad => bail!("unknown argument {bad:?}"),
+                }
             }
             let all = stages();
-            let Some(stage) = all.iter().find(|s| s.name == *name) else {
-                bail!("unknown stage {name:?} (cargo xtask s5 list)");
-            };
-            run_stage(stage, force, dry)
+            if let Some(stage) = all.iter().find(|s| s.name == *name) {
+                return run_stage(stage, force, dry, jobs);
+            }
+            match exp::stage(name, &store()?, runs.as_deref())? {
+                Some(stage) => run_stage(&stage, force, dry, jobs),
+                None => bail!("unknown stage {name:?} (cargo xtask s5 list)"),
+            }
         }
         _ => usage(),
     }
@@ -169,7 +188,7 @@ impl Log {
     }
 }
 
-fn run_stage(stage: &Stage, force: bool, dry: bool) -> Result<()> {
+fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
     let store = store()?;
     let root = checkout();
     let bin = root.join("target/release");
@@ -210,19 +229,25 @@ fn run_stage(stage: &Stage, force: bool, dry: bool) -> Result<()> {
             "[xtask] cargo build --release -p {}",
             packages.join(" -p ")
         ));
-        run(&mut cmd, &log).context("building the stage binaries")?;
+        run(&mut cmd, &log, "").context("building the stage binaries")?;
     }
 
-    let mut _gpu: Option<File> = None;
+    // Experiment stages are rebuilt with other step lists: their resume key is the step name.
+    let dynamic = exp::STAGES.iter().any(|(n, _)| *n == stage.name);
+    let mut pending = Vec::new();
     for (i, step) in stage.steps.iter().enumerate() {
-        let argv = step.argv(&store, &bin);
+        let argv = step.argv(&store, &bin, &root);
         // The resume key names our programs without the checkout path, so that a step done
         // from one worktree is not redone from another.
         let line = std::iter::once(step.prog)
             .chain(argv[1..].iter().map(String::as_str))
             .collect::<Vec<_>>()
             .join(" ");
-        let done = state.join(format!("{i:02}-{}.done", step.name));
+        let done = if dynamic {
+            state.join(format!("{}.done", step.name))
+        } else {
+            state.join(format!("{i:02}-{}.done", step.name))
+        };
         if !force && fs::read_to_string(&done).is_ok_and(|s| s.trim() == line) {
             log.line(&format!("[xtask] skip {} (done)", step.name));
             continue;
@@ -231,23 +256,62 @@ fn run_stage(stage: &Stage, force: bool, dry: bool) -> Result<()> {
             log.line(&format!("[xtask] would run {}: {line}", step.name));
             continue;
         }
-        if step.gpu && _gpu.is_none() {
-            _gpu = Some(gpu_lock(&store, &log)?);
+        pending.push((step, argv, line, done));
+    }
+    let mut _gpu: Option<File> = None;
+    if pending.iter().any(|p| p.0.gpu) {
+        _gpu = Some(gpu_lock(&store, &log)?);
+    }
+    // Up to `jobs` steps at once (in order); after a failure no new step starts.
+    let failed: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    std::thread::scope(|scope| {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mut running = 0usize;
+        for (step, argv, line, done) in pending {
+            if running == jobs {
+                let _ = rx.recv();
+                running -= 1;
+            }
+            if !failed.lock().map(|f| f.is_empty()).unwrap_or(false) {
+                break;
+            }
+            running += 1;
+            let (tx, log, store, failed) = (tx.clone(), log.clone(), &store, &failed);
+            let prefix = if jobs > 1 {
+                format!("[{}] ", step.name)
+            } else {
+                String::new()
+            };
+            scope.spawn(move || {
+                log.line(&format!("[xtask] run {}: {line}", step.name));
+                let t0 = std::time::Instant::now();
+                let mut cmd = Command::new(&argv[0]);
+                cmd.args(&argv[1..]).current_dir(store);
+                for (k, v) in &step.env {
+                    cmd.env(k, v);
+                }
+                let res = run(&mut cmd, &log, &prefix)
+                    .and_then(|()| Ok(fs::write(&done, format!("{line}\n"))?));
+                match res {
+                    Ok(()) => log.line(&format!(
+                        "[xtask] ok {} in {:.1}s",
+                        step.name,
+                        t0.elapsed().as_secs_f64()
+                    )),
+                    Err(e) => {
+                        log.line(&format!("[xtask] FAILED {}: {e:#}", step.name));
+                        if let Ok(mut f) = failed.lock() {
+                            f.push(step.name.clone());
+                        }
+                    }
+                }
+                let _ = tx.send(());
+            });
         }
-        log.line(&format!("[xtask] run {}: {line}", step.name));
-        let t0 = std::time::Instant::now();
-        let mut cmd = Command::new(&argv[0]);
-        cmd.args(&argv[1..]).current_dir(&store);
-        for (k, v) in &step.env {
-            cmd.env(k, v);
-        }
-        run(&mut cmd, &log).with_context(|| format!("step {} failed", step.name))?;
-        fs::write(&done, format!("{line}\n"))?;
-        log.line(&format!(
-            "[xtask] ok {} in {:.1}s",
-            step.name,
-            t0.elapsed().as_secs_f64()
-        ));
+    });
+    let failed = failed.into_inner().unwrap_or_default();
+    if !failed.is_empty() {
+        bail!("stage {}: failed steps {failed:?}", stage.name);
     }
     log.line(&format!("[xtask] stage {} complete", stage.name));
     Ok(())
@@ -274,8 +338,9 @@ fn gpu_lock(store: &Path, log: &Log) -> Result<File> {
     Ok(f)
 }
 
-/// Runs a command, copying its stdout and stderr to the terminal and the log line by line.
-fn run(cmd: &mut Command, log: &Log) -> Result<()> {
+/// Runs a command, copying its stdout and stderr to the terminal and the log line by line
+/// (each line after `prefix`).
+fn run(cmd: &mut Command, log: &Log, prefix: &str) -> Result<()> {
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -288,10 +353,10 @@ fn run(cmd: &mut Command, log: &Log) -> Result<()> {
     let threads: Vec<_> = pipes
         .into_iter()
         .map(|p| {
-            let log = log.clone();
+            let (log, prefix) = (log.clone(), prefix.to_string());
             std::thread::spawn(move || {
                 for line in BufReader::new(p).lines().map_while(Result::ok) {
-                    log.line(&line);
+                    log.line(&format!("{prefix}{line}"));
                 }
             })
         })
@@ -312,27 +377,29 @@ impl Step {
         Some(match self.prog {
             "sky-data" => "sky-data",
             "sky-train" => "sky-train",
-            "sky-eval" | "sky-convert" | "sky-bench" => "sky-infer",
+            "sky-eval" | "sky-convert" | "sky-bench" | "sky-compare" | "sky-s5-report" => {
+                "sky-infer"
+            }
             "skycmd" => "sky-serve",
             "sky-arena" => "sky-arena",
             _ => return None,
         })
     }
 
-    /// The command line, with `{store}` replaced by the store path and our programs resolved
-    /// to `target/release`.
-    fn argv(&self, store: &Path, bin: &Path) -> Vec<String> {
+    /// The command line, with `{store}` replaced by the store path, `{checkout}` by the
+    /// checkout (read-only inputs committed in the repository, e.g. `eval/s5/`) and our
+    /// programs resolved to `target/release`.
+    fn argv(&self, store: &Path, bin: &Path, checkout: &Path) -> Vec<String> {
         let prog = if self.package().is_some() {
             bin.join(self.prog).display().to_string()
         } else {
             self.prog.to_string()
         };
         std::iter::once(prog)
-            .chain(
-                self.args
-                    .iter()
-                    .map(|a| a.replace("{store}", &store.display().to_string())),
-            )
+            .chain(self.args.iter().map(|a| {
+                a.replace("{store}", &store.display().to_string())
+                    .replace("{checkout}", &checkout.display().to_string())
+            }))
             .collect()
     }
 }
@@ -374,7 +441,9 @@ mod tests {
                 // (working directory), absolute ones must start with {store}.
                 for a in &t.args {
                     assert!(
-                        !a.starts_with('/') || a.starts_with("{store}"),
+                        !a.starts_with('/')
+                            || a.starts_with("{store}")
+                            || a.starts_with("{checkout}"),
                         "{}/{}: absolute path outside the store: {a}",
                         s.name,
                         t.name
@@ -387,7 +456,11 @@ mod tests {
     #[test]
     fn argv_substitutes_the_store() {
         let s = Step::new("x", "sky-data", &["--out", "{store}/data/s5/x"]);
-        let v = s.argv(Path::new("/st"), Path::new("/co/target/release"));
+        let v = s.argv(
+            Path::new("/st"),
+            Path::new("/co/target/release"),
+            Path::new("/co"),
+        );
         assert_eq!(v, ["/co/target/release/sky-data", "--out", "/st/data/s5/x"]);
     }
 }

@@ -3,20 +3,28 @@
 //!
 //! Recipe: AdamW everywhere (no Muon), the fresh head at `head_lr_mult` times the encoder rate,
 //! linear warmup then linear decay, an exponential moving average of the weights (evaluated and
-//! exported), loss = soft CE + Brier + RPS on `score` questions (+ symmetric KL on pairs), no
-//! label smoothing.
+//! exported), loss = soft CE + Brier + RPS on `score` questions (+ symmetric KL on pairs, +
+//! `coh` × the coherence losses of [`crate::s5::coh`]), no label smoothing.
 //!
 //! Variants: **A** is the Laya layout with the records' option names; **A′** the same layout
 //! with the shared augmentation's random names and polarity swaps rendered (see
 //! [`crate::s5::data`]); **B-i** / **B-ii** the iso layout of [`crate::s5::iso`] (definitions
 //! only, options isolated), with the options at a shared offset (i) or reset to 0 (ii).
 //!
+//! **Sampling.** Training records fall in groups (`typed`: the typed-decisions train split;
+//! `coherence`: the families of [`crate::s5::coh`]; `pairs`; `gen`; `corpus`: the rest), drawn
+//! with `--group-weights`. A coherence family is always drawn whole (CH, every S_k and N_k),
+//! whatever `coh`, so that every value of λ trains on the same data. Every variant draws the
+//! same groups, items and augmentations from the same seed.
+//!
 //! A checkpoint `<out>/last` holds `model.safetensors` (the EMA weights, in the s1 names, so
 //! that `sky-train export` turns variant A into the Laya / oscar layout), `raw.safetensors`
 //! and `optimizer.safetensors` (to resume), `config.json`, `tokenizer.json`,
-//! `rl_agent_config.json` and `s5.json` (the training settings).
+//! `rl_agent_config.json` and `s5.json` (the training settings). At the end, `<out>/val.json`
+//! reports the EMA model on the whole val split: overall, per group, and the coherence metrics
+//! of the val families (the selection criteria of the pre-registration).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -31,10 +39,11 @@ use crate::model::{self, DecisionBatch};
 use crate::optim::{warmup_linear, OptConfig, Optimizer};
 use crate::params::{self, ParamMap, Parts};
 use crate::rng::Rng;
+use crate::s5::coh::{self, CohSpec};
 use crate::s5::data::{
-    self, draw, laya_batch, laya_row, link_pairs, native_tokens, Augment, Draw, LayaBatch, S5Item,
+    self, draw, laya_batch, laya_row, link_pairs, native_tokens, Augment, Draw, LayaRow, S5Item,
 };
-use crate::s5::iso::{self, iso_batch, iso_row, IsoBatch, IsoRow, Positions};
+use crate::s5::iso::{self, iso_batch, iso_row, IsoRow, Positions};
 use crate::s5::loss::{self, LossWeights, Pairs};
 use crate::s5::score::read_s5;
 use crate::sequence::Tok;
@@ -119,6 +128,9 @@ pub struct TrainArgs {
     /// Weight of the symmetric KL between pair members.
     #[arg(long, default_value_t = 0.0)]
     pub kl: f32,
+    /// Weight λ of the coherence losses (bet 2).
+    #[arg(long, default_value_t = 0.0)]
+    pub coh: f32,
     #[arg(long, default_value_t = 0.5)]
     pub p_names: f64,
     #[arg(long, default_value_t = 0.25)]
@@ -127,13 +139,22 @@ pub struct TrainArgs {
     pub max_len: usize,
     #[arg(long, default_value_t = 192)]
     pub head_max_len: usize,
+    /// Languages of the training records (`en`: records without `lang`).
+    #[arg(long, value_delimiter = ',', default_value = "en")]
+    pub langs: Vec<String>,
+    /// Sampling weights of the record groups.
+    #[arg(
+        long,
+        default_value = "typed=0.25,corpus=0.4,gen=0.15,pairs=0.1,coherence=0.1"
+    )]
+    pub group_weights: String,
     #[arg(long, default_value_t = 0)]
     pub seed: u64,
     #[arg(long, default_value_t = 50)]
     pub log_every: u64,
     #[arg(long, default_value_t = 500)]
     pub eval_every: u64,
-    /// Validation questions per evaluation.
+    /// Validation questions per intermediate evaluation (the final one uses every val record).
     #[arg(long, default_value_t = 2000)]
     pub val_max: usize,
     #[arg(long, default_value_t = 1000)]
@@ -165,68 +186,209 @@ pub fn ema_update(ema: &mut ParamMap, p: &ParamMap, decay: f32) -> Result<()> {
     Ok(())
 }
 
-fn decision_batch(b: &LayaBatch) -> DecisionBatch {
-    DecisionBatch {
-        ids: b.ids.clone(),
-        key_valid: Some(b.key_valid.clone()),
-        qtype: b.qtype.clone(),
-        marker_pos: b.marker_pos.clone(),
-        marker_mask: b.marker_mask.clone(),
-        target: Array::from_f32(0.0),
-        n_tokens: b.n_tokens,
+/// Group of a training record.
+pub fn group_of(it: &S5Item) -> &'static str {
+    let src = it.rec.src.as_str();
+    if src.starts_with("coh_") {
+        "coherence"
+    } else if it.rec.uid.contains('#') {
+        "pairs"
+    } else if src.starts_with("typed_decisions_train") {
+        "typed"
+    } else if src.starts_with("gen_") {
+        "gen"
+    } else {
+        "corpus"
     }
 }
 
-/// A training batch of either layout.
-pub enum Batch {
-    Laya(LayaBatch),
-    Iso(IsoBatch),
+fn parse_weights(spec: &str) -> Result<Vec<(String, f64)>> {
+    spec.split(',')
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| {
+            let (k, v) = p
+                .split_once('=')
+                .with_context(|| format!("bad weight {p:?}"))?;
+            Ok((k.trim().to_string(), v.trim().parse()?))
+        })
+        .collect()
 }
 
-impl Batch {
-    fn n_tokens(&self) -> usize {
-        match self {
-            Batch::Laya(b) => b.n_tokens,
-            Batch::Iso(b) => b.n_tokens,
-        }
-    }
+/// Item indices per group, and the coherence families (CH first, then S_k / N_k by k).
+struct Sampler {
+    groups: Vec<(String, f64, Vec<usize>)>,
+    families: Vec<Vec<usize>>,
+}
 
-    /// Batch arrays in the order of the compiled function.
-    fn arrays(&self) -> Vec<Array> {
+impl Sampler {
+    fn new(train: &[S5Item], weights: &[(String, f64)]) -> Self {
+        let mut by: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        let mut fam: BTreeMap<String, Vec<(char, usize, usize)>> = BTreeMap::new();
+        for (i, it) in train.iter().enumerate() {
+            let g = group_of(it);
+            if g == "coherence" {
+                if let Some((gid, kind, k)) = coh::parse(&it.rec.uid) {
+                    fam.entry(gid.to_string()).or_default().push((kind, k, i));
+                }
+            }
+            by.entry(g).or_default().push(i);
+        }
+        let families: Vec<Vec<usize>> = fam
+            .into_values()
+            .filter(|f| f.iter().any(|x| x.0 == 'C') && f.iter().any(|x| x.0 == 'S'))
+            .map(|mut f| {
+                f.sort_by_key(|&(kind, k, _)| (kind != 'C', k, kind));
+                f.into_iter().map(|x| x.2).collect()
+            })
+            .collect();
+        let groups = weights
+            .iter()
+            .map(|(name, w)| {
+                let idx = by.get(name.as_str()).cloned().unwrap_or_default();
+                let w = if name == "coherence" {
+                    if families.is_empty() {
+                        0.0
+                    } else {
+                        *w
+                    }
+                } else if idx.is_empty() {
+                    0.0
+                } else {
+                    *w
+                };
+                (name.clone(), w, idx)
+            })
+            .collect();
+        Self { groups, families }
+    }
+}
+
+/// One row of either layout.
+enum AnyRow {
+    Laya(LayaRow),
+    Iso(IsoRow),
+}
+
+impl AnyRow {
+    fn order(&self) -> &[usize] {
         match self {
-            Batch::Laya(b) => vec![
-                b.ids.clone(),
-                b.key_valid.clone(),
-                b.qtype.clone(),
-                b.marker_pos.clone(),
-                b.marker_mask.clone(),
-                b.target.clone(),
-                b.is_score.clone(),
-                b.k.clone(),
-                b.pairs.left.clone(),
-                b.pairs.right.clone(),
-                b.pairs.map.clone(),
-                b.pairs.mask.clone(),
-                b.pairs.weight.clone(),
-            ],
-            Batch::Iso(b) => vec![
-                b.ids.clone(),
-                b.seg.clone(),
-                b.pos.clone(),
-                b.pool.clone(),
-                b.qpool.clone(),
-                b.opt_mask.clone(),
-                b.target.clone(),
-                b.is_score.clone(),
-                b.k.clone(),
-                b.pairs.left.clone(),
-                b.pairs.right.clone(),
-                b.pairs.map.clone(),
-                b.pairs.mask.clone(),
-                b.pairs.weight.clone(),
-            ],
+            AnyRow::Laya(r) => &r.order,
+            AnyRow::Iso(r) => &r.order,
         }
     }
+}
+
+/// The row of an item under a draw (`None` when its options do not fit).
+fn build_row(
+    item: &S5Item,
+    d: &Draw,
+    variant: Variant,
+    tok: &Tok,
+    cfg: &ModelConfig,
+) -> Result<Option<AnyRow>> {
+    if let Some(pos) = variant.iso() {
+        return Ok(iso_row(
+            item,
+            d,
+            cfg.rl_agent.max_len,
+            cfg.rl_agent.head_max_len,
+            pos,
+            &cfg.special,
+        )
+        .map(AnyRow::Iso));
+    }
+    let opts = if variant.renders_names() {
+        native_tokens(item, d, tok, &cfg.special)?
+    } else {
+        item.native.clone()
+    };
+    let r = laya_row(
+        item,
+        d,
+        &opts,
+        cfg.rl_agent.max_len,
+        cfg.rl_agent.head_max_len,
+        &cfg.special,
+    );
+    Ok((r.markers.len() == item.k()).then_some(AnyRow::Laya(r)))
+}
+
+/// Display position of the "true" option of a noul row (1 otherwise).
+fn true_pos(item: &S5Item, row: &AnyRow) -> i32 {
+    if item.rec.t == "noul" {
+        row.order().iter().position(|&o| o == 1).unwrap_or(1) as i32
+    } else {
+        1
+    }
+}
+
+/// Batch arrays in the order of the compiled function.
+fn batch_arrays(
+    rows: Vec<AnyRow>,
+    pairs: &[(usize, usize)],
+    spec: &CohSpec,
+) -> (Vec<Array>, usize) {
+    let n = rows.len();
+    let mut out = if matches!(rows.first(), Some(AnyRow::Iso(_))) {
+        let r: Vec<IsoRow> = rows
+            .into_iter()
+            .filter_map(|r| match r {
+                AnyRow::Iso(x) => Some(x),
+                AnyRow::Laya(_) => None,
+            })
+            .collect();
+        let b = iso_batch(&r, pairs);
+        let t = b.n_tokens;
+        (
+            vec![
+                b.ids,
+                b.seg,
+                b.pos,
+                b.pool,
+                b.qpool,
+                b.opt_mask,
+                b.target,
+                b.is_score,
+                b.k,
+                b.pairs.left,
+                b.pairs.right,
+                b.pairs.map,
+                b.pairs.mask,
+                b.pairs.weight,
+            ],
+            t,
+        )
+    } else {
+        let r: Vec<LayaRow> = rows
+            .into_iter()
+            .filter_map(|r| match r {
+                AnyRow::Laya(x) => Some(x),
+                AnyRow::Iso(_) => None,
+            })
+            .collect();
+        let b = laya_batch(&r, pairs);
+        let t = b.n_tokens;
+        (
+            vec![
+                b.ids,
+                b.key_valid,
+                b.qtype,
+                b.marker_pos,
+                b.marker_mask,
+                b.target,
+                b.is_score,
+                b.k,
+                b.pairs.left,
+                b.pairs.right,
+                b.pairs.map,
+                b.pairs.mask,
+                b.pairs.weight,
+            ],
+            t,
+        )
+    };
+    out.0.extend(coh::arrays(spec, n));
+    out
 }
 
 fn compiled(
@@ -234,48 +396,51 @@ fn compiled(
     variant: Variant,
     names: Vec<std::rc::Rc<str>>,
     w: LossWeights,
+    lambda: f32,
 ) -> CompiledGrad {
     let cfg = cfg.clone();
-    if variant.iso().is_some() {
-        return CompiledGrad::new(names, move |p, b| {
-            let logits = iso::iso_logits(p, &cfg, &b[0], &b[1], &b[2], &b[3], &b[4], &b[5])?;
-            let pairs = Pairs {
-                left: b[9].clone(),
-                right: b[10].clone(),
-                map: b[11].clone(),
-                mask: b[12].clone(),
-                weight: b[13].clone(),
-            };
-            loss::total(&logits, &b[6], &b[7], &b[8], Some(&pairs), &w)
-        });
-    }
+    let iso_layout = variant.iso().is_some();
     CompiledGrad::new(names, move |p, b| {
-        let batch = DecisionBatch {
-            ids: b[0].clone(),
-            key_valid: Some(b[1].clone()),
-            qtype: b[2].clone(),
-            marker_pos: b[3].clone(),
-            marker_mask: b[4].clone(),
-            target: b[5].clone(),
-            n_tokens: 0,
+        // Layout-specific inputs, then (target, is_score, k), the 5 pair arrays, coherence.
+        let (logits, t0) = if iso_layout {
+            (
+                iso::iso_logits(p, &cfg, &b[0], &b[1], &b[2], &b[3], &b[4], &b[5])?,
+                6,
+            )
+        } else {
+            let batch = DecisionBatch {
+                ids: b[0].clone(),
+                key_valid: Some(b[1].clone()),
+                qtype: b[2].clone(),
+                marker_pos: b[3].clone(),
+                marker_mask: b[4].clone(),
+                target: b[5].clone(),
+                n_tokens: 0,
+            };
+            (model::decision_forward(p, &cfg, &batch)?, 5)
         };
-        let logits = model::decision_forward(p, &cfg, &batch)?;
         let pairs = Pairs {
-            left: b[8].clone(),
-            right: b[9].clone(),
-            map: b[10].clone(),
-            mask: b[11].clone(),
-            weight: b[12].clone(),
+            left: b[t0 + 3].clone(),
+            right: b[t0 + 4].clone(),
+            map: b[t0 + 5].clone(),
+            mask: b[t0 + 6].clone(),
+            weight: b[t0 + 7].clone(),
         };
-        loss::total(&logits, &b[5], &b[6], &b[7], Some(&pairs), &w)
+        let base = loss::total(&logits, &b[t0], &b[t0 + 1], &b[t0 + 2], Some(&pairs), &w)?;
+        if lambda == 0.0 {
+            return Ok(base);
+        }
+        let c = coh::loss(&logits, &b[t0 + 8..t0 + 8 + coh::N_ARRAYS])?;
+        base.add(c.multiply(Array::from_f32(lambda))?)
     })
 }
 
-/// The rows of a training batch: `batch` sampled items (and their pair partners when the
-/// KL is on), each with its own augmentation draw.
+/// The rows of a training batch: groups drawn by weight; a coherence family whole; an item
+/// with a pair partner (KL on) with its partner. Every row has its own augmentation draw.
 #[allow(clippy::too_many_arguments)]
 fn sample(
     train: &[S5Item],
+    sampler: &Sampler,
     a: &TrainArgs,
     variant: Variant,
     aug: &Augment,
@@ -283,90 +448,83 @@ fn sample(
     tok: &Tok,
     cfg: &ModelConfig,
     w: &LossWeights,
-) -> Result<Batch> {
-    if let Some(positions) = variant.iso() {
-        return sample_iso(train, a, positions, aug, rng, cfg, w).map(Batch::Iso);
-    }
-    let mut rows = Vec::with_capacity(2 * a.batch);
+) -> Result<(Vec<Array>, usize)> {
+    let mut rows: Vec<AnyRow> = Vec::with_capacity(2 * a.batch);
     let mut pairs = Vec::new();
-    let push = |item: &S5Item, d: &Draw, rows: &mut Vec<data::LayaRow>| -> Result<bool> {
-        let opts = if variant.renders_names() {
-            native_tokens(item, d, tok, &cfg.special)?
-        } else {
-            item.native.clone()
-        };
-        let r = laya_row(
-            item,
-            d,
-            &opts,
-            cfg.rl_agent.max_len,
-            cfg.rl_agent.head_max_len,
-            &cfg.special,
-        );
-        if r.markers.len() != item.k() {
-            return Ok(false);
-        }
-        rows.push(r);
-        Ok(true)
-    };
+    let mut spec = CohSpec::default();
+    let weights: Vec<f64> = sampler.groups.iter().map(|g| g.1).collect();
     while rows.len() < a.batch {
-        let i = rng.below(train.len());
-        let d = draw(&train[i], aug, rng);
-        let partner = train[i].pair.filter(|_| w.kl != 0.0);
-        let dp = partner.map(|j| draw(&train[j], aug, rng));
-        let at = rows.len();
-        if !push(&train[i], &d, &mut rows)? {
-            continue;
-        }
-        if let (Some(j), Some(dp)) = (partner, dp) {
-            if push(&train[j], &dp, &mut rows)? {
-                pairs.push((at, at + 1));
+        let gi = rng.weighted(&weights);
+        let (name, _, idx) = &sampler.groups[gi];
+        if name == "coherence" {
+            let fam = &sampler.families[rng.below(sampler.families.len())];
+            let start = rows.len();
+            let mut built = Vec::with_capacity(fam.len());
+            let mut ok = true;
+            for &i in fam {
+                let d = draw(&train[i], aug, rng);
+                match build_row(&train[i], &d, variant, tok, cfg)? {
+                    Some(r) => built.push((i, r)),
+                    None => ok = false,
+                }
             }
+            if !ok {
+                continue;
+            }
+            let mut ch: Option<(usize, Vec<usize>)> = None;
+            let mut s_rows: BTreeMap<usize, usize> = BTreeMap::new();
+            let mut n_rows: BTreeMap<usize, usize> = BTreeMap::new();
+            for (j, (i, r)) in built.into_iter().enumerate() {
+                let row_idx = start + j;
+                spec.tpos.resize(row_idx, 1);
+                spec.tpos.push(true_pos(&train[i], &r));
+                match coh::parse(&train[i].rec.uid) {
+                    Some((_, 'C', _)) => ch = Some((row_idx, r.order().to_vec())),
+                    Some((_, 'S', k)) => {
+                        s_rows.insert(k, row_idx);
+                    }
+                    Some((_, 'N', k)) => {
+                        n_rows.insert(k, row_idx);
+                    }
+                    _ => {}
+                }
+                rows.push(r);
+            }
+            for (k, &s) in &s_rows {
+                if let Some(&n) = n_rows.get(k) {
+                    spec.neg.push((s, n));
+                }
+                if let Some((c, order)) = &ch {
+                    if let Some(pos) = order.iter().position(|o| o == k) {
+                        spec.xf.push((s, *c, pos));
+                    }
+                }
+            }
+            if ch.as_ref().is_some_and(|(_, o)| o.len() == s_rows.len()) {
+                spec.part.push(s_rows.values().copied().collect());
+            }
+            continue;
         }
-    }
-    Ok(Batch::Laya(laya_batch(&rows, &pairs)))
-}
-
-/// [`sample`] for an iso variant: the same item and augmentation draws.
-fn sample_iso(
-    train: &[S5Item],
-    a: &TrainArgs,
-    positions: Positions,
-    aug: &Augment,
-    rng: &mut Rng,
-    cfg: &ModelConfig,
-    w: &LossWeights,
-) -> Result<IsoBatch> {
-    let mut rows: Vec<IsoRow> = Vec::with_capacity(2 * a.batch);
-    let mut pairs = Vec::new();
-    let row = |item: &S5Item, d: &Draw| {
-        iso_row(
-            item,
-            d,
-            cfg.rl_agent.max_len,
-            cfg.rl_agent.head_max_len,
-            positions,
-            &cfg.special,
-        )
-    };
-    while rows.len() < a.batch {
-        let i = rng.below(train.len());
+        let i = idx[rng.below(idx.len())];
         let d = draw(&train[i], aug, rng);
         let partner = train[i].pair.filter(|_| w.kl != 0.0);
         let dp = partner.map(|j| draw(&train[j], aug, rng));
-        let Some(r) = row(&train[i], &d) else {
+        let Some(r) = build_row(&train[i], &d, variant, tok, cfg)? else {
             continue;
         };
         let at = rows.len();
+        spec.tpos.resize(at, 1);
+        spec.tpos.push(true_pos(&train[i], &r));
         rows.push(r);
         if let (Some(j), Some(dp)) = (partner, dp) {
-            if let Some(r) = row(&train[j], &dp) {
+            if let Some(r) = build_row(&train[j], &dp, variant, tok, cfg)? {
+                spec.tpos.push(true_pos(&train[j], &r));
                 rows.push(r);
                 pairs.push((at, at + 1));
             }
         }
     }
-    Ok(iso_batch(&rows, &pairs))
+    Ok(batch_arrays(rows, &pairs, &spec))
 }
 
 /// Logits of `items` (identity order) under an iso variant.
@@ -418,12 +576,24 @@ pub fn predict_iso(
                 target: it.target.clone(),
                 qtype: it.qtype,
                 src: it.rec.src.clone(),
-                group: it.rec.lang.clone(),
+                group: it.rec.uid.clone(),
             });
         }
         start = end;
     }
     Ok(out.into_iter().flatten().collect())
+}
+
+fn decision_batch(b: &data::LayaBatch) -> DecisionBatch {
+    DecisionBatch {
+        ids: b.ids.clone(),
+        key_valid: Some(b.key_valid.clone()),
+        qtype: b.qtype.clone(),
+        marker_pos: b.marker_pos.clone(),
+        marker_mask: b.marker_mask.clone(),
+        target: Array::from_f32(0.0),
+        n_tokens: b.n_tokens,
+    }
 }
 
 /// Logits of `items` (identity order, the records' names) under `params`.
@@ -434,7 +604,7 @@ pub fn predict(
     max_tokens: usize,
 ) -> Result<Vec<Pred>> {
     let mut order: Vec<usize> = (0..items.len()).collect();
-    let rows: Vec<data::LayaRow> = items
+    let rows: Vec<LayaRow> = items
         .iter()
         .map(|it| {
             let d = Draw {
@@ -451,6 +621,7 @@ pub fn predict(
             )
         })
         .collect();
+    order.retain(|&i| rows[i].markers.len() == items[i].k());
     order.sort_by_key(|&i| rows[i].ids.len());
     let mut out: Vec<Option<Pred>> = vec![None; items.len()];
     let mut start = 0;
@@ -461,20 +632,19 @@ pub fn predict(
         {
             end += 1;
         }
-        let sel: Vec<data::LayaRow> = order[start..end].iter().map(|&i| rows[i].clone()).collect();
+        let sel: Vec<LayaRow> = order[start..end].iter().map(|&i| rows[i].clone()).collect();
         let b = laya_batch(&sel, &[]);
         let logits = model::decision_forward(params, cfg, &decision_batch(&b))?;
         let k = logits.dim(1) as usize;
         let flat = model::host_f32(&logits)?;
         for (r, &i) in order[start..end].iter().enumerate() {
             let it = items[i];
-            let kk = rows[i].markers.len();
             out[i] = Some(Pred {
-                logits: flat[r * k..r * k + kk].to_vec(),
+                logits: flat[r * k..r * k + it.k()].to_vec(),
                 target: it.target.clone(),
                 qtype: it.qtype,
                 src: it.rec.src.clone(),
-                group: it.rec.lang.clone(),
+                group: it.rec.uid.clone(),
             });
         }
         start = end;
@@ -530,6 +700,35 @@ fn save(
     Ok(())
 }
 
+/// The final validation report: overall, per group, coherence of the val families.
+fn val_report(preds: &[Pred], val: &[S5Item]) -> serde_json::Value {
+    let by_uid: HashMap<&str, &S5Item> = val.iter().map(|it| (it.rec.uid.as_str(), it)).collect();
+    let all = metrics::compute(preds.iter(), |_| 1.0);
+    let mut groups: BTreeMap<&str, Vec<&Pred>> = BTreeMap::new();
+    let mut coh_items: Vec<(&str, Vec<f64>)> = Vec::new();
+    for p in preds {
+        let Some(it) = by_uid.get(p.group.as_str()) else {
+            continue;
+        };
+        let g = group_of(it);
+        groups.entry(g).or_default().push(p);
+        if g == "coherence" {
+            coh_items.push((it.rec.uid.as_str(), metrics::softmax_t(&p.logits, 1.0)));
+        }
+    }
+    let per: BTreeMap<&str, metrics::Metrics> = groups
+        .iter()
+        .map(|(g, v)| (*g, metrics::compute(v.iter().copied(), |_| 1.0)))
+        .collect();
+    let (mad, part, part_dev, xf, n_pairs) = coh::metrics(&coh_items);
+    json!({
+        "all": all,
+        "groups": per,
+        "coherence": {"mad_neg": mad, "partition_mean": part, "partition_abs_dev": part_dev,
+                      "xf_abs": xf, "pairs": n_pairs},
+    })
+}
+
 pub fn train(a: &TrainArgs) -> Result<()> {
     let variant = Variant::parse(&a.variant)?;
     let last = a.out.join("last");
@@ -546,8 +745,12 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     let tok_json = std::fs::read(&tok_path)?;
 
     let t_load = Instant::now();
-    let recs = read_s5(&a.records)?;
+    let mut recs = read_s5(&a.records)?;
     let n_all = recs.len();
+    recs.retain(|r| {
+        let l = if r.lang.is_empty() { "en" } else { &r.lang };
+        a.langs.iter().any(|x| x == l)
+    });
     let (mut train, mut val) = (Vec::new(), Vec::new());
     for r in recs {
         match r.split.as_str() {
@@ -559,14 +762,19 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     let mut train = data::tokenize(&tok, &cfg.special, train)?;
     let val = data::tokenize(&tok, &cfg.special, val)?;
     link_pairs(&mut train);
-    let n_pairs = train.iter().filter(|i| i.pair.is_some()).count() / 2;
+    let weights = parse_weights(&a.group_weights)?;
+    let sampler = Sampler::new(&train, &weights);
     println!(
-        "{} records: {} train ({n_pairs} pairs), {} val, others ignored ({:.1}s)",
-        n_all,
+        "{n_all} records; languages {:?}: {} train, {} val ({:.1}s)",
+        a.langs,
         train.len(),
         val.len(),
         t_load.elapsed().as_secs_f64()
     );
+    for (g, w, idx) in &sampler.groups {
+        println!("  group {g}: {} items, weight {w}", idx.len());
+    }
+    println!("  coherence families: {}", sampler.families.len());
     if train.is_empty() {
         bail!("no training records");
     }
@@ -634,7 +842,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
         )
     };
     println!(
-        "{} variant {:?}: {} parameters ({} encoder), {} steps of {}, lr {} (head x{}), {}",
+        "{} variant {:?}: {} parameters ({} encoder), {} steps of {}, lr {} (head x{}), λ {}, kl {}, {}",
         cfg.name,
         variant,
         params::count(&raw),
@@ -643,6 +851,8 @@ pub fn train(a: &TrainArgs) -> Result<()> {
         a.batch,
         a.lr,
         a.head_lr_mult,
+        a.coh,
+        a.kl,
         if a.bf16 { "bf16" } else { "f32" }
     );
     let aug = Augment {
@@ -655,6 +865,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
         rps: a.rps,
         kl: a.kl,
     };
+    let val_refs: Vec<&S5Item> = val.iter().collect();
     let val_items: Vec<&S5Item> = {
         let mut idx: Vec<usize> = (0..val.len()).collect();
         if idx.len() > a.val_max {
@@ -666,15 +877,18 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     };
     std::fs::create_dir_all(&a.out)?;
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
-    let mut f = compiled(&cfg, variant, sorted_names(&raw), w);
+    let mut f = compiled(&cfg, variant, sorted_names(&raw), w, a.coh);
+    let run_predict = |p: &ParamMap, items: &[&S5Item]| -> Result<Vec<Pred>> {
+        match variant.iso() {
+            Some(pos) => predict_iso(p, &cfg, pos, items, 16_384),
+            None => predict(p, &cfg, items, 16_384),
+        }
+    };
     let validate = |ema: &ParamMap, step: u64, log: &mut JsonLog| -> Result<()> {
         if val_items.is_empty() {
             return Ok(());
         }
-        let preds = match variant.iso() {
-            Some(pos) => predict_iso(ema, &cfg, pos, &val_items, 16_384)?,
-            None => predict(ema, &cfg, &val_items, 16_384)?,
-        };
+        let preds = run_predict(ema, &val_items)?;
         let m = report(&preds);
         let all = &m["all"];
         println!(
@@ -690,8 +904,18 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     let (mut wl, mut wt, mut wn, mut win) = (0.0f64, 0usize, 0u64, Instant::now());
     while st.step < a.steps {
         let lr_scale = warmup_linear(st.step as f64 / a.steps as f64, a.warmup) as f32;
-        let b = sample(&train, a, variant, &aug, &mut st.rng, &tok, &cfg, &w)?;
-        let (loss_arr, grads) = f.call(&raw, b.arrays())?;
+        let (arrays, n_tokens) = sample(
+            &train,
+            &sampler,
+            a,
+            variant,
+            &aug,
+            &mut st.rng,
+            &tok,
+            &cfg,
+            &w,
+        )?;
+        let (loss_arr, grads) = f.call(&raw, arrays)?;
         let (l, gn) = apply_update(&mut raw, &mut opt, loss_arr, &grads, lr_scale)?;
         if !l.is_finite() {
             bail!("non-finite loss at step {}", st.step);
@@ -704,7 +928,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
         st.step += 1;
         st.elapsed_secs = base + t0.elapsed().as_secs_f64();
         wl += l as f64;
-        wt += b.n_tokens();
+        wt += n_tokens;
         wn += 1;
         if st.step % a.log_every == 0 {
             let dt = win.elapsed().as_secs_f64();
@@ -720,21 +944,38 @@ pub fn train(a: &TrainArgs) -> Result<()> {
             )?;
             (wl, wt, wn, win) = (0.0, 0, 0, Instant::now());
         }
-        if st.step % a.eval_every == 0 {
+        if st.step % a.eval_every == 0 && st.step < a.steps {
             validate(&ema, st.step, &mut log)?;
         }
         if st.step % a.checkpoint_every == 0 && st.step < a.steps {
             save(&last, &raw, &ema, &opt, &cfg, &st, &tok_json)?;
         }
     }
-    if st.step % a.eval_every != 0 {
-        validate(&ema, st.step, &mut log)?;
-    }
     save(&last, &raw, &ema, &opt, &cfg, &st, &tok_json)?;
+    // The final report on every val record.
+    let preds = run_predict(&ema, &val_refs)?;
+    let mut rep = val_report(&preds, &val);
+    rep["step"] = json!(st.step);
+    rep["variant"] = json!(a.variant);
+    rep["lr"] = json!(a.lr);
+    rep["init"] = json!(a.init);
+    rep["coh"] = json!(a.coh);
+    rep["seed"] = json!(a.seed);
+    rep["minutes"] = json!(st.elapsed_secs / 60.0);
+    std::fs::write(
+        a.out.join("val.json"),
+        serde_json::to_string_pretty(&rep)? + "\n",
+    )?;
     println!(
-        "done: {} steps in {:.1} min, checkpoint {}",
+        "done: {} steps in {:.1} min; val (all {} records): acc {:.4} nll {:.4} ece {:.4}; \
+         coherence mad_neg {:.4}; checkpoint {}",
         st.step,
         st.elapsed_secs / 60.0,
+        rep["all"]["n"],
+        rep["all"]["accuracy"].as_f64().unwrap_or(f64::NAN),
+        rep["all"]["nll"].as_f64().unwrap_or(f64::NAN),
+        rep["all"]["ece"].as_f64().unwrap_or(f64::NAN),
+        rep["coherence"]["mad_neg"].as_f64().unwrap_or(f64::NAN),
         last.display()
     );
     Ok(())
