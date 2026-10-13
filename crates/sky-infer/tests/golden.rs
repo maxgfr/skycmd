@@ -2,13 +2,16 @@
 //!
 //! The reference outputs in tests/golden/oscar.json were produced once by
 //! tests/golden/make_golden.py (no Python runs here). The model files live in the gitignored
-//! models-src/oscar directory: the tests are skipped with a message when it is absent.
+//! models-src/oscar directory (see tests/models): a missing model fails the tests.
 //! Native only: the Laya checkpoint reader needs a file system.
 
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
+
+mod models;
+use models::oscar_dir;
 
 use sky_gguf::{GgmlType, Gguf};
 use sky_infer::convert::{ConvertOptions, LayaDir};
@@ -27,16 +30,6 @@ struct Case {
     probs: Vec<f32>,
     question_json: String,
     state_json: String,
-}
-
-fn oscar_dir() -> Option<PathBuf> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models-src/oscar");
-    if p.join("model.safetensors").exists() {
-        Some(p)
-    } else {
-        eprintln!("skipping golden test: {} is absent", p.display());
-        None
-    }
 }
 
 fn to_json_text(v: &Json) -> String {
@@ -116,7 +109,7 @@ fn cases() -> &'static Vec<Case> {
 
 fn laya() -> &'static LayaDir {
     static DIR: OnceLock<LayaDir> = OnceLock::new();
-    DIR.get_or_init(|| LayaDir::open(&oscar_dir().unwrap()).unwrap())
+    DIR.get_or_init(|| LayaDir::open(&oscar_dir()).unwrap())
 }
 
 fn engine_from_dir(opts: EngineOptions) -> Engine {
@@ -163,9 +156,6 @@ fn check(engine: &mut Engine, tol: f32, label: &str) -> f32 {
 
 #[test]
 fn golden_f32_safetensors() {
-    if oscar_dir().is_none() {
-        return;
-    }
     let mut e = engine_from_dir(EngineOptions::default());
     assert_eq!(e.model().cfg.num_layers, 7);
     assert_eq!(e.model().cfg.head_layers, 2);
@@ -184,9 +174,6 @@ const Q8_ALL: QuantizeSpec = QuantizeSpec {
 /// activations (with the residual pass, the default), i8 x i8 -> i32 products.
 #[test]
 fn golden_q8_safetensors() {
-    if oscar_dir().is_none() {
-        return;
-    }
     let mut e = engine_from_dir(EngineOptions {
         quantize: Some(Q8_ALL),
         ..Default::default()
@@ -201,9 +188,6 @@ fn golden_q8_safetensors() {
 /// against regressions; the 2e-2 target is met by the default mode above.
 #[test]
 fn golden_q8_fast_activations() {
-    if oscar_dir().is_none() {
-        return;
-    }
     let mut e = engine_from_dir(EngineOptions {
         quantize: Some(Q8_ALL),
         act_quant: ActQuant::Q8,
@@ -214,9 +198,6 @@ fn golden_q8_fast_activations() {
 
 #[test]
 fn golden_gguf_conversion() {
-    if oscar_dir().is_none() {
-        return;
-    }
     // A Q8_0 file holds plain llama.cpp Q8_0 tensors: the massive input channels share their block
     // scale with the other weights (the outlier split is only possible when quantizing at load),
     // which measures ~0.022 at worst here; see `golden_gguf_f16_quantized_at_load` for the 2e-2 path.
@@ -265,9 +246,6 @@ fn golden_gguf_conversion() {
 /// Recommended deployment of a Q8_0 model: ship the F16 GGUF and quantize when loading.
 #[test]
 fn golden_gguf_f16_quantized_at_load() {
-    if oscar_dir().is_none() {
-        return;
-    }
     let bytes = laya()
         .sources()
         .to_gguf(&ConvertOptions {
@@ -288,9 +266,6 @@ fn golden_gguf_f16_quantized_at_load() {
 
 #[test]
 fn golden_decide_json() {
-    if oscar_dir().is_none() {
-        return;
-    }
     let mut e = engine_from_dir(EngineOptions::default());
     for c in cases() {
         let req = format!(

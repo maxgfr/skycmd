@@ -6,6 +6,7 @@ pub mod augment;
 pub mod commands;
 pub mod csv;
 pub mod decisions;
+pub mod fetch;
 pub mod hf;
 pub mod minhash;
 pub mod nlu;

@@ -23,9 +23,52 @@ pub fn resolve_url(repo: &str, rev: &str, file: &str) -> String {
     format!("{HUB}/datasets/{repo}/resolve/{rev}/{file}")
 }
 
+/// Kind of repository: a Hub model or dataset, or a GitHub repository (evaluation code and
+/// stimuli published there, e.g. the 2609.33209 coherence battery).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RepoKind {
+    Model,
+    Dataset,
+    GitHub,
+}
+
+impl RepoKind {
+    fn api(self) -> &'static str {
+        match self {
+            RepoKind::Model => "models",
+            RepoKind::Dataset => "datasets",
+            RepoKind::GitHub => "github",
+        }
+    }
+}
+
+/// URL of a file in a repository at a given revision.
+pub fn resolve_repo_url(kind: RepoKind, repo: &str, rev: &str, file: &str) -> String {
+    match kind {
+        RepoKind::GitHub => format!("https://raw.githubusercontent.com/{repo}/{rev}/{file}"),
+        RepoKind::Model => format!("{HUB}/{repo}/resolve/{}/{file}", rev.replace('/', "%2F")),
+        RepoKind::Dataset => format!(
+            "{HUB}/datasets/{repo}/resolve/{}/{file}",
+            rev.replace('/', "%2F")
+        ),
+    }
+}
+
+/// One file of a repository listing, with the hash the Hub publishes for it: the sha256 of
+/// the content for LFS files, the git blob sha1 otherwise.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RepoFile {
+    pub path: String,
+    pub size: u64,
+    pub sha256: Option<String>,
+    pub git_sha1: Option<String>,
+}
+
 /// Hub client with an on-disk cache.
 pub struct Hf {
     agent: ureq::Agent,
+    /// `HF_TOKEN`, sent as a bearer token to huggingface.co only (gated repos).
+    token: Option<String>,
     pub cache: PathBuf,
 }
 
@@ -38,7 +81,24 @@ impl Hf {
             .user_agent("skycmd-sky-data/0.1")
             .build()
             .into();
-        Ok(Self { agent, cache })
+        let token = std::env::var("HF_TOKEN")
+            .ok()
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty());
+        Ok(Self {
+            agent,
+            token,
+            cache,
+        })
+    }
+
+    /// A GET request, with the bearer token when the URL is on the Hub.
+    fn get(&self, url: &str) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
+        let req = self.agent.get(url);
+        match &self.token {
+            Some(t) if url.starts_with(HUB) => req.header("Authorization", &format!("Bearer {t}")),
+            _ => req,
+        }
     }
 
     fn retry<T>(&self, what: &str, mut f: impl FnMut() -> Result<T>) -> Result<T> {
@@ -59,7 +119,7 @@ impl Hf {
     /// GET a JSON document.
     pub fn get_json(&self, url: &str) -> Result<Value> {
         self.retry(url, || {
-            let mut resp = self.agent.get(url).call()?;
+            let mut resp = self.get(url).call()?;
             Ok(resp.body_mut().with_config().limit(64 << 20).read_json()?)
         })
     }
@@ -67,7 +127,7 @@ impl Hf {
     /// GET a whole body into memory (bounded by `limit` bytes).
     pub fn get_bytes(&self, url: &str, limit: u64) -> Result<Vec<u8>> {
         self.retry(url, || {
-            let mut resp = self.agent.get(url).call()?;
+            let mut resp = self.get(url).call()?;
             Ok(resp.body_mut().with_config().limit(limit).read_to_vec()?)
         })
     }
@@ -83,7 +143,7 @@ impl Hf {
         }
         let tmp = dest.with_extension("part");
         self.retry(url, || {
-            let resp = self.agent.get(url).call()?;
+            let resp = self.get(url).call()?;
             let mut reader = resp
                 .into_body()
                 .into_with_config()
@@ -96,6 +156,134 @@ impl Hf {
         })?;
         fs::rename(&tmp, &dest)?;
         Ok(dest)
+    }
+
+    /// Every file of a repository at `rev` (recursive listing), with its published hash.
+    pub fn repo_files(&self, kind: RepoKind, repo: &str, rev: &str) -> Result<Vec<RepoFile>> {
+        if kind == RepoKind::GitHub {
+            return self.github_files(repo, rev);
+        }
+        let mut url = Some(format!(
+            "{HUB}/api/{}/{repo}/tree/{}?recursive=true",
+            kind.api(),
+            rev.replace('/', "%2F")
+        ));
+        // The listing is paginated (1000 entries per page, `Link: <next>; rel="next"`).
+        let mut arr = Vec::new();
+        while let Some(u) = url.take() {
+            let (v, next) = self.retry(&u, || {
+                let mut resp = self.get(&u).call()?;
+                let next = resp
+                    .headers()
+                    .get("link")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(next_link);
+                let v: Value = resp.body_mut().with_config().limit(64 << 20).read_json()?;
+                Ok((v, next))
+            })?;
+            match v {
+                Value::Array(a) => arr.extend(a),
+                v => bail!("unexpected tree listing for {repo}: {v}"),
+            }
+            url = next;
+        }
+        Ok(arr
+            .iter()
+            .filter(|e| e["type"].as_str() == Some("file"))
+            .filter_map(|e| {
+                let lfs = e["lfs"]["oid"].as_str().map(str::to_string);
+                Some(RepoFile {
+                    path: e["path"].as_str()?.to_string(),
+                    size: e["size"].as_u64().unwrap_or(0),
+                    git_sha1: if lfs.is_none() {
+                        e["oid"].as_str().map(str::to_string)
+                    } else {
+                        None
+                    },
+                    sha256: lfs,
+                })
+            })
+            .collect())
+    }
+
+    /// GitHub tree listing: every blob with its blob sha1.
+    fn github_files(&self, repo: &str, commit: &str) -> Result<Vec<RepoFile>> {
+        let url = format!("https://api.github.com/repos/{repo}/git/trees/{commit}?recursive=1");
+        let v = self.get_json(&url)?;
+        if v["truncated"].as_bool() == Some(true) {
+            bail!("{repo}: truncated tree listing");
+        }
+        Ok(v["tree"]
+            .as_array()
+            .ok_or_else(|| anyhow!("unexpected tree listing for {repo}: {v}"))?
+            .iter()
+            .filter(|e| e["type"].as_str() == Some("blob"))
+            .filter_map(|e| {
+                Some(RepoFile {
+                    path: e["path"].as_str()?.to_string(),
+                    size: e["size"].as_u64()?,
+                    sha256: None,
+                    git_sha1: e["sha"].as_str().map(str::to_string),
+                })
+            })
+            .collect())
+    }
+
+    /// The commit sha a revision (branch, tag or sha) points to.
+    pub fn repo_commit(&self, kind: RepoKind, repo: &str, rev: &str) -> Result<String> {
+        if kind == RepoKind::GitHub {
+            let v = self.get_json(&format!(
+                "https://api.github.com/repos/{repo}/commits/{rev}"
+            ))?;
+            return v["sha"]
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| anyhow!("{repo}@{rev}: no commit sha"));
+        }
+        let url = format!(
+            "{HUB}/api/{}/{repo}/revision/{}",
+            kind.api(),
+            rev.replace('/', "%2F")
+        );
+        let v = self.get_json(&url)?;
+        v["sha"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| anyhow!("{repo}@{rev}: no commit sha in {url}"))
+    }
+
+    /// Downloads `file` of a repository to `dest` and checks it against the published hash.
+    /// An existing `dest` with the right hash is kept (returns false); a wrong one is replaced.
+    pub fn fetch_verified(
+        &self,
+        kind: RepoKind,
+        repo: &str,
+        rev: &str,
+        file: &RepoFile,
+        dest: &Path,
+    ) -> Result<bool> {
+        if dest.exists() && verify_file(dest, file).is_ok() {
+            return Ok(false);
+        }
+        if let Some(dir) = dest.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        let url = resolve_repo_url(kind, repo, rev, &file.path);
+        let tmp = dest.with_extension("part");
+        self.retry(&url, || {
+            let resp = self.get(&url).call()?;
+            let mut reader = resp
+                .into_body()
+                .into_with_config()
+                .limit(file.size + (1 << 20))
+                .reader();
+            let mut out = File::create(&tmp)?;
+            std::io::copy(&mut reader, &mut out).with_context(|| format!("download {url}"))?;
+            out.flush()?;
+            verify_file(&tmp, file)
+        })?;
+        fs::rename(&tmp, dest)?;
+        Ok(true)
     }
 
     /// Parquet shard URLs for `config`/`split` from the dataset-viewer conversion
@@ -146,7 +334,6 @@ impl Hf {
     fn get_range(&self, url: &str, start: u64, len: u64) -> Result<(Vec<u8>, Option<u64>)> {
         self.retry(url, || {
             let resp = self
-                .agent
                 .get(url)
                 .header("Range", &format!("bytes={}-{}", start, start + len - 1))
                 .call()?;
@@ -382,9 +569,118 @@ pub fn read_parquet(path: &Path, columns: &[&str], max_rows: usize) -> Result<Ve
     Ok(out)
 }
 
+/// The `rel="next"` target of an HTTP `Link` header.
+fn next_link(h: &str) -> Option<String> {
+    h.split(',').find_map(|part| {
+        let (target, params) = part.split_once(';')?;
+        params.contains("rel=\"next\"").then(|| {
+            target
+                .trim()
+                .trim_start_matches('<')
+                .trim_end_matches('>')
+                .to_string()
+        })
+    })
+}
+
+/// Hex digest of a file: sha256 of the content, or the git blob sha1 (`blob <len>\0<content>`).
+fn file_digest(path: &Path, git_blob: bool) -> Result<String> {
+    use ring::digest::{Context as Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256};
+    let len = fs::metadata(path)?.len();
+    let mut ctx = if git_blob {
+        let mut c = Digest::new(&SHA1_FOR_LEGACY_USE_ONLY);
+        c.update(format!("blob {len}\0").as_bytes());
+        c
+    } else {
+        Digest::new(&SHA256)
+    };
+    let mut f = File::open(path)?;
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        ctx.update(&buf[..n]);
+    }
+    Ok(ctx
+        .finish()
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
+}
+
+/// Checks a local file against the size and hash of its listing entry.
+pub fn verify_file(path: &Path, file: &RepoFile) -> Result<()> {
+    let len = fs::metadata(path)?.len();
+    if len != file.size {
+        bail!("{}: {len} bytes, expected {}", file.path, file.size);
+    }
+    let (want, got) = match (&file.sha256, &file.git_sha1) {
+        (Some(h), _) => (h, file_digest(path, false)?),
+        (None, Some(h)) => (h, file_digest(path, true)?),
+        (None, None) => bail!("{}: the Hub publishes no hash", file.path),
+    };
+    if &got != want {
+        bail!("{}: hash {got}, expected {want}", file.path);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_and_dataset_urls() {
+        assert_eq!(
+            resolve_repo_url(RepoKind::Model, "a/b", "main", "encoder/config.json"),
+            "https://huggingface.co/a/b/resolve/main/encoder/config.json"
+        );
+        assert_eq!(
+            resolve_repo_url(RepoKind::Dataset, "a/b", "refs/pr/1", "x.parquet"),
+            "https://huggingface.co/datasets/a/b/resolve/refs%2Fpr%2F1/x.parquet"
+        );
+    }
+
+    #[test]
+    fn link_header() {
+        assert_eq!(
+            next_link(r#"<https://h/a?cursor=x>; rel="next""#).as_deref(),
+            Some("https://h/a?cursor=x")
+        );
+        assert_eq!(
+            next_link(r#"<https://h/p>; rel="prev", <https://h/n>; rel="next""#).as_deref(),
+            Some("https://h/n")
+        );
+        assert_eq!(next_link(r#"<https://h/p>; rel="prev""#), None);
+    }
+
+    #[test]
+    fn digests_match_git_and_sha256() {
+        let dir = std::env::temp_dir().join(format!("sky-data-digest-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("hello.txt");
+        fs::write(&p, b"hello\n").unwrap();
+        // `printf 'hello\n' | git hash-object --stdin`, and `| shasum -a 256`.
+        assert_eq!(
+            file_digest(&p, true).unwrap(),
+            "ce013625030ba8dba906f756967f9e9ca394464a"
+        );
+        let mut f = RepoFile {
+            path: "hello.txt".into(),
+            size: 6,
+            sha256: Some("5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03".into()),
+            git_sha1: None,
+        };
+        verify_file(&p, &f).unwrap();
+        f.sha256 = Some("00".into());
+        assert!(verify_file(&p, &f).is_err());
+        f.size = 7;
+        assert!(verify_file(&p, &f).is_err());
+        fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn resolve_url_escapes_refs() {

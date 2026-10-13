@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use sky_data::augment::{augment_paraphrases, AugmentOptions};
 use sky_data::commands::{fetch_commands, CommandOptions};
 use sky_data::decisions::{fetch_decisions, sources, DecisionOptions};
-use sky_data::hf::Hf;
+use sky_data::hf::{Hf, RepoKind};
 use sky_data::teacher::{self, Teacher, TeacherArgs, TeacherConfig};
 use sky_data::text::{fetch_text, TextOptions};
 use sky_data::tok::{
@@ -51,6 +51,30 @@ enum Cmd {
         /// List the source names and exit.
         #[arg(long)]
         list: bool,
+    },
+    /// Download a Hub model or dataset repository (or the files matching --include), pinned to
+    /// the commit of --rev and checked against the published sha256 / blob sha1. Sends HF_TOKEN
+    /// when it is set. Writes <out>/.skycmd-fetch.json.
+    FetchModel {
+        /// Repository id, e.g. jhu-clsp/ettin-encoder-17m.
+        repo: String,
+        #[arg(long)]
+        out: PathBuf,
+        /// Branch, tag or commit.
+        #[arg(long, default_value = "main")]
+        rev: String,
+        /// The repository is a dataset.
+        #[arg(long, conflicts_with = "github")]
+        dataset: bool,
+        /// The repository is on GitHub (files checked against their blob sha1).
+        #[arg(long)]
+        github: bool,
+        /// Only files matching these globs (`*` wildcard; comma separated).
+        #[arg(long, value_delimiter = ',')]
+        include: Vec<String>,
+        /// Refuse selections larger than this.
+        #[arg(long, default_value_t = 4.0)]
+        max_gb: f64,
     },
     /// Download NL → command data (function calling + MASSIVE intents) into JSONL.
     FetchCommands {
@@ -288,6 +312,39 @@ fn main() -> Result<()> {
                     r.src, r.raw, r.invalid, r.duplicates, r.train, r.val, r.test, r.secs
                 );
             }
+        }
+        Cmd::FetchModel {
+            repo,
+            out,
+            rev,
+            dataset,
+            github,
+            include,
+            max_gb,
+        } => {
+            let hf = Hf::new(&cli.cache)?;
+            let r = sky_data::fetch::fetch_repo(
+                &hf,
+                &sky_data::fetch::FetchOptions {
+                    kind: match (dataset, github) {
+                        (true, _) => RepoKind::Dataset,
+                        (_, true) => RepoKind::GitHub,
+                        _ => RepoKind::Model,
+                    },
+                    repo: repo.clone(),
+                    rev,
+                    out: out.clone(),
+                    include,
+                    max_bytes: (max_gb * 1e9) as u64,
+                },
+            )?;
+            println!(
+                "{repo}@{}: {} files ({:.1} MB), {} downloaded, all verified, in {out:?}",
+                r.commit,
+                r.files,
+                r.bytes as f64 / 1e6,
+                r.downloaded
+            );
         }
         Cmd::FetchCommands {
             out,

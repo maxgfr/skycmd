@@ -1,0 +1,3 @@
+[alias]
+# Pipeline runner: `cargo xtask s5 list`, `cargo xtask s5 <stage>` (see crates/xtask).
+xtask = "run --quiet --package xtask --"

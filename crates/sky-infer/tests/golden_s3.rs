@@ -51,10 +51,9 @@ fn close(a: &[f32], b: &[f32], tol: f32) -> bool {
 #[test]
 fn s3_golden() {
     let Some(g) = golden() else {
-        eprintln!(
-            "skipped: tests/golden/s3.json not found (run `sky-train s2-golden --config configs/s3-pico.json`)"
+        panic!(
+            "tests/golden/s3.json not found (run `sky-train s2-golden --config configs/s3-pico.json`)"
         );
-        return;
     };
     let tol = &g["meta"]["tolerance"];
     let files = g["meta"]["files"].as_array().unwrap();

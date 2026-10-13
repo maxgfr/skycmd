@@ -22,7 +22,8 @@ jobs:
       - run: cargo fmt --all --check
 
   # Everything except sky-train, which links mlx-rs and needs macOS + Metal.
-  # The golden tests of sky-infer skip themselves when models-src/oscar (gitignored) is absent.
+  # The golden tests of sky-infer need the pinned oscar-1-17m model in models-src/oscar
+  # (gitignored): a missing model fails them, so it is fetched (hash-checked) and cached here.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -31,6 +32,16 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Cache the golden model
+        uses: actions/cache@v4
+        with:
+          path: models-src/oscar
+          key: oscar-1-17m-a443c18107534cb3148941de601e15a89a2c6da3
+      - name: Fetch the golden model
+        run: |
+          test -f models-src/oscar/model.safetensors || cargo run --release -p sky-data -- \
+            --cache "$RUNNER_TEMP/hf" fetch-model mgoeckel/oscar-1-17m \
+            --rev a443c18107534cb3148941de601e15a89a2c6da3 --out models-src/oscar
       - name: Clippy
         run: cargo clippy --workspace --exclude sky-train --all-targets -- -D warnings
       - name: Tests

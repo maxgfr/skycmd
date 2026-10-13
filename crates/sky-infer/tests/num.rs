@@ -11,8 +11,7 @@ fn matches_sky_data_vectors() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../sky-data/tests/fixtures/num_extract.json");
     let Ok(bytes) = std::fs::read(&path) else {
-        eprintln!("skipped: {} not found", path.display());
-        return;
+        panic!("{} not found", path.display());
     };
     let all: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
     assert!(all.len() >= 30);

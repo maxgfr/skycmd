@@ -1,0 +1,10 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pipeline runner for skycmd (cargo xtask s5 <stage>): persistent store, GPU lock, logs, resume"
+publish = false
+
+[dependencies]
+anyhow = "1.0.104"
