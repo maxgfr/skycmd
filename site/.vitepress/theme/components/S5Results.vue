@@ -28,6 +28,8 @@ const gates = computed<J>(() => (shipped.value ? reports.value[`gates-${shipped.
 const robust = computed<J>(() => (shipped.value ? reports.value[`robust-${shipped.value}-q8_0`] : null) ?? null)
 const coherence = computed<J>(() => (shipped.value ? reports.value[`coherence-${shipped.value}-q8_0`] : null) ?? null)
 const battery = computed<J>(() => (shipped.value ? reports.value[`battery-${shipped.value}-f32`] : null) ?? null)
+const oscar = computed<J>(() => reports.value['robust-oscar-1-17m'] ?? null)
+const oscarSets = computed<J>(() => reports.value['sets-oscar-1-17m'] ?? null)
 const selective = computed<J>(() => (shipped.value ? reports.value[`selective-${shipped.value}-q8_0`] : null) ?? null)
 const selectiveAll = computed<J>(() =>
   (shipped.value ? reports.value[`selective-allcal-${shipped.value}-q8_0`] : null) ?? null,
@@ -36,6 +38,10 @@ const phase5 = computed<[string, J][]>(() =>
   ['f-ap', 'f-b'].filter((a) => reports.value[`phase5-${a}`]).map((a) => [a, reports.value[`phase5-${a}`]]),
 )
 const runs = computed<[string, J][]>(() => Object.entries(data.value?.runs ?? {}))
+const shippedIso = computed(() => {
+  const r = shipped.value ? data.value?.runs?.[shipped.value] : null
+  return typeof r?.variant === 'string' && r.variant.startsWith('b-')
+})
 
 function n(x: unknown, d = 3): string {
   return typeof x === 'number' && Number.isFinite(x) ? x.toFixed(d) : '–'
@@ -200,7 +206,12 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
             <tr><td>paraphrased definitions: answer flips (two calls)</td><td>{{ iv(robust.paraphrase.flip_rate) }}</td><td>learned</td></tr>
             <tr><td>JevOut-lite: flips under the worst distractor</td><td>{{ iv(robust.jevout_lite.flip_rate) }}</td><td>learned</td></tr>
             <tr v-for="(v, k) in robust.reassign" :key="k">
-              <td>label reassignment {{ k }}: flips</td><td>{{ iv(v.flip_rate) }}</td><td>guaranteed (keys never read)</td>
+              <td>label reassignment {{ k }}: flips</td>
+              <td>
+                {{ iv(v.flip_rate) }}
+                <template v-if="oscar?.reassign?.[k]"> · oscar-1-17m {{ iv(oscar.reassign[k].flip_rate) }}</template>
+              </td>
+              <td>{{ shippedIso ? 'guaranteed (keys never read)' : 'learned' }}</td>
             </tr>
             <tr v-for="(v, k) in robust.policybench" :key="k"><td>{{ k }} accuracy</td><td>{{ iv(v.accuracy) }}</td><td>result</td></tr>
           </tbody>
@@ -219,6 +230,11 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         </tbody>
       </table>
       <p v-if="!robust && !coherence" class="s5r-note">Not evaluated yet.</p>
+      <p v-if="oscarSets?.sets?.typed_decisions_test" class="s5r-note">
+        Rendering check: oscar-1-17m, evaluated by the same tool on our rendering of the bench, scores
+        {{ iv(oscarSets.sets.typed_decisions_test.accuracy) }} (published: 0.6775). oscar-1-17m is a public model in the
+        Laya format, shown as a reference outside the bets.
+      </p>
       <template v-if="battery">
         <p>
           On the original battery of 2609.33209 (160 items: ChaosNLI and PubMedQA, the paper's own questions), next to

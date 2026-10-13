@@ -343,6 +343,19 @@ fn oscar_ref() -> Vec<Step> {
             "runs/s5-report/robust-oscar-1-17m.json",
         ],
     ));
+    // Per-set accuracy (the bench check); its gate verdicts mean nothing for a reference.
+    v.push(Step::new(
+        "sets",
+        "sky-s5-report",
+        &[
+            "gates",
+            dir,
+            "--records",
+            "data/s5/eval",
+            "--json",
+            "runs/s5-report/sets-oscar-1-17m.json",
+        ],
+    ));
     v
 }
 
