@@ -230,6 +230,12 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         </tbody>
       </table>
       <p v-if="!robust && !coherence" class="s5r-note">Not evaluated yet.</p>
+      <p v-if="oscar" class="s5r-note">
+        oscar-1-17m flips on every arm, the 0/1 control included: on these binary items it is close to chance
+        (aligned-arm AUC about 0.6) and keeps the same position, so its flips mostly measure that, not label reading.
+        They are not comparable to the rates of 2609.26758, whose items its models answer reliably; the column to read
+        is the difference with the control.
+      </p>
       <p v-if="oscarSets?.sets?.typed_decisions_test" class="s5r-note">
         Rendering check: oscar-1-17m, evaluated by the same tool on our rendering of the bench, scores
         {{ iv(oscarSets.sets.typed_decisions_test.accuracy) }} (published: 0.6775). oscar-1-17m is a public model in the
