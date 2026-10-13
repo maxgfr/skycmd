@@ -354,7 +354,8 @@ fn finished(store: &Path) -> Vec<(String, String)> {
     v
 }
 
-/// The English evaluation sets of s5-lite (`data/s5/MANIFEST.json`, without SIB-200 fr).
+/// The English evaluation sets of s5-lite (`data/s5/MANIFEST.json`), without SIB-200 fr and
+/// without yahootopics, whose license is not confirmed (DATA_LICENSES.md).
 fn eval_sets(store: &Path) -> Result<Vec<String>> {
     let text = std::fs::read_to_string(store.join("data/s5/MANIFEST.json"))?;
     let m: Value = serde_json::from_str(&text)?;
@@ -363,7 +364,7 @@ fn eval_sets(store: &Path) -> Result<Vec<String>> {
         .context("MANIFEST.json has no eval")?
         .keys()
         .filter_map(|k| k.strip_suffix(".jsonl"))
-        .filter(|k| *k != "sib200_fr")
+        .filter(|k| *k != "sib200_fr" && *k != "yahootopics")
         .map(str::to_string)
         .collect();
     v.sort();
@@ -537,7 +538,7 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
             .exists()
     };
     // Every test set (the last one `eval` writes) or only the fitted bench.
-    let full = |r: &str, f: &str| has(r, f, "yahootopics") && has(r, f, "demo-cases");
+    let full = |r: &str, f: &str| has(r, f, "wikitoxic_toxicaggregated") && has(r, f, "demo-cases");
     let bench = |r: &str, f: &str| has(r, f, "typed_decisions_test");
     for (r, _) in &runs {
         for f in ["f32", "q8_0"] {

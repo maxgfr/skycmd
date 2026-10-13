@@ -44,7 +44,8 @@
 //! - `pari1`: B (variant) against A′ (reference) on the fitted bench: accuracy non-inferiority
 //!   (margin 0.02) and ECE non-inferiority (margin 0.01), both required; secondary comparisons
 //!   with Holm-adjusted p-values: NLL and Brier of the bench, paraphrase flip rate, JevOut-lite
-//!   flip rate, macro accuracy and macro ECE of the English zero-shot sets.
+//!   flip rate, macro accuracy and macro ECE of the English zero-shot sets (wikitoxic × 4,
+//!   biasframes × 3, amazonpolarity; yahootopics waits for its license).
 //! - `pari2`: λ* (variant) against λ = 0 (reference): D competence at λ = 0 (lower bound of the
 //!   D accuracy > majority rate + 0.10), MAD_neg of λ* < 0.03, partition of λ* in [0.97, 1.03],
 //!   bench accuracy non-inferiority (0.02), monotonicity violations reduced by ≥ 30 % with an
@@ -70,8 +71,9 @@ mod native {
 
     /// The fitted bench.
     pub const BENCH: &str = "typed_decisions_test";
-    /// The English zero-shot sets of the plan (HWU64 and SIB-200 are reported apart).
-    pub const ZERO_SHOT: [&str; 9] = [
+    /// The English zero-shot sets of the plan whose licenses are confirmed (HWU64 and SIB-200
+    /// are reported apart; yahootopics waits for its license, DATA_LICENSES.md).
+    pub const ZERO_SHOT: [&str; 8] = [
         "wikitoxic_insult",
         "wikitoxic_obscene",
         "wikitoxic_threat",
@@ -80,8 +82,9 @@ mod native {
         "biasframes_offensive",
         "biasframes_sex",
         "amazonpolarity",
-        "yahootopics",
     ];
+    /// Sets left out of every report until their license is confirmed.
+    pub const UNPUBLISHED: [&str; 1] = ["yahootopics"];
     pub const COHERENCE: &str = "coherence_test";
     const RESAMPLES: usize = 2000;
     const LEVEL: f64 = 0.95;
@@ -931,6 +934,9 @@ mod native {
             s.iter().filter(|x| x.0 >= t).count() as f64 / s.len().max(1) as f64
         };
         for (set, parts) in &by {
+            if UNPUBLISHED.contains(set) {
+                continue;
+            }
             let (Some(cal), Some(test)) = (parts.get("cal"), parts.get("test")) else {
                 continue;
             };
