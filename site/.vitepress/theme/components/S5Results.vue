@@ -27,6 +27,7 @@ const p2 = computed<J>(() => reports.value.pari2 ?? null)
 const gates = computed<J>(() => (shipped.value ? reports.value[`gates-${shipped.value}-q8_0`] : null) ?? null)
 const robust = computed<J>(() => (shipped.value ? reports.value[`robust-${shipped.value}-q8_0`] : null) ?? null)
 const coherence = computed<J>(() => (shipped.value ? reports.value[`coherence-${shipped.value}-q8_0`] : null) ?? null)
+const battery = computed<J>(() => (shipped.value ? reports.value[`battery-${shipped.value}-f32`] : null) ?? null)
 const selective = computed<J>(() => (shipped.value ? reports.value[`selective-${shipped.value}-q8_0`] : null) ?? null)
 const selectiveAll = computed<J>(() =>
   (shipped.value ? reports.value[`selective-allcal-${shipped.value}-q8_0`] : null) ?? null,
@@ -218,6 +219,20 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         </tbody>
       </table>
       <p v-if="!robust && !coherence" class="s5r-note">Not evaluated yet.</p>
+      <template v-if="battery">
+        <p>
+          On the original battery of 2609.33209 (160 items: ChaosNLI and PubMedQA, the paper's own questions), next to
+          the numbers the paper reports for Jev. This comparison is descriptive (one measurement per model, no test).
+        </p>
+        <table>
+          <thead><tr><th>identity</th><th>s5-lite [95% CI]</th><th>Jev (paper)</th></tr></thead>
+          <tbody>
+            <tr><td>MAD_neg |s + n − 1|</td><td>{{ iv(battery.mad_neg) }}</td><td>0.064</td></tr>
+            <tr><td>Σ s</td><td>{{ iv(battery.partition_sum) }}</td><td>1.14</td></tr>
+            <tr><td>|s − c|</td><td>{{ iv(battery.xf_abs) }}</td><td>0.091</td></tr>
+          </tbody>
+        </table>
+      </template>
 
       <h3>Phase 7: escalation with a controlled error (offline)</h3>
       <template v-if="selective">

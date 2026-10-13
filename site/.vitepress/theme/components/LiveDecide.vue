@@ -80,8 +80,9 @@ const rendered = computed<string[]>(() => {
         .map((l) => l.trim())
         .filter(Boolean)
     }
-    // iso: `false` / `true` without a definition read as "The statement is false/true."
-    return isIso.value ? ['false', 'true'] : S4_NOUL
+    // s5 (iso and Laya formats): `false` / `true` without a definition, as in training (iso reads
+    // them as "The statement is false/true."); s4-micro was trained with its own texts.
+    return model.value?.arch === 'skycmd-s2' ? S4_NOUL : ['false', 'true']
   }
   const lines = optionsText.value
     .split('\n')
