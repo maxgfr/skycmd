@@ -22,6 +22,11 @@ onMounted(async () => {
 
 const reports = computed<J>(() => data.value?.reports ?? {})
 const shipped = computed<string | null>(() => data.value?.shipped ?? null)
+/** The /live model (amendment 3): the long run when its val NLL is lower, outside the bets. */
+const live = computed<string | null>(() => data.value?.live ?? null)
+const liveGates = computed<J>(() =>
+  live.value && live.value !== shipped.value ? (reports.value[`gates-${live.value}-q8_0`] ?? null) : null,
+)
 const p1 = computed<J>(() => reports.value.pari1 ?? null)
 const p2 = computed<J>(() => reports.value.pari2 ?? null)
 const gates = computed<J>(() => (shipped.value ? reports.value[`gates-${shipped.value}-q8_0`] : null) ?? null)
@@ -71,7 +76,8 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         <code v-for="c in data.test_log.prereg_commits" :key="c">{{ c.slice(0, 7) }}</code>
         <template v-if="!data.test_log.prereg_commits.length"> (none yet)</template>;
         first {{ when(data.test_log.first_unix) }}, last {{ when(data.test_log.last_unix) }}.
-        Shipped model: <strong>{{ shipped ?? 'not chosen yet' }}</strong>.
+        Shipped model: <strong>{{ shipped ?? 'not chosen yet' }}</strong><template v-if="live && live !== shipped">;
+        /live serves <strong>{{ live }}</strong> (outside the bets, see below)</template>.
       </p>
 
       <h3>Bet 1: invariance by construction (B* against A′, 3 seeds each)</h3>
@@ -197,6 +203,23 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         </details>
       </template>
       <p v-else class="s5r-note">Not evaluated yet.</p>
+
+      <template v-if="live && live !== shipped">
+        <h3>The /live model: a longer run, outside the pre-registration</h3>
+        <p class="s5r-note">
+          After one B* seed missed the demo gate, a longer run of the same configuration ({{ live }}, 8000 steps instead
+          of 2000) was added for the demo and declared before its result (amendment 3). /live serves it because its
+          validation NLL is lower. No bet, gate or claim above uses it.
+        </p>
+        <table v-if="liveGates">
+          <thead><tr><th>gate</th><th>value</th><th>verdict</th></tr></thead>
+          <tbody>
+            <tr><td>fitted bench ≥ 0.65</td><td>{{ n(liveGates.gates.bench_ge_0_65.value) }}</td><td>{{ yes(liveGates.gates.bench_ge_0_65.pass) }}</td></tr>
+            <tr><td>English demo cases ≥ 90%</td><td>{{ n(liveGates.gates.demo_en_ge_0_90.value) }}</td><td>{{ yes(liveGates.gates.demo_en_ge_0_90.pass) }}</td></tr>
+            <tr><td>no set below its majority baseline</td><td>{{ liveGates.gates.no_set_below_majority.below.join(', ') || 'none below' }}</td><td>{{ yes(liveGates.gates.no_set_below_majority.pass) }}</td></tr>
+          </tbody>
+        </table>
+      </template>
 
       <h3>Robustness and coherence of the shipped model</h3>
       <template v-if="robust">
