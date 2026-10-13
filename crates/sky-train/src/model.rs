@@ -57,13 +57,13 @@ pub struct DecisionBatch {
     pub n_tokens: usize,
 }
 
-fn w<'a>(p: &'a ParamMap, name: &str) -> R<&'a Array> {
+pub(crate) fn w<'a>(p: &'a ParamMap, name: &str) -> R<&'a Array> {
     p.get(name)
         .ok_or_else(|| Exception::custom(format!("missing parameter {name}")))
 }
 
 /// The parameters in the compute dtype (bf16 copies when `cfg.bf16`).
-fn compute_params<'a>(p: &'a ParamMap, cfg: &ModelConfig) -> R<Cow<'a, ParamMap>> {
+pub(crate) fn compute_params<'a>(p: &'a ParamMap, cfg: &ModelConfig) -> R<Cow<'a, ParamMap>> {
     if !cfg.bf16 {
         return Ok(Cow::Borrowed(p));
     }
@@ -117,7 +117,7 @@ pub fn layer_norm(x: &Array, weight: &Array, bias: Option<&Array>, eps: f32) -> 
 }
 
 /// `x @ weight^T (+ bias)`.
-fn linear(x: &Array, weight: &Array, bias: Option<&Array>) -> R<Array> {
+pub(crate) fn linear(x: &Array, weight: &Array, bias: Option<&Array>) -> R<Array> {
     let y = ops::matmul(x, weight.t())?;
     match bias {
         Some(b) => y.add(b),
@@ -126,7 +126,7 @@ fn linear(x: &Array, weight: &Array, bias: Option<&Array>) -> R<Array> {
 }
 
 /// Splits a fused `[B, T, 3d]` projection into q, k, v of shape `[B, H, T, 64]`.
-fn split_heads(qkv: &Array, n_heads: i32) -> R<(Array, Array, Array)> {
+pub(crate) fn split_heads(qkv: &Array, n_heads: i32) -> R<(Array, Array, Array)> {
     let (b, t) = (qkv.dim(0), qkv.dim(1));
     let x = qkv
         .reshape(&[b, t, 3, n_heads, HEAD_DIM])?
@@ -135,7 +135,7 @@ fn split_heads(qkv: &Array, n_heads: i32) -> R<(Array, Array, Array)> {
 }
 
 /// `[B, H, T, 64]` -> `[B, T, H * 64]`.
-fn merge_heads(x: &Array) -> R<Array> {
+pub(crate) fn merge_heads(x: &Array) -> R<Array> {
     let (b, h, t) = (x.dim(0), x.dim(1), x.dim(2));
     x.transpose_axes(&[0, 2, 1, 3])?
         .reshape(&[b, t, h * HEAD_DIM])
@@ -178,7 +178,7 @@ pub fn attention_masks(
     Ok((pad, local))
 }
 
-fn attend(q: &Array, k: &Array, v: &Array, mask: Option<&Array>) -> R<Array> {
+pub(crate) fn attend(q: &Array, k: &Array, v: &Array, mask: Option<&Array>) -> R<Array> {
     let scale = 1.0 / (HEAD_DIM as f32).sqrt();
     match mask {
         Some(m) => fast::scaled_dot_product_attention(q, k, v, scale, m, None),

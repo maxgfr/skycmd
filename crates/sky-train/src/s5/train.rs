@@ -8,7 +8,8 @@
 //!
 //! Variants: **A** is the Laya layout with the records' option names; **A′** the same layout
 //! with the shared augmentation's random names and polarity swaps rendered (see
-//! [`crate::s5::data`]).
+//! [`crate::s5::data`]); **B-i** / **B-ii** the iso layout of [`crate::s5::iso`] (definitions
+//! only, options isolated), with the options at a shared offset (i) or reset to 0 (ii).
 //!
 //! A checkpoint `<out>/last` holds `model.safetensors` (the EMA weights, in the s1 names, so
 //! that `sky-train export` turns variant A into the Laya / oscar layout), `raw.safetensors`
@@ -33,6 +34,7 @@ use crate::rng::Rng;
 use crate::s5::data::{
     self, draw, laya_batch, laya_row, link_pairs, native_tokens, Augment, Draw, LayaBatch, S5Item,
 };
+use crate::s5::iso::{self, iso_batch, iso_row, IsoBatch, IsoRow, Positions};
 use crate::s5::loss::{self, LossWeights, Pairs};
 use crate::s5::score::read_s5;
 use crate::sequence::Tok;
@@ -47,6 +49,10 @@ pub enum Variant {
     A,
     /// Laya layout, random names and polarity swaps rendered.
     APrime,
+    /// Iso layout, options at the shared offset `L` (sub-variant i).
+    BShared,
+    /// Iso layout, options reset to position 0 (sub-variant ii).
+    BReset,
 }
 
 impl Variant {
@@ -54,8 +60,19 @@ impl Variant {
         Ok(match s {
             "a" => Variant::A,
             "a-prime" | "a'" => Variant::APrime,
-            other => bail!("unknown variant {other:?} (a, a-prime)"),
+            "b-i" | "b" => Variant::BShared,
+            "b-ii" => Variant::BReset,
+            other => bail!("unknown variant {other:?} (a, a-prime, b-i, b-ii)"),
         })
+    }
+
+    /// The option positions of an iso variant (`None` for the Laya layout).
+    pub fn iso(self) -> Option<Positions> {
+        match self {
+            Variant::BShared => Some(Positions::Shared),
+            Variant::BReset => Some(Positions::Reset),
+            _ => None,
+        }
     }
 
     /// Whether the augmentation's names are rendered.
@@ -74,7 +91,7 @@ pub struct TrainArgs {
     pub records: Vec<PathBuf>,
     #[arg(long)]
     pub out: PathBuf,
-    /// a | a-prime
+    /// a | a-prime | b-i | b-ii
     #[arg(long, default_value = "a")]
     pub variant: String,
     #[arg(long, default_value_t = 3000)]
@@ -160,27 +177,78 @@ fn decision_batch(b: &LayaBatch) -> DecisionBatch {
     }
 }
 
-/// Batch arrays in the order of the compiled function.
-fn batch_arrays(b: &LayaBatch) -> Vec<Array> {
-    vec![
-        b.ids.clone(),
-        b.key_valid.clone(),
-        b.qtype.clone(),
-        b.marker_pos.clone(),
-        b.marker_mask.clone(),
-        b.target.clone(),
-        b.is_score.clone(),
-        b.k.clone(),
-        b.pairs.left.clone(),
-        b.pairs.right.clone(),
-        b.pairs.map.clone(),
-        b.pairs.mask.clone(),
-        b.pairs.weight.clone(),
-    ]
+/// A training batch of either layout.
+pub enum Batch {
+    Laya(LayaBatch),
+    Iso(IsoBatch),
 }
 
-fn compiled(cfg: &ModelConfig, names: Vec<std::rc::Rc<str>>, w: LossWeights) -> CompiledGrad {
+impl Batch {
+    fn n_tokens(&self) -> usize {
+        match self {
+            Batch::Laya(b) => b.n_tokens,
+            Batch::Iso(b) => b.n_tokens,
+        }
+    }
+
+    /// Batch arrays in the order of the compiled function.
+    fn arrays(&self) -> Vec<Array> {
+        match self {
+            Batch::Laya(b) => vec![
+                b.ids.clone(),
+                b.key_valid.clone(),
+                b.qtype.clone(),
+                b.marker_pos.clone(),
+                b.marker_mask.clone(),
+                b.target.clone(),
+                b.is_score.clone(),
+                b.k.clone(),
+                b.pairs.left.clone(),
+                b.pairs.right.clone(),
+                b.pairs.map.clone(),
+                b.pairs.mask.clone(),
+                b.pairs.weight.clone(),
+            ],
+            Batch::Iso(b) => vec![
+                b.ids.clone(),
+                b.seg.clone(),
+                b.pos.clone(),
+                b.pool.clone(),
+                b.qpool.clone(),
+                b.opt_mask.clone(),
+                b.target.clone(),
+                b.is_score.clone(),
+                b.k.clone(),
+                b.pairs.left.clone(),
+                b.pairs.right.clone(),
+                b.pairs.map.clone(),
+                b.pairs.mask.clone(),
+                b.pairs.weight.clone(),
+            ],
+        }
+    }
+}
+
+fn compiled(
+    cfg: &ModelConfig,
+    variant: Variant,
+    names: Vec<std::rc::Rc<str>>,
+    w: LossWeights,
+) -> CompiledGrad {
     let cfg = cfg.clone();
+    if variant.iso().is_some() {
+        return CompiledGrad::new(names, move |p, b| {
+            let logits = iso::iso_logits(p, &cfg, &b[0], &b[1], &b[2], &b[3], &b[4], &b[5])?;
+            let pairs = Pairs {
+                left: b[9].clone(),
+                right: b[10].clone(),
+                map: b[11].clone(),
+                mask: b[12].clone(),
+                weight: b[13].clone(),
+            };
+            loss::total(&logits, &b[6], &b[7], &b[8], Some(&pairs), &w)
+        });
+    }
     CompiledGrad::new(names, move |p, b| {
         let batch = DecisionBatch {
             ids: b[0].clone(),
@@ -215,7 +283,10 @@ fn sample(
     tok: &Tok,
     cfg: &ModelConfig,
     w: &LossWeights,
-) -> Result<LayaBatch> {
+) -> Result<Batch> {
+    if let Some(positions) = variant.iso() {
+        return sample_iso(train, a, positions, aug, rng, cfg, w).map(Batch::Iso);
+    }
     let mut rows = Vec::with_capacity(2 * a.batch);
     let mut pairs = Vec::new();
     let push = |item: &S5Item, d: &Draw, rows: &mut Vec<data::LayaRow>| -> Result<bool> {
@@ -253,7 +324,106 @@ fn sample(
             }
         }
     }
-    Ok(laya_batch(&rows, &pairs))
+    Ok(Batch::Laya(laya_batch(&rows, &pairs)))
+}
+
+/// [`sample`] for an iso variant: the same item and augmentation draws.
+fn sample_iso(
+    train: &[S5Item],
+    a: &TrainArgs,
+    positions: Positions,
+    aug: &Augment,
+    rng: &mut Rng,
+    cfg: &ModelConfig,
+    w: &LossWeights,
+) -> Result<IsoBatch> {
+    let mut rows: Vec<IsoRow> = Vec::with_capacity(2 * a.batch);
+    let mut pairs = Vec::new();
+    let row = |item: &S5Item, d: &Draw| {
+        iso_row(
+            item,
+            d,
+            cfg.rl_agent.max_len,
+            cfg.rl_agent.head_max_len,
+            positions,
+            &cfg.special,
+        )
+    };
+    while rows.len() < a.batch {
+        let i = rng.below(train.len());
+        let d = draw(&train[i], aug, rng);
+        let partner = train[i].pair.filter(|_| w.kl != 0.0);
+        let dp = partner.map(|j| draw(&train[j], aug, rng));
+        let Some(r) = row(&train[i], &d) else {
+            continue;
+        };
+        let at = rows.len();
+        rows.push(r);
+        if let (Some(j), Some(dp)) = (partner, dp) {
+            if let Some(r) = row(&train[j], &dp) {
+                rows.push(r);
+                pairs.push((at, at + 1));
+            }
+        }
+    }
+    Ok(iso_batch(&rows, &pairs))
+}
+
+/// Logits of `items` (identity order) under an iso variant.
+pub fn predict_iso(
+    params: &ParamMap,
+    cfg: &ModelConfig,
+    positions: Positions,
+    items: &[&S5Item],
+    max_tokens: usize,
+) -> Result<Vec<Pred>> {
+    let rows: Vec<Option<IsoRow>> = items
+        .iter()
+        .map(|it| {
+            let d = Draw {
+                order: (0..it.k()).collect(),
+                names: None,
+            };
+            iso_row(
+                it,
+                &d,
+                cfg.rl_agent.max_len,
+                cfg.rl_agent.head_max_len,
+                positions,
+                &cfg.special,
+            )
+        })
+        .collect();
+    let mut order: Vec<usize> = (0..items.len()).filter(|&i| rows[i].is_some()).collect();
+    order.sort_by_key(|&i| rows[i].as_ref().map_or(0, |r| r.ids.len()));
+    let mut out: Vec<Option<Pred>> = vec![None; items.len()];
+    let mut start = 0;
+    while start < order.len() {
+        let len = |i: usize| rows[order[i]].as_ref().map_or(0, |r| r.ids.len());
+        let mut end = start + 1;
+        while end < order.len() && len(end).div_ceil(16) * 16 * (end - start + 1) <= max_tokens {
+            end += 1;
+        }
+        let sel: Vec<IsoRow> = order[start..end]
+            .iter()
+            .filter_map(|&i| rows[i].clone())
+            .collect();
+        let logits = iso::forward(params, cfg, &iso_batch(&sel, &[]))?;
+        let k = logits.dim(1) as usize;
+        let flat = model::host_f32(&logits)?;
+        for (r, &i) in order[start..end].iter().enumerate() {
+            let it = items[i];
+            out[i] = Some(Pred {
+                logits: flat[r * k..r * k + it.k()].to_vec(),
+                target: it.target.clone(),
+                qtype: it.qtype,
+                src: it.rec.src.clone(),
+                group: it.rec.lang.clone(),
+            });
+        }
+        start = end;
+    }
+    Ok(out.into_iter().flatten().collect())
 }
 
 /// Logits of `items` (identity order, the records' names) under `params`.
@@ -426,7 +596,21 @@ pub fn train(a: &TrainArgs) -> Result<()> {
             st,
         )
     } else {
-        let mut p = params::init(&cfg, Parts::DECISION, a.seed)?;
+        let mut p = match variant.iso() {
+            None => params::init(&cfg, Parts::DECISION, a.seed)?,
+            Some(_) => {
+                let mut p = params::init(
+                    &cfg,
+                    Parts {
+                        decision: false,
+                        mlm: false,
+                    },
+                    a.seed,
+                )?;
+                p.extend(iso::init_head(&cfg, a.seed ^ 0x150)?);
+                p
+            }
+        };
         let src = params::load(&a.init.join("model.safetensors"))?;
         let n = params::load_matching(&mut p, &src)?;
         let n_enc = p.keys().filter(|k| k.starts_with("encoder.")).count();
@@ -482,12 +666,15 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     };
     std::fs::create_dir_all(&a.out)?;
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
-    let mut f = compiled(&cfg, sorted_names(&raw), w);
+    let mut f = compiled(&cfg, variant, sorted_names(&raw), w);
     let validate = |ema: &ParamMap, step: u64, log: &mut JsonLog| -> Result<()> {
         if val_items.is_empty() {
             return Ok(());
         }
-        let preds = predict(ema, &cfg, &val_items, 16_384)?;
+        let preds = match variant.iso() {
+            Some(pos) => predict_iso(ema, &cfg, pos, &val_items, 16_384)?,
+            None => predict(ema, &cfg, &val_items, 16_384)?,
+        };
         let m = report(&preds);
         let all = &m["all"];
         println!(
@@ -504,7 +691,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     while st.step < a.steps {
         let lr_scale = warmup_linear(st.step as f64 / a.steps as f64, a.warmup) as f32;
         let b = sample(&train, a, variant, &aug, &mut st.rng, &tok, &cfg, &w)?;
-        let (loss_arr, grads) = f.call(&raw, batch_arrays(&b))?;
+        let (loss_arr, grads) = f.call(&raw, b.arrays())?;
         let (l, gn) = apply_update(&mut raw, &mut opt, loss_arr, &grads, lr_scale)?;
         if !l.is_finite() {
             bail!("non-finite loss at step {}", st.step);
@@ -517,7 +704,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
         st.step += 1;
         st.elapsed_secs = base + t0.elapsed().as_secs_f64();
         wl += l as f64;
-        wt += b.n_tokens;
+        wt += b.n_tokens();
         wn += 1;
         if st.step % a.log_every == 0 {
             let dt = win.elapsed().as_secs_f64();
