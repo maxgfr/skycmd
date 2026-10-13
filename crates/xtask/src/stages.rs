@@ -21,7 +21,6 @@ impl Step {
         }
     }
 
-    #[allow(dead_code)]
     pub fn gpu(mut self) -> Self {
         self.gpu = true;
         self
@@ -186,6 +185,28 @@ fn fetch_evals() -> Vec<Step> {
     ]
 }
 
+/// The pretrained encoders as sky-train checkpoints (`models/s5-base/`), each with its MLM
+/// probe printed in the log.
+fn import_bases() -> Vec<Step> {
+    [
+        ("ettin-17m", "models-src/ettin-17m"),
+        ("ettin-32m", "models-src/ettin-32m"),
+        ("ettin-reranker-17m", "models-src/ettin-reranker-17m"),
+        ("mmbert-small", "models-src/mmbert-small"),
+    ]
+    .into_iter()
+    .map(|(name, src)| {
+        let out = format!("models/s5-base/{name}");
+        Step::new(
+            &format!("import-{name}"),
+            "sky-train",
+            &["import-hf", "--src", src, "--out", &out, "--name", name],
+        )
+        .gpu()
+    })
+    .collect()
+}
+
 pub fn stages() -> Vec<Stage> {
     vec![
         Stage {
@@ -197,6 +218,11 @@ pub fn stages() -> Vec<Stage> {
             name: "fetch-evals",
             about: "typed-decisions, zero-shot sets and the coherence battery into data/s5/src/",
             steps: fetch_evals(),
+        },
+        Stage {
+            name: "import",
+            about: "the encoders as sky-train checkpoints in models/s5-base/ (MLM probe logged)",
+            steps: import_bases(),
         },
     ]
 }

@@ -36,6 +36,22 @@ pub struct OptConfig {
     pub ns_steps: usize,
     /// Global gradient-norm clipping (0 disables).
     pub clip_norm: f32,
+    /// Muon on the encoder hidden matrices; `false` puts them in AdamW (with weight decay),
+    /// as for fine-tuning a pretrained encoder.
+    #[serde(default = "default_true")]
+    pub muon: bool,
+    /// AdamW learning-rate multiplier of every parameter outside `encoder.*` (a freshly
+    /// initialized head next to a pretrained encoder). 1 for s1 / s2.
+    #[serde(default = "default_one")]
+    pub head_lr_mult: f32,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_one() -> f32 {
+    1.0
 }
 
 impl Default for OptConfig {
@@ -53,6 +69,8 @@ impl Default for OptConfig {
             muon_weight_decay: 0.01,
             ns_steps: 5,
             clip_norm: 1.0,
+            muon: true,
+            head_lr_mult: 1.0,
         }
     }
 }
@@ -68,6 +86,17 @@ pub fn wsd(frac: f64) -> f64 {
         1.0
     } else {
         1.0 - 0.9 * (f - 0.8) / 0.2
+    }
+}
+
+/// Fine-tuning schedule at training progress `frac` in `[0, 1]`: linear warmup over the first
+/// `warmup` fraction, then linear decay to 0 at the end.
+pub fn warmup_linear(frac: f64, warmup: f64) -> f64 {
+    let f = frac.clamp(0.0, 1.0);
+    if warmup > 0.0 && f < warmup {
+        (f / warmup).max(1e-3)
+    } else {
+        ((1.0 - f) / (1.0 - warmup).max(1e-9)).clamp(0.0, 1.0)
     }
 }
 
@@ -149,7 +178,16 @@ impl Optimizer {
                 Some(s) => g.multiply(s)?,
                 None => g.clone(),
             };
-            match group_of(name, p.ndim()) {
+            let group = match group_of(name, p.ndim()) {
+                Group::Muon if !c.muon => Group::AdamDecay,
+                g => g,
+            };
+            let adam_lr = if c.head_lr_mult != 1.0 && !name.starts_with("encoder.") {
+                adam_lr * c.head_lr_mult
+            } else {
+                adam_lr
+            };
+            match group {
                 Group::Muon => {
                     let g = if c.muon_weight_decay != 0.0 {
                         g.add(p.multiply(Array::from_f32(c.muon_weight_decay))?)?
@@ -301,6 +339,52 @@ mod tests {
                 "{rows}x{cols}: mean singular value {mean}"
             );
         }
+    }
+
+    #[test]
+    fn warmup_linear_shape() {
+        assert!((warmup_linear(0.0, 0.1) - 1e-3).abs() < 1e-12);
+        assert!((warmup_linear(0.05, 0.1) - 0.5).abs() < 1e-9);
+        assert!((warmup_linear(0.1, 0.1) - 1.0).abs() < 1e-9);
+        assert!((warmup_linear(0.55, 0.1) - 0.5).abs() < 1e-9);
+        assert_eq!(warmup_linear(1.0, 0.1), 0.0);
+        assert_eq!(warmup_linear(0.5, 0.0), 0.5);
+    }
+
+    #[test]
+    fn no_muon_and_head_multiplier() {
+        let _g = test_util::lock();
+        // Without Muon an encoder matrix gets a plain AdamW step: its first update moves
+        // every entry by about lr (Adam's normalized step), whatever the gradient scale.
+        let mut params = ParamMap::new();
+        params.insert(
+            "encoder.layers.0.attn.Wo.weight".into(),
+            Array::from_slice(&[1.0f32, 1.0, 1.0, 1.0], &[2, 2]),
+        );
+        params.insert("scorer.1.bias".into(), Array::from_slice(&[0.0f32], &[1]));
+        let mut g = ParamMap::new();
+        g.insert(
+            "encoder.layers.0.attn.Wo.weight".into(),
+            Array::from_slice(&[1e-3f32, -5.0, 2.0, 0.5], &[2, 2]),
+        );
+        g.insert("scorer.1.bias".into(), Array::from_slice(&[1.0f32], &[1]));
+        let mut o = Optimizer::new(OptConfig {
+            adam_lr: 0.01,
+            weight_decay: 0.0,
+            clip_norm: 0.0,
+            muon: false,
+            head_lr_mult: 10.0,
+            ..Default::default()
+        });
+        o.update(&mut params, &g, 1.0).unwrap();
+        let w = crate::model::host_f32(&params["encoder.layers.0.attn.Wo.weight"]).unwrap();
+        let want = [0.99, 1.01, 0.99, 0.99];
+        for (a, b) in w.iter().zip(want) {
+            assert!((a - b).abs() < 1e-4, "{w:?}");
+        }
+        let b = crate::model::host_f32(&params["scorer.1.bias"]).unwrap();
+        assert!((b[0] + 0.1).abs() < 1e-4, "{b:?}");
+        assert!(o.state_arrays().keys().all(|k| !k.starts_with("muon.")));
     }
 
     #[test]

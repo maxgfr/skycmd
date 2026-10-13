@@ -79,5 +79,7 @@ jobs:
           tool: wasm-pack
       - name: Build the browser module
         run: scripts/build-wasm.sh
+      - name: Parity of the served target (wasm32 under Node vs the native reference)
+        run: RUSTFLAGS="-C target-feature=+simd128" wasm-pack test --node --release crates/sky-web --test parity
       - name: Check the output
         run: test -s site/public/pkg/sky_web_bg.wasm && test -s site/public/pkg/sky_web.js

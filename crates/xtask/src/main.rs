@@ -27,6 +27,9 @@ use anyhow::{bail, Context, Result};
 
 use stages::{stages, Stage, Step};
 
+/// Developer directory of the full Xcode (the Command Line Tools have no `metal` compiler).
+const XCODE: &str = "/Applications/Xcode.app/Contents/Developer";
+
 fn usage() -> ! {
     eprintln!(
         "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run]\n  cargo xtask store\n  \
@@ -196,6 +199,10 @@ fn run_stage(stage: &Stage, force: bool, dry: bool) -> Result<()> {
     if !packages.is_empty() && !dry {
         let mut cmd = Command::new(env!("CARGO"));
         cmd.current_dir(&root).args(["build", "--release"]);
+        // mlx (sky-train) compiles Metal kernels with the full Xcode toolchain.
+        if std::env::var_os("DEVELOPER_DIR").is_none() && Path::new(XCODE).exists() {
+            cmd.env("DEVELOPER_DIR", XCODE);
+        }
         for p in &packages {
             cmd.args(["-p", p]);
         }
