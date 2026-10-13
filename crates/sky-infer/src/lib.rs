@@ -6,6 +6,7 @@
 pub mod api;
 pub mod convert;
 pub mod engine;
+pub mod iso;
 pub mod json;
 pub mod kernels;
 pub mod lut;
@@ -21,7 +22,7 @@ pub mod tokenizer;
 pub mod wasm;
 
 pub use api::{Answer, DecisionRequest, DecisionResponse, ExitInfo, Question};
-pub use engine::{Arch, DecisionStats, Engine, EngineOptions, ModelInfo};
+pub use engine::{Arch, DecisionStats, Engine, EngineOptions, ModelInfo, ModelInfoRef};
 pub use model::{Model, ModelConfig, QuantizeSpec};
 pub use prompt::{QType, QuestionKind};
 pub use s2::{S2Config, S2Engine, S2Model, TernaryCompute};

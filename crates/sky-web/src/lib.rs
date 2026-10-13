@@ -84,12 +84,20 @@ impl Engine {
         self.inner.name()
     }
 
-    /// Model family: `s1` (ModernBERT + decision head) or `s2` (static cache, early exits).
+    /// Model family: `s1` (ModernBERT + decision head), `s2` (static cache, early exits) or
+    /// `iso` (s5: options isolated by construction, definitions only).
     pub fn family(&self) -> String {
         match self.inner.arch() {
             sky_infer::Arch::S1 => "s1".into(),
             sky_infer::Arch::S2 => "s2".into(),
+            sky_infer::Arch::Iso => "iso".into(),
         }
+    }
+
+    /// iso: language of the generic `noul` definitions (`en` or `fr`). No effect on s1 / s2.
+    #[wasm_bindgen(js_name = setLang)]
+    pub fn set_lang(&mut self, lang: &str) {
+        self.inner.set_lang(lang)
     }
 
     /// s2: override the early-exit threshold τ of every question type (undefined: the

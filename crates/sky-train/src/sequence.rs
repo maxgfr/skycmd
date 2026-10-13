@@ -260,67 +260,68 @@ pub fn gguf_bucket(laya_key: &str) -> String {
         .to_string()
 }
 
+/// GPT-2 `bytes_to_unicode`.
+fn byte_chars() -> Vec<char> {
+    let mut bs: Vec<u32> = (b'!' as u32..=b'~' as u32)
+        .chain(0xA1..=0xAC)
+        .chain(0xAE..=0xFF)
+        .collect();
+    let mut cs = bs.clone();
+    let mut n = 0;
+    for b in 0..256u32 {
+        if !bs.contains(&b) {
+            bs.push(b);
+            cs.push(256 + n);
+            n += 1;
+        }
+    }
+    let mut out = vec!['\0'; 256];
+    for (b, c) in bs.iter().zip(cs) {
+        out[*b as usize] = char::from_u32(c).unwrap();
+    }
+    out
+}
+
+/// A byte-level BPE tokenizer.json with no merges: one token per byte,
+/// byte `b` has id `5 + b`. Specials take ids 0..5.
+pub fn byte_tokenizer_json() -> String {
+    let chars = byte_chars();
+    let mut vocab = serde_json::Map::new();
+    for (i, s) in ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
+        .iter()
+        .enumerate()
+    {
+        vocab.insert(s.to_string(), i.into());
+    }
+    for (b, c) in chars.iter().enumerate() {
+        vocab.insert(c.to_string(), (5 + b).into());
+    }
+    let added: Vec<_> = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            serde_json::json!({"id": i, "content": s, "single_word": false, "lstrip": false,
+                "rstrip": false, "normalized": false, "special": true})
+        })
+        .collect();
+    serde_json::json!({
+        "version": "1.0", "truncation": null, "padding": null, "added_tokens": added,
+        "normalizer": null,
+        "pre_tokenizer": {"type": "ByteLevel", "add_prefix_space": false, "trim_offsets": true, "use_regex": true},
+        "post_processor": null,
+        "decoder": {"type": "ByteLevel", "add_prefix_space": false, "trim_offsets": true, "use_regex": true},
+        "model": {"type": "BPE", "dropout": null, "unk_token": null, "continuing_subword_prefix": null,
+            "end_of_word_suffix": null, "fuse_unk": false, "byte_fallback": false, "ignore_merges": false,
+            "vocab": vocab, "merges": []}
+    })
+    .to_string()
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
+    pub use super::byte_tokenizer_json;
     use super::*;
     use crate::config::{CLS_ID, MASK_ID, SEP_ID};
-
-    /// GPT-2 `bytes_to_unicode`.
-    fn byte_chars() -> Vec<char> {
-        let mut bs: Vec<u32> = (b'!' as u32..=b'~' as u32)
-            .chain(0xA1..=0xAC)
-            .chain(0xAE..=0xFF)
-            .collect();
-        let mut cs = bs.clone();
-        let mut n = 0;
-        for b in 0..256u32 {
-            if !bs.contains(&b) {
-                bs.push(b);
-                cs.push(256 + n);
-                n += 1;
-            }
-        }
-        let mut out = vec!['\0'; 256];
-        for (b, c) in bs.iter().zip(cs) {
-            out[*b as usize] = char::from_u32(c).unwrap();
-        }
-        out
-    }
-
-    /// A byte-level BPE tokenizer.json with no merges: one token per byte,
-    /// byte `b` has id `5 + b`. Specials take ids 0..5.
-    pub fn byte_tokenizer_json() -> String {
-        let chars = byte_chars();
-        let mut vocab = serde_json::Map::new();
-        for (i, s) in ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
-            .iter()
-            .enumerate()
-        {
-            vocab.insert(s.to_string(), i.into());
-        }
-        for (b, c) in chars.iter().enumerate() {
-            vocab.insert(c.to_string(), (5 + b).into());
-        }
-        let added: Vec<_> = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"]
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                serde_json::json!({"id": i, "content": s, "single_word": false, "lstrip": false,
-                    "rstrip": false, "normalized": false, "special": true})
-            })
-            .collect();
-        serde_json::json!({
-            "version": "1.0", "truncation": null, "padding": null, "added_tokens": added,
-            "normalizer": null,
-            "pre_tokenizer": {"type": "ByteLevel", "add_prefix_space": false, "trim_offsets": true, "use_regex": true},
-            "post_processor": null,
-            "decoder": {"type": "ByteLevel", "add_prefix_space": false, "trim_offsets": true, "use_regex": true},
-            "model": {"type": "BPE", "dropout": null, "unk_token": null, "continuing_subword_prefix": null,
-                "end_of_word_suffix": null, "fuse_unk": false, "byte_fallback": false, "ignore_merges": false,
-                "vocab": vocab, "merges": []}
-        })
-        .to_string()
-    }
 
     pub fn byte_tok() -> (tempfile::TempDir, Tok) {
         let dir = tempfile::tempdir().unwrap();

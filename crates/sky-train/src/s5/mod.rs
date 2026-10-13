@@ -8,6 +8,8 @@
 //! - [`iso`]: variant B, invariant by construction (segment mask, shared positions).
 
 pub mod data;
+pub mod export;
+pub mod golden;
 pub mod hf;
 pub mod iso;
 pub mod loss;

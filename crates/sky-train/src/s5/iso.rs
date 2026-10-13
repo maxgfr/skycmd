@@ -77,8 +77,15 @@ pub fn budget(head: usize, opts: &mut [Vec<u32>], head_max_len: usize) -> usize 
     head.min(left.max(8) as usize)
 }
 
+/// Tokens of the state segment (`[CLS] state [SEP]`): a fixed budget, so that the state's ids,
+/// hence its cached keys and values, never depend on the question or the options. The rest
+/// (question, its `[SEP]`, options) takes at most `head_max_len + 9` tokens.
+pub fn state_budget(max_len: usize, head_max_len: usize) -> usize {
+    max_len.saturating_sub(head_max_len + 16).max(8)
+}
+
 /// The iso sequence of an item under a draw: `[CLS] state [SEP] | question [SEP] | options`.
-/// The state gets what is left of `max_len`. Empty when the options alone do not fit.
+/// `None` when the options alone do not fit.
 pub fn iso_row(
     item: &S5Item,
     d: &Draw,
@@ -101,12 +108,14 @@ pub fn iso_row(
         .collect();
     let head_keep = budget(item.head.len(), &mut opts, head_max_len);
     let n_opt: usize = opts.iter().map(Vec::len).sum();
-    let fixed = 3 + head_keep + n_opt; // [CLS] [SEP] + question + [SEP] + options
-    if fixed + 1 > max_len {
+    let state_keep = item
+        .state
+        .len()
+        .min(state_budget(max_len, head_max_len) - 2);
+    if state_keep + 3 + head_keep + n_opt > max_len {
         return None;
     }
-    let state_keep = item.state.len().min(max_len - fixed);
-    let mut ids = Vec::with_capacity(fixed + state_keep);
+    let mut ids = Vec::with_capacity(state_keep + 3 + head_keep + n_opt);
     let mut seg = Vec::with_capacity(ids.capacity());
     ids.push(sp.cls);
     ids.extend_from_slice(&item.state[..state_keep]);

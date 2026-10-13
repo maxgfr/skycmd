@@ -1,0 +1,165 @@
+{
+  "meta": {
+    "seed": 5,
+    "tolerance": 0.0001,
+    "generator": "sky-train s5-golden"
+  },
+  "cases": [
+    {
+      "src": "golden",
+      "t": "choice",
+      "ins": "Flap now or wait?",
+      "opts": [
+        "flap: push the bird up",
+        "wait: let the bird fall"
+      ],
+      "state": "alt 12 vy -3 dx 40 gt 20 gb 35",
+      "target": [
+        1.0,
+        1.0
+      ],
+      "split": "test"
+    },
+    {
+      "src": "golden",
+      "t": "choice",
+      "ins": "Which way?",
+      "opts": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ],
+      "state": "x 4 y 7",
+      "target": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "split": "test"
+    },
+    {
+      "src": "golden",
+      "t": "score",
+      "ins": "How severe is it?",
+      "opts": [
+        "level 0: harmless",
+        "level 1: minor",
+        "level 2: serious"
+      ],
+      "state": "a server is down",
+      "target": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "split": "test"
+    },
+    {
+      "src": "golden",
+      "t": "noul",
+      "ins": "The alert is real.",
+      "opts": [
+        "false: benign activity",
+        "true: malicious activity"
+      ],
+      "state": "step 0: altitude 10, speed 0. step 1: altitude 13, speed 1. step 2: altitude 16, speed 2. step 3: altitude 19, speed 3. step 4: altitude 22, speed 4. step 5: altitude 25, speed 0. step 6: altitude 28, speed 1. step 7: altitude 31, speed 2. step 8: altitude 34, speed 3. step 9: altitude 37, speed 4. step 10: altitude 40, speed 0. step 11: altitude 43, speed 1. ",
+      "target": [
+        1.0,
+        1.0
+      ],
+      "split": "test"
+    },
+    {
+      "src": "golden",
+      "t": "noul",
+      "ins": "It will rain.",
+      "opts": [
+        "false",
+        "true"
+      ],
+      "state": "clouds",
+      "target": [
+        1.0,
+        1.0
+      ],
+      "split": "test"
+    },
+    {
+      "src": "golden",
+      "t": "choice",
+      "ins": "Je suis fatigué",
+      "opts": [
+        "dormir: pour se reposer",
+        "faire la fete: pour kiffer"
+      ],
+      "state": "je suis ko",
+      "target": [
+        1.0,
+        1.0
+      ],
+      "split": "test"
+    }
+  ],
+  "logits": {
+    "shared": [
+      [
+        0.015045776963233948,
+        0.004965241998434067
+      ],
+      [
+        0.07740228623151779,
+        -0.06591863185167313,
+        0.037511058151721954,
+        -0.006262343376874924
+      ],
+      [
+        0.017942732200026512,
+        0.036600176244974136,
+        0.02878265455365181
+      ],
+      [
+        0.03650857135653496,
+        0.014842301607131958
+      ],
+      [
+        0.08166951686143875,
+        0.08286117762327194
+      ],
+      [
+        0.05527830868959427,
+        0.036064229905605316
+      ]
+    ],
+    "reset": [
+      [
+        0.01492108404636383,
+        0.0048828125
+      ],
+      [
+        0.07637731730937958,
+        -0.06660079956054688,
+        0.0372418649494648,
+        -0.006861761212348938
+      ],
+      [
+        0.017995763570070267,
+        0.03659868612885475,
+        0.028852276504039764
+      ],
+      [
+        0.03641261160373688,
+        0.014629233628511429
+      ],
+      [
+        0.08200734853744507,
+        0.08306102454662323
+      ],
+      [
+        0.054959528148174286,
+        0.036071233451366425
+      ]
+    ]
+  }
+}

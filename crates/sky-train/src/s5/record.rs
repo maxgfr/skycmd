@@ -153,8 +153,10 @@ pub fn split_legacy(t: &str, i: usize, opt: &str) -> (String, String) {
         }
         "noul" => {
             let id = if i == 0 { "false" } else { "true" };
-            let rest = opt.strip_prefix(&format!("{id}:")).unwrap_or(opt);
-            (id.to_string(), rest.trim().to_string())
+            let rest = opt.strip_prefix(&format!("{id}:")).unwrap_or(opt).trim();
+            // A bare `false` / `true` has no definition (the generic one is rendered).
+            let def = if rest == id { "" } else { rest };
+            (id.to_string(), def.to_string())
         }
         _ => match opt.split_once(": ") {
             Some((k, d)) if !k.trim().is_empty() && k.len() <= 40 && !k.contains('\n') => {
@@ -235,6 +237,11 @@ mod tests {
         assert_eq!(
             split_legacy("score", 3, "level 3: High"),
             ("3".into(), "High".into())
+        );
+        assert_eq!(split_legacy("noul", 1, "true"), ("true".into(), "".into()));
+        assert_eq!(
+            split_legacy("noul", 0, "false: it is not"),
+            ("false".into(), "it is not".into())
         );
     }
 
