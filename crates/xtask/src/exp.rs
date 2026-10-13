@@ -197,7 +197,15 @@ fn best_of(store: &Path, variant: &str) -> Result<(Run, f64, Vec<Value>)> {
     let mut table = Vec::new();
     let mut best: Option<(Run, f64)> = None;
     for r in explore_runs().into_iter().filter(|r| r.variant == variant) {
-        let nll = val_nll(store, &r.name)?;
+        // A run that diverged (no val.json, non-finite NLL) is left out and recorded as failed.
+        let Ok(nll) = val_nll(store, &r.name) else {
+            table.push(json!({"run": r.name, "failed": true}));
+            continue;
+        };
+        if !nll.is_finite() {
+            table.push(json!({"run": r.name, "failed": true, "val_nll": null}));
+            continue;
+        }
         let acc = val(store, &r.name)?["all"]["accuracy"].as_f64();
         table.push(json!({"run": r.name, "val_nll": nll, "val_accuracy": acc}));
         if best.as_ref().is_none_or(|(_, b)| nll < *b) {
@@ -256,13 +264,12 @@ fn final_selection(store: &Path) -> Result<Value> {
 /// `WAVES · steps · t ≤ BUDGET_MINUTES`. Frozen in `runs/s5-select/steps.json`.
 fn final_steps(store: &Path) -> Result<u64> {
     let v = frozen(store, "steps", || {
-        let mut minutes = Vec::new();
-        for r in explore_runs() {
-            minutes.push(
-                val(store, &r.name)?["minutes"]
-                    .as_f64()
-                    .with_context(|| format!("runs/s5-{}/val.json has no minutes", r.name))?,
-            );
+        let mut minutes: Vec<f64> = explore_runs()
+            .iter()
+            .filter_map(|r| val(store, &r.name).ok()?["minutes"].as_f64())
+            .collect();
+        if minutes.is_empty() {
+            bail!("no finished exploration run");
         }
         minutes.sort_by(f64::total_cmp);
         let median = minutes[minutes.len() / 2];
