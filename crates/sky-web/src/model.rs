@@ -1,14 +1,14 @@
-//! A loaded decision model (s1 or s2), as used by the game sessions.
+//! A loaded decision model (s1, s2 or iso), as used by the game sessions and the /live demos.
 
 use serde_json::{json, Value};
 use sky_infer::{Arch, DecisionStats, EngineOptions, QType};
 
-/// A System One model loaded from GGUF bytes, computing in f32.
+/// A System One model loaded from GGUF bytes.
 ///
-/// Q8_0 files are dequantized at load: with baseline SIMD128, int8 dot products are not faster
-/// than f32 in browsers (see `sky_infer::wasm`), so this keeps the small download and gets f32
-/// speed and accuracy. Ternary s2 files are expanded to f32 for the same reason (measured in
-/// BENCH.md, "Inference").
+/// Ternary s2 files are expanded to f32 at load: with baseline SIMD128 the packed kernels are
+/// not faster than f32 in browsers (measured in BENCH.md, "Inference"). Q8_0 matrices are kept
+/// in Q8_0: an s5 model is mostly embeddings (tens of MB in f32), and keeping it quantized
+/// divides its memory by four.
 pub struct Model {
     inner: sky_infer::Engine,
     file_bytes: usize,
@@ -19,10 +19,13 @@ impl Model {
         Self::load_with(gguf, EngineOptions::default())
     }
 
-    /// Load with explicit engine options (`dequantize` is always set: f32 compute).
+    /// Load with explicit engine options (`dequantize` is set for s2 files only).
     pub fn load_with(gguf: &[u8], opts: EngineOptions) -> Result<Model, String> {
+        let s2 = sky_gguf::Gguf::parse(gguf)
+            .ok()
+            .is_some_and(|g| g.architecture() == Some(sky_infer::s2::ARCH));
         let opts = EngineOptions {
-            dequantize: true,
+            dequantize: s2,
             ..opts
         };
         let inner = sky_infer::Engine::from_gguf_with(gguf, opts).map_err(|e| e.to_string())?;
@@ -48,12 +51,27 @@ impl Model {
         self.inner.arch()
     }
 
-    /// State-encoder depth (s2) or encoder layers (s1).
+    /// State-encoder depth (s2) or encoder layers (s1, iso).
     pub fn max_layers(&self) -> usize {
-        match self.inner.s2_model() {
-            Some(m) => m.cfg.state_layers,
-            None => self.inner.model().cfg.num_layers,
+        if let Some(m) = self.inner.s2_model() {
+            return m.cfg.state_layers;
         }
+        if let Some(m) = self.inner.s1_model() {
+            return m.cfg.num_layers;
+        }
+        self.inner.model_info_ref().num_layers
+    }
+
+    /// iso: language of the generic `noul` definitions (`en`, `fr`). No effect on s1 / s2.
+    pub fn set_lang(&mut self, lang: &str) {
+        if let Some(e) = self.inner.iso_engine_mut() {
+            e.set_lang(lang);
+        }
+    }
+
+    /// The underlying engine.
+    pub fn engine_mut(&mut self) -> &mut sky_infer::Engine {
+        &mut self.inner
     }
 
     /// s2: override τ for every question type (`None`: calibrated values; 1.0: full depth).

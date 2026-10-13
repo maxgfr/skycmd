@@ -1,12 +1,14 @@
 //! High-level engine: tokenizer + model + prompt + readout, with caches for the game loop
 //! (the question and options are the same every frame, only the state changes).
 //!
-//! [`Engine`] runs both model families behind one API, chosen by `general.architecture`:
-//! `modern-bert` (s1, the Laya / ModernBERT layout) and `skycmd-s2` (s2, see [`crate::s2`]).
+//! [`Engine`] runs the model families behind one API, chosen by `general.architecture`:
+//! `modern-bert` (s1, the Laya / ModernBERT layout), `skycmd-s2` (s2, see [`crate::s2`]) and
+//! `skycmd-iso` (s5 variant B, see [`crate::iso`]).
 
 use sky_gguf::Gguf;
 
 use crate::api::{Answer, DecisionRequest, DecisionResponse, ExitInfo};
+use crate::iso::{IsoEngine, IsoModel};
 use crate::kernels::ActQuant;
 use crate::model::{Model, QuantizeSpec, Workspace};
 use crate::prompt::{self, Prefix, PromptTokens, QType, QuestionKind};
@@ -63,6 +65,8 @@ pub enum Arch {
     S1,
     /// `skycmd-s2`: static / state streams, fusion head, early exits.
     S2,
+    /// `skycmd-iso`: options isolated by construction, definitions only, state cache.
+    Iso,
 }
 
 impl Arch {
@@ -71,6 +75,7 @@ impl Arch {
         match self {
             Arch::S1 => "modern-bert",
             Arch::S2 => crate::s2::ARCH,
+            Arch::Iso => crate::iso::ARCH,
         }
     }
 }
@@ -90,6 +95,12 @@ pub struct DecisionStats {
     pub state_hit: bool,
     /// Tokens of the question (full sequence for s1, static + state streams for s2).
     pub tokens: usize,
+}
+
+/// The few model facts available without `&mut` (see [`Engine::model_info`] for the rest).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModelInfoRef {
+    pub num_layers: usize,
 }
 
 /// Summary of a loaded model.
@@ -333,6 +344,7 @@ impl S1Engine {
 enum Inner {
     S1(Box<S1Engine>),
     S2(Box<S2Engine>),
+    Iso(Box<IsoEngine>),
 }
 
 /// Inference engine for one model (s1 or s2). Not thread-safe by design (`&mut self`): it
@@ -415,6 +427,18 @@ impl Engine {
         if g.architecture() == Some(crate::s2::ARCH) {
             let model = S2Model::from_gguf(&g)?;
             Self::new_s2(model, tok, opts)
+        } else if g.architecture() == Some(crate::iso::ARCH) {
+            let mut model = IsoModel::from_gguf(&g)?;
+            model.act_quant = opts.act_quant;
+            if opts.dequantize {
+                model.dequantize();
+            }
+            Ok(Self::wrap(Inner::Iso(Box::new(IsoEngine::new(
+                model,
+                tok,
+                opts.state_cache,
+                opts.bpe_cache,
+            )?))))
         } else {
             let model = Model::from_gguf(&g)?;
             Self::new(model, tok, opts)
@@ -442,6 +466,16 @@ impl Engine {
         match self.inner {
             Inner::S1(_) => Arch::S1,
             Inner::S2(_) => Arch::S2,
+            Inner::Iso(_) => Arch::Iso,
+        }
+    }
+
+    /// The iso engine (state cache, language of the generic `noul` definitions), if this
+    /// engine runs a `skycmd-iso` model.
+    pub fn iso_engine_mut(&mut self) -> Option<&mut IsoEngine> {
+        match &mut self.inner {
+            Inner::Iso(e) => Some(e),
+            _ => None,
         }
     }
 
@@ -458,7 +492,7 @@ impl Engine {
     pub fn s1_model(&self) -> Option<&Model> {
         match &self.inner {
             Inner::S1(e) => Some(&e.model),
-            Inner::S2(_) => None,
+            _ => None,
         }
     }
 
@@ -466,7 +500,7 @@ impl Engine {
     pub fn s2_model(&self) -> Option<&S2Model> {
         match &self.inner {
             Inner::S2(e) => Some(e.model()),
-            Inner::S1(_) => None,
+            _ => None,
         }
     }
 
@@ -474,7 +508,7 @@ impl Engine {
     pub fn s2_engine_mut(&mut self) -> Option<&mut S2Engine> {
         match &mut self.inner {
             Inner::S2(e) => Some(e),
-            Inner::S1(_) => None,
+            _ => None,
         }
     }
 
@@ -482,6 +516,7 @@ impl Engine {
         match &self.inner {
             Inner::S1(e) => &e.tok,
             Inner::S2(e) => e.tokenizer(),
+            Inner::Iso(e) => e.tokenizer(),
         }
     }
 
@@ -490,6 +525,7 @@ impl Engine {
         match &self.inner {
             Inner::S1(e) => &e.model.cfg.name,
             Inner::S2(e) => &e.model().cfg.name,
+            Inner::Iso(e) => &e.model().cfg.name,
         }
     }
 
@@ -497,6 +533,7 @@ impl Engine {
         match &self.inner {
             Inner::S1(e) => e.model.n_params(),
             Inner::S2(e) => e.model().n_params(),
+            Inner::Iso(e) => e.model().n_params(),
         }
     }
 
@@ -556,6 +593,46 @@ impl Engine {
                     ternary_packed: packed,
                 }
             }
+            Inner::Iso(e) => {
+                let m = e.model();
+                let q8 = m.has_q8();
+                let c = &m.cfg;
+                ModelInfo {
+                    name: c.name.clone(),
+                    arch: Arch::Iso.name().into(),
+                    n_params: m.n_params(),
+                    vocab_size: c.vocab_size,
+                    hidden_size: c.hidden_size,
+                    num_layers: c.num_layers,
+                    num_heads: c.num_heads,
+                    intermediate_size: c.intermediate_size,
+                    head_layers: 0,
+                    max_len: c.max_len,
+                    head_max_len: c.head_max_len,
+                    q8,
+                    weight_format: if q8 { "q8_0" } else { "f32" }.into(),
+                    temperatures: c.temperatures.clone(),
+                    static_layers: 0,
+                    exits: Vec::new(),
+                    exit_thresholds: Vec::new(),
+                    ternary_packed: false,
+                }
+            }
+        }
+    }
+
+    /// The number of encoder layers of the loaded model (any family).
+    pub fn model_info_ref(&self) -> ModelInfoRef {
+        match &self.inner {
+            Inner::S1(e) => ModelInfoRef {
+                num_layers: e.model.cfg.num_layers,
+            },
+            Inner::S2(e) => ModelInfoRef {
+                num_layers: e.model().cfg.state_layers,
+            },
+            Inner::Iso(e) => ModelInfoRef {
+                num_layers: e.model().cfg.num_layers,
+            },
         }
     }
 
@@ -582,6 +659,7 @@ impl Engine {
         match &self.inner {
             Inner::S1(e) => e.temperature(qtype, n),
             Inner::S2(e) => e.temperature(e.model().cfg.exits.len() - 1, qtype, n),
+            Inner::Iso(e) => e.temperature(qtype, n),
         }
     }
 
@@ -605,6 +683,7 @@ impl Engine {
                 ids.extend(state_ids);
                 (ids, markers)
             }
+            Inner::Iso(e) => e.build_sequence(qtype, instructions, options, state),
         }
     }
 
@@ -633,6 +712,15 @@ impl Engine {
                     static_hit: o.static_hit,
                     state_hit: o.state_hit,
                     tokens: o.tokens,
+                });
+                Ok((o.probs, o.logits))
+            }
+            Inner::Iso(e) => {
+                let o = e.question(qtype, instructions, options, state)?;
+                self.last = Some(DecisionStats {
+                    state_hit: o.state_hit,
+                    tokens: o.tokens,
+                    ..Default::default()
                 });
                 Ok((o.probs, o.logits))
             }
@@ -693,7 +781,7 @@ impl Engine {
                 });
                 o.probs
             }
-            Inner::S1(_) => self.question(qtype, instructions, options, state)?.0,
+            Inner::S1(_) | Inner::Iso(_) => self.question(qtype, instructions, options, state)?.0,
         };
         self.last_micros = timer::since(t0);
         Ok(p)
@@ -716,7 +804,7 @@ impl Engine {
         state: &str,
     ) -> Result<Vec<Vec<f32>>> {
         match &mut self.inner {
-            Inner::S1(_) => Ok(vec![self.decide_raw(
+            Inner::S1(_) | Inner::Iso(_) => Ok(vec![self.decide_raw(
                 qtype,
                 instructions,
                 options,
@@ -734,15 +822,32 @@ impl Engine {
         let mut input_tokens = 0;
         for q in &req.questions {
             let qtype = q.kind.qtype();
-            let texts = prompt::render_options(&q.kind);
-            let (p, _) = self
-                .question(qtype, &q.instructions, &texts, &req.state)
-                .map_err(|e| match e {
-                    Error::InvalidRequest(m) => {
-                        Error::InvalidRequest(format!("question {:?}: {m}", q.id))
-                    }
-                    e => e,
-                })?;
+            let result = match &mut self.inner {
+                // Definitions only: the option keys never reach an iso model.
+                Inner::Iso(e) => {
+                    let noul = e.model().cfg.noul_definitions(e.lang());
+                    let defs = crate::iso::definitions(&q.kind, (noul.0, noul.1));
+                    e.question_defs(qtype, &q.instructions, &defs, &req.state)
+                        .map(|o| {
+                            self.last = Some(DecisionStats {
+                                state_hit: o.state_hit,
+                                tokens: o.tokens,
+                                ..Default::default()
+                            });
+                            (o.probs, o.logits)
+                        })
+                }
+                _ => {
+                    let texts = prompt::render_options(&q.kind);
+                    self.question(qtype, &q.instructions, &texts, &req.state)
+                }
+            };
+            let (p, _) = result.map_err(|e| match e {
+                Error::InvalidRequest(m) => {
+                    Error::InvalidRequest(format!("question {:?}: {m}", q.id))
+                }
+                e => e,
+            })?;
             let stats = self.last.as_ref().expect("recorded by question()");
             input_tokens += stats.tokens;
             exits.push(match (stats.exit, stats.layers_used) {

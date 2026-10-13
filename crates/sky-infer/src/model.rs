@@ -308,14 +308,14 @@ pub struct Linear {
 }
 
 #[derive(Clone, Copy)]
-enum WeightRef<'a> {
+pub(crate) enum WeightRef<'a> {
     F32(&'a [f32]),
     Q8(&'a [BlockQ8]),
 }
 
 /// A view over a range of output rows of a [`Linear`].
 #[derive(Clone, Copy)]
-struct LinearView<'a> {
+pub(crate) struct LinearView<'a> {
     w: WeightRef<'a>,
     b: Option<&'a [f32]>,
     n_in: usize,
@@ -325,11 +325,11 @@ struct LinearView<'a> {
 }
 
 impl Linear {
-    fn view(&self) -> LinearView<'_> {
+    pub(crate) fn view(&self) -> LinearView<'_> {
         self.rows(0, self.n_out)
     }
 
-    fn rows(&self, start: usize, end: usize) -> LinearView<'_> {
+    pub(crate) fn rows(&self, start: usize, end: usize) -> LinearView<'_> {
         let w = match &self.w {
             Weight::F32(v) => WeightRef::F32(&v[start * self.n_in..end * self.n_in]),
             Weight::Q8(b) => {
@@ -431,7 +431,7 @@ pub struct Embedding {
 }
 
 impl Embedding {
-    fn row_into(&self, id: usize, out: &mut [f32]) {
+    pub(crate) fn row_into(&self, id: usize, out: &mut [f32]) {
         match &self.w {
             Weight::F32(v) => out.copy_from_slice(&v[id * self.d..(id + 1) * self.d]),
             Weight::Q8(b) => {
@@ -1256,12 +1256,12 @@ impl Model {
 }
 
 /// Scratch of the quantized activations, with the activation mode of the model.
-struct Act<'a> {
-    xq: &'a mut [ActBlock],
-    mode: ActQuant,
+pub(crate) struct Act<'a> {
+    pub(crate) xq: &'a mut [ActBlock],
+    pub(crate) mode: ActQuant,
 }
 
-fn linear(
+pub(crate) fn linear(
     lin: LinearView<'_>,
     x: &[f32],
     rows: usize,

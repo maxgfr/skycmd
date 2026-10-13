@@ -466,6 +466,10 @@ enum Cmd {
     /// s5: fine-tune an imported encoder into a decision model (by steps; AdamW, warmup +
     /// linear decay, EMA, CE + Brier + RPS).
     S5Train(sky_train::s5::train::TrainArgs),
+    /// s5: an iso checkpoint (variant B) as a `skycmd-iso` GGUF (f32, f16 or q8_0).
+    S5Export(sky_train::s5::export::ExportArgs),
+    /// s5: reference outputs of a small random iso model for the sky-infer tests.
+    S5Golden(sky_train::s5::golden::GoldenArgs),
 }
 
 fn main() -> Result<()> {
@@ -843,6 +847,8 @@ fn main() -> Result<()> {
         Cmd::ImportHf(a) => sky_train::s5::hf::import(&a)?,
         Cmd::Score(a) => sky_train::s5::score::score(&a)?,
         Cmd::S5Train(a) => sky_train::s5::train::train(&a)?,
+        Cmd::S5Export(a) => sky_train::s5::export::export(&a)?,
+        Cmd::S5Golden(a) => sky_train::s5::golden::golden(&a)?,
     }
     Ok(())
 }
