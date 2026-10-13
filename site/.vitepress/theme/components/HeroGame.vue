@@ -3,7 +3,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { GameRunner } from '../lib/runner'
-import { loadEngine, loadManifest, loadWasm } from '../lib/wasm'
+import { gameModels, loadEngine, loadManifest, loadWasm } from '../lib/wasm'
 import { live } from '../lib/store'
 
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -37,7 +37,7 @@ onMounted(async () => {
         live.best = h.best
       },
     })
-    const models = await loadManifest()
+    const models = gameModels(await loadManifest())
     if (models.length) {
       try {
         const entry = models[0]

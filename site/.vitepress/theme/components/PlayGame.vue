@@ -7,6 +7,7 @@ import {
   familyOf,
   formatInt,
   formatKB,
+  gameModels,
   loadEngine,
   loadManifest,
   loadWasm,
@@ -333,7 +334,7 @@ onMounted(async () => {
     error.value = `The wasm module could not be loaded (${(e as Error).message}). Build it with scripts/build-wasm.sh.`
     return
   }
-  models.value = await loadManifest()
+  models.value = gameModels(await loadManifest())
   status.value = ''
   makeRunner()
   if (models.value.length) selected.value = models.value[0].file

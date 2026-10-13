@@ -895,6 +895,50 @@ pub fn decision_loss_weighted(
     ce.multiply(wts)?.sum(None)
 }
 
+/// Per-exit sharpening exponents of [`exit_targets`]: `beta0` at the first exit rising
+/// linearly to 1 at the last.
+pub fn dis_betas(n_exits: usize, beta0: f32) -> Vec<f32> {
+    (0..n_exits)
+        .map(|e| {
+            if n_exits == 1 {
+                1.0
+            } else {
+                beta0 + (1.0 - beta0) * e as f32 / (n_exits - 1) as f32
+            }
+        })
+        .collect()
+}
+
+/// Deep improvement supervision targets (s4): exit `e` is trained toward
+/// `normalize(target ^ beta_e)` `[E, B, O]`, a tempered copy of the target that is
+/// softer at the early exits (`beta < 1`) and equal to it at the last one (`beta = 1`).
+/// Every loop is supervised toward a target that improves on the previous one, so
+/// an early exit is confident only where even the softened target is.
+pub fn exit_targets(target: &Array, beta: &Array) -> R<Array> {
+    let e = beta.dim(0);
+    let t = ops::power(target, beta.reshape(&[e, 1, 1])?)?;
+    t.divide(ops::maximum(t.sum_axis(-1, true)?, Array::from_f32(1e-12))?)
+}
+
+/// [`decision_loss_weighted`] against the per-exit [`exit_targets`] (`beta` `[E]`).
+pub fn decision_loss_dis(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    qat: bool,
+    wts: &Array,
+    beta: &Array,
+) -> R<Array> {
+    let logits = masked(&forward(p, cfg, b, qat)?, &b.marker_mask)?;
+    let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+    let ce = exit_targets(&b.target, beta)?
+        .multiply(&logp)?
+        .sum_axis(-1, None)?
+        .mean_axis(-1, None)?
+        .negative()?;
+    ce.multiply(wts)?.sum(None)
+}
+
 /// [`decision_loss`] over the first `n_exits` exits (stochastic depth: the
 /// loops beyond them are skipped), their weights renormalized to sum to 1.
 pub fn decision_loss_exits(
@@ -1326,6 +1370,12 @@ mod tests {
                     .unwrap()
                     .item_exact::<f32>();
                 assert!((a - e).abs() < 1e-5, "n {n}: {a} vs {e}");
+                // DIS with every beta = 1 is the plain deep supervision.
+                let ones = Array::from_slice(&[1.0f32; 4], &[4]);
+                let d = decision_loss_dis(&p, &cfg, &b, true, &w, &ones)
+                    .unwrap()
+                    .item_exact::<f32>();
+                assert!((a - d).abs() < 1e-5, "dis n {n}: {a} vs {d}");
             }
             let w = Array::from_slice(&exit_weight_vec(&cfg, Some(2)), &[4]);
             let f = |p: HashMap<Rc<str>, Array>, _: ()| -> R<Vec<Array>> {
@@ -1342,6 +1392,41 @@ mod tests {
             assert_eq!(norm("loop_embd.weight"), 0.0);
             assert_eq!(norm("blk.0.attn_norm_loop.weight"), 0.0);
             assert!(norm("blk.1.attn_norm.weight") > 0.0);
+        });
+    }
+
+    #[test]
+    fn dis_targets_soften_early_exits_and_keep_the_last() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let b = dis_betas(3, 0.4);
+            assert!(
+                b.iter()
+                    .zip([0.4, 0.7, 1.0])
+                    .all(|(x, y)| (x - y).abs() < 1e-6),
+                "{b:?}"
+            );
+            assert_eq!(dis_betas(1, 0.4), vec![1.0]);
+            // Two rows: a soft target and a one-hot target with a padded option.
+            let t = Array::from_slice(&[0.7f32, 0.2, 0.1, 0.0, 1.0, 0.0], &[2, 3]);
+            let beta = Array::from_slice(&dis_betas(3, 0.4), &[3]);
+            let x = crate::model::host_f32(&exit_targets(&t, &beta).unwrap()).unwrap();
+            assert_eq!(x.len(), 18);
+            let h =
+                |p: &[f32]| -> f32 { p.iter().filter(|v| **v > 0.0).map(|v| -v * v.ln()).sum() };
+            let (e0, e1, e2) = (&x[0..3], &x[6..9], &x[12..15]);
+            for e in [e0, e1, e2] {
+                assert!((e.iter().sum::<f32>() - 1.0).abs() < 1e-5);
+            }
+            assert!(h(e0) > h(e1) && h(e1) > h(e2), "{e0:?} {e1:?} {e2:?}");
+            for (a, b) in e2.iter().zip([0.7, 0.2, 0.1]) {
+                assert!((a - b).abs() < 1e-5);
+            }
+            // A one-hot target (and its zero padding) stays one-hot at every exit.
+            for e in 0..3 {
+                let r = &x[e * 6 + 3..e * 6 + 6];
+                assert_eq!(r, &[0.0, 1.0, 0.0]);
+            }
         });
     }
 

@@ -14,3 +14,5 @@ runs-ladder.log
 /models
 /models-src
 site/public/lib/
+.venv-teacher/
+logs-s4/

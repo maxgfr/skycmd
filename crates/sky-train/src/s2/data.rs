@@ -626,6 +626,41 @@ pub fn sample_batch(
     make_batch(&data.statics, &items, pad_to)
 }
 
+/// `pool` training batches at once, grouped by state length: `pool * batch` items are
+/// drawn exactly as by [`sample_batch`], sorted by state length and cut into `pool` batches
+/// returned in random order. Each item keeps its sampling probability; a batch is padded to
+/// its own longest state instead of the longest of 64 random ones (with 384-token states
+/// one long row otherwise pads the whole batch).
+pub fn sample_batches_by_length(
+    data: &S2Data,
+    weights: &[f64],
+    batch: usize,
+    pool: usize,
+    rng: &mut Rng,
+    pad_to: usize,
+) -> Vec<S2Batch> {
+    let w: Vec<f64> = weights
+        .iter()
+        .zip(&data.train)
+        .map(|(w, items)| if items.is_empty() { 0.0 } else { *w })
+        .collect();
+    let mut items: Vec<&S2Item> = (0..batch * pool.max(1))
+        .map(|_| {
+            let g = rng.weighted(&w);
+            &data.train[g][rng.below(data.train[g].len())]
+        })
+        .collect();
+    items.sort_by_key(|it| it.state.ids.len());
+    let mut out: Vec<S2Batch> = items
+        .chunks(batch)
+        .map(|c| make_batch(&data.statics, c, pad_to))
+        .collect();
+    for i in (1..out.len()).rev() {
+        out.swap(i, rng.below(i + 1));
+    }
+    out
+}
+
 // ----------------------------------------------------------------------------- numeric MLM
 
 /// The tokenized MLM corpus with the value of every `[NUM]` token.

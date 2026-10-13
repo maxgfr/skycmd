@@ -311,6 +311,14 @@ enum Cmd {
         /// a random earlier exit (its later loops skipped).
         #[arg(long, default_value_t = 0.0)]
         loop_dropout: f64,
+        /// s4 deep improvement supervision: exit e trains toward normalize(target^beta_e),
+        /// beta rising linearly from this value at the first exit to 1 at the last.
+        #[arg(long)]
+        dis: Option<f32>,
+        /// Batches drawn at once and grouped by state length, so that a batch is padded to its
+        /// own longest state (1: every batch drawn alone).
+        #[arg(long, default_value_t = 1)]
+        length_pool: usize,
         /// Padding multiple of the training batch shapes (32: coarser buckets, fewer compiles).
         #[arg(long, default_value_t = 16)]
         pad_to: usize,
@@ -453,6 +461,14 @@ enum Cmd {
 }
 
 fn main() -> Result<()> {
+    // Optional cap on MLX's allocator cache (freed buffers kept for reuse). Unbounded by
+    // default; the s4 night run sets it so that training next to the teacher does not swap.
+    if let Some(gb) = std::env::var("SKY_MLX_CACHE_GB")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+    {
+        mlx_rs::memory::set_cache_limit((gb * (1u64 << 30) as f64) as usize)?;
+    }
     match Cli::parse().cmd {
         Cmd::Bench {
             config,
@@ -662,6 +678,8 @@ fn main() -> Result<()> {
             seed,
             qat_frac,
             loop_dropout,
+            dis,
+            length_pool,
             pad_to,
             seq_records,
             seq_frac,
@@ -696,6 +714,8 @@ fn main() -> Result<()> {
             seq_records,
             seq_frac,
             carry_drop,
+            dis,
+            length_pool,
         })?,
         Cmd::S2Calibrate {
             run,

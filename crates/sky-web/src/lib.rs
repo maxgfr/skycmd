@@ -98,9 +98,53 @@ impl Engine {
     pub fn set_exit_threshold(&mut self, tau: Option<f32>) {
         self.inner.set_exit_threshold(tau)
     }
+
+    /// A generic decision (the /live demos): `type` is `choice`, `score` or `noul`,
+    /// `options_json` a JSON array of rendered option texts. Returns
+    /// `{"probs", "exit", "n_exits", "layers_used", "static_hit", "micros"}` as JSON.
+    pub fn decide(
+        &mut self,
+        qtype: &str,
+        instructions: &str,
+        options_json: &str,
+        state: &str,
+    ) -> Result<String, JsError> {
+        self.decide_value(qtype, instructions, options_json, state)
+            .map(|v| v.to_string())
+            .map_err(|e| JsError::new(&e))
+    }
 }
 
 impl Engine {
+    /// [`Engine::decide`] without `JsError` (usable on native targets).
+    pub fn decide_value(
+        &mut self,
+        qtype: &str,
+        instructions: &str,
+        options_json: &str,
+        state: &str,
+    ) -> Result<serde_json::Value, String> {
+        let qt = sky_infer::QType::from_name(qtype)
+            .ok_or_else(|| format!("unknown question type {qtype:?} (choice, score, noul)"))?;
+        let options: Vec<String> =
+            serde_json::from_str(options_json).map_err(|e| format!("options: {e}"))?;
+        if options.len() < 2 {
+            return Err("at least two options are needed".into());
+        }
+        let t0 = clock::now_us();
+        let probs = self.inner.probs(qt, instructions, &options, state)?;
+        let micros = clock::now_us() - t0;
+        let st = self.inner.last_stats().cloned().unwrap_or_default();
+        Ok(serde_json::json!({
+            "probs": probs,
+            "exit": st.exit,
+            "n_exits": st.n_exits,
+            "layers_used": st.layers_used,
+            "static_hit": st.static_hit,
+            "micros": micros,
+        }))
+    }
+
     /// The underlying model (native use and tests).
     pub fn model_mut(&mut self) -> &mut Model {
         &mut self.inner

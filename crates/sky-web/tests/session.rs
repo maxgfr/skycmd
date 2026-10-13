@@ -239,3 +239,31 @@ fn bench_compares_families() {
     assert_eq!(b2["static_hit_rate"], 1.0);
     assert!(b2["median_us"].as_f64().unwrap() > 0.0);
 }
+
+#[test]
+fn generic_decision_returns_probabilities_and_stats() {
+    let mut e = Engine::load(&random_s2(sky_infer::s2::random::WeightFormat::Ternary)).unwrap();
+    let opts = r#"["refund: money back","billing: an invoice question","unsure: I don't know"]"#;
+    let ins = "Which team should handle this ticket?";
+    let v = e
+        .decide_value("choice", ins, opts, "I was charged twice")
+        .unwrap();
+    let p: Vec<f32> = serde_json::from_value(v["probs"].clone()).unwrap();
+    assert_eq!(p.len(), 3);
+    assert!((p.iter().sum::<f32>() - 1.0).abs() < 1e-4);
+    assert!(v["micros"].as_f64().unwrap() >= 0.0);
+    assert_eq!(v["n_exits"], 2);
+    assert!(v["layers_used"].is_u64());
+    // The same question on a new state finds its static encoding cached.
+    let w = e
+        .decide_value("choice", ins, opts, "Where is my invoice?")
+        .unwrap();
+    assert_eq!(w["static_hit"], true);
+    let rule = "The message violates the rule: no insults.";
+    let n = e
+        .decide_value("noul", rule, r#"["false: no","true: yes"]"#, "hello")
+        .unwrap();
+    assert_eq!(n["probs"].as_array().unwrap().len(), 2);
+    assert!(e.decide_value("bogus", "q", opts, "s").is_err());
+    assert!(e.decide_value("choice", "q", r#"["only"]"#, "s").is_err());
+}

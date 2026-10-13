@@ -11,6 +11,9 @@ export interface WasmEngine {
   family(): string
   /** s2: early-exit threshold override (undefined = calibrated, 1 = full depth). */
   setExitThreshold(tau?: number): void
+  /** Generic decision over rendered option texts (JSON array); returns the JSON answer
+   * `{probs, exit, n_exits, layers_used, static_hit, micros}`. */
+  decide(qtype: string, instructions: string, optionsJson: string, state: string): string
   free(): void
 }
 
@@ -52,6 +55,13 @@ export interface ModelEntry {
   arch?: string
   /** `f32`, `f16`, `q8_0` or `ternary`. */
   weight_format?: string
+  /** `generic`: a decision model for free-text questions (s4, the Live page), not for the games. */
+  task?: string
+}
+
+/** The models that play the games (every manifest entry but the generic ones). */
+export function gameModels(list: ModelEntry[]): ModelEntry[] {
+  return list.filter((m) => m.task !== 'generic')
 }
 
 /** Model family of a manifest entry (from `arch`, else from the name). */

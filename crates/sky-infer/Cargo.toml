@@ -35,5 +35,9 @@ path = "src/bin/sky-convert.rs"
 name = "sky-bench"
 path = "src/bin/sky-bench.rs"
 
+[[bin]]
+name = "sky-eval"
+path = "src/bin/sky-eval.rs"
+
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O3", "--enable-simd", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals"]
