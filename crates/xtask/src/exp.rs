@@ -247,7 +247,11 @@ fn final_selection(store: &Path) -> Result<Value> {
     frozen(store, "final", || {
         let bii = b_ii_run(&ex);
         let bi_nll = ex["b-i"]["val_nll"].as_f64().unwrap_or(f64::NAN);
-        let bii_nll = val_nll(store, &bii.name)?;
+        // A diverged B-ii run counts as infinitely worse (and is recorded as such).
+        let bii_nll = val_nll(store, &bii.name)
+            .ok()
+            .filter(|x| x.is_finite())
+            .unwrap_or(f64::INFINITY);
         let b = if bii_nll < bi_nll { "b-ii" } else { "b-i" };
         Ok(json!({
             "rule": "B-i or B-ii: lower val NLL at the best B-i configuration",
