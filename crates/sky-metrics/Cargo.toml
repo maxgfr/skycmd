@@ -1,0 +1,9 @@
+[package]
+name = "sky-metrics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Evaluation metrics of decision models: proper scores, calibration, selective prediction, paired bootstrap, non-inferiority and the Holm correction"
+
+[dependencies]
