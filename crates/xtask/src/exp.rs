@@ -7,7 +7,8 @@
 //!   [`EXPLORE_STEPS`] steps.
 //! - `explore-b-ii`: B-ii at the best (init, LR) of B-i.
 //! - `final`: A′ and B* (B-i or B-ii, the lower val NLL at that configuration) × seeds 0, 1, 2,
-//!   and A × seed 0 at the configuration of A′, [`FINAL_STEPS`] steps.
+//!   and A × seed 0 at the configuration of A′. Their step count (also that of bet 2) is fixed
+//!   mechanically from the throughput of the exploration only ([`final_steps`]).
 //! - `eval` (CPU): for each finished run (`--runs a,b` or every run of `final` and `lambda*`):
 //!   f32 and q8_0 exports, temperatures fitted on the English `val` split of each format, the
 //!   calibrated model on the `cal` split (escalation thresholds), every test set in f32, the
@@ -26,7 +27,12 @@ use serde_json::{json, Value};
 use crate::stages::{Stage, Step};
 
 pub const EXPLORE_STEPS: u64 = 600;
-pub const FINAL_STEPS: u64 = 2000;
+/// Candidate step counts of the finalists and of bet 2.
+pub const FINAL_STEP_CHOICES: [u64; 4] = [2000, 3000, 4000, 6000];
+/// GPU minutes allowed for the five waves of runs that follow the exploration (three waves of
+/// finalists at `--jobs 3`, two of bet 2).
+pub const BUDGET_MINUTES: f64 = 180.0;
+pub const WAVES: f64 = 5.0;
 pub const LRS: [&str; 3] = ["5e-5", "1e-4", "2e-4"];
 /// (short name, `models/s5-base/` directory).
 pub const INITS: [(&str, &str); 2] = [("e17", "ettin-17m"), ("r17", "ettin-reranker-17m")];
@@ -244,19 +250,53 @@ fn final_selection(store: &Path) -> Result<Value> {
     })
 }
 
-fn cfg_run(name: String, variant: &str, cfg: &Value, seed: u64, coh: &str) -> Run {
+/// The step count of the finalists and of bet 2, fixed from the throughput of the exploration
+/// only, never from a validation metric: with `t` the median training minutes per step of the
+/// exploration runs (three at a time), the largest of [`FINAL_STEP_CHOICES`] such that
+/// `WAVES · steps · t ≤ BUDGET_MINUTES`. Frozen in `runs/s5-select/steps.json`.
+fn final_steps(store: &Path) -> Result<u64> {
+    let v = frozen(store, "steps", || {
+        let mut minutes = Vec::new();
+        for r in explore_runs() {
+            minutes.push(
+                val(store, &r.name)?["minutes"]
+                    .as_f64()
+                    .with_context(|| format!("runs/s5-{}/val.json has no minutes", r.name))?,
+            );
+        }
+        minutes.sort_by(f64::total_cmp);
+        let median = minutes[minutes.len() / 2];
+        let per_step = median / EXPLORE_STEPS as f64;
+        let steps = FINAL_STEP_CHOICES
+            .iter()
+            .copied()
+            .filter(|&f| WAVES * f as f64 * per_step <= BUDGET_MINUTES)
+            .max()
+            .unwrap_or(FINAL_STEP_CHOICES[0]);
+        Ok(json!({
+            "rule": "largest of {2000, 3000, 4000, 6000} with 5 waves x steps x (median exploration minutes / 600) <= 180 min; throughput only",
+            "explore_minutes": minutes, "median_minutes": median, "minutes_per_step": per_step,
+            "budget_minutes": BUDGET_MINUTES, "waves": WAVES, "final_steps": steps,
+        }))
+    })?;
+    v["final_steps"]
+        .as_u64()
+        .context("runs/s5-select/steps.json has no final_steps")
+}
+
+fn cfg_run(name: String, variant: &str, cfg: &Value, seed: u64, coh: &str, steps: u64) -> Run {
     Run {
         name,
         variant: variant.into(),
         init: cfg["init"].as_str().unwrap_or_default().into(),
         lr: cfg["lr"].as_str().unwrap_or_default().into(),
         seed,
-        steps: FINAL_STEPS,
+        steps,
         coh: coh.into(),
     }
 }
 
-pub fn final_runs(sel: &Value) -> Vec<Run> {
+pub fn final_runs(sel: &Value, steps: u64) -> Vec<Run> {
     let b = sel["b"]["variant"].as_str().unwrap_or("b-i").to_string();
     let mut v = Vec::new();
     for s in SEEDS {
@@ -266,10 +306,18 @@ pub fn final_runs(sel: &Value) -> Vec<Run> {
             &sel["a-prime"],
             s,
             "0",
+            steps,
         ));
-        v.push(cfg_run(format!("f-b-s{s}"), &b, &sel["b"], s, "0"));
+        v.push(cfg_run(format!("f-b-s{s}"), &b, &sel["b"], s, "0", steps));
     }
-    v.push(cfg_run("f-a-s0".into(), "a", &sel["a-prime"], 0, "0"));
+    v.push(cfg_run(
+        "f-a-s0".into(),
+        "a",
+        &sel["a-prime"],
+        0,
+        "0",
+        steps,
+    ));
     v
 }
 
@@ -289,9 +337,10 @@ fn support(store: &Path, sel: &Value) -> Result<(String, String, Value)> {
 
 fn lambda_runs(store: &Path, sel: &Value) -> Result<Vec<Run>> {
     let (tag, variant, cfg) = support(store, sel)?;
+    let steps = final_steps(store)?;
     Ok(LAMBDAS
         .iter()
-        .map(|l| cfg_run(format!("l-{tag}-{l}-s0"), &variant, &cfg, 0, l))
+        .map(|l| cfg_run(format!("l-{tag}-{l}-s0"), &variant, &cfg, 0, l, steps))
         .collect())
 }
 
@@ -327,9 +376,10 @@ fn lambda_final_runs(store: &Path, sel: &Value) -> Result<Vec<Run>> {
     };
     let tag = ls["support"].as_str().unwrap_or("b");
     let variant = ls["variant"].as_str().unwrap_or("b-i");
+    let steps = final_steps(store)?;
     Ok([1, 2]
         .iter()
-        .map(|&s| cfg_run(format!("l-{tag}-{l}-s{s}"), variant, &ls, s, l))
+        .map(|&s| cfg_run(format!("l-{tag}-{l}-s{s}"), variant, &ls, s, l, steps))
         .collect())
 }
 
@@ -337,7 +387,7 @@ fn lambda_final_runs(store: &Path, sel: &Value) -> Result<Vec<Run>> {
 fn finished(store: &Path) -> Vec<(String, String)> {
     let mut v = Vec::new();
     if let Ok(sel) = final_selection(store) {
-        for r in final_runs(&sel) {
+        for r in final_runs(&sel, FINAL_STEP_CHOICES[0]) {
             v.push((r.name, r.variant));
         }
         if let Ok(ls) = lambda_selection(store, &sel) {
@@ -776,7 +826,7 @@ pub fn stage(name: &str, store: &Path, runs: Option<&str>) -> Result<Option<Stag
     let steps: Vec<Step> = match name {
         "explore" => explore_runs().iter().map(Run::train).collect(),
         "explore-b-ii" => vec![b_ii_run(&explore_selection(store)?).train()],
-        "final" => final_runs(&final_selection(store)?)
+        "final" => final_runs(&final_selection(store)?, final_steps(store)?)
             .iter()
             .map(Run::train)
             .collect(),
@@ -856,12 +906,12 @@ mod tests {
     fn final_runs_follow_the_selection() {
         let sel = json!({"a-prime": {"init": "ettin-17m", "lr": "1e-4"},
                          "b": {"variant": "b-ii", "init": "ettin-reranker-17m", "lr": "2e-4"}});
-        let v = final_runs(&sel);
+        let v = final_runs(&sel, 3000);
         assert_eq!(v.len(), 7);
         assert!(v.iter().filter(|r| r.variant == "b-ii").count() == 3);
         assert!(v
             .iter()
             .any(|r| r.name == "f-a-s0" && r.variant == "a" && r.lr == "1e-4"));
-        assert!(v.iter().all(|r| r.steps == FINAL_STEPS && r.coh == "0"));
+        assert!(v.iter().all(|r| r.steps == 3000 && r.coh == "0"));
     }
 }
