@@ -33,7 +33,7 @@ Les jeux sont construits par `sky-data s5-build` (graine 1234). Le manifeste est
 | `biasframes_offensive.jsonl` | 1000 | `781b1da8c8ddc506021795075422665330136489d52097ba82982bb778713b3a` |
 | `biasframes_sex.jsonl` | 1000 | `abc790c182574db9b4870fdd8daf17fd2cd16f02e786ad693e8bb046da48792f` |
 | `amazonpolarity.jsonl` | 1000 | `59a6012b67cdea0a503acad85a342815ab5efff312f848d6802afb55be748a70` |
-| `yahootopics.jsonl` (licence non vérifiée, signalée) | 1000 | `e208f70b80e28a6e00371ff8a44cbd0880568be2880bc37e5d47bd14af36c682` |
+| `yahootopics.jsonl` (licence non confirmée : ni évalué ni publié pour s5-lite, amendement 1) | 1000 | `e208f70b80e28a6e00371ff8a44cbd0880568be2880bc37e5d47bd14af36c682` |
 | `hwu64.jsonl` (s5-lite seulement, colonne « contamination via les professeurs non exclue ») | 1000 | `2246f781daead75dc44b97d9752792fd428090f94b7a24c5af4f8c863988d575` |
 | `sib200_en.jsonl` (secondaire, hors liste du plan) | 204 | `9d92f595e64c7e3aba361c79ba61f558192050b8b0f30fa926a8227ab7df1953` |
 | `sib200_fr.jsonl` (s5 en + fr seulement) | 204 | `d09c0c766155d37d5496580b62656ef6af2277c31b0b3e2dee77c38d3c0abc99` |
@@ -73,7 +73,7 @@ Les jeux sont construits par `sky-data s5-build` (graine 1234). Le manifeste est
 **Cibles mélangées :**
 
 - `data/s5/mixed/` (`sky-data s5-mix`) reprend les mêmes enregistrements, avec les cibles décrites en section 3.
-- Ses hashes seront ajoutés par amendement **avant le premier run d'entraînement**.
+- Ses hashes figurent dans l'amendement 1, commité **avant le premier run d'exploration**.
 
 ## 2. Rendus et prompts
 
@@ -172,7 +172,7 @@ Aucune classe ne dépasse 60 % par source, avec un rééquilibrage déterministe
 - **Rendu :** rendu natif, deux ordres d'options moyennés.
 - **Calibration par groupe** (source × type × K) : température et biais, sur les enregistrements train gold. En dessous de 150 enregistrements, le groupe prend la température globale.
 - **Filtre d'accord :** la cible du professeur n'est prise que si son argmax égale l'argmax gold. Sinon, la cible gold est gardée.
-- **Cible finale :** cible = 0,5 · gold + 0,5 · professeur, pour le corpus et le premier membre des paires. Le second membre d'une paire reprend la cible du premier.
+- **Cible finale :** cible = 0,5 · gold + 0,5 · professeur, pour le corpus et le premier membre des paires, **du split train seulement**. Le second membre d'une paire reprend la cible du premier. Les splits val et cal gardent le gold : la sélection et la calibration sont jugées contre le gold (amendement 1).
 - **Gardent leur cible gold exacte :** les enregistrements générés et les familles de cohérence.
 
 **Écart au plan :** le professeur est unique. oscar-1-150m (téléchargé, 0,7755 sur le bench contre 0,7665) aurait coûté environ 45 minutes de GPU de plus, au débit mesuré de 50 à 140 lignes/s. Avec un seul professeur :
@@ -222,7 +222,7 @@ Elle n'a pas d'effet sur B, car B ne rend pas les labels.
 
 1. **`explore`** : A′ et B-i × LR {5e-5, 1e-4, 2e-4} × initialisation {ettin-encoder-17m, ettin-reranker-17m}, à la graine 0 et 600 steps, soit 12 runs.
 2. **`explore-b-ii`** : B-ii à la meilleure configuration (init, LR) de B-i, à 600 steps.
-3. **`final`** : 2000 steps.
+3. **`final`** : F steps, F fixé mécaniquement par le débit de l'exploration (amendement 1).
    - A′ aux graines 0, 1 et 2 ;
    - B\* aux graines 0, 1 et 2 ;
    - A à la graine 0, à la configuration retenue pour A′.
@@ -248,7 +248,7 @@ Pour chaque run évalué, la chaîne est la suivante :
 1. **Export f32 et q8_0**, avec la lecture et la tête en f32.
    - B : `sky-train s5-export` ;
    - A et A′ : `sky-train export` puis `sky-convert`.
-2. **Calibration.** Les températures sont ajustées par type et par type × nombre d'options (n ≥ 100), en minimisant la NLL sur le split `cal` anglais de `data/s5/train` (9349 questions). Elles sont écrites dans le GGUF.
+2. **Calibration.** Les températures sont ajustées par type et par type × nombre d'options (n ≥ 100), en minimisant la NLL sur le split `val` anglais de `data/s5/train` (9189 questions, déjà consommé par la sélection ; amendement 1). Elles sont écrites dans le GGUF. Le modèle calibré passe ensuite sur le split `cal` (9349 questions), réservé aux seuils d'escalade de la phase 7.
 3. **Passage sur le test** de tous les jeux anglais ci-dessus et des cas de démo, avec le moteur de production (`sky-eval`, CPU).
 
 ## 6. Comparaisons principales et critères de succès
@@ -266,7 +266,7 @@ Pour chaque run évalué, la chaîne est la suivante :
 - Brier du bench ;
 - taux de bascule sur paraphrase (deux appels) ;
 - taux de bascule JevOut-lite (pire distracteur par base, choisi contre le modèle évalué) ;
-- précision macro des 9 jeux zero-shot anglais (wikitoxic × 4, biasframes × 3, amazonpolarity, yahootopics) ;
+- précision macro des 8 jeux zero-shot anglais dont la licence est confirmée (wikitoxic × 4, biasframes × 3, amazonpolarity ; yahootopics retiré par l'amendement 1) ;
 - ECE macro des mêmes jeux.
 
 **Descriptif, sans test :**
@@ -365,11 +365,11 @@ Pour chaque run évalué, la chaîne est la suivante :
 - **Professeur unique** (section 3).
 - **Grille d'exploration réduite :**
   - A et B-ii ne parcourent pas la grille : A prend la configuration de A′, et B-ii celle de B-i ;
-  - steps fixés par le budget de calcul (600 en exploration, 2000 pour les finalistes).
+  - steps fixés par le budget de calcul : 600 en exploration, F pour les finalistes et le pari 2, avec F tiré du seul débit de l'exploration (amendement 1).
 - **Non faits :**
   - A′ + perm-KL ;
   - baselines B1 (log-prob des labels par la tête MLM), B2 (cascade) et B3 (tête linéaire). Seules la classe majoritaire et l'uniforme sont rapportées.
-- **Comparaison à Jev (MAD_neg 0,064) :** non faite. Elle demande la batterie d'origine de 2609.33209 (ChaosNLI, PubMedQA), non téléchargée. Nos négations reformulées forment un autre jeu, rapporté séparément.
+- **Comparaison à Jev (MAD_neg 0,064, Σ s 1,14, |s − c| 0,091) :** faite sur la batterie d'origine de 2609.33209, convertie en jeu s5 (amendement 1). Elle reste **descriptive** : une seule mesure par modèle, sans test d'hypothèse. Nos négations reformulées forment un autre jeu, rapporté séparément.
 - **Repoussés :**
   - le Q4 ;
   - le pari 3 en ligne ;
@@ -382,4 +382,54 @@ Pour chaque run évalué, la chaîne est la suivante :
 
 ## 9. Amendements
 
-(aucun à ce jour)
+### Amendement 1 : 13/10/2026, avant le premier run d'exploration et avant tout passage sur le test
+
+**Corrections du mix, faites avant son premier passage** (commit `d5a7975`) :
+
+- **Filtre d'accord.** Avec un seul professeur, le code comptait le professeur comme unanime avec lui-même, si bien que tout enregistrement prenait sa cible. Désormais, seul l'accord avec le gold compte, comme le décrit déjà la section 3.
+- **Splits val et cal.** Seul le split train reçoit la cible mélangée. Val et cal gardent le gold, pour que la sélection (NLL de validation) et la calibration soient jugées contre le gold.
+
+**Températures.** Elles étaient prévues sur le split `cal`, qui doit aussi fixer les seuils d'escalade de la phase 7 : ajuster les deux sur les mêmes données affaiblit la garantie de Learn-then-Test, et le code prévu calculait en plus les seuils sur les probabilités non calibrées. Les températures sont donc ajustées sur le split `val`, déjà consommé par la sélection. Le split `cal`, lu par le modèle calibré, ne sert plus qu'aux seuils.
+
+**Nombre de pas des finalistes et du pari 2.** Le banc de débit prévu n'a pas pu tourner avant l'exploration (GPU occupé par le professeur jusqu'à environ minuit). F est donc fixé mécaniquement après l'exploration, à partir de son seul débit, sans regarder aucune métrique de validation :
+
+- t = médiane, sur les 12 runs d'exploration (lancés trois à la fois), des minutes d'entraînement divisées par 600 ;
+- F = la plus grande valeur de (2000, 3000, 4000, 6000) telle que 5 vagues × F × t ≤ 180 minutes (trois vagues de finalistes, deux du pari 2) ;
+- le calcul et F sont gelés dans `runs/s5-select/steps.json` avant le lancement des finalistes.
+
+**Runs divergés.** Un run qui diverge (perte non finie, donc sans `val.json`) est exclu de la sélection et consigné comme échec dans `runs/s5-select/`. Un B-ii divergé laisse B-i comme B\*.
+
+**yahootopics.** Sa licence n'est pas confirmée, et `DATA_LICENSES.md` réserve sa publication à une licence confirmée. Il n'est donc ni évalué ni publié pour s5-lite. Cela retire :
+
+- le jeu `yahootopics.jsonl` ;
+- les lignes yahootopics de `coverage_test` ;
+- sa place dans la moyenne macro zero-shot du pari 1, qui passe de 9 à 8 jeux.
+
+**Batterie 2609.33209.** Elle est téléchargée en phase 0 (`bro789/typed-decision-coherence`, commit `8898ef7b`), contrairement à ce qu'écrivait la section 8. `sky-data s5-battery` la convertit en enregistrements s5 :
+
+- 160 items : 100 ChaosNLI (CC BY-NC 4.0) et 60 PubMedQA (MIT), en évaluation seulement, jamais redistribués ;
+- une famille par item : CH avec les options dans l'ordre des classes, S_k et N_k avec les questions de la batterie, D_k = « l'une des deux autres classes » ;
+- cibles : les votes humains pour ChaosNLI, le label expert pour PubMedQA.
+
+Chaque run est évalué dessus en f32, et `sky-s5-report coherence --set battery_2609_33209` donne MAD_neg, Σ s et |s − c| sur les mêmes items que Jev. La comparaison est descriptive.
+
+| fichier | enregistrements | sha256 |
+|---|---|---|
+| `data/s5/battery/coherence_2609_33209.jsonl` | 1600 | `f10f8dc32508c4d5e7e1c49533ff3b5875d629cb3c860fcaa2f92f4692f8eae8` |
+
+**Référence oscar-1-17m (descriptive, hors paris).** L'étape `cargo xtask s5 oscar-ref` évalue oscar-1-17m (format Laya, poids publiés, températures d'origine) sur deux jeux :
+
+- **`reassign_test`** : l'échange oui/non de 2609.26758, à côté de la garantie iso ;
+- **le bench** : notre rendu des enregistrements s5 doit redonner son score publié, 0,6775 ; un écart serait investigué.
+
+Aucun critère n'en dépend.
+
+**Cibles mélangées** (`data/s5/mixed/`). Professeur : laya-td ; α = 0.5. Bilan : corpus : 72596 cibles mélangées, 66869 gardent le gold, 2057 non notées (les enregistrements français du split train, hors s5-lite) ; pairs : 3025 cibles mélangées, 467 gardent le gold, 0 non notées.
+
+| fichier | lignes | sha256 |
+|---|---|---|
+| `REPORT.json` | – | `6e9e0c26586517652b60299ccd442efa01d5d53109435328745f58d782336009` |
+| `coherence.jsonl` | 12628 | `2bf3f00bb9c316d9d2d05350b2e076a2bce4a3c6800169074c26609ff50736e2` |
+| `corpus.jsonl` | 157005 | `86342e24bce543b70c93159e2e6f5054a6cc6a4e76855a75e326775707250825` |
+| `gen.jsonl` | 25328 | `505ffef41c2fcc6269c968bcf000200ac1e789e768132dc6f8f1f2ea4df6ad72` |
+| `pairs.jsonl` | 7828 | `6151b962dca5b1a921ce7183c2600a8bdb5ee1aa59e545fb1d742ed651836720` |
