@@ -36,6 +36,8 @@ pub const WAVES: f64 = 5.0;
 pub const LRS: [&str; 3] = ["5e-5", "1e-4", "2e-4"];
 /// (short name, `models/s5-base/` directory).
 pub const INITS: [(&str, &str); 2] = [("e17", "ettin-17m"), ("r17", "ettin-reranker-17m")];
+/// Cap of MLX's allocator cache per training process (`SKY_MLX_CACHE_GB`), in GB.
+pub const MLX_CACHE_GB: &str = "1";
 /// Weight of the symmetric KL on the pairs, the same for every variant.
 pub const KL: &str = "0.5";
 pub const LAMBDAS: [&str; 2] = ["0.1", "0.3"];
@@ -121,7 +123,9 @@ impl Run {
             prog: "sky-train",
             args,
             gpu: true,
-            env: Vec::new(),
+            // MLX keeps freed buffers for reuse; with batches of varying shapes the cache grows
+            // to ~12 GB per run, and three runs swap. The cap changes no number.
+            env: vec![("SKY_MLX_CACHE_GB".into(), MLX_CACHE_GB.into())],
         }
     }
 }
