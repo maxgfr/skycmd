@@ -7,7 +7,7 @@ use std::path::Path;
 use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{CLS_ID, MASK_ID, SEP_ID};
+use crate::config::SpecialTokens;
 
 /// Question type names, indexed by type id.
 pub const QTYPES: [&str; 3] = ["choice", "score", "noul"];
@@ -40,17 +40,17 @@ pub struct Tok {
 }
 
 impl Tok {
+    /// A skycmd tokenizer (`[PAD]=0 [UNK]=1 [CLS]=2 [SEP]=3 [MASK]=4`).
     pub fn load(path: &Path) -> Result<Self> {
+        Self::load_with(path, &SpecialTokens::default())
+    }
+
+    /// A tokenizer whose special tokens must have the ids of `sp`.
+    pub fn load_with(path: &Path, sp: &SpecialTokens) -> Result<Self> {
         let inner = tokenizers::Tokenizer::from_file(path)
             .map_err(|e| anyhow!("loading tokenizer {}: {e}", path.display()))?;
         let tok = Self { inner };
-        for (name, id) in [
-            ("[PAD]", 0),
-            ("[UNK]", 1),
-            ("[CLS]", CLS_ID),
-            ("[SEP]", SEP_ID),
-            ("[MASK]", MASK_ID),
-        ] {
+        for (name, id) in sp.pairs() {
             if tok.inner.token_to_id(name) != Some(id) {
                 bail!("tokenizer {}: {name} must have id {id}", path.display());
             }
@@ -84,6 +84,11 @@ impl Tok {
     /// Id of a token string.
     pub fn token_to_id(&self, token: &str) -> Option<u32> {
         self.inner.token_to_id(token)
+    }
+
+    /// Token string of an id.
+    pub fn id_to_token(&self, id: u32) -> Option<String> {
+        self.inner.id_to_token(id)
     }
 
     /// Checks that `[NUM]` has the fixed s2 id and is matched as a special token.
@@ -124,14 +129,19 @@ pub struct Pieces {
 
 /// The texts that get tokenized: head, options, state.
 pub fn piece_texts(rec: &DecisionRecord) -> (String, Vec<String>, String) {
-    let ins = rec.ins.replace(MASK_TEXT, " ");
+    piece_texts_with(rec, MASK_TEXT)
+}
+
+/// [`piece_texts`] for a tokenizer whose mask token is `mask_text`.
+pub fn piece_texts_with(rec: &DecisionRecord, mask_text: &str) -> (String, Vec<String>, String) {
+    let ins = rec.ins.replace(mask_text, " ");
     let head = format!("{} question: {}", rec.t, ins);
     let opts = rec
         .opts
         .iter()
-        .map(|o| format!(" {}", o.replace(MASK_TEXT, " ")))
+        .map(|o| format!(" {}", o.replace(mask_text, " ")))
         .collect();
-    let state = rec.state.replace(MASK_TEXT, " ");
+    let state = rec.state.replace(mask_text, " ");
     (head, opts, state)
 }
 
@@ -162,11 +172,22 @@ pub fn build_from_pieces(
     max_len: usize,
     head_max_len: usize,
 ) -> (Vec<u32>, Vec<usize>) {
+    build_from_pieces_with(p, order, max_len, head_max_len, &SpecialTokens::default())
+}
+
+/// [`build_from_pieces`] with the special tokens of `sp`.
+pub fn build_from_pieces_with(
+    p: &Pieces,
+    order: &[usize],
+    max_len: usize,
+    head_max_len: usize,
+    sp: &SpecialTokens,
+) -> (Vec<u32>, Vec<usize>) {
     let mut opt_ids: Vec<Vec<u32>> = order
         .iter()
         .map(|&i| {
             let mut o = Vec::with_capacity(p.opts[i].len() + 1);
-            o.push(MASK_ID);
+            o.push(sp.mask);
             o.extend_from_slice(&p.opts[i]);
             o
         })
@@ -184,18 +205,18 @@ pub fn build_from_pieces(
     }
     let head_keep = opt_budget.max(8) as usize;
     let mut ids = Vec::with_capacity(max_len);
-    ids.push(CLS_ID);
+    ids.push(sp.cls);
     ids.extend_from_slice(&p.head[..p.head.len().min(head_keep)]);
-    ids.push(SEP_ID);
+    ids.push(sp.sep);
     let mut markers = Vec::with_capacity(opt_ids.len());
     for o in &opt_ids {
         markers.push(ids.len());
         ids.extend_from_slice(o);
     }
-    ids.push(SEP_ID);
+    ids.push(sp.sep);
     let room = (max_len as i64 - ids.len() as i64 - 1).max(0) as usize;
     ids.extend_from_slice(&p.state[..p.state.len().min(room)]);
-    ids.push(SEP_ID);
+    ids.push(sp.sep);
     ids.truncate(max_len);
     markers.retain(|&m| m < max_len);
     (ids, markers)
@@ -242,6 +263,7 @@ pub fn gguf_bucket(laya_key: &str) -> String {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::config::{CLS_ID, MASK_ID, SEP_ID};
 
     /// GPT-2 `bytes_to_unicode`.
     fn byte_chars() -> Vec<char> {
@@ -412,6 +434,36 @@ pub(crate) mod tests {
         assert_eq!(ids.len(), 20);
         // head: [CLS] "choice question: q" (18) [SEP] = 20 -> every marker is cut.
         assert!(markers.is_empty());
+    }
+
+    #[test]
+    fn other_special_ids() {
+        let (_d, tok) = byte_tok();
+        let r = rec("noul", "ok?", &["false: no", "true: yes"], "s");
+        let p = pieces(&tok, &r).unwrap();
+        let sp = SpecialTokens {
+            cls: 900,
+            sep: 901,
+            mask: 902,
+            ..SpecialTokens::default()
+        };
+        let (ids, markers) = build_from_pieces_with(&p, &[0, 1], 256, 96, &sp);
+        let (ids0, markers0) = build_from_pieces(&p, &[0, 1], 256, 96);
+        assert_eq!(markers, markers0);
+        let swap = |x: u32| match x {
+            CLS_ID => 900,
+            SEP_ID => 901,
+            MASK_ID => 902,
+            x => x,
+        };
+        assert_eq!(ids, ids0.into_iter().map(swap).collect::<Vec<_>>());
+        // A tokenizer is checked against the ids it is loaded with.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("t.json");
+        std::fs::write(&path, byte_tokenizer_json()).unwrap();
+        assert!(Tok::load_with(&path, &sp).is_err());
+        let r = rec("choice", "a<mask>b", &["x"], "");
+        assert_eq!(piece_texts_with(&r, "<mask>").0, "choice question: a b");
     }
 
     #[test]

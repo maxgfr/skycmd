@@ -3,6 +3,8 @@
 //! training (AdamW + Muon, WSD), temperature calibration, evaluation and
 //! export to the oscar / HF directory layout.
 //!
+//! [`s5`] holds the s5 pipeline: Hugging Face import, teacher scoring and the s5 records.
+//!
 //! [`s2`] holds the skycmd-s2 architecture (docs/SPEC-S2.md): static / state
 //! streams with native numbers, early exits, a cross-attention fusion head,
 //! ternary QAT and the `skycmd-s2` GGUF export.
@@ -18,6 +20,7 @@ pub mod optim;
 pub mod params;
 pub mod rng;
 pub mod s2;
+pub mod s5;
 pub mod sequence;
 pub mod session;
 pub mod train;

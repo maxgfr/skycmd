@@ -10,13 +10,14 @@ use anyhow::{bail, Context, Result};
 use mlx_rs::Array;
 
 use crate::{
-    config::{AgentConfig, ModelConfig, PAD_ID},
+    config::{AgentConfig, ModelConfig, SpecialTokens},
     metrics::Pred,
     model::{self, DecisionBatch},
     params::ParamMap,
     rng::Rng,
     sequence::{
-        build_from_pieces, piece_texts, qtype_id, DecisionRecord, Pieces, Tok, OPTION_MAX_TOKENS,
+        build_from_pieces_with, piece_texts_with, qtype_id, DecisionRecord, Pieces, Tok,
+        OPTION_MAX_TOKENS,
     },
 };
 
@@ -55,6 +56,8 @@ pub struct DecisionData {
     pub test: Vec<Item>,
     /// Records dropped (bad shape or options that do not fit).
     pub skipped: usize,
+    /// Special tokens the sequences are built with.
+    pub special: SpecialTokens,
 }
 
 /// Every `*.jsonl` file under `path` (recursively, sorted), or `path` itself.
@@ -112,8 +115,16 @@ pub fn group_name(path: &Path) -> String {
 }
 
 /// Validates and pre-tokenizes the records of every input path.
-pub fn load(paths: &[PathBuf], tok: &Tok, agent: &AgentConfig) -> Result<DecisionData> {
-    let mut data = DecisionData::default();
+pub fn load(
+    paths: &[PathBuf],
+    tok: &Tok,
+    agent: &AgentConfig,
+    sp: &SpecialTokens,
+) -> Result<DecisionData> {
+    let mut data = DecisionData {
+        special: sp.clone(),
+        ..Default::default()
+    };
     for (g, path) in paths.iter().enumerate() {
         data.groups.push(group_name(path));
         data.train.push(Vec::new());
@@ -131,7 +142,7 @@ pub fn load(paths: &[PathBuf], tok: &Tok, agent: &AgentConfig) -> Result<Decisio
                 data.skipped += 1;
                 continue;
             }
-            let (h, o, s) = piece_texts(&rec);
+            let (h, o, s) = piece_texts_with(&rec, &sp.mask_text);
             texts.push(h);
             texts.extend(o);
             texts.push(s);
@@ -156,7 +167,7 @@ pub fn load(paths: &[PathBuf], tok: &Tok, agent: &AgentConfig) -> Result<Decisio
             let k = rec.opts.len();
             let identity: Vec<usize> = (0..k).collect();
             let (seq, markers) =
-                build_from_pieces(&pieces, &identity, agent.max_len, agent.head_max_len);
+                build_from_pieces_with(&pieces, &identity, agent.max_len, agent.head_max_len, sp);
             if markers.len() != k {
                 // Options did not fit: skip rather than train on a truncated answer space.
                 data.skipped += 1;
@@ -191,8 +202,9 @@ pub struct Row {
 }
 
 /// Builds the row of `item` with option `order` (target permuted accordingly).
-pub fn row(item: &Item, order: &[usize], agent: &AgentConfig) -> Row {
-    let (ids, markers) = build_from_pieces(&item.pieces, order, agent.max_len, agent.head_max_len);
+pub fn row(item: &Item, order: &[usize], agent: &AgentConfig, sp: &SpecialTokens) -> Row {
+    let (ids, markers) =
+        build_from_pieces_with(&item.pieces, order, agent.max_len, agent.head_max_len, sp);
     Row {
         ids,
         markers,
@@ -211,6 +223,7 @@ pub fn augment_order(item: &Item, rng: &mut Rng) -> Vec<usize> {
 }
 
 /// Pads rows into a batch; the length is rounded up to a multiple of `pad_to`.
+/// Padding uses id 0 (always inside the vocabulary; padded keys are masked).
 pub fn make_batch(rows: &[Row], pad_to: usize) -> DecisionBatch {
     let b = rows.len();
     let max_t = rows.iter().map(|r| r.ids.len()).max().unwrap_or(1);
@@ -221,7 +234,7 @@ pub fn make_batch(rows: &[Row], pad_to: usize) -> DecisionBatch {
         .max()
         .unwrap_or(1)
         .max(1);
-    let mut ids = vec![PAD_ID as i32; b * t];
+    let mut ids = vec![0i32; b * t];
     let mut valid = vec![false; b * t];
     let mut mpos = vec![0i32; b * k];
     let mut mmask = vec![false; b * k];
@@ -275,11 +288,16 @@ pub fn sample_batch(
             let g = rng.weighted(&w);
             let item = &data.train[g][rng.below(data.train[g].len())];
             let order = augment_order(item, rng);
-            let r = row(item, &order, agent);
+            let r = row(item, &order, agent, &data.special);
             if r.markers.len() == item.k() {
                 r
             } else {
-                row(item, &(0..item.k()).collect::<Vec<_>>(), agent)
+                row(
+                    item,
+                    &(0..item.k()).collect::<Vec<_>>(),
+                    agent,
+                    &data.special,
+                )
             }
         })
         .collect();
@@ -313,6 +331,7 @@ pub fn predict(
                     items[i],
                     &(0..items[i].k()).collect::<Vec<_>>(),
                     &cfg.rl_agent,
+                    &cfg.special,
                 )
             })
             .collect();
@@ -380,7 +399,7 @@ mod tests {
             ],
         );
         let agent = ModelConfig::tiny(300).rl_agent;
-        let data = load(&[dir], &tok, &agent).unwrap();
+        let data = load(&[dir], &tok, &agent, &SpecialTokens::default()).unwrap();
         assert_eq!(data.groups, vec!["games"]);
         assert_eq!(data.train[0].len(), 1);
         assert_eq!(data.val.len(), 1);
@@ -388,7 +407,7 @@ mod tests {
         let item = &data.train[0][0];
         assert_eq!(item.target, vec![0.0, 1.0, 0.0]);
         // Permuted order moves the target with the option.
-        let r = row(item, &[1, 2, 0], &agent);
+        let r = row(item, &[1, 2, 0], &agent, &SpecialTokens::default());
         assert_eq!(r.target, vec![1.0, 0.0, 0.0]);
         assert_eq!(r.ids[r.markers[0] + 2], 5 + b'b' as u32);
         // Score options are never shuffled.

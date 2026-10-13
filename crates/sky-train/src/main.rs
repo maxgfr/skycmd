@@ -458,6 +458,14 @@ enum Cmd {
         #[arg(long)]
         report: Option<PathBuf>,
     },
+    /// s5: a Hugging Face ModernBERT checkpoint (Ettin, mmBERT; safetensors or
+    /// pytorch_model.bin) as a sky-train checkpoint with its own special tokens.
+    ImportHf(sky_train::s5::hf::ImportArgs),
+    /// s5: soft labels of a Laya-format teacher on s5 records (averaged over option orders).
+    Score(sky_train::s5::score::ScoreArgs),
+    /// s5: fine-tune an imported encoder into a decision model (by steps; AdamW, warmup +
+    /// linear decay, EMA, CE + Brier + RPS).
+    S5Train(sky_train::s5::train::TrainArgs),
 }
 
 fn main() -> Result<()> {
@@ -832,6 +840,9 @@ fn main() -> Result<()> {
         } => {
             export::eval(&run, &split_paths(&records), &split, report.as_deref())?;
         }
+        Cmd::ImportHf(a) => sky_train::s5::hf::import(&a)?,
+        Cmd::Score(a) => sky_train::s5::score::score(&a)?,
+        Cmd::S5Train(a) => sky_train::s5::train::train(&a)?,
     }
     Ok(())
 }

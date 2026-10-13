@@ -102,6 +102,9 @@ pub fn sources() -> Vec<Source> {
             cap: None,
             load: load_bench,
         },
+        // The train split of the same benchmark (s5: the "fitted" bench column), split
+        // train / val by state.
+        src("typed_decisions_train", load_bench_train),
         // Typed-decision corpora on the Hub.
         capped("tasksource_jev", 120_000, load_tasksource_jev),
         capped("procedural_typed", 80_000, load_procedural),
@@ -417,15 +420,23 @@ fn load_assistant_decisions(cx: &Ctx) -> Result<Vec<Item>> {
 }
 
 fn load_bench(cx: &Ctx) -> Result<Vec<Item>> {
-    let (hf, _seed) = (cx.hf, cx.seed);
+    load_typed_decisions(cx, "test", "typed_decisions_bench")
+}
+
+fn load_bench_train(cx: &Ctx) -> Result<Vec<Item>> {
+    load_typed_decisions(cx, "train", "typed_decisions_train")
+}
+
+/// One split of `LocalLLaMA/typed-decisions` (config `all`).
+fn load_typed_decisions(cx: &Ctx, split: &str, name: &str) -> Result<Vec<Item>> {
     let repo = "LocalLLaMA/typed-decisions";
     let mut out = Vec::new();
-    for p in hf.parquet_split(repo, "all", "test", SMALL)? {
+    for p in cx.hf.parquet_split(repo, "all", split, SMALL)? {
         for row in read_parquet(&p, &["id", "state", "questions", "gold"], usize::MAX)? {
             let qs = parse_json_field(&row, "questions")?;
             let gold = parse_json_field(&row, "gold")?;
             out.extend(jev_items(
-                "typed_decisions_bench",
+                name,
                 str_field(&row, "id")?,
                 str_field(&row, "state")?,
                 &qs,

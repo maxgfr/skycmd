@@ -19,6 +19,62 @@ pub const MASK_ID: u32 = 4;
 /// Number of special tokens at the start of the vocabulary.
 pub const N_SPECIAL: u32 = 5;
 
+/// Special tokens of a tokenizer: their ids and texts. The default is the fixed layout of the
+/// skycmd tokenizers (`[PAD]=0 [UNK]=1 [CLS]=2 [SEP]=3 [MASK]=4`); a model imported from the Hub
+/// (Ettin, mmBERT) carries its own (`sky-train import-hf`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SpecialTokens {
+    pub pad: u32,
+    pub unk: u32,
+    pub cls: u32,
+    pub sep: u32,
+    pub mask: u32,
+    pub pad_text: String,
+    pub unk_text: String,
+    pub cls_text: String,
+    pub sep_text: String,
+    pub mask_text: String,
+}
+
+impl Default for SpecialTokens {
+    fn default() -> Self {
+        Self {
+            pad: PAD_ID,
+            unk: UNK_ID,
+            cls: CLS_ID,
+            sep: SEP_ID,
+            mask: MASK_ID,
+            pad_text: "[PAD]".into(),
+            unk_text: "[UNK]".into(),
+            cls_text: "[CLS]".into(),
+            sep_text: "[SEP]".into(),
+            mask_text: "[MASK]".into(),
+        }
+    }
+}
+
+impl SpecialTokens {
+    /// (text, id) of every special token.
+    pub fn pairs(&self) -> [(&str, u32); 5] {
+        [
+            (&self.pad_text, self.pad),
+            (&self.unk_text, self.unk),
+            (&self.cls_text, self.cls),
+            (&self.sep_text, self.sep),
+            (&self.mask_text, self.mask),
+        ]
+    }
+
+    pub fn is_special(&self, id: u32) -> bool {
+        self.pairs().iter().any(|&(_, i)| i == id)
+    }
+
+    /// True for the skycmd layout, where every id below [`N_SPECIAL`] is special.
+    pub fn is_skycmd(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// Laya runtime block (the `rl_agent_config.json` keys we own).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentConfig {
@@ -54,6 +110,9 @@ pub struct ModelConfig {
     pub norm_eps: f32,
     /// Laya decision block.
     pub rl_agent: AgentConfig,
+    /// Special tokens of the tokenizer (default: the skycmd layout).
+    #[serde(default, skip_serializing_if = "SpecialTokens::is_skycmd")]
+    pub special: SpecialTokens,
     /// Every other ModernBERT key, kept verbatim for `encoder/config.json`.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -99,6 +158,14 @@ impl ModelConfig {
         }
         if self.vocab_size <= N_SPECIAL as usize {
             bail!("vocab_size too small");
+        }
+        if let Some((t, id)) = self
+            .special
+            .pairs()
+            .into_iter()
+            .find(|&(_, id)| id as usize >= self.vocab_size)
+        {
+            bail!("special token {t} = {id} is outside the vocabulary");
         }
         Ok(())
     }
@@ -151,11 +218,6 @@ impl ModelConfig {
             "repad_logits_with_grad": false,
             "sparse_pred_ignore_index": -100,
             "sparse_prediction": false,
-            "pad_token_id": PAD_ID,
-            "cls_token_id": CLS_ID,
-            "sep_token_id": SEP_ID,
-            "bos_token_id": CLS_ID,
-            "eos_token_id": SEP_ID,
         });
         if let Value::Object(d) = defaults {
             m.extend(d);
@@ -174,6 +236,11 @@ impl ModelConfig {
             "norm_eps": self.norm_eps,
             "layer_norm_eps": self.norm_eps,
             "max_position_embeddings": self.rl_agent.max_len,
+            "pad_token_id": self.special.pad,
+            "cls_token_id": self.special.cls,
+            "sep_token_id": self.special.sep,
+            "bos_token_id": self.special.cls,
+            "eos_token_id": self.special.sep,
         });
         if let Value::Object(o) = own {
             m.extend(o);
@@ -204,6 +271,7 @@ impl ModelConfig {
             },
             extra: Map::new(),
             bf16: false,
+            special: SpecialTokens::default(),
         }
     }
 }
@@ -245,6 +313,30 @@ mod tests {
             );
             assert_eq!((c.rl_agent.max_len, c.rl_agent.head_max_len), (256, 96));
         }
+    }
+
+    #[test]
+    fn special_tokens_default_and_round_trip() {
+        let c = ladder("s1-pico");
+        assert!(c.special.is_skycmd());
+        // The skycmd layout is not serialized, so existing configs stay byte-identical.
+        let v = serde_json::to_value(&c).unwrap();
+        assert!(v.get("special").is_none());
+        let mut c2 = c.clone();
+        c2.special = SpecialTokens {
+            pad: 50283,
+            unk: 50280,
+            cls: 50281,
+            sep: 50282,
+            mask: 50284,
+            ..SpecialTokens::default()
+        };
+        c2.vocab_size = 50368;
+        let back: ModelConfig = serde_json::from_str(&serde_json::to_string(&c2).unwrap()).unwrap();
+        assert_eq!(back.special, c2.special);
+        assert_eq!(c2.encoder_config_json()["cls_token_id"], 50281);
+        c2.vocab_size = 50000;
+        assert!(c2.validate().is_err());
     }
 
     #[test]
