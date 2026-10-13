@@ -14,7 +14,9 @@ What each demo shows:
 - **Abstention**: the triage and playground demos add an option *"unsure: I don't know, none of these fits"*. The model was trained with label sets where the right answer had been removed and this option was the target.
 - **Static cache**: the question and options are encoded once and cached. When only the state changes (a new message, a new request), only the state is encoded.
 
-These are small-model answers. Check the numbers in [the s4 chapter](/tutorial/22-s4-generic-decisions) before relying on them.
+::: warning Experimental
+s4-micro (5.6M parameters, 2.4 MB) failed its quality gate. On labels it never saw it does better than the game models (0.30 on Banking77 and 0.34 on MASSIVE, 8 options each, where chance is 0.125), but it is far from its teacher (0.89) and still below s3-pico on the generic decision bench (0.343 against 0.382). Treat the answers as a demonstration of the interface: free-text options, calibrated probabilities, adaptive depth and abstention. On the presets below it often fails: the tool router sends most requests to `no_tool` (the weather question included), the triage demo hesitates between the right category and "unsure", and the guardrail gives the phone-number example a violation probability of only 0.20, having learned that most messages do not violate a rule and little more. A clear request such as "I forgot my password and the reset link does not arrive" is answered confidently (0.88) at the first exit. The numbers and what comes next are in [the s4 chapter](/tutorial/22-s4-generic-decisions).
+:::
 
 ## Playground
 

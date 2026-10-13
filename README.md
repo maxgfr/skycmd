@@ -2,7 +2,7 @@
 
 **Tiny "System One" decision models, trained from scratch in Rust on a MacBook and playing games live in your browser through WebAssembly.**
 
-[Play](https://maxgfr.github.io/skycmd/play/) · [Install](https://maxgfr.github.io/skycmd/install/) · [Tutorial](https://maxgfr.github.io/skycmd/tutorial/) · [Bench](https://maxgfr.github.io/skycmd/bench/)
+[Play](https://maxgfr.github.io/skycmd/play/) · [Live](https://maxgfr.github.io/skycmd/live/) · [Install](https://maxgfr.github.io/skycmd/install/) · [Tutorial](https://maxgfr.github.io/skycmd/tutorial/) · [Bench](https://maxgfr.github.io/skycmd/bench/)
 
 A decision model does not generate text. It receives a **state** and **typed questions** (`choice`, `score`, `noul` = probabilistic yes/no) and returns a calibrated probability for every allowed option in **one forward pass**. skycmd shows how small such a model can be:
 
@@ -16,6 +16,8 @@ A decision model does not generate text. It receives a **state** and **typed que
 Sources: s3-pico, s1-pico and s2-nano play 30 episodes per game with the default seed 7 (`runs/ship-s3-pico.arena.json`, `runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`); s2-nano-doom plays 50 episodes per game with seed 7 ([`BENCH.md`](BENCH.md), Doom section). Latencies are medians on an Apple M5: native is `sky-bench` per question on a Flappy frame ([`BENCH.md`](BENCH.md), s3 section; Doom: "Inference"), WASM is one Flappy frame, both questions plus the physics step, in the browser module under Node ([`site/public/bench.json`](site/public/bench.json)). s3-pico stops at τ = 0.6, calibrated in closed loop; both s2 files stop at τ = 0.95 (early exit, see below). `runs/` is gitignored: the arena files are written by `sky-arena --json` on your machine.
 
 For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M parameters, and the others range from 144M to 27B.
+
+**s4-micro (experimental): a generic decision model.** 5.6M ternary parameters in a 2.4 MB `skycmd-s2` GGUF, with options in free text, distilled from Qwen3.5-4B in one night (`scripts/night-s4.sh`, [chapter 22](https://maxgfr.github.io/skycmd/tutorial/22-s4-generic-decisions)). It runs on the [Live](https://maxgfr.github.io/skycmd/live/) page in four demos: a playground, a tool router for agents, inbox triage with "I don't know", and a guardrail on a written rule. It failed its gate: 0.343 on `typed_decisions_bench` (s3-pico 0.382, oscar-1-17m 0.6775, the teacher 0.501). It does better zero-shot on labels it never saw (Banking77 0.303 and MASSIVE English 0.335, 8 options each, against 0.247 and 0.187 for s3-pico), with ECE 0.066, but a fine-tuned 4.4M BERT-Tiny reaches 0.794 on Banking77. Language pretraining is the missing piece.
 
 Two results took more than one try, and the tutorial tells both stories:
 - **DAgger.** The first s1-pico labelled 82% of Flappy test states correctly and crashed in all 30 episodes before the first pipe. Relative clearances in the state text plus two DAgger rounds took it to 200/200. The 5.6× larger s1-nano did worse ([chapter 20](https://maxgfr.github.io/skycmd/tutorial/20-dagger-lessons)).

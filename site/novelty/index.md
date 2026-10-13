@@ -52,6 +52,15 @@ What s3-pico does with that budget, over 30 seeded episodes per game, with the s
 - **It is a specialist.** On general decisions it is modest: 0.54 on our held-out mix and 0.38 on the external typed-decisions benchmark, against about 0.73 for the 144M Julia-1.
 - **The results are not peer-reviewed.** They come from single runs on our own benchmarks, with a shared GPU during training.
 
+## Second night: s4, a generic model (experimental)
+
+*Added on 13 October 2026.* [s4-micro](/tutorial/22-s4-generic-decisions) tried to make the same architecture generic: 5.6M ternary parameters (2.4 MB), options given in free text, distilled from Qwen3.5-4B in one night. You can try it on the [Live](/live/) page. What is new in the attempt:
+- **A scoring teacher with per-group bias calibration.** The 4B never generates: one prefill, the logits of the option letters only. A temperature and a bias per option are then fitted per (source, type, number of options) against the gold labels, which removed a strong "true" bias on nouls.
+- **Randomized label sets with abstention.** Options are shuffled, distractors are added, an abstention option is appended, and in 12 % of the records the gold option is removed so that "I don't know" is the target.
+- **Deep improvement supervision on early exits.** Each exit trains toward the target raised to a power that grows from 0.5 to 1, so the early exits learn a softer copy of the target.
+
+**It failed its gate.** It scores 0.343 on the typed-decisions bench (s3-pico: 0.382, target: 0.55). Zero-shot it does better than s3-pico (Banking77 0.303 against 0.247, MASSIVE English 0.335 against 0.187), but a BERT-Tiny of 4.4M parameters fine-tuned on the same data reaches 0.794 on Banking77. The missing piece is language pretraining: 30 minutes of masked-language modelling from scratch is not enough, and the loops cannot make up for it (the three exits score within 0.01 of each other). The next s4 starts from a pretrained encoder.
+
 ## What would turn this into a paper
 - Ablations over several seeds: fused values, recursion, static cache, closed-loop vs i.i.d. calibration, DAgger.
 - A standard control benchmark with vector states.

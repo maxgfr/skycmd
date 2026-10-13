@@ -214,3 +214,28 @@ Reading: s3-pico plays the three games as well as s2-nano (and better than s1-pi
 | 0.9 | temporal, carry off | 2.10 | 2.49 | 1.60 | 20/20, 1.00, 0.67 |
 
 The carry does not reduce depth: warm frames use as many layers as cold ones, within noise (exits stay bimodal, exit 0 or the last loop), and vetoes are slightly higher. Not shipped; `skycmd-s2.temporal_carry` stays off by default.
+
+## skycmd-s4 (s4-micro): generic decisions distilled from Qwen3.5, experimental
+
+`configs/s4-micro.json`: s3 at language scale, 5,587,201 params, ternary GGUF 2.4 MB (f32 22 MB), d / ff / vocab 256 / 768 / 4096, 2 state blocks x 3 loops, exits [2, 4, 6], 4 heads, state / head budget 384 / 128 tokens. One night on an Apple M5 (16 GB), `scripts/night-s4.sh`, chapter 22.
+
+| phase | budget | steps | throughput | result |
+|---|---|---:|---:|---|
+| teacher Qwen3.5-4B 4-bit (mlx-lm, letter logits, one prefill) | ~3 h | 74,721 records | 3.8 ex/s on the bench, 11-13 ex/s on short records | 44,721 cases + 30,000 generic snippets |
+| teacher Qwen3.5-0.8B 8-bit (bench only) | - | 2,000 | 18.5 ex/s | bench 0.412 |
+| s2-pretrain (MLM, `--seq 256 --batch 64`) | 30 min | 6,236 | 56k tok/s | token CE 2.754 (val) |
+| s2-decide (gold 0.45 / mix 0.5 / numeric 0.05, QAT after 10%, loop dropout 0.25, DIS 0.5, length pool 16) | 150 min | 26,180 x 64 | ~210 q/s | val 0.510 ternary (last exit); 8 non-finite batches skipped |
+
+Test split, `sky-eval` (the shipping engine, each GGUF with its own tokenizer, early exit at the calibrated τ):
+
+| model | bench | Banking77 zs | MASSIVE en zs | MASSIVE fr zs | When2Call | all | ECE | mean passes | median native µs |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| s3-pico | 0.382 | 0.247 | 0.187 | 0.117 | 0.367 | 0.290 | 0.062 | 3.70 / 4 | 554 |
+| s4-micro f32 (QAT master) | 0.348 | 0.131 | 0.192 | 0.186 | 0.365 | 0.268 | 0.072 | 5.28 / 6 | 4,838 |
+| s4-micro ternary | 0.343 | 0.303 | 0.335 | 0.240 | 0.387 | 0.340 | 0.066 | 4.92 / 6 | 4,533 |
+| Qwen3.5-4B 4-bit (teacher) | 0.501 | 0.898 | 0.893 | 0.873 | - | - | - | - | - |
+| oscar-1-17m (published) | 0.6775 | - | - | - | - | - | - | - | - |
+| MiniLM-L6 cosine, no training (22.7M) | - | 0.855 | 0.773 | 0.493 | - | - | - | - | 6-9 ms CPU |
+| BERT-Tiny fine-tuned 70 min CPU (4.4M) | 0.396 | 0.794 | 0.570 | 0.302 | 0.468 | 0.519 | 0.114 | - | 1.6 ms CPU batched |
+
+Gate (bench > 0.55): **failed**, published as experimental on `/live/`. Validation of the cases (agreement with the target): tools 0.771, triage 0.890, moderation 0.976 (= the base rate of "does not violate"). WASM vs native on 40 requests: max |Δp| 6.3e-7, 40/40 argmax, median 6.9 ms per uncached decision under Node; natively a short cached input takes 0.8 ms (int8 kernel), a long bench state about 18 ms.

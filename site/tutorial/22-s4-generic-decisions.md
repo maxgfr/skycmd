@@ -2,7 +2,47 @@
 
 The s1 to s3 models know their games and the typed-decision sets they were trained on. On generic decisions they stay low: s3-pico scores 0.382 on `typed_decisions_bench`, against 0.6775 for oscar-1-17m ([chapter 11](./11-calibration-and-evaluation)). Two causes were documented: the sequences were truncated (96.8 % of them with the 1k vocabulary, [chapter 12](./12-size-ladder)), and the models learned language from scratch with no teacher. s4 attacks both. It is the s3 architecture at language scale, trained in one night on gold labels plus soft labels from Qwen3.5, and it runs in the browser on the [Live](/live/) page.
 
-<!-- RESULTS -->
+::: warning Experimental
+s4-micro fails its gate. The target was more than 0.55 on `typed_decisions_bench`; the ternary model scores **0.343**, below s3-pico (0.382). It is published on the [Live](/live/) page as an experiment, with the numbers below. s3-pico stays the model of the games.
+:::
+
+## Results
+
+All rows are measured by `sky-eval` on the test split, through the same engine the browser runs, with early exit on (τ = 0.5). The zero-shot sets were never seen in training: Banking77 is 8-way (the gold intent plus 7 random ones), MASSIVE is the gold intent plus 7 random ones.
+
+| model | params | file | bench | Banking77 (zero-shot) | MASSIVE en | MASSIVE fr | When2Call | all |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| s3-pico | 445k | 251 KB | **0.382** | 0.247 | 0.187 | 0.117 | 0.367 | 0.290 |
+| s4-micro, f32 (QAT master weights) | 5.6M | 22 MB | 0.348 | 0.131 | 0.192 | 0.186 | 0.365 | 0.268 |
+| **s4-micro, ternary** | 5.6M | 2.4 MB | 0.343 | **0.303** | **0.335** | **0.240** | **0.387** | **0.340** |
+| teacher Qwen3.5-4B (4-bit) | 4B | ≈ 3 GB | 0.501 | 0.898 | 0.893 | 0.873 | — | — |
+| oscar-1-17m (published) | 17M | | 0.6775 | — | — | — | — | — |
+| chance | | | | 0.125 | 0.125 | 0.125 | | |
+
+| model | ECE (all) | mean block passes | early-exit rate | median native µs / decision |
+|---|---:|---:|---:|---:|
+| s3-pico | 0.062 | 3.70 of 4 | 0.10 | 554 |
+| s4-micro, ternary | 0.066 | 4.92 of 6 | 0.28 | 4,533 |
+
+What the numbers say:
+
+- **Zero-shot improves, the bench does not.** On labels it never saw, s4 is 1.2 to 2 times better than s3-pico (Banking77 0.303 against 0.247, MASSIVE English 0.335 against 0.187). That is still far from the teacher (0.89) and from a pretrained sentence encoder (below). On the bench, s4 is below s3-pico, which trained on that distribution for longer.
+- **The loops barely help.** The three exits of the ternary model score within 0.01 of each other on every source (bench 0.344 / 0.345 / 0.352). The student is limited by what it knows of language, not by depth.
+- **Calibration holds.** The ECE stays at 0.066 with the per-type temperatures, and the calibrated model abstains when its top probability is low (see the inbox demo).
+- **The real cases follow the targets.** On the validation split of the cases, agreement with the target is 0.77 for tool routing (the calibrated teacher: 0.78) and 0.89 for ticket triage (the teacher: 0.75; the student learned the gold half of the target). Moderation reads 0.976, but 97.6 % of those validation records are "does not violate": the student has learned the base rate and nothing more. The guardrail demo is therefore a demonstration of the interface, not a working moderator.
+- **Hand-written requests expose the gap.** On the Live presets, written by hand and unlike the Glaive and Hermes tool lists, the router answers `no_tool` for the calendar, weather and arithmetic requests (0.55, 0.77, 0.27); 58 % of the tool records have `no_tool` as their target (turns without a call), and the student learned that prior better than the tool descriptions. Triage gets the password request right (0.88, first exit) and the double charge only narrowly (billing 0.36 against unsure 0.34).
+- **The browser matches the native engine.** On 40 requests (held-out and cases), the wasm module gives the native probabilities to 6.3e-7, with the same argmax everywhere, at a median of 6.9 ms per uncached decision under Node. A short cached input runs in 0.8 ms natively with the int8 kernel; long states (the bench) take about 18 ms. The ≈ 1 ms target holds only for short inputs.
+
+### Two baselines that did better
+
+To know what the student was missing, two models pretrained by others ran on the same records (Python, outside the Rust pipeline, only as comparisons):
+
+| baseline | params | bench | Banking77 | MASSIVE en | MASSIVE fr | When2Call | latency |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| MiniLM-L6 (`all-MiniLM-L6-v2`), cosine between state and option, no training | 22.7M | — | 0.855 | 0.773 | 0.493 | — | 6–9 ms (CPU) |
+| BERT-Tiny (`google/bert_uncased_L-2_H-128_A-2`), fine-tuned 70 min on CPU on the s4 gold and an early mix | 4.4M | 0.396 | 0.794 | 0.570 | 0.302 | 0.468 | 1.6 ms (CPU, batched) |
+
+BERT-Tiny has fewer parameters than s4 and reaches 0.794 zero-shot on Banking77 after the same fine-tuning: the difference is the language pretraining (BERT-Tiny read BooksCorpus and Wikipedia; s4 had 30 minutes of masked-language modelling on 150 MB). Ettin (arXiv 2507.11412) and BitNet Distillation (arXiv 2510.13998) both start from a pretrained model; s4 started from scratch, and that is the lesson of the night.
 
 ## The model: s3, wider, with a longer context
 
@@ -40,7 +80,7 @@ Neither reaches oscar-1-17m (0.6775), which was trained on that distribution. Th
 
 ### The teacher has an answer bias, and calibration removes it
 
-Per type, the 4B is at chance on the bench's nouls (0.505). It answers "true" to 591 of the 600, almost whatever the input: these nouls ask whether a human must take over a support conversation or review an agent trace, and the model escalates by default. A temperature cannot fix that. `sky-data s4-mix` therefore fits, per group of questions (source, type, number of options) with at least 150 gold training records, a temperature **and a bias per option** on the teacher's letter logits, `p = softmax(logits / T + b)`, by minimizing the cross-entropy against the gold labels. This is the contextual calibration of *Calibrate Before Use* (Zhao et al., 2021), fitted on labelled data. On the first scored moderation records it lifted the teacher's validation accuracy from 0.42 to 0.92. Groups without gold labels (the generic snippets) keep the global temperature.
+Per type, the 4B is at chance on the bench's nouls (0.505). It answers "true" to 591 of the 600, almost whatever the input: these nouls ask whether a human must take over a support conversation or review an agent trace, and the model escalates by default. A temperature cannot fix that. `sky-data s4-mix` therefore fits, per group of questions (source, type, number of options) with at least 150 gold training records, a temperature **and a bias per option** on the teacher's letter logits, `p = softmax(logits / T + b)`, by minimizing the cross-entropy against the gold labels. This is the contextual calibration of *Calibrate Before Use* (Zhao et al., 2021), fitted on labelled data. On moderation it lifted the teacher's validation accuracy from 0.55 to 0.91, mostly by learning that most comments do not violate the rule; on tool routing (0.78) and triage (0.75) the fitted biases are small and the accuracy does not change. Groups without gold labels (the generic snippets) keep the global temperature.
 
 ## The corpus: randomized label sets
 
@@ -64,7 +104,24 @@ For a record with a gold label the target is `α · gold + (1 − α) · teacher
 
 s3 supervised every exit against the same target. s4 adds `--dis β0` to `s2-decide`: exit `e` trains toward `normalize(target^β_e)`, with β rising linearly from β0 at the first exit to 1 at the last (`[0.5, 0.75, 1.0]` here). The early exits learn a softer copy of the target and the last exit the target itself. Each loop is thus supervised toward a target that improves on the previous one, the idea of *Deep Improvement Supervision* (arXiv 2511.16886) applied to the exits of a looped encoder. An early exit becomes confident only where even the softened target is confident, which is what the confidence-based early exit needs. A one-hot target is unchanged by the power, so the gold-only records behave as before. `model::exit_targets` is tested: entropies decrease from exit to exit, the last exit equals the target, and with every β at 1 the loss equals the plain deep supervision.
 
-<!-- TRAINING -->
+## The night run
+
+All on the M5 (16 GB), in `scripts/night-s4.sh`:
+
+| stage | time | what happened |
+|---|---:|---|
+| teacher labelling | ≈ 3 h | 44,721 case records and 30,000 generic snippets scored by the 4B; the typed decisions kept their gold labels |
+| mix | CPU | 154,721 targets, per-group calibration (table of `teacher-report.json`) |
+| pretrain (MLM) | 30 min | 6,236 steps, 56k tokens/s, validation loss 2.754 |
+| decide | 150 min | 26,180 steps of 64 questions, ≈ 210 questions/s; QAT from 10 %, loop dropout 0.25, DIS β0 = 0.5, length-pooled batches (pool 16) |
+| calibrate, export, evaluate | 18 min | per-type temperatures, f32 and ternary GGUF, `s2-eval` and `sky-eval` |
+
+The ternary validation accuracy at the last exit rose from 0.444 at step 4,000 to 0.510 at the end (0.586 on the mixed targets), still slowly rising when the time ran out.
+
+Two things went wrong and were fixed during the night:
+
+- **Memory.** The student (14 GB) and the teacher (12 GB) together pushed 15 GB into swap. MLX keeps freed buffers for reuse; capping that cache (`SKY_MLX_CACHE_GB=2` for `sky-train`, `mx.set_cache_limit` for the teacher) and capping each gold source to 40k records brought both back into memory.
+- **A non-finite batch.** At step 4,021 the loss became NaN and the update had already been applied, so the run stopped with poisoned weights. `apply_update` now evaluates the loss first and leaves the parameters untouched when it is not finite; the decision loop logs the batch and skips it, and stops after 20 skips in a row. The run resumed from its last checkpoint and skipped 8 batches out of 26,180. Seven of them had a static stream (question and options) of exactly 160 tokens: the cause is not found yet, the guard keeps it harmless.
 
 ## Evaluating any model on the same records
 
@@ -92,4 +149,11 @@ python3 scripts/s4-gate.py runs/s4-micro       # results table and gate
 
 ## Next
 
-The teacher scored about 9 records per second. A larger labelled share (the typed decisions too, or a second teacher pass with the options reversed to cancel position bias) and a longer decision run are the obvious next steps. Porting the teacher's forward pass to mlx-rs would make the whole pipeline Rust.
+In order of expected gain:
+
+1. **Start from a pretrained encoder.** The baselines above show that language pretraining matters more than anything else here. The next s4 either pretrains for hours rather than 30 minutes, or initializes its embeddings and blocks by distilling a small pretrained encoder (Ettin-17M, MiniLM) before the decision run.
+2. **More teacher labels.** The 4B scored about 4 bench records and 13 short records per second. Labelling the typed decisions too, plus a second pass with the options reversed to cancel position bias, gives the student more of the teacher's knowledge.
+3. **Balanced case sets.** Civil Comments is 97 % non-violating and 58 % of the tool records expect `no_tool`; both need resampling, and the tool lists need hand-written, one-line descriptions like the ones people type.
+4. **Find the 160-token NaN.**
+
+Porting the teacher's forward pass to mlx-rs would make the whole pipeline Rust.
