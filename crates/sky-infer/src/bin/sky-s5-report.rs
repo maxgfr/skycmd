@@ -10,6 +10,7 @@
 //! sky-s5-report selective <cal.dump> <eval dir> [--cal-src typed_decisions_train] [--json out.json]
 //! sky-s5-report pari1 --ref <dirs> --variant <dirs> [--json out.json]
 //! sky-s5-report pari2 --ref <dirs> --variant <dirs> [--json out.json]
+//! sky-s5-report summary --store <store> --out results.json
 //! ```
 //!
 //! **Intervals.** 95 % percentile bootstrap, B = 2000, seed 0. With several runs of a variant
@@ -49,6 +50,11 @@
 //!   bench accuracy non-inferiority (0.02), monotonicity violations reduced by ≥ 30 % with an
 //!   interval of the difference below 0; secondary (Holm): MAD_neg, |Σ s − 1|, |s − c|,
 //!   additivity, description invariance, bench ECE.
+//! - `summary`: one compact JSON for the results page: every report of `runs/s5-report/`, the
+//!   frozen selections of `runs/s5-select/`, the validation summary of every s5 run, the log of
+//!   the test passes, and the shipped model by the pre-registered rule (lowest val NLL among the
+//!   three seeds of the retained arm: λ* when bet 2 succeeded, else B* when bet 1 succeeded,
+//!   else A′).
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
@@ -1238,6 +1244,113 @@ mod native {
         })
     }
 
+    // ------------------------------------------------------------------------- summary
+
+    fn read_json(p: &Path) -> Option<Value> {
+        serde_json::from_str(&std::fs::read_to_string(p).ok()?).ok()
+    }
+
+    /// `file stem -> content` of the JSON files of a directory.
+    fn json_dir(dir: &Path) -> serde_json::Map<String, Value> {
+        let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+            .map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).collect())
+            .unwrap_or_default();
+        files.sort();
+        let mut m = serde_json::Map::new();
+        for p in files {
+            if p.extension().is_some_and(|e| e == "json") {
+                if let (Some(stem), Some(v)) = (p.file_stem(), read_json(&p)) {
+                    m.insert(stem.to_string_lossy().to_string(), v);
+                }
+            }
+        }
+        m
+    }
+
+    /// The shipped run by the pre-registered rule, if bet 1 has been analysed.
+    fn shipped(
+        reports: &serde_json::Map<String, Value>,
+        selection: &serde_json::Map<String, Value>,
+        runs: &serde_json::Map<String, Value>,
+    ) -> Option<String> {
+        let ok = |k: &str| reports.get(k).and_then(|v| v["success"].as_bool()) == Some(true);
+        reports.get("pari1")?;
+        let names: Vec<String> = if ok("pari2") {
+            let ls = selection.get("lambda")?;
+            let (tag, l) = (ls["support"].as_str()?, ls["lambda_star"].as_str()?);
+            (0..3).map(|s| format!("l-{tag}-{l}-s{s}")).collect()
+        } else if ok("pari1") {
+            (0..3).map(|s| format!("f-b-s{s}")).collect()
+        } else {
+            (0..3).map(|s| format!("f-ap-s{s}")).collect()
+        };
+        names
+            .into_iter()
+            .filter_map(|n| {
+                let nll = runs.get(&n)?["all"]["nll"].as_f64()?;
+                Some((n, nll))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(n, _)| n)
+    }
+
+    pub fn summary(store: &Path) -> Value {
+        let mut runs = serde_json::Map::new();
+        let mut dirs: Vec<PathBuf> = std::fs::read_dir(store.join("runs"))
+            .map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).collect())
+            .unwrap_or_default();
+        dirs.sort();
+        for d in dirs {
+            let Some(name) = d
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.strip_prefix("s5-"))
+                .map(str::to_string)
+            else {
+                continue;
+            };
+            let Some(v) = read_json(&d.join("val.json")) else {
+                continue;
+            };
+            let init = v["init"]
+                .as_str()
+                .and_then(|p| Path::new(p).file_name())
+                .map(|n| n.to_string_lossy().to_string());
+            runs.insert(
+                name,
+                json!({"variant": v["variant"], "init": init, "lr": v["lr"], "seed": v["seed"],
+                       "coh": v["coh"], "step": v["step"], "minutes": v["minutes"],
+                       "all": v["all"], "coherence": v["coherence"]}),
+            );
+        }
+        let log: Vec<Value> = std::fs::read_to_string(store.join("runs/s5-test-log.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        let mut commits: Vec<&str> = log
+            .iter()
+            .filter_map(|v| v["prereg_commit"].as_str())
+            .collect();
+        commits.sort_unstable();
+        commits.dedup();
+        let times: Vec<u64> = log.iter().filter_map(|v| v["unix_time"].as_u64()).collect();
+        let reports = json_dir(&store.join("runs/s5-report"));
+        let selection = json_dir(&store.join("runs/s5-select"));
+        let ship = shipped(&reports, &selection, &runs);
+        json!({
+            "generated_unix": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+            "shipped": ship,
+            "test_log": {"passes": log.len(), "prereg_commits": commits,
+                         "first_unix": times.iter().min(), "last_unix": times.iter().max()},
+            "selection": selection,
+            "runs": runs,
+            "reports": reports,
+        })
+    }
+
     // ------------------------------------------------------------------------- CLI
 
     fn arg(args: &[String], k: &str) -> Option<String> {
@@ -1267,7 +1380,7 @@ mod native {
         let args: Vec<String> = std::env::args().skip(1).collect();
         let usage = || -> ! {
             eprintln!(
-                "usage: sky-s5-report calibrate|gates|coherence|robust|selective|pari1|pari2 ... (see the source)"
+                "usage: sky-s5-report calibrate|gates|coherence|robust|selective|pari1|pari2|summary ... (see the source)"
             );
             std::process::exit(2)
         };
@@ -1311,6 +1424,12 @@ mod native {
                 ),
                 &args,
             ),
+            "summary" => {
+                let out = need("--out");
+                let v = summary(Path::new(&need("--store")));
+                std::fs::write(&out, v.to_string() + "\n").unwrap_or_else(|e| panic!("{out}: {e}"));
+                eprintln!("wrote {out} (shipped: {})", v["shipped"]);
+            }
             "pari2" => emit(
                 pari2(
                     &list(&need("--ref")),

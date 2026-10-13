@@ -3,24 +3,34 @@ title: Live
 outline: [2, 2]
 ---
 
-# Live: a generic decision model in your browser
+# Live: a decision model in your browser
 
-The game models on [Play](/play/) only know their games. **s4** is the first skycmd model trained for decisions in general: you write the question and the options in plain text, and one forward pass returns calibrated probabilities over them. The labels can be ones it has never seen. It is the s3 architecture (a bidirectional encoder with a looped, weight-shared state stack and ternary weights) scaled to language, and distilled from Qwen3.5. The whole model is a GGUF file of a few megabytes that runs in WASM on this page. Nothing is sent to a server.
+The game models on [Play](/play/) only know their games. **s5-lite** is a decision model for questions you write yourself:
 
-What each demo shows:
+- you give the question, the options (each with a one-line definition) and the state;
+- one pass returns calibrated probabilities over the options.
 
-- **Probabilities** are calibrated per question type and option count (temperature scaling on held-out data), so 70% should mean right about 70% of the time.
-- **Adaptive depth**: the state encoder has three exits (after 2, 4 and 6 block passes). The model stops at the first exit whose confidence clears a calibrated threshold, so it "thinks" longer on hard inputs. Untick the box to force the full depth.
-- **Abstention**: the triage and playground demos add an option *"unsure: I don't know, none of these fits"*. The model was trained with label sets where the right answer had been removed and this option was the target.
-- **Static cache**: the question and options are encoded once and cached. When only the state changes (a new message, a new request), only the state is encoded.
+It is Ettin-17M, fine-tuned in Rust, quantized to 8 bits. It runs in WASM on this page and sends nothing to a server.
 
-::: warning Experimental
-s4-micro (5.6M parameters, 2.4 MB) failed its quality gate. On labels it never saw it does better than the game models (0.30 on Banking77 and 0.34 on MASSIVE, 8 options each, where chance is 0.125), but it is far from its teacher (0.89) and still below s3-pico on the generic decision bench (0.343 against 0.382). Treat the answers as a demonstration of the interface: free-text options, calibrated probabilities, adaptive depth and abstention. On the presets below it often fails: the tool router sends most requests to `no_tool` (the weather question included), the triage demo hesitates between the right category and "unsure", and the guardrail gives the phone-number example a violation probability of only 0.20, having learned that most messages do not violate a rule and little more. A clear request such as "I forgot my password and the reset link does not arrive" is answered confidently (0.88) at the first exit. The numbers and what comes next are in [the s4 chapter](/tutorial/22-s4-generic-decisions).
+What makes s5 different is its **iso** architecture:
+
+- **Options read by definition only.** The model reads each option by its definition. The key you give it (`billing`, `yes`, `A`) never reaches the model, so renaming the keys or swapping yes and no cannot change the answer.
+- **Options isolated from each other.** Each option sees the state, the question and itself, never the other options, all at the same positions. Reordering the options cannot change the answer either.
+- **State encoded once.** The state is encoded once, then reused by every question asked about it.
+
+These are guarantees by construction, checked by exact tests. Whether the answers are good is a different matter, measured on held-out data: the numbers, including the failures, are on [the results page](/results/).
+
+**Calibration:** probabilities are calibrated per question type and number of options, by temperature scaling on a held-out calibration split.
+
+**Presets:** they are the demo cases every s5 model is evaluated on (`eval/s5/demo-cases.jsonl`). A ✓ marks the expected answer while a preset is unmodified.
+
+::: info French
+The French model (s5 on mmBERT-small) is not trained yet. Choosing *Français* in a demo shows a notice and keeps the English presets.
 :::
 
 ## Playground
 
-Any question, any options, any type (`choice`, `score` from lowest to highest level, or `noul` for a true/false statement).
+Any question, any options, any type: `choice`, `score` (levels from lowest to highest) or `noul` (a true/false statement).
 
 <ClientOnly>
   <LiveDecide mode="playground" />
@@ -28,7 +38,7 @@ Any question, any options, any type (`choice`, `score` from lowest to highest le
 
 ## Tool router for an agent
 
-Describe the tools in one line each. The model picks the tool for the request, or `no_tool` when none is needed. An agent can ask this before calling a large model: the tool list stays cached, so each new request costs one state encoding.
+Describe the tools in one line each. The model picks the tool for the request, or `no_tool` when none fits.
 
 <ClientOnly>
   <LiveDecide mode="tools" />
@@ -36,7 +46,7 @@ Describe the tools in one line each. The model picks the tool for the request, o
 
 ## Inbox and ticket triage
 
-Your own categories, with an "I don't know" way out. When no category clearly wins, the demo shows the abstention instead of a guess.
+Your own categories, with an `unsure` way out. When no category clearly wins, the demo shows the abstention instead of a guess.
 
 <ClientOnly>
   <LiveDecide mode="triage" />
@@ -44,8 +54,38 @@ Your own categories, with an "I don't know" way out. When no category clearly wi
 
 ## Guardrail on a written rule
 
-Write a rule in plain language. The model returns p(the message violates the rule), a `noul` question built as *The message violates this rule: "…"*.
+The statement to check is a `noul` question: *The message violates this rule: "…"*. The model returns p(true).
 
 <ClientOnly>
   <LiveDecide mode="guard" />
+</ClientOnly>
+
+## Proof 1: keys and order cannot matter (guaranteed)
+
+Every key moves to another definition, then the order is reversed. s5-lite gives each definition the same probability every time, up to float rounding. s4-micro reads the keys and the other options, so it moves (the yes/no label swap of [2609.26758](https://arxiv.org/abs/2609.26758) is the same effect).
+
+<ClientOnly>
+  <LiveProof mode="guarantee" />
+</ClientOnly>
+
+## Proof 2: other words for the same options (learned)
+
+Here nothing is guaranteed. Robustness to paraphrased definitions is trained, and it is measured on paraphrases written by hand and never seen in training. Try your own wordings.
+
+<ClientOnly>
+  <LiveProof mode="paraphrase" />
+</ClientOnly>
+
+## Proof 3: a Dutch book on the model's own beliefs
+
+The model is asked three kinds of question, each separately:
+
+- the choice itself;
+- for each option, "The correct answer is: x";
+- "The correct answer is not: x".
+
+A coherent model gives s + n = 1 and Σ s = 1. When Σ s drifts from 1, a bookie can bet against the model's prices and win for sure. Bet 2 trains this coherence and measures it, together with identities it never trained on (results page).
+
+<ClientOnly>
+  <LiveProof mode="dutch" />
 </ClientOnly>

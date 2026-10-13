@@ -1,9 +1,13 @@
 <script setup lang="ts">
-// The /live/ demos of the generic s4 decision model: free-text options at inference time,
-// calibrated probabilities from one forward pass, adaptive depth (early exit) and an
-// abstention option. Every decision runs inside the wasm module (`Engine.decide`).
+// The /live/ demos of the generic decision models: free-text options at inference time and
+// calibrated probabilities, computed in the browser by the wasm module (`Engine.decide`).
+// s5-lite (iso architecture) reads each option by its definition only: the keys never reach the
+// model, and a state is encoded once for every question asked about it. The presets are the
+// demo cases the models are evaluated on (eval/s5/demo-cases.jsonl, lib/demo-cases.ts).
 import { computed, onMounted, ref, watch } from 'vue'
+import { withBase } from 'vitepress'
 import { formatInt, loadEngine, loadManifest, type ModelEntry, type WasmEngine } from '../lib/wasm'
+import { DEMO_CASES, type DemoCase } from '../lib/demo-cases'
 
 type Mode = 'playground' | 'tools' | 'triage' | 'guard'
 type QT = 'choice' | 'score' | 'noul'
@@ -16,63 +20,35 @@ interface Answer {
   n_exits: number
   layers_used: number | null
   static_hit: boolean
+  state_hit?: boolean
   micros: number
 }
 
-const NOUL = ['false: no, the statement does not hold', 'true: yes, the statement holds']
-const NO_TOOL = 'no_tool: no tool is needed, reply directly or ask for details'
-const UNSURE = "unsure: I don't know, none of these fits"
+/** Demo-case sources of each mode (English: the French cases wait for s5-fr). */
+const SOURCES: Record<Mode, string[]> = {
+  playground: ['demo_playground_en', 'demo_score_en'],
+  tools: ['demo_tools_en'],
+  triage: ['demo_triage_en'],
+  guard: ['demo_guard_en'],
+}
+const examples: DemoCase[] = DEMO_CASES.filter((c) => SOURCES[props.mode].includes(c.src))
 
-const PRESETS: Record<Mode, { qtype: QT; ins: string; options: string; state: string }> = {
-  playground: {
-    qtype: 'choice',
-    ins: 'What should the on-call engineer do first?',
-    options: [
-      'rollback: revert the last deploy',
-      'scale: add more servers',
-      'wait: keep watching, nothing is wrong',
-      'escalate: page the database team',
-    ].join('\n'),
-    state:
-      'Error rate jumped from 0.1% to 12% two minutes after the 14:02 deploy. CPU and memory are normal. ' +
-      'The database latency is unchanged.',
-  },
-  tools: {
-    qtype: 'choice',
-    ins: 'Which tool should the assistant call to handle this request?',
-    options: [
-      'get_weather: current weather and forecast for a city',
-      'send_email: send an email to a contact',
-      'create_event: add an event to the calendar',
-      'search_web: search the web for recent information',
-      'calculator: evaluate an arithmetic expression',
-    ].join('\n'),
-    state: 'Can you put lunch with Sarah on my calendar for Friday at noon?',
-  },
-  triage: {
-    qtype: 'choice',
-    ins: 'Which category does this customer message belong to?',
-    options: [
-      'billing: invoices, charges and refunds',
-      'bug: something in the app is broken',
-      'feature request: an idea for the product',
-      'account: login, password or profile',
-    ].join('\n'),
-    state: 'Hi, I was charged twice for my March subscription, can you send the money back?',
-  },
-  guard: {
-    qtype: 'noul',
-    ins: 'No sharing of phone numbers, emails or home addresses.',
-    options: '',
-    state: 'Call me tonight at 06 12 34 56 78, I live at 4 rue des Lilas.',
-  },
+/** The `noul` options of s4-micro, which was trained with these texts. */
+const S4_NOUL = ['false: no, the statement does not hold', 'true: yes, the statement holds']
+
+/** Option lines of a case as the form shows them (`key: definition`; levels for `score`). */
+function linesOf(c: DemoCase): string {
+  if (c.t === 'score') return c.opts.map(([, d]) => d).join('\n')
+  return c.opts.map(([k, d]) => (d ? `${k}: ${d}` : k)).join('\n')
 }
 
-const qtype = ref<QT>(PRESETS[props.mode].qtype)
-const ins = ref(PRESETS[props.mode].ins)
-const optionsText = ref(PRESETS[props.mode].options)
-const state = ref(PRESETS[props.mode].state)
-const withUnsure = ref(props.mode === 'triage' || props.mode === 'playground')
+const first = examples[0]
+const caseIdx = ref(0)
+const qtype = ref<QT>(first.t)
+const ins = ref(first.ins)
+const optionsText = ref(linesOf(first))
+const state = ref(first.state)
+const lang = ref<'en' | 'fr'>('en')
 const adaptive = ref(true)
 
 const models = ref<ModelEntry[]>([])
@@ -84,22 +60,35 @@ const error = ref('')
 const median = ref<number | null>(null)
 const samples: number[] = []
 
-/** Rendered option texts, as `sky_data::record::Question::options`. */
+const isIso = computed(() => model.value?.arch === 'skycmd-iso')
+
+function pick(i: number) {
+  const c = examples[i]
+  caseIdx.value = i
+  qtype.value = c.t
+  ins.value = c.ins
+  optionsText.value = linesOf(c)
+  state.value = c.state
+}
+
+/** Rendered option texts, as `sky-eval` renders s5 records (`key: definition`, `level i: …`). */
 const rendered = computed<string[]>(() => {
-  if (props.mode === 'guard' || qtype.value === 'noul') return NOUL
+  if (qtype.value === 'noul') {
+    if (props.mode === 'guard') {
+      return optionsText.value
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+    }
+    // iso: `false` / `true` without a definition read as "The statement is false/true."
+    return isIso.value ? ['false', 'true'] : S4_NOUL
+  }
   const lines = optionsText.value
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-  let opts = qtype.value === 'score' ? lines.map((l, i) => `level ${i}: ${l}`) : lines
-  if (props.mode === 'tools') opts = [...opts, NO_TOOL]
-  else if (withUnsure.value && qtype.value === 'choice') opts = [...opts, UNSURE]
-  return opts
+  return qtype.value === 'score' ? lines.map((l, i) => `level ${i}: ${l}`) : lines
 })
-
-const instructions = computed(() =>
-  props.mode === 'guard' ? `The message violates this rule: "${ins.value.trim()}"` : ins.value.trim(),
-)
 
 const rows = computed(() => {
   const a = answer.value
@@ -111,10 +100,18 @@ const rows = computed(() => {
   })
 })
 
+/** The expected option while the form still holds an unmodified demo case. */
+const expected = computed<number | null>(() => {
+  const c = examples[caseIdx.value]
+  if (!c || c.t !== qtype.value || c.ins !== ins.value || c.state !== state.value) return null
+  if (linesOf(c) !== optionsText.value) return null
+  return c.gold
+})
+
 /** The answer is an abstention: the abstention option wins, or no option is clearly ahead. */
 const abstains = computed(() => {
   const r = rows.value
-  if (!r.length || props.mode === 'guard' || qtype.value !== 'choice') return false
+  if (!r.length || qtype.value !== 'choice') return false
   const top = r.find((x) => x.best)!
   return top.key === 'unsure' || top.key === 'no_tool' || top.p < 0.4
 })
@@ -123,10 +120,10 @@ const violation = computed(() => (props.mode === 'guard' && answer.value ? answe
 
 onMounted(async () => {
   const all = await loadManifest()
-  models.value = all.filter((m) => m.name.startsWith('s4'))
-  model.value = models.value.find((m) => m.weight_format === 'ternary') ?? models.value[0] ?? null
+  models.value = all.filter((m) => m.task === 'generic')
+  model.value = models.value.find((m) => m.arch === 'skycmd-iso') ?? models.value[0] ?? null
   if (!model.value) {
-    status.value = 'No s4 model is published on this site yet.'
+    status.value = 'No generic decision model is published on this site yet.'
     return
   }
   await load()
@@ -155,7 +152,7 @@ function run() {
   try {
     e.setExitThreshold(adaptive.value ? undefined : 1.0)
     const a = JSON.parse(
-      e.decide(qtype.value, instructions.value, JSON.stringify(rendered.value), state.value),
+      e.decide(qtype.value, ins.value.trim(), JSON.stringify(rendered.value), state.value),
     ) as Answer
     answer.value = a
     samples.push(a.micros)
@@ -168,55 +165,86 @@ function run() {
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null
-watch([qtype, ins, optionsText, state, withUnsure, adaptive, model], () => {
+watch([qtype, ins, optionsText, state, adaptive, model], () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(run, 120)
 })
 watch(model, () => load())
+// French needs s5-fr (Phase 6): until it ships, the French demos fall back on the English presets.
+watch(lang, (l) => {
+  if (l === 'fr') pick(caseIdx.value)
+})
 
 function pct(p: number) {
   return `${(p * 100).toFixed(1)}%`
+}
+
+function short(s: string, n = 46) {
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s
 }
 </script>
 
 <template>
   <div class="live">
+    <div class="live-row live-top">
+      <label>Language
+        <select v-model="lang">
+          <option value="en">English</option>
+          <option value="fr">Français</option>
+        </select>
+      </label>
+      <label v-if="models.length > 1">Model
+        <select v-model="model">
+          <option v-for="m in models" :key="m.file" :value="m">{{ m.name }} · {{ m.weight_format }}</option>
+        </select>
+      </label>
+      <label v-if="mode === 'playground'">Type
+        <select v-model="qtype">
+          <option value="choice">choice</option>
+          <option value="score">score</option>
+          <option value="noul">noul (true / false)</option>
+        </select>
+      </label>
+      <label v-if="model && !isIso" class="live-check">
+        <input v-model="adaptive" type="checkbox" /> adaptive depth (early exit)
+      </label>
+    </div>
+
+    <p v-if="lang === 'fr'" class="live-banner">
+      Français indisponible : s5-fr (phase 6) n'est pas encore entraîné, voir
+      <a :href="withBase('/results/')">les résultats</a>. La démo reste sur les presets anglais.
+    </p>
+
+    <div class="live-examples">
+      <span>Examples:</span>
+      <button
+        v-for="(c, i) in examples"
+        :key="i"
+        type="button"
+        :class="{ on: i === caseIdx && expected !== null }"
+        @click="pick(i)"
+      >{{ short(c.state) }}</button>
+    </div>
+
     <div class="live-form">
-      <div v-if="mode === 'playground'" class="live-row">
-        <label>Type
-          <select v-model="qtype">
-            <option value="choice">choice</option>
-            <option value="score">score</option>
-            <option value="noul">noul (true / false)</option>
-          </select>
-        </label>
-        <label v-if="qtype === 'choice'" class="live-check">
-          <input v-model="withUnsure" type="checkbox" /> add “I don't know”
-        </label>
-      </div>
-      <label v-if="mode === 'guard'">Rule
+      <label>{{ mode === 'guard' ? 'Statement to check' : qtype === 'noul' ? 'Statement' : 'Question' }}
         <input v-model="ins" type="text" />
       </label>
-      <label v-else>{{ mode === 'playground' && qtype === 'noul' ? 'Statement' : 'Question' }}
-        <input v-model="ins" type="text" />
-      </label>
-      <label v-if="mode !== 'guard' && !(mode === 'playground' && qtype === 'noul')">
-        {{ mode === 'tools' ? 'Tools (name: description, one per line)' : qtype === 'score' ? 'Levels (lowest first, one per line)' : 'Options (key: description, one per line)' }}
+      <label v-if="qtype !== 'noul' || mode === 'guard'">
+        {{
+          mode === 'tools'
+            ? 'Tools (name: description, one per line)'
+            : mode === 'guard'
+              ? 'Answers (false: …, true: …)'
+              : qtype === 'score'
+                ? 'Levels (lowest first, one per line)'
+                : 'Options (key: description, one per line)'
+        }}
         <textarea v-model="optionsText" rows="5" spellcheck="false" />
       </label>
-      <label>{{ mode === 'tools' ? 'User request' : mode === 'guard' ? 'Message' : mode === 'triage' ? 'Message' : 'State' }}
+      <label>{{ mode === 'tools' ? 'User request' : mode === 'triage' || mode === 'guard' ? 'Message' : 'State' }}
         <textarea v-model="state" rows="3" />
       </label>
-      <div class="live-row">
-        <label class="live-check">
-          <input v-model="adaptive" type="checkbox" /> adaptive depth (early exit)
-        </label>
-        <label v-if="models.length > 1">Model
-          <select v-model="model">
-            <option v-for="m in models" :key="m.file" :value="m">{{ m.name }} · {{ m.weight_format }}</option>
-          </select>
-        </label>
-      </div>
     </div>
 
     <p v-if="status" class="live-status">{{ status }}</p>
@@ -224,22 +252,31 @@ function pct(p: number) {
 
     <div v-if="answer && !status" class="live-out">
       <div v-if="violation !== null" class="live-verdict" :class="{ bad: violation >= 0.5 }">
-        p(violates the rule) = <strong>{{ pct(violation) }}</strong>
-        <span>{{ violation >= 0.5 ? 'flag the message' : 'let it through' }}</span>
+        p(true) = <strong>{{ pct(violation) }}</strong>
+        <span>{{ violation >= 0.5 ? 'flag it' : 'let it through' }}</span>
       </div>
       <div v-else-if="abstains" class="live-verdict unsure">The model abstains: <strong>“I don't know”</strong></div>
       <ul class="live-bars">
-        <li v-for="r in rows" :key="r.key" :class="{ best: r.best }">
-          <span class="k">{{ r.key }}</span>
+        <li v-for="(r, i) in rows" :key="r.key + i" :class="{ best: r.best }">
+          <span class="k" :title="r.desc">{{ r.key }}<template v-if="expected === i"> ✓</template></span>
           <span class="bar"><span :style="{ width: pct(r.p) }" /></span>
           <span class="p">{{ pct(r.p) }}</span>
         </li>
       </ul>
+      <p v-if="expected !== null" class="live-meta">
+        Expected answer: <strong>{{ rows[expected]?.key }}</strong> ·
+        {{ rows[expected]?.best ? 'the model agrees' : 'the model disagrees' }}
+      </p>
       <p class="live-meta">
-        exit {{ (answer.exit ?? 0) + 1 }} / {{ answer.n_exits }}
-        <template v-if="answer.layers_used !== null"> · {{ answer.layers_used }} block passes</template>
+        <template v-if="isIso">
+          options read by their definitions only · state {{ answer.state_hit ? 'cached' : 'encoded' }}
+        </template>
+        <template v-else>
+          exit {{ (answer.exit ?? 0) + 1 }} / {{ answer.n_exits }}
+          <template v-if="answer.layers_used !== null"> · {{ answer.layers_used }} block passes</template>
+          · question {{ answer.static_hit ? 'cached' : 'encoded' }}
+        </template>
         · {{ formatInt(answer.micros) }} µs<template v-if="median !== null"> (median {{ formatInt(median) }} µs)</template>
-        · question {{ answer.static_hit ? 'cached' : 'encoded' }}
         <template v-if="model"> · {{ model.name }}, {{ formatInt(model.bytes / 1024) }} KB</template>
       </p>
     </div>
@@ -258,16 +295,16 @@ function pct(p: number) {
   display: grid;
   gap: 10px;
 }
-.live-form label {
+.live label {
   display: grid;
   gap: 4px;
   font-size: 13px;
   font-weight: 600;
   color: var(--vp-c-text-2);
 }
-.live-form input[type='text'],
-.live-form textarea,
-.live-form select {
+.live input[type='text'],
+.live textarea,
+.live select {
   font: inherit;
   font-weight: 400;
   font-size: 14px;
@@ -278,7 +315,7 @@ function pct(p: number) {
   padding: 6px 10px;
   width: 100%;
 }
-.live-form textarea {
+.live textarea {
   font-family: var(--vp-font-family-mono);
   font-size: 13px;
   resize: vertical;
@@ -292,11 +329,43 @@ function pct(p: number) {
 .live-row select {
   width: auto;
 }
+.live-top {
+  margin-bottom: 10px;
+}
 .live-check {
   display: flex !important;
   align-items: center;
   gap: 6px;
   font-weight: 400 !important;
+}
+.live-banner {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--vp-c-warning-soft);
+}
+.live-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+}
+.live-examples button {
+  font-size: 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 14px;
+  padding: 2px 10px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  cursor: pointer;
+}
+.live-examples button.on {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
 }
 .live-status,
 .live-error {

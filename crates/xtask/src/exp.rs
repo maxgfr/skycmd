@@ -660,6 +660,23 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
             }
         }
     }
+    // The results page reads one file, committed with the site.
+    v.push(Step::new(
+        "site-mkdir",
+        "mkdir",
+        &["-p", "{checkout}/site/public/results"],
+    ));
+    v.push(Step::new(
+        "summary",
+        "sky-s5-report",
+        &[
+            "summary",
+            "--store",
+            "{store}",
+            "--out",
+            "{checkout}/site/public/results/s5.json",
+        ],
+    ));
     Ok(v)
 }
 

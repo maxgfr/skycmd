@@ -109,7 +109,8 @@ impl Engine {
 
     /// A generic decision (the /live demos): `type` is `choice`, `score` or `noul`,
     /// `options_json` a JSON array of rendered option texts. Returns
-    /// `{"probs", "exit", "n_exits", "layers_used", "static_hit", "micros"}` as JSON.
+    /// `{"probs", "exit", "n_exits", "layers_used", "static_hit", "state_hit", "micros"}` as
+    /// JSON (`state_hit`: s2 and iso reused the encoding of the same state).
     pub fn decide(
         &mut self,
         qtype: &str,
@@ -149,6 +150,7 @@ impl Engine {
             "n_exits": st.n_exits,
             "layers_used": st.layers_used,
             "static_hit": st.static_hit,
+            "state_hit": st.state_hit,
             "micros": micros,
         }))
     }

@@ -23,6 +23,7 @@ const chapters: [string, string][] = [
   ['20-dagger-lessons', '20 What DAgger taught us'],
   ['21-s3-recursive-tiny', '21 s3: a 251 KB model that plays four games'],
   ['22-s4-generic-decisions', '22 s4: a generic decision model distilled from Qwen3.5'],
+  ['23-s5-lite', '23 s5-lite: invariant by construction, tested in the open'],
 ]
 
 const groups: [string, number, number][] = [
@@ -30,7 +31,7 @@ const groups: [string, number, number][] = [
   ['Data', 4, 7],
   ['Model and training', 7, 12],
   ['Shipping', 12, 17],
-  ['Going further', 17, 22],
+  ['Going further', 17, 23],
 ]
 
 export default defineConfig({
@@ -60,6 +61,7 @@ export default defineConfig({
       { text: 'Live', link: '/live/' },
       { text: 'Tutorial', link: '/tutorial/' },
       { text: 'Bench', link: '/bench/' },
+      { text: 'Results', link: '/results/' },
       { text: 'Install', link: '/install/' },
       { text: 'What\'s new', link: '/novelty/' },
       { text: 'Sources', link: '/sources/' },
