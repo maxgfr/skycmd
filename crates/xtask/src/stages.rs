@@ -285,6 +285,67 @@ fn teacher_steps() -> Vec<Step> {
         .collect()
 }
 
+/// oscar-1-17m, the public Laya-format reference, on the reassignment set (the yes/no swap of
+/// 2609.26758, next to the iso guarantee) and on the fitted bench (our rendering of the s5 records
+/// must give back its published 0.6775). Descriptive, outside the bets (amendment 1).
+fn oscar_ref() -> Vec<Step> {
+    let (gguf, dir) = (
+        "models/s5-ref/oscar-1-17m.f32.gguf",
+        "runs/s5-ref/oscar-1-17m/eval-f32",
+    );
+    let mut v = vec![
+        Step::new("mkdir", "mkdir", &["-p", "models/s5-ref", dir]),
+        Step::new(
+            "convert",
+            "sky-convert",
+            &[
+                "models-src/oscar",
+                gguf,
+                "--type",
+                "f32",
+                "--head-type",
+                "f32",
+            ],
+        ),
+    ];
+    for set in ["typed_decisions_test", "reassign_test"] {
+        v.push(Step::new(
+            &format!("test-{set}"),
+            "sky-eval",
+            &[
+                gguf,
+                "--records",
+                &format!("data/s5/eval/{set}.jsonl"),
+                "--split",
+                "test",
+                "--prereg",
+                "{checkout}/docs/s5-prereg.md",
+                "--metrics",
+                "--json",
+                &format!("{dir}/{set}.json"),
+                "--dump-probs",
+                &format!("{dir}/{set}.dump.jsonl"),
+            ],
+        ));
+    }
+    v.push(Step::new(
+        "mkdir-report",
+        "mkdir",
+        &["-p", "runs/s5-report"],
+    ));
+    v.push(Step::new(
+        "robust",
+        "sky-s5-report",
+        &[
+            "robust",
+            dir,
+            "--json",
+            "runs/s5-report/robust-oscar-1-17m.json",
+        ],
+    ));
+    v
+}
+
 pub fn stages() -> Vec<Stage> {
     vec![
         Stage {
@@ -317,6 +378,11 @@ pub fn stages() -> Vec<Stage> {
             name: "import",
             about: "the encoders as sky-train checkpoints in models/s5-base/ (MLM probe logged)",
             steps: import_bases(),
+        },
+        Stage {
+            name: "oscar-ref",
+            about: "oscar-1-17m on the reassignment set and the bench (descriptive reference)",
+            steps: oscar_ref(),
         },
     ]
 }
