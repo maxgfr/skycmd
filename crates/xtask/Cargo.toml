@@ -9,3 +9,4 @@ publish = false
 [dependencies]
 anyhow = "1.0.104"
 serde_json = "1.0.152"
+sky-gguf = { path = "../sky-gguf" }

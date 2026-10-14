@@ -41,9 +41,10 @@ Each piece below is known on its own; the combination is ours.
 
 ## 3. A lesson: calibrate early exits where the model is used
 
-- Early-exit thresholds are normally fitted on i.i.d. validation questions. Fitted that way (τ = 0.62), our model **failed** in closed loop: confident shallow exits were wrong exactly in the critical states.
-- Calibrated **by playing the games** instead, the same model reached oracle level while using about 1.3 of its 4 loops.
-- We found little prior work on calibrating early exits in closed-loop control. It looks like a general rule for any early-exit model that drives something.
+- Early-exit thresholds are normally fitted on i.i.d. validation questions. Fitted that way (τ = 0.62 / 0.62 / 0.69 for choice / score / noul), **s2-nano failed** in closed loop: over 5 arena seeds × 30 episodes it crashed in every Flappy episode (15.9 ± 2.3 pipes of 200, 30 crashes of 30) and needed 1,931 ± 1,106 reflex vetoes in Dodge. Confident shallow exits were wrong in the critical states.
+- Calibrated **by playing the games** (τ = 0.95), the same weights flew 191.9 ± 7.2 pipes (2.4 ± 2.1 crashes of 30) and reached the oracle in Rescue and Doom (with s2-nano-doom, its Doom fine-tune), at 3.2 to 4.0 of 4 layers.
+- s3-pico, a different model, ships with a τ chosen in closed loop (0.6) and uses about 1.4 of its 4 loops (1.44 Flappy, 1.57 Rescue, 1.05 Dodge, 1.73 Doom). There the threshold barely matters: τ = 0.6, τ = 0.5 and full depth give the same scores and crashes on all four games and all five seeds (Dodge vetoes 9.6 against 9.8 at τ = 0.5). For s3-pico, the closed-loop calibration confirmed that shallow exits were safe rather than rescuing anything.
+- So the evidence for the lesson is one model, s2-nano, on five seeds. We found little prior work on calibrating early exits in closed-loop control, and we think it is worth checking on any early-exit model that drives something; this data does not show that it is a general rule. Numbers: [`loopcal.json`](/results/loopcal.json), produced by `cargo xtask loopcal`.
 
 A related recipe: **imitation that holds up in closed loop.** With DAgger, the model plays and the oracle labels the states it reaches. It turned "crashes before the first pipe" into "200/200" in two to three rounds of 8 minutes each ([DAgger chapter](/tutorial/20-dagger-lessons)).
 
@@ -96,9 +97,11 @@ Its failure is a lesson too: without language pretraining, loops cannot make up 
 
 ## What would turn this into a paper
 
-- Ablations over several seeds: fused values, recursion, static cache, closed-loop vs i.i.d. calibration, DAgger.
+- Done: closed-loop vs i.i.d. early-exit calibration over 5 arena seeds (point 3, `cargo xtask loopcal`).
+- Ablations of s3 over several seeds: fused values, recursion, static cache, DAgger.
 - A standard control benchmark with vector states.
-- Baselines: a same-size MLP, an RL policy, oscar-1-17m.
+- Baselines: a same-size MLP on the games, an RL policy, oscar-1-17m.
+- B1 and B3.
 - A systematic literature review.
 
 The natural first target is a short workshop paper: *closed-loop calibration of early exits for tiny decision models*, with skycmd as the open-source demonstrator.
