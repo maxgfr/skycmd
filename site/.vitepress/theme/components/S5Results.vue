@@ -28,6 +28,13 @@ const liveGates = computed<J>(() =>
   live.value && live.value !== shipped.value ? (reports.value[`gates-${live.value}-q8_0`] ?? null) : null,
 )
 const p1 = computed<J>(() => reports.value.pari1 ?? null)
+/** Amendment 5 (exploratory): bet 1 on the bench re-tempered per source, and each arm before / after. */
+const p1src = computed<J>(() => reports.value['pari1-src'] ?? null)
+const srcVsGlobal = computed<[string, J][]>(() =>
+  ['f-ap', 'f-b']
+    .filter((a) => reports.value[`src-vs-global-${a}`])
+    .map((a) => [a, reports.value[`src-vs-global-${a}`]]),
+)
 const p2 = computed<J>(() => reports.value.pari2 ?? null)
 /** Bet 3, exploratory (amendment 4). */
 const p3 = computed<J>(() => reports.value.pari3 ?? null)
@@ -164,6 +171,39 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
             </tr>
           </tbody>
         </table>
+      </template>
+
+      <template v-if="p1src">
+        <h3>Per-source calibration (exploratory, amendment 5)</h3>
+        <p>
+          Decided after the bet 1 results and fixed in a dated amendment before it was computed. The pre-registered
+          temperatures are fitted on the whole val split; here they are refitted per type on its typed-decisions questions
+          only (the source of the bench) and applied to the existing f32 bench dumps. No new pass on the test; accuracy
+          cannot change (the argmax stays). This never changes the verdict of bet 1.
+        </p>
+        <table>
+          <thead><tr><th>bench ECE</th><th>global temperatures</th><th>per-source temperatures</th><th>after − before [95% CI]</th></tr></thead>
+          <tbody>
+            <tr v-for="[a, r] in srcVsGlobal" :key="a">
+              <td>{{ ARM[a] }}</td>
+              <td>{{ n(r.primary.bench_ece.paired.reference) }}</td>
+              <td>{{ n(r.primary.bench_ece.paired.variant) }}</td>
+              <td>{{ diff(r.primary.bench_ece.paired) }}</td>
+            </tr>
+            <tr>
+              <td>B* − A′</td>
+              <td>{{ p1 ? diff(p1.primary.bench_ece.paired) : '–' }}</td>
+              <td>{{ diff(p1src.primary.bench_ece.paired) }}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="s5r-note">
+          Read as is: the per-source temperatures do not help. A′ does not move, B* gets worse, and the ECE gap
+          between B* and A′ widens. The fit rests on about 630 val questions per run, against 9189 for the
+          pre-registered one. For A′ seeds 1 and 2, several temperatures sit at the bounds of the fit (0.05 or 20)
+          under both fits, so the A′ mean hides large moves by seed.
+        </p>
       </template>
 
       <h3>Bet 2: coherence across questions (λ* against λ = 0)</h3>
