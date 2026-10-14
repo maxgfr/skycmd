@@ -50,6 +50,13 @@ All three pre-registered criteria were missed, and the reasons are instructive. 
 - **Pre-registered calibration.** It uses the typed-decisions questions, exchangeable with the bench but only 214 to 275 per type. With them, Learn-then-Test certifies no acceptance threshold for any α ≤ 10 %.
 - **Larger calibration, for the /live model.** With every English calibration question, which are not exchangeable with the bench, it would accept 11.5 % of the bench at α = 5 %. The error of those accepted answers is 7.0 %: the guarantee does not survive the shift.
 
+**Bet 3, online escalation with an audit, fails in every cell.** It was run after the offline results, so it is exploratory (amendment 4). Its parameters were fixed in the code before its only run.
+
+- **Setup.** The bench of the shipped model (A′, seed 0, q8_0) is replayed as 20 streams of 4000 questions, with a prevalence drift in the second half. The auditor sees every escalated answer and a share π of the accepted ones, drawn at random.
+- **Threshold.** Each question type starts from a plug-in threshold set on the calibration split. That threshold then moves with the estimated error of the accepted answers, ê = err · O / P(O).
+- **Result.** After the drift, the estimated error of the accepted answers is 0.18 to 0.21 at α = 5 % and 0.20 to 0.28 at α = 10 %, depending on π. The criterion was α + 0.01.
+- **Why.** The model accepts only 3 % of the questions after the drift. With so few answers accepted, the threshold barely moves. The escalations stay at 1.01 to 1.02 times those of the fixed threshold, within the 1.2 budget, and nearly every question goes to the auditor (97 to 99 %).
+
 **The s5-lite gates fail** for the pre-registered shipped model, which the rule made A′ (seed 0): fitted bench 0.541 and English demo cases 50 %.
 
 **The /live model.** /live serves a longer run of B\* (8000 steps instead of 2000), added for the demo before its result and outside the bets (amendment 3). Its numbers are below and are not claims:
@@ -81,4 +88,4 @@ These are tests, not results. The training side is in `crates/sky-train/src/s5/i
 
 - **s5 in French** (mmBERT-small, Phase 6) has not been trained. The French demos fall back on the English presets.
 - **Baselines B1 to B3** were not run: label log-probability through the MLM head, a cascade, and a linear head on the frozen backbone. The comparison with Jev on the original 2609.33209 battery was not run either. These deviations were declared in the pre-registration before any result.
-- **The online version of the escalation bet** (with audit) is left for later. Q4 quantization is reported above, as a secondary result.
+- Q4 quantization and the online escalation bet were run afterwards. Both are reported above, as secondary and exploratory results.
