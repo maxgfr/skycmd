@@ -142,7 +142,7 @@ Les identifiants ne sont jamais rendus.
 
 - `typed_decisions_bench`, rottentomatoes et toutes les sources des jeux d'évaluation : amazon_polarity, bias_frames, jigsaw / wiki_toxic, yahoo, SIB-200, HWU64.
 - **MASSIVE, SLURP et MTOP, dans toutes les langues.** Leur exclusion conditionne l'admission de HWU64 pour s5-lite.
-- **Toute sortie GLM** (`glm_orders`, paraphrases `para:`), à cause des CGU z.ai.
+- **Toute sortie GLM** (`glm_orders`, paraphrases `para:`), à cause des conditions d'utilisation de son fournisseur.
 
 ### Décontamination
 
@@ -473,3 +473,8 @@ B-i, graine 0, atteint 0,529 sur la même validation. Sélectionner sur des runs
 - aucun pari n'utilise ce run ;
 - les verdicts, les gates de s5-lite et les revendications portent sur le modèle livré par la règle pré-enregistrée ;
 - les chiffres du run long sont publiés à part, marqués « hors pré-enregistrement, décidé après avoir vu les résultats de test d'une graine ».
+
+### Note éditoriale : 14/10/2026, après les résultats
+
+Une ligne de la section 3 (sources exclues) a été reformulée pour ne plus nommer le fournisseur de GLM. Aucun jeu, aucun critère, aucune marge ni aucune règle n'a changé. La version d'origine reste dans l'historique du dépôt ; ses hashes sont ceux journalisés avec chaque passage sur le test.
+

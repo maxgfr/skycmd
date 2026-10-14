@@ -4,7 +4,7 @@ title: Tutorial
 
 # Tutorial
 
-This tutorial rebuilds skycmd from an empty Cargo workspace to the games on the [Play](/play/) page. Every chapter follows the real code in the repository, with excerpts from the crates and the exact commands. Every number comes from a file the chapters name: committed ones (`BENCH.md`, `docs/compat.md`, `docs/night-experiments.md`, `site/public/bench.json`) or ones the commands write on your machine (`runs/`, `data/STATS.md`, both gitignored). A number nobody measured is marked "not measured".
+This tutorial rebuilds skycmd from an empty Cargo workspace to the games on the [Play](/play/) page, then to s5-lite, the decision model of the [Live](/live/) page, and its publication on Hugging Face. Every chapter follows the real code in the repository, with excerpts from the crates and the exact commands. Every number comes from a file the chapters name: committed ones (`BENCH.md`, `docs/compat.md`, `docs/night-experiments.md`, `site/public/bench.json`) or ones the commands write on your machine (`runs/`, `data/STATS.md`, both gitignored). A number nobody measured is marked "not measured".
 
 What you end up with:
 
@@ -12,6 +12,8 @@ What you end up with:
 - **Fast.** One Flappy Drone frame, two typed questions plus the physics step, takes 49.6 µs for s3-pico, 409.1 µs for s2-nano and 588.6 µs for s1-pico in WASM under Node (`site/public/bench.json`).
 - **Typed.** A model answers `choice`, `score` and `noul` questions with a calibrated probability for every allowed option, in one forward pass, and a coded validator keeps the last word.
 - **Plays games.** s3-pico plays all four games at the oracle's level: 200 of 200 Flappy pipes, every survivor rescued, the oracle's 0.867 Dodge completion, and every Doom-like level cleared with the oracle's kill rate (`runs/ship-s3-pico.arena.json`). Before it, DAgger took s1-pico and s2-nano to the oracle's level on the three drone games, and a fine-tuned s2-nano learned the Doom-like shooter.
+- **Answers your own questions.** s5-lite (Ettin-17M fine-tuned in Rust, 20.7 MB) reads each option by its definition only, isolated from the others, so option order and key names cannot change an answer. It scores 0.696 on the typed-decisions test, at the level of oscar-1-17m (chapters 23 to 25).
+- **Tested in the open.** The s5 bets were pre-registered before any test pass, and every one of them failed. The [results page](/results/) shows why.
 - **Installs everywhere.** The same `.gguf` file runs in the browser, Node, Deno, Bun, Python, the `skycmd` CLI and server. Only the s1 files also run in llama.cpp and wllama; s2 and s3 files run only in the skycmd engine ([Install](/install/), `docs/compat.md`).
 
 It also says what did not work: a model that crashed in every Flappy episode, an early-exit threshold that broke closed-loop play, a bigger model that did worse, a smaller s2 that never learned to play, and an s3 half the size of s3-pico that still crashes in Flappy.
@@ -21,7 +23,8 @@ The pipeline in one picture:
 ```text
 Hugging Face datasets ─┐                       ┌─ sky-infer (native) ── sky-bench, sky-arena, skycmd
 game oracles (sky-games)┼─ sky-data ─ sky-train ─ export ─ GGUF ─┤
-GLM teacher (z.ai) ─────┘   (records)  (mlx-rs)                  └─ sky-web (wasm) ── this site
+local teachers (laya) ──┘   (records)  (mlx-rs)                  ├─ sky-web (wasm) ── this site
+                                                                  └─ Hugging Face: cards + Spaces
 ```
 
 ## Foundations
@@ -34,7 +37,7 @@ GLM teacher (z.ai) ─────┘   (records)  (mlx-rs)                  └
 ## Data
 
 5. [Pulling data from Hugging Face in Rust](./05-hugging-face-data)
-6. [GLM top-up via z.ai](./06-glm-top-up)
+6. [GLM top-up](./06-glm-top-up)
 7. [A tokenizer with small vocabularies](./07-tokenizer)
 
 ## Model and training
@@ -59,3 +62,10 @@ GLM teacher (z.ai) ─────┘   (records)  (mlx-rs)                  └
 19. [The s2 architecture](./19-s2-architecture): two streams with a static cache, permutation equivariance, `[NUM]` value features, early exits, ternary QAT, and why the exit threshold has to be calibrated in closed loop.
 20. [What DAgger taught us](./20-dagger-lessons): from 0 to 200 Flappy pipes, round by round, for s1-pico, s1-nano, s2-nano and s3-pico.
 21. [s3: a 251 KB model that plays four games](./21-s3-recursive-tiny): value-fused number tokens, one state block looped four times, an exit threshold calibrated in closed loop, and the overnight attempts to go smaller.
+
+## Decision models for any question (s4, s5)
+
+22. [s4: a generic decision model distilled from Qwen3.5](./22-s4-generic-decisions): free-text options, a teacher scored on option letters, and why a model trained from scratch fell below the majority class.
+23. [s5-lite: invariant by construction, tested in the open](./23-s5-lite): options isolated and read by their definitions, three pre-registered bets, and what each failure taught.
+24. [Reproducing s5-lite step by step](./24-reproduce-s5-lite): the store, `cargo xtask s5`, data, teacher, training, the pre-registration guard, evaluation, reports and shipping.
+25. [Publishing on Hugging Face](./25-hugging-face): model cards and a static demo Space per model, built from the site's own components.

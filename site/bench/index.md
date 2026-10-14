@@ -13,6 +13,17 @@ Size, accuracy, closed-loop game results and latency of the published models: s3
   <BenchView />
 </ClientOnly>
 
+## Decision models for any question
+
+These models answer questions you write yourself, so they are measured on held-out decision sets rather than in the games (`BENCH.md`, s4 and s5 sections; [results page](/results/)).
+
+| model | format | parameters | file | typed-decisions test | notes |
+|---|---|---:|---:|---:|---|
+| s5-lite (/live) | iso, q8_0 | 17,060,097 | 20.7 MB | 0.696 | 21/30 English demo cases; option order and keys cannot change an answer |
+| s5 B\* finalists (3 seeds) | iso, f32 | 17M | | 0.674 | pre-registered bet 1: more accurate than A′ (0.429) but ECE 0.088 against 0.057 |
+| oscar-1-17m (reference) | Laya, f32 | 17M | | 0.682 | the public model of this format, on the same records |
+| s4-micro | s2, ternary | 5,587,201 | 2.4 MB | 0.343 | measured on `typed_decisions_bench`, the same test split in the older record layout; experimental, below the majority class (0.398) |
+
 ## Reproduce
 
 ```bash

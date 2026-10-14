@@ -1,4 +1,6 @@
 /target
+# build outputs of any crate (wasm-pack, cargo test in a crate directory)
+target/
 /runs
 /data
 /models-src

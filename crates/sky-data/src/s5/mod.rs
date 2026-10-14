@@ -2,7 +2,7 @@
 //! sky-train `s5/record.rs`), the training corpus, the code generators, the coherence families,
 //! the evaluation sets, decontamination and the class-balance gate.
 //!
-//! **No GLM output.** The z.ai terms forbid using model output to train models; nothing here
+//! **No GLM output.** Its provider's terms forbid using model output to train models; nothing here
 //! reads `data/teacher/`, `glm_orders` or `paraphrased`. The only model labels come from the
 //! Apache-2.0 teachers, run locally (`sky-train score`).
 //!

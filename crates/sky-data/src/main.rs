@@ -217,7 +217,7 @@ enum Cmd {
         #[arg(long)]
         int_prior: Option<usize>,
     },
-    /// GLM teacher tasks (z.ai, Anthropic Messages protocol).
+    /// GLM teacher tasks (Anthropic Messages protocol).
     Teacher {
         /// Model id; "auto" picks from the endpoint's model list. Default: SKY_TEACHER_MODEL or ccs.
         #[arg(long, global = true)]

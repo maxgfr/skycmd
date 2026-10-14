@@ -6,7 +6,7 @@ const chapters: [string, string][] = [
   ['03-typed-decisions', '03 Typed decisions: schema, unknown and the veto rule'],
   ['04-game-cores-and-oracles', '04 Game cores and oracles'],
   ['05-hugging-face-data', '05 Pulling data from Hugging Face in Rust'],
-  ['06-glm-top-up', '06 GLM top-up via z.ai'],
+  ['06-glm-top-up', '06 GLM top-up'],
   ['07-tokenizer', '07 A tokenizer with small vocabularies'],
   ['08-encoder-and-decision-head', '08 The encoder and the decision head'],
   ['09-muon-wsd-training-loop', '09 Muon, WSD and the mlx-rs training loop'],
@@ -24,6 +24,8 @@ const chapters: [string, string][] = [
   ['21-s3-recursive-tiny', '21 s3: a 251 KB model that plays four games'],
   ['22-s4-generic-decisions', '22 s4: a generic decision model distilled from Qwen3.5'],
   ['23-s5-lite', '23 s5-lite: invariant by construction, tested in the open'],
+  ['24-reproduce-s5-lite', '24 Reproducing s5-lite step by step'],
+  ['25-hugging-face', '25 Publishing on Hugging Face'],
 ]
 
 const groups: [string, number, number][] = [
@@ -31,7 +33,8 @@ const groups: [string, number, number][] = [
   ['Data', 4, 7],
   ['Model and training', 7, 12],
   ['Shipping', 12, 17],
-  ['Going further', 17, 23],
+  ['Going further', 17, 21],
+  ['Decision models for any question (s4, s5)', 21, 25],
 ]
 
 export default defineConfig({
