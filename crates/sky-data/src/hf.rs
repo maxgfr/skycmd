@@ -554,6 +554,25 @@ pub fn for_each_parquet_row(
 }
 
 /// Reads up to `max_rows` rows (projected to `columns`, all when empty) of a local parquet file.
+/// [`read_parquet`] of every column when `columns` is empty.
+pub fn read_parquet_any(path: &Path, columns: &[&str], max_rows: usize) -> Result<Vec<Value>> {
+    if !columns.is_empty() {
+        return read_parquet(path, columns, max_rows);
+    }
+    let reader =
+        SerializedFileReader::new(File::open(path).with_context(|| format!("open {path:?}"))?)?;
+    let names: Vec<String> = reader
+        .metadata()
+        .file_metadata()
+        .schema()
+        .get_fields()
+        .iter()
+        .map(|f| f.name().to_string())
+        .collect();
+    let cols: Vec<&str> = names.iter().map(String::as_str).collect();
+    read_parquet(path, &cols, max_rows)
+}
+
 pub fn read_parquet(path: &Path, columns: &[&str], max_rows: usize) -> Result<Vec<Value>> {
     let reader =
         SerializedFileReader::new(File::open(path).with_context(|| format!("open {path:?}"))?)?;

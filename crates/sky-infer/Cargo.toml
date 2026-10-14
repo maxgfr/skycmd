@@ -22,6 +22,9 @@ wasm-bench = ["wasm"]
 
 [dependencies]
 sky-gguf = { path = "../sky-gguf" }
+# Used by the sky-eval and sky-compare binaries only; dependency-free, so the wasm build is
+# unaffected.
+sky-metrics = { path = "../sky-metrics" }
 unicode-normalization = { version = "0.1.25", default-features = false }
 serde_json = { version = "1.0.145", optional = true, features = ["preserve_order", "float_roundtrip"] }
 wasm-bindgen = { version = "0.2.117", optional = true }
@@ -38,6 +41,14 @@ path = "src/bin/sky-bench.rs"
 [[bin]]
 name = "sky-eval"
 path = "src/bin/sky-eval.rs"
+
+[[bin]]
+name = "sky-compare"
+path = "src/bin/sky-compare.rs"
+
+[[bin]]
+name = "sky-s5-report"
+path = "src/bin/sky-s5-report.rs"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O3", "--enable-simd", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals"]

@@ -1854,9 +1854,14 @@ dependencies = [
  "js-sys",
  "serde_json",
  "sky-gguf",
+ "sky-metrics",
  "unicode-normalization",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "sky-metrics"
+version = "0.1.0"
 
 [[package]]
 name = "sky-py"

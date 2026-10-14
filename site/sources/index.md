@@ -66,6 +66,19 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 | [PolyAI/banking77](https://huggingface.co/datasets/PolyAI/banking77) | CC-BY-4.0 | **held out** from s4: zero-shot evaluation |
 | [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation |
 
+### s5: backbones, teacher and held-out evaluation
+| Dataset or model | Licence | Used as |
+|---|---|---|
+| [jhu-clsp/ettin-encoder-17m](https://huggingface.co/jhu-clsp/ettin-encoder-17m) | MIT | s5-lite backbone |
+| [cross-encoder/ettin-reranker-17m-v1](https://huggingface.co/cross-encoder/ettin-reranker-17m-v1) | Apache-2.0 | alternative initialization of the backbone |
+| [convaiinnovations/laya-typed-decisions](https://huggingface.co/convaiinnovations/laya-typed-decisions) | Apache-2.0 | teacher: soft labels, run locally in Rust, kept only where they agree with the gold |
+| [btzsc/btzsc](https://huggingface.co/datasets/btzsc/btzsc) (wikitoxic, biasframes, amazonpolarity) | per source (CC0-1.0, CC-BY-4.0, Apache-2.0) | **held out**: zero-shot evaluation; yahootopics waits for its license |
+| [Davlan/sib200](https://huggingface.co/datasets/Davlan/sib200) | CC-BY-SA-4.0 | **held out**: zero-shot evaluation |
+| [DeepPavlov/hwu64](https://huggingface.co/datasets/DeepPavlov/hwu64) (HWU64, [original data](https://github.com/xliuhw/NLU-Evaluation-Data)) | CC-BY-4.0 | **held out** for s5-lite only (its training excludes MASSIVE in every language) |
+| [bro789/typed-decision-coherence](https://github.com/bro789/typed-decision-coherence) (ChaosNLI CC BY-NC 4.0, PubMedQA MIT) | MIT code; items under their own terms | the original coherence battery of 2609.33209: **evaluation only**, never redistributed |
+
+No output of a hosted LLM is used by s5 (the z.ai terms forbid training on GLM outputs).
+
 ## Libraries and technologies
 
 ### Training (Rust, Apple Silicon)
@@ -108,3 +121,12 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 - **Hard and soft labels together:** [arXiv 2605.26246](https://arxiv.org/abs/2605.26246).
 - **Answer bias of LLM option scoring and its correction:** [Calibrate Before Use](https://arxiv.org/abs/2102.09690) (contextual calibration) and [Large Language Models Are Not Robust Multiple Choice Selectors](https://arxiv.org/abs/2309.03882).
 - **Small function-calling reference:** [Extending FunctionGemma](https://arxiv.org/abs/2609.25373).
+
+### s5
+- **Option isolation and shared positions:** [arXiv 2610.01601](https://arxiv.org/abs/2610.01601) (§ III, positions; § V-C, ablations).
+- **Label swaps that flip decision models:** [arXiv 2609.26758](https://arxiv.org/abs/2609.26758), the reassignment test against a 0/1 control.
+- **An aligned "none" option and recalibration:** [arXiv 2610.03387](https://arxiv.org/abs/2610.03387).
+- **Coherence across separate questions (negation, partition, disjunction):** [arXiv 2609.33209](https://arxiv.org/abs/2609.33209) and its battery.
+- **Evaluation checklist for decision models:** [arXiv 2609.32160](https://arxiv.org/abs/2609.32160). **Rerankers as baselines:** [arXiv 2603.11991](https://arxiv.org/abs/2603.11991).
+- **The backbone:** [ModernBERT](https://arxiv.org/abs/2412.13663) and [Ettin](https://arxiv.org/abs/2507.11412).
+- **Escalation with a controlled error:** [Learn then Test](https://arxiv.org/abs/2110.01052) (risk control by multiple testing) and Mondrian conformal prediction (Vovk et al.).

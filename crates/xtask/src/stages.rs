@@ -174,6 +174,14 @@ fn fetch_evals() -> Vec<Step> {
             "README.md,fr/*,en/*",
         ),
         fetch(
+            "hwu64",
+            "DeepPavlov/hwu64",
+            "0dd289ccdeb185ec065d1ebcf5de1c443cd1620f",
+            "data/s5/src/hwu64",
+            "--dataset",
+            "README.md,data/*,intents/intents-00000-of-00001.parquet",
+        ),
+        fetch(
             "coherence-battery",
             "bro789/typed-decision-coherence",
             "8898ef7bc3c151c7b4827a6afbc294907a1c7a64",
@@ -207,6 +215,150 @@ fn import_bases() -> Vec<Step> {
     .collect()
 }
 
+/// The s5 data (`data/s5/`): the typed-decisions train split, then `sky-data s5-build`.
+fn data_steps() -> Vec<Step> {
+    vec![
+        Step::new(
+            "typed-decisions-train",
+            "sky-data",
+            &[
+                "--cache",
+                "data/hf",
+                "fetch-decisions",
+                "--only",
+                "typed_decisions_train",
+            ],
+        ),
+        Step::new(
+            "s5-build",
+            "sky-data",
+            &[
+                "s5-build",
+                "--defs",
+                "{checkout}/eval/s5/defs.json",
+                "--demo",
+                "{checkout}/eval/s5/demo-cases.jsonl",
+                "--langs",
+                "en,fr",
+            ],
+        ),
+        // The original 2609.33209 battery, for the comparison with Jev (evaluation only).
+        Step::new("s5-battery", "sky-data", &["s5-battery"]),
+    ]
+}
+
+/// Teacher soft labels of the English records that `s5-mix` labels (`data/s5/scored/`): the
+/// corpus and the pairs, two option orders averaged (generated records and coherence families
+/// keep their exact gold targets). Only laya-typed-decisions: oscar-1-150m (fetched, a close
+/// second on the bench) would have cost about 45 more minutes of GPU, which the s5-lite budget of
+/// 2026-10-13 left out; with one teacher there is no teacher to choose per group, so the gold val
+/// records are not scored in both renderings either (docs/s5-prereg.md).
+fn teacher_steps() -> Vec<Step> {
+    let (name, dir) = ("laya-td", "models-src/laya-typed-decisions");
+    ["corpus", "pairs"]
+        .into_iter()
+        .map(|file| {
+            let out = format!("data/s5/scored/{name}.native.{file}.jsonl");
+            let rec = format!("data/s5/train/{file}.jsonl");
+            Step::new(
+                &format!("score-{name}-{file}"),
+                "sky-train",
+                &[
+                    "score",
+                    "--teacher",
+                    dir,
+                    "--records",
+                    &rec,
+                    "--out",
+                    &out,
+                    "--render",
+                    "native",
+                    "--perms",
+                    "2",
+                    "--lang",
+                    "en",
+                    "--bf16",
+                ],
+            )
+            .gpu()
+        })
+        .collect()
+}
+
+/// oscar-1-17m, the public Laya-format reference, on the reassignment set (the yes/no swap of
+/// 2609.26758, next to the iso guarantee) and on the fitted bench (our rendering of the s5 records
+/// must give back its published 0.6775). Descriptive, outside the bets (amendment 1).
+fn oscar_ref() -> Vec<Step> {
+    let (gguf, dir) = (
+        "models/s5-ref/oscar-1-17m.f32.gguf",
+        "runs/s5-ref/oscar-1-17m/eval-f32",
+    );
+    let mut v = vec![
+        Step::new("mkdir", "mkdir", &["-p", "models/s5-ref", dir]),
+        Step::new(
+            "convert",
+            "sky-convert",
+            &[
+                "models-src/oscar",
+                gguf,
+                "--type",
+                "f32",
+                "--head-type",
+                "f32",
+            ],
+        ),
+    ];
+    for set in ["typed_decisions_test", "reassign_test"] {
+        v.push(Step::new(
+            &format!("test-{set}"),
+            "sky-eval",
+            &[
+                gguf,
+                "--records",
+                &format!("data/s5/eval/{set}.jsonl"),
+                "--split",
+                "test",
+                "--prereg",
+                "{checkout}/docs/s5-prereg.md",
+                "--metrics",
+                "--json",
+                &format!("{dir}/{set}.json"),
+                "--dump-probs",
+                &format!("{dir}/{set}.dump.jsonl"),
+            ],
+        ));
+    }
+    v.push(Step::new(
+        "mkdir-report",
+        "mkdir",
+        &["-p", "runs/s5-report"],
+    ));
+    v.push(Step::new(
+        "robust",
+        "sky-s5-report",
+        &[
+            "robust",
+            dir,
+            "--json",
+            "runs/s5-report/robust-oscar-1-17m.json",
+        ],
+    ));
+    // Per-set accuracy (the bench check); its gate verdicts mean nothing for a reference.
+    v.push(Step::new(
+        "sets",
+        "sky-s5-report",
+        &[
+            "gates",
+            dir,
+            "--records",
+            "data/s5/eval",
+            "--json",
+            "runs/s5-report/sets-oscar-1-17m.json",
+        ],
+    ));
+    v
+}
+
 pub fn stages() -> Vec<Stage> {
     vec![
         Stage {
@@ -220,9 +372,30 @@ pub fn stages() -> Vec<Stage> {
             steps: fetch_evals(),
         },
         Stage {
+            name: "data",
+            about:
+                "typed-decisions train split, then the s5 corpus, generators, eval sets (data/s5/)",
+            steps: data_steps(),
+        },
+        Stage {
+            name: "teachers",
+            about: "soft labels of laya-typed-decisions on the English records",
+            steps: teacher_steps(),
+        },
+        Stage {
+            name: "mix",
+            about: "training targets: gold + calibrated teacher soft labels (data/s5/mixed/)",
+            steps: vec![Step::new("s5-mix", "sky-data", &["s5-mix"])],
+        },
+        Stage {
             name: "import",
             about: "the encoders as sky-train checkpoints in models/s5-base/ (MLM probe logged)",
             steps: import_bases(),
+        },
+        Stage {
+            name: "oscar-ref",
+            about: "oscar-1-17m on the reassignment set and the bench (descriptive reference)",
+            steps: oscar_ref(),
         },
     ]
 }
