@@ -371,9 +371,9 @@ Pour chaque run évalué, la chaîne est la suivante :
   - baselines B1 (log-prob des labels par la tête MLM), B2 (cascade) et B3 (tête linéaire). Seules la classe majoritaire et l'uniforme sont rapportées.
 - **Comparaison à Jev (MAD_neg 0,064, Σ s 1,14, |s − c| 0,091) :** faite sur la batterie d'origine de 2609.33209, convertie en jeu s5 (amendement 1). Elle reste **descriptive** : une seule mesure par modèle, sans test d'hypothèse. Nos négations reformulées forment un autre jeu, rapporté séparément.
 - **Repoussés :**
-  - le Q4 ;
+  - le Q4 (rapporté ensuite en résultat secondaire, sans critère) ;
   - le pari 3 en ligne (lancé ensuite, exploratoire : amendement 4) ;
-  - la phase 6 (s5 en + fr, mmBERT-small).
+  - la phase 6 (s5 en + fr, mmBERT-small), close ensuite sans être lancée (note du 14/10/2026 ci-dessous).
 - **Repli du français :** les démos françaises de /live affichent « français indisponible : s5-fr en échec, voir résultats » et basculent sur les presets anglais.
 - **Licences :**
   - MTOP est exclu (licence inconnue) ;
@@ -512,3 +512,7 @@ Une ligne de la section 3 (sources exclues) a été reformulée pour ne plus nom
 Le pari réussit si toutes les cellules réussissent.
 
 **Rapporté (`runs/s5-report/pari3.json`) :** erreur estimée et erreur vraie des acceptés avant et après la dérive, couverture, escalades en ligne et au seuil figé, taux d'audit, et nombre de graines qui respectent le critère d'erreur. Une trajectoire de la graine 0 (200 pas, sans aucune sortie GLM) alimente la démo cascade de /live.
+
+### Note : 14/10/2026, le français est hors périmètre
+
+La phase 6 (s5 en + fr, sur mmBERT-small) est close sans être lancée : s5 reste un petit modèle anglais. Aucun pari, aucun gate ni aucun critère de s5-lite ne change. Les gates qui ne portaient que sur la version française (SIB-200 fr, MTOP fr et les cas de démo français) sont sans objet. Le bandeau de /live dit désormais « s5 est un petit modèle anglais ; il n'a pas de version française », et les démos françaises gardent les presets anglais. Les données françaises (`sib200_fr`, les cas de démo fr) restent dans le store.

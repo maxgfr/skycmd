@@ -83,7 +83,7 @@ Robustness and coherence (test sets held out of training):
   set dominated by other sources.
 - **No controlled escalation yet:** with the available calibration data, Learn-then-Test certified
   no acceptance threshold at α ≤ 10 %.
-- English only (a French model is planned).
+- English only (there is no French version).
 - It is a demo and research artifact, not a production classifier.
 
 ## Usage

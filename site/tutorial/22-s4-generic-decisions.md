@@ -3,7 +3,7 @@
 The s1 to s3 models know their games and the typed-decision sets they were trained on. On generic decisions they stay low: s3-pico scores 0.382 on `typed_decisions_bench`, against 0.6775 for oscar-1-17m ([chapter 11](./11-calibration-and-evaluation)). Two causes were documented: the sequences were truncated (96.8 % of them with the 1k vocabulary, [chapter 12](./12-size-ladder)), and the models learned language from scratch with no teacher. s4 attacks both. It is the s3 architecture at language scale, trained in one night on gold labels plus soft labels from Qwen3.5, and it runs in the browser on the [Live](/live/) page.
 
 ::: warning Experimental
-s4-micro fails its gate. The target was more than 0.55 on `typed_decisions_bench`; the ternary model scores **0.343**, below s3-pico (0.382). It is published on the [Live](/live/) page as an experiment, with the numbers below. s3-pico stays the model of the games.
+s4-micro fails its gate. The target was more than 0.55 on `typed_decisions_bench`; the ternary model scores **0.343**, below s3-pico (0.382) and below the majority class (**0.398**, the most frequent answer of each question type). It is published on the [Live](/live/) page as an experiment, with the numbers below. s3-pico stays the model of the games.
 :::
 
 ## Results
@@ -17,6 +17,7 @@ All rows are measured by `sky-eval` on the test split, through the same engine t
 | **s4-micro, ternary** | 5.6M | 2.4 MB | 0.343 | **0.303** | **0.335** | **0.240** | **0.387** | **0.340** |
 | teacher Qwen3.5-4B (4-bit) | 4B | ≈ 3 GB | 0.501 | 0.898 | 0.893 | 0.873 | — | — |
 | oscar-1-17m (published) | 17M | | 0.6775 | — | — | — | — | — |
+| majority class (per question type) | | | 0.398 | | | | | |
 | chance | | | | 0.125 | 0.125 | 0.125 | | |
 
 | model | ECE (all) | mean block passes | early-exit rate | median native µs / decision |
@@ -158,13 +159,20 @@ In order of expected gain:
 
 Porting the teacher's forward pass to mlx-rs would make the whole pipeline Rust.
 
-## Afterwards: what s5 changed
+## Afterwards: the six mistakes of s4
 
-Two facts reframed this chapter after the fact.
+Looking back with the s5 experiment done, the failure has six causes. Each one is backed by a number of this chapter or of the repository, and each one has a counterpart in [chapter 23](/tutorial/23-s5-lite).
 
-**The majority class beats s4.** Always answering the majority class scores 0.398 on `typed_decisions_bench`, above the 0.343 of s4-micro: the model learned less than the class prior.
+1. **No language pretraining.** s4 had 30 minutes of masked-language modelling on 150 MB before its decision run. BERT-Tiny, smaller than s4 but pretrained, reaches 0.794 zero-shot on Banking77 after the same fine-tuning; s4 reaches 0.303. A MiniLM encoder with no training at all scores 0.855 there. s5 starts from a pretrained encoder (Ettin).
+2. **No majority-class baseline in the gate.** The gate compared s4 with s3-pico (0.382) and oscar-1-17m (0.6775) only. Always giving the most frequent answer of each question type scores 0.398 on the bench: above s4 (0.343), above s3-pico, and above the BERT-Tiny baseline (0.396). s5 requires every set to beat its majority baseline.
+3. **A gate on a distribution s4 never trained on, above its teacher.** The training split of the typed decisions was not in s4's data: the bench measured transfer, while oscar-1-17m was trained on that distribution. The teacher itself scores 0.501, below the 0.55 target. s5 trains on the typed-decisions training split and fixes its gates against baselines.
+4. **Imbalanced case sets.** 97.6 % of the moderation validation records are "does not violate", and 58 % of the tool records expect `no_tool`. The student learned those base rates, not the tasks. s5 caps every class at 60 % per source.
+5. **A weak, biased teacher, asked once.** The 4-bit teacher is 0.10 above the majority class on the bench (0.501 against 0.398) and at chance on its nouls (0.505): it answers "true" to 591 of 600. Each question was labelled once, in one option order, so its position bias went straight into the targets. s5 keeps the gold, takes the target of its local teacher only when it agrees with the gold, and averages that teacher over two option orders.
+6. **One time-boxed run, without intervals or pre-registration.** One seed, stopped by the clock while the accuracy was still rising, with an unexplained NaN at step 4,021 and two evaluation paths that disagree (0.3515 against 0.343). No claim was fixed in advance. s5 pre-registers every criterion, runs three seeds, and reports bootstrap intervals.
 
-**s5 uses no GLM output.** Its labels come from:
+### Why s5 uses no GLM output
+
+The provider that serves the GLM models used by s1 to s3 forbids, in its terms of use, using model outputs to develop or train models. Its terms also require generated content to be marked as AI-generated. s5 is a trained model, so no GLM output enters it anywhere: training, validation, calibration, thresholds and published sets are all free of it. Its labels come from:
 
 - the gold labels of permissive datasets;
 - Apache-2.0 teachers run locally;
@@ -172,5 +180,4 @@ Two facts reframed this chapter after the fact.
 
 The `glm_orders` and `paraphrased` files of the earlier models are flagged in `DATA_LICENSES.md`.
 
-[Chapter 23](/tutorial/23-s5-lite) starts from a pretrained encoder, as point 1 above suggested. It also fixes every claim in advance.
-
+[Chapter 23](/tutorial/23-s5-lite) starts from a pretrained encoder, as point 1 of "Next" suggested. It also fixes every claim in advance.

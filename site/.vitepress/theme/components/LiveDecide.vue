@@ -24,7 +24,7 @@ interface Answer {
   micros: number
 }
 
-/** Demo-case sources of each mode (English: the French cases wait for s5-fr). */
+/** Demo-case sources of each mode (English: s5 is a small English model, with no French version). */
 const SOURCES: Record<Mode, string[]> = {
   playground: ['demo_playground_en', 'demo_score_en'],
   tools: ['demo_tools_en'],
@@ -171,7 +171,7 @@ watch([qtype, ins, optionsText, state, adaptive, model], () => {
   timer = setTimeout(run, 120)
 })
 watch(model, () => load())
-// French needs s5-fr (Phase 6): until it ships, the French demos fall back on the English presets.
+// s5 has no French version (Phase 6 was closed): the French demos fall back on the English presets.
 watch(lang, (l) => {
   if (l === 'fr') pick(caseIdx.value)
 })
@@ -212,7 +212,7 @@ function short(s: string, n = 46) {
     </div>
 
     <p v-if="lang === 'fr'" class="live-banner">
-      Français indisponible : s5-fr (phase 6) n'est pas encore entraîné, voir
+      s5 est un petit modèle anglais ; il n'a pas de version française, voir
       <a :href="withBase('/results/')">les résultats</a>. La démo reste sur les presets anglais.
     </p>
 
