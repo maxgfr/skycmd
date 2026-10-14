@@ -61,6 +61,18 @@ What s3-pico does with that budget, over 30 seeded episodes per game, with the s
 
 **It failed its gate.** It scores 0.343 on the typed-decisions bench (s3-pico: 0.382, target: 0.55). Zero-shot it does better than s3-pico (Banking77 0.303 against 0.247, MASSIVE English 0.335 against 0.187), but a BERT-Tiny of 4.4M parameters fine-tuned on the same data reaches 0.794 on Banking77. The missing piece is language pretraining: 30 minutes of masked-language modelling from scratch is not enough, and the loops cannot make up for it (the three exits score within 0.01 of each other). The next s4 starts from a pretrained encoder.
 
+## Third night: s5, three pre-registered bets (14 October 2026)
+
+[s5-lite](/tutorial/23-s5-lite) bet on three novelties, each judged against criteria committed before any test pass:
+
+- **Invariance by construction:** options isolated, keys never read.
+- **Coherence across separate questions:** trained by three small losses.
+- **Calibration that survives 8-bit quantization.**
+
+**None of the three is claimed: each missed its criterion** ([results](/results/)).
+
+What is new, and what can be said, is narrower. The construction guarantees invariance to option order and key names, as an exact test, not as a result. At equal data, it was much more accurate than the usual format on the fitted bench, but less well calibrated, and the pre-registered margin on calibration failed. The model on [Live](/live/) is a longer run, declared outside the bets.
+
 ## What would turn this into a paper
 - Ablations over several seeds: fused values, recursion, static cache, closed-loop vs i.i.d. calibration, DAgger.
 - A standard control benchmark with vector states.
