@@ -2,7 +2,9 @@
 
 **Tiny "System One" decision models, trained from scratch in Rust on a MacBook and playing games live in your browser through WebAssembly.**
 
-[Play](https://maxgfr.github.io/skycmd/play/) · [Live](https://maxgfr.github.io/skycmd/live/) · [Results](https://maxgfr.github.io/skycmd/results/) · [Install](https://maxgfr.github.io/skycmd/install/) · [Tutorial](https://maxgfr.github.io/skycmd/tutorial/) · [Bench](https://maxgfr.github.io/skycmd/bench/)
+[Play](https://maxgfr.github.io/skycmd/play/) · [Live](https://maxgfr.github.io/skycmd/live/) · [Results](https://maxgfr.github.io/skycmd/results/) · [Install](https://maxgfr.github.io/skycmd/install/) · [Tutorial](https://maxgfr.github.io/skycmd/tutorial/) · [Bench](https://maxgfr.github.io/skycmd/bench/) · [Hugging Face](https://huggingface.co/maxgfr)
+
+Every model has a card and a browser demo on Hugging Face: [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro), [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico), [s2-nano](https://huggingface.co/maxgfr/s2-nano), [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom) (published with `scripts/hf-publish.py`).
 
 A decision model does not generate text. It receives a **state** and **typed questions** (`choice`, `score`, `noul` = probabilistic yes/no) and returns a calibrated probability for every allowed option in **one forward pass**. skycmd shows how small such a model can be:
 

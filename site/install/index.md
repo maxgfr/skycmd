@@ -34,6 +34,13 @@ and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/d
 | s1-pico | s1, f16 | 0.2M | [s1-pico.gguf](https://maxgfr.github.io/skycmd/models/s1-pico.gguf) (545 KB) | skycmd engine, llama.cpp, wllama |
 | s2-nano | s2, ternary | 1.5M | [s2-nano.gguf](https://maxgfr.github.io/skycmd/models/s2-nano.gguf) (702 KB) | skycmd engine only |
 | s2-nano-doom | s2, ternary | 1.5M | [s2-nano-doom.gguf](https://maxgfr.github.io/skycmd/models/s2-nano-doom.gguf) (702 KB) | skycmd engine only |
+| s4-micro (experimental) | s2, ternary | 5.6M | [s4-micro.gguf](https://maxgfr.github.io/skycmd/models/s4-micro.gguf) (2.4 MB) | skycmd engine only |
+| s5-lite | iso, q8_0 | 17M | [s5-lite.gguf](https://maxgfr.github.io/skycmd/models/s5-lite.gguf) (20.7 MB) | skycmd engine only |
+
+Every model is also on Hugging Face with its model card and a demo Space that runs in the browser:
+[s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
+[s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
+[s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
 s3-pico plays the four games of the [Play](/play/) page at the oracle's level
 ([chapter 21](/tutorial/21-s3-recursive-tiny)).

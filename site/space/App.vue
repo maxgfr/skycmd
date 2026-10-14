@@ -15,6 +15,8 @@ interface SpaceConfig {
   proofs?: boolean
   model_repo: string
   notes?: string[]
+  /** Game shown first (game Spaces): flappy, rescue, dodge or doom. */
+  game?: string
 }
 
 const cfg = ref<SpaceConfig | null>(null)
@@ -67,8 +69,15 @@ onMounted(async () => {
   try {
     const r = await fetch('./space.json')
     if (!r.ok) throw new Error(`space.json: HTTP ${r.status}`)
-    cfg.value = await r.json()
-    document.title = `${cfg.value!.title} · skycmd`
+    const c: SpaceConfig = await r.json()
+    // PlayGame reads the first game from `?game=`.
+    const url = new URL(window.location.href)
+    if (c.game && !url.searchParams.has('game')) {
+      url.searchParams.set('game', c.game)
+      window.history.replaceState(null, '', url)
+    }
+    cfg.value = c
+    document.title = `${c.title} · skycmd`
   } catch (e) {
     failed.value = (e as Error).message
   }

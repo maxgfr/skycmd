@@ -58,6 +58,7 @@
   {
     "model": "s2-nano-doom",
     "kind": "game",
+    "game": "doom",
     "emoji": "👾",
     "color_from": "red",
     "color_to": "gray",

@@ -80,6 +80,7 @@ def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path]:
         "proofs": s.get("proofs", False),
         "model_repo": f"https://huggingface.co/{user}/{m}",
         "notes": s.get("notes", []),
+        "game": s.get("game"),
     }
     (space_dir / "space.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     (space_dir / "README.md").write_text(space_readme(user, s))
