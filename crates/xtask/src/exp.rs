@@ -847,6 +847,57 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
             ],
         ));
     }
+    // Amendment 5 (exploratory, never changes bet 1): the f32 bench re-tempered with
+    // temperatures fitted on the typed-decisions part of val only.
+    let src = |d: &str| d.replace("/eval-f32", "/eval-f32-src");
+    if let (Some(a), Some(b)) = (dirs("f-ap", "f32", &full), dirs("f-b", "f32", &full)) {
+        for r in a.split(',').chain(b.split(',')) {
+            let run = r.trim_end_matches("/eval-f32");
+            v.push(Step::new(
+                &format!("retemper-{}", run.trim_start_matches("runs/s5-")),
+                "sky-s5-report",
+                &[
+                    "retemper",
+                    "--run",
+                    run,
+                    "--src-prefix",
+                    "typed_decisions",
+                    "--out",
+                    &src(r),
+                    "--json",
+                    &format!("{}/retemper.json", src(r)),
+                ],
+            ));
+        }
+        v.push(Step::new(
+            "pari1-src",
+            "sky-s5-report",
+            &[
+                "pari1",
+                "--ref",
+                &src(&a),
+                "--variant",
+                &src(&b),
+                "--json",
+                "runs/s5-report/pari1-src.json",
+            ],
+        ));
+        for (arm, d) in [("f-ap", &a), ("f-b", &b)] {
+            v.push(Step::new(
+                &format!("src-vs-global-{arm}"),
+                "sky-s5-report",
+                &[
+                    "pari1",
+                    "--ref",
+                    d,
+                    "--variant",
+                    &src(d),
+                    "--json",
+                    &format!("runs/s5-report/src-vs-global-{arm}.json"),
+                ],
+            ));
+        }
+    }
     for arm in ["f-ap", "f-b"] {
         for f in QUANT_FORMATS {
             let (Some(a), Some(q)) = (dirs(arm, "f32", &bench), dirs(arm, f, &bench)) else {

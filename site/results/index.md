@@ -26,6 +26,7 @@ All three pre-registered criteria were missed, and the reasons are instructive. 
 - **ECE.** Its top-label ECE is worse: 0.088 against 0.057 (+0.031, CI [+0.006, +0.054]), and the margin fixed in advance was +0.01.
 - **Proper scores.** NLL and Brier, which also reward calibration, are both better for B\* (Holm-adjusted p = 0.003).
 - **Cause, seen on validation.** B\* is underconfident on typed decisions: mean confidence 0.59 for an accuracy of 0.71. Its temperatures, fitted on a validation split dominated by other sources, do not correct that. A per-source calibration was not pre-registered.
+- **Per-source calibration, tried afterwards (exploratory, amendment 5).** Temperatures refitted on the typed-decisions questions of val only, applied to the existing bench dumps, do not fix it. B\* gets worse (ECE 0.088 → 0.110, +0.022 [+0.006, +0.034]), A′ does not move (−0.006 [−0.027, +0.018]), and the ECE gap widens to +0.059 [+0.029, +0.084]. The refitted B\* temperatures are higher than the global ones (about 0.9 against 0.73 for choice questions), so they sharpen less. This does not change the verdict of bet 1.
 - **The A′ caveat.** The A′ finalists were unstable at the learning rate chosen on short runs. Against A′ at the next lower rate (amendment 2), the conclusion is the same: accuracy +0.079 [+0.054, +0.106], ECE +0.020 [−0.001, +0.042].
 
 **Bet 2 improved only the trained identities.** Because bet 1 failed, the pre-registered support was A′.

@@ -11,6 +11,7 @@
 //! sky-s5-report pari1 --ref <dirs> --variant <dirs> [--json out.json]
 //! sky-s5-report pari2 --ref <dirs> --variant <dirs> [--json out.json]
 //! sky-s5-report pari3 --store <store> [--format q8_0] [--cal-src typed_decisions_train] [--json out.json] [--trajectory cascade.json]
+//! sky-s5-report retemper --run <run dir> [--src-prefix typed_decisions] --out <dir> [--json out.json]
 //! sky-s5-report summary --store <store> --out results.json
 //! ```
 //!
@@ -63,6 +64,10 @@
 //!   estimated error of the accepted after the drift ≤ α + 0.01, with at most 1.2 times the
 //!   escalations of the fixed threshold after the drift; the bet succeeds when every cell does.
 //!   `--trajectory` writes 200 steps of stream seed 0 for the /live cascade demo.
+//! - `retemper` (exploratory, amendment 5): temperatures fitted as by `calibrate` on the T = 1
+//!   `val` dump of a run restricted to the sources starting with `--src-prefix`, applied to its f32
+//!   bench dump by the factor `T′ = T_src / T_applied` (`temperatures.f32.json`); the re-tempered
+//!   bench dump goes to `--out`, the same format, for `pari1` on the bench only.
 //! - `summary`: one compact JSON for the results page: every report of `runs/s5-report/`, the
 //!   frozen selections of `runs/s5-select/`, the validation summary of every s5 run, the log of
 //!   the test passes, and the shipped model by the pre-registered rule (lowest val NLL among the
@@ -419,6 +424,76 @@ mod native {
         }
         std::fs::write(output, w.to_bytes().map_err(|e| e.to_string())?)
             .map_err(|e| format!("{output:?}: {e}"))
+    }
+
+    // ------------------------------------------------------------------------- retemper
+
+    /// Temperature of a question with `k` options: `type.bucket`, else `type`, else 1 (the
+    /// fallback of the engine, `Model::temperature`).
+    fn temp_of(temps: &BTreeMap<String, f64>, t: &str, k: usize) -> f64 {
+        temps
+            .get(&format!("{t}.{}", bucket(k)))
+            .or_else(|| temps.get(t))
+            .copied()
+            .unwrap_or(1.0)
+    }
+
+    /// Probabilities produced at temperature `applied`, recomputed at `target`:
+    /// `softmax(ln p / T′)` with `T′ = target / applied`, i.e. the logits divided by `target`.
+    pub fn retemper_probs(probs: &[f64], applied: f64, target: f64) -> Vec<f64> {
+        let tp = target / applied;
+        let z: Vec<f64> = probs.iter().map(|p| p.max(1e-12).ln() / tp).collect();
+        let m = z.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let e: Vec<f64> = z.iter().map(|x| (x - m).exp()).collect();
+        let s: f64 = e.iter().sum();
+        e.iter().map(|x| x / s).collect()
+    }
+
+    /// The items whose source starts with `prefix`.
+    pub fn by_source(items: Vec<Item>, prefix: &str) -> Vec<Item> {
+        items
+            .into_iter()
+            .filter(|it| it.src.starts_with(prefix))
+            .collect()
+    }
+
+    /// Amendment 5 (exploratory): temperatures fitted on the T = 1 `val` dump of a run restricted
+    /// to the sources starting with `prefix` (same fit as `calibrate`), applied to its f32 bench
+    /// dump, produced at the temperatures of `temperatures.f32.json`. Writes the bench dump,
+    /// re-tempered and otherwise unchanged, to `out`.
+    pub fn retemper(run: &Path, prefix: &str, out: &Path, min_bucket: usize) -> Value {
+        let cal = by_source(read(&run.join("val.f32.dump.jsonl")), prefix);
+        assert!(!cal.is_empty(), "{run:?}: no val question from {prefix}");
+        let src = temperatures(&cal, min_bucket);
+        let tf = run.join("temperatures.f32.json");
+        let applied: BTreeMap<String, f64> = serde_json::from_str(
+            &std::fs::read_to_string(&tf).unwrap_or_else(|e| panic!("{tf:?}: {e}")),
+        )
+        .unwrap_or_else(|e| panic!("{tf:?}: {e}"));
+        let bench = run.join(format!("eval-f32/{BENCH}.dump.jsonl"));
+        let text = std::fs::read_to_string(&bench).unwrap_or_else(|e| panic!("{bench:?}: {e}"));
+        let mut lines = Vec::new();
+        for l in text.lines().filter(|l| !l.trim().is_empty()) {
+            let mut v: Value = serde_json::from_str(l).unwrap_or_else(|e| panic!("{bench:?}: {e}"));
+            let probs: Vec<f64> = v["probs"]
+                .as_array()
+                .map(|a| a.iter().filter_map(Value::as_f64).collect())
+                .unwrap_or_default();
+            let t = v["t"].as_str().unwrap_or_default();
+            let k = probs.len();
+            v["probs"] = json!(retemper_probs(
+                &probs,
+                temp_of(&applied, t, k),
+                temp_of(&src, t, k)
+            ));
+            lines.push(v.to_string());
+        }
+        std::fs::create_dir_all(out).unwrap_or_else(|e| panic!("{out:?}: {e}"));
+        let p = out.join(format!("{BENCH}.dump.jsonl"));
+        std::fs::write(&p, lines.join("\n") + "\n").unwrap_or_else(|e| panic!("{p:?}: {e}"));
+        eprintln!("wrote {p:?}");
+        json!({"run": run, "src_prefix": prefix, "val_questions": cal.len(),
+               "bench_questions": lines.len(), "applied": applied, "src": src})
     }
 
     // ------------------------------------------------------------------------- gates
@@ -1756,7 +1831,7 @@ mod native {
         let args: Vec<String> = std::env::args().skip(1).collect();
         let usage = || -> ! {
             eprintln!(
-                "usage: sky-s5-report calibrate|gates|coherence|robust|selective|pari1|pari2|pari3|summary ... (see the source)"
+                "usage: sky-s5-report calibrate|retemper|gates|coherence|robust|selective|pari1|pari2|pari3|summary ... (see the source)"
             );
             std::process::exit(2)
         };
@@ -1776,6 +1851,12 @@ mod native {
                 }
                 eprintln!("wrote {out}");
                 emit(json!(temps), &args);
+            }
+            "retemper" => {
+                let src = arg(&args, "--src-prefix").unwrap_or_else(|| "typed_decisions".into());
+                let min = num("--min-bucket", 100.0) as usize;
+                let out = PathBuf::from(need("--out"));
+                emit(retemper(Path::new(&need("--run")), &src, &out, min), &args)
             }
             "gates" => emit(
                 gates(Path::new(&pos(1)), Path::new(&need("--records"))),
@@ -1882,6 +1963,63 @@ mod native {
             assert_eq!(ipw(true, true, 1.0), 1.0);
             assert_eq!(ipw(false, true, 1.0), 0.0);
             assert_eq!(ipw(true, false, 0.2), 0.0);
+        }
+
+        #[test]
+        fn retemper_composes_the_temperatures() {
+            let softmax = |z: &[f64], t: f64| -> Vec<f64> {
+                let e: Vec<f64> = z.iter().map(|x| (x / t).exp()).collect();
+                let s: f64 = e.iter().sum();
+                e.iter().map(|x| x / s).collect()
+            };
+            let z = [1.3, -0.4, 0.2, 2.1];
+            for (applied, target) in [(0.7, 1.4), (1.0, 0.5), (1.375, 0.72), (0.9, 0.9)] {
+                // p at T, then T′ = target / T: the logits divided by target
+                let got = retemper_probs(&softmax(&z, applied), applied, target);
+                for (a, b) in got.iter().zip(softmax(&z, target)) {
+                    assert!((a - b).abs() < 1e-12, "T {applied} -> {target}: {a} vs {b}");
+                }
+                assert_eq!(
+                    sky_metrics::argmax(&got),
+                    sky_metrics::argmax(&softmax(&z, applied))
+                );
+            }
+            // the fallback of the engine: type.bucket, else type, else 1
+            let temps: BTreeMap<String, f64> =
+                [("choice".to_string(), 0.7), ("choice.2".to_string(), 1.4)].into();
+            assert_eq!(temp_of(&temps, "choice", 2), 1.4);
+            assert_eq!(temp_of(&temps, "choice", 4), 0.7);
+            assert_eq!(temp_of(&temps, "score", 4), 1.0);
+        }
+
+        #[test]
+        fn retemper_keeps_only_the_source() {
+            let mk = |src: &str| Item {
+                src: src.into(),
+                ..it("u", &[0.5, 0.5], 0)
+            };
+            let items = [
+                "typed_decisions_train",
+                "typed_decisions_train+para",
+                "typed_decisions_train+none",
+                "typed_synth",
+                "coh_S",
+                "arc",
+            ]
+            .map(mk)
+            .to_vec();
+            let kept: Vec<String> = by_source(items, "typed_decisions")
+                .into_iter()
+                .map(|it| it.src)
+                .collect();
+            assert_eq!(
+                kept,
+                [
+                    "typed_decisions_train",
+                    "typed_decisions_train+para",
+                    "typed_decisions_train+none"
+                ]
+            );
         }
 
         #[test]
