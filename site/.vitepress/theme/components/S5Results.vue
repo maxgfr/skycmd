@@ -29,6 +29,8 @@ const liveGates = computed<J>(() =>
 )
 const p1 = computed<J>(() => reports.value.pari1 ?? null)
 const p2 = computed<J>(() => reports.value.pari2 ?? null)
+/** Amendment 2: B* against A′ at the next lower learning rate (secondary). */
+const p1s = computed<J>(() => reports.value['pari1-sensitivity'] ?? null)
 const gates = computed<J>(() => (shipped.value ? reports.value[`gates-${shipped.value}-q8_0`] : null) ?? null)
 const robust = computed<J>(() => (shipped.value ? reports.value[`robust-${shipped.value}-q8_0`] : null) ?? null)
 const coherence = computed<J>(() => (shipped.value ? reports.value[`coherence-${shipped.value}-q8_0`] : null) ?? null)
@@ -123,6 +125,33 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         </details>
       </template>
       <p v-else class="s5r-note">Not analysed yet.</p>
+      <template v-if="p1s">
+        <p>
+          Sensitivity (amendment 2, secondary, declared before any bet 1 result): the A′ finalists were unstable at the
+          learning rate chosen on short runs, so B* is also compared with A′ at the next lower rate (1e-4, 3 seeds).
+        </p>
+        <table>
+          <thead><tr><th>criterion</th><th>A′ (lr 1e-4)</th><th>B*</th><th>B* − A′ [95% CI]</th><th>margin</th><th>verdict</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>accuracy, fitted bench</td>
+              <td>{{ n(p1s.primary.bench_accuracy.paired.reference) }}</td>
+              <td>{{ n(p1s.primary.bench_accuracy.paired.variant) }}</td>
+              <td>{{ diff(p1s.primary.bench_accuracy.paired) }}</td>
+              <td>−{{ n(p1s.primary.bench_accuracy.margin, 2) }}</td>
+              <td>{{ yes(p1s.primary.bench_accuracy.non_inferior) }}</td>
+            </tr>
+            <tr>
+              <td>ECE, fitted bench</td>
+              <td>{{ n(p1s.primary.bench_ece.paired.reference) }}</td>
+              <td>{{ n(p1s.primary.bench_ece.paired.variant) }}</td>
+              <td>{{ diff(p1s.primary.bench_ece.paired) }}</td>
+              <td>+{{ n(p1s.primary.bench_ece.margin, 2) }}</td>
+              <td>{{ yes(p1s.primary.bench_ece.non_inferior) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
 
       <h3>Bet 2: coherence across questions (λ* against λ = 0)</h3>
       <template v-if="p2">
