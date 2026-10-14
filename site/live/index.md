@@ -25,7 +25,7 @@ These are guarantees by construction, checked by exact tests. Whether the answer
 **Presets:** they are the demo cases every s5 model is evaluated on (`eval/s5/demo-cases.jsonl`). A ✓ marks the expected answer while a preset is unmodified.
 
 ::: info French
-The French model (s5 on mmBERT-small) is not trained yet. Choosing *Français* in a demo shows a notice and keeps the English presets.
+s5 is a small English model; there is no French version. Choosing *Français* in a demo shows a notice and keeps the English presets.
 :::
 
 ## Playground
