@@ -6,9 +6,9 @@ use sky_infer::{Arch, DecisionStats, EngineOptions, QType};
 /// A System One model loaded from GGUF bytes.
 ///
 /// Ternary s2 files are expanded to f32 at load: with baseline SIMD128 the packed kernels are
-/// not faster than f32 in browsers (measured in BENCH.md, "Inference"). Q8_0 matrices are kept
-/// in Q8_0: an s5 model is mostly embeddings (tens of MB in f32), and keeping it quantized
-/// divides its memory by four.
+/// not faster than f32 in browsers (measured in BENCH.md, "Inference"). Q8_0 and Q4_0 matrices
+/// stay quantized: an s5 model is mostly embeddings (tens of MB in f32), and keeping it in Q8_0
+/// divides its memory by four (Q4_0: by seven).
 pub struct Model {
     inner: sky_infer::Engine,
     file_bytes: usize,

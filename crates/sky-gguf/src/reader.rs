@@ -290,13 +290,11 @@ impl<'a> Gguf<'a> {
                     .byte_size(n)
                     .map_err(|e| Error::Format(format!("tensor {name}: {e}")))?,
             };
-            if dtype == GgmlType::Q8_0
-                && dims
-                    .first()
-                    .is_some_and(|&d| !d.is_multiple_of(crate::QK8_0 as u64))
-            {
+            let bl = dtype.block_len().unwrap_or(1) as u64;
+            if bl > 1 && dims.first().is_some_and(|&d| !d.is_multiple_of(bl)) {
                 return Err(Error::Format(format!(
-                    "tensor {name}: Q8_0 rows must be a multiple of 32"
+                    "tensor {name}: {} rows must be a multiple of {bl}",
+                    dtype.name()
                 )));
             }
             tensors.push(TensorInfo {
@@ -371,7 +369,7 @@ impl<'a> Gguf<'a> {
         &self.bytes[start..start + info.size as usize]
     }
 
-    /// Tensor data converted to f32 (F32, F16, BF16 or Q8_0).
+    /// Tensor data converted to f32 (F32, F16, BF16, Q8_0 or Q4_0).
     pub fn tensor_f32(&self, name: &str) -> Result<Vec<f32>> {
         let info = self
             .tensor(name)

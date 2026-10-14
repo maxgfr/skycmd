@@ -39,6 +39,12 @@ All three pre-registered criteria were missed, and the reasons are instructive. 
 - **Per seed**, q8_0 changes the ECE of B\* by −0.0024, −0.0003 and −0.0005, and its accuracy by at most 0.3 points.
 - **Pooled**, the pre-registered two-level bootstrap resamples the seeds of each format independently. The seed-to-seed spread of the ECE (0.078 to 0.096) then makes the interval wider than the 0.01 margin.
 
+**4-bit weights (Q4_0) cost accuracy on B\*.** This is a secondary result, not pre-registered, from the same analysis. The criterion of Phase 5 stays that of q8_0.
+
+- **File size.** B\* takes 12 MB in Q4_0, against 21 MB in q8_0 and 70 MB in f32.
+- **Accuracy.** Per seed, Q4_0 costs B\* 1.3, 1.3 and 0.65 points on the bench, against at most 0.3 for q8_0. A′ loses at most 1.1 points.
+- **ECE.** Per seed, the ECE of B\* moves by −0.009, +0.018 and +0.002. Pooled, the difference is +0.004 [−0.022, +0.026] for B\* and −0.004 [−0.023, +0.016] for A′, so non-inferiority is not shown, as for q8_0.
+
 **Phase 7 accepts nothing under its guarantee.** Escalation with a controlled error was tested offline.
 
 - **Pre-registered calibration.** It uses the typed-decisions questions, exchangeable with the bench but only 214 to 275 per type. With them, Learn-then-Test certifies no acceptance threshold for any α ≤ 10 %.
@@ -75,4 +81,4 @@ These are tests, not results. The training side is in `crates/sky-train/src/s5/i
 
 - **s5 in French** (mmBERT-small, Phase 6) has not been trained. The French demos fall back on the English presets.
 - **Baselines B1 to B3** were not run: label log-probability through the MLM head, a cascade, and a linear head on the frozen backbone. The comparison with Jev on the original 2609.33209 battery was not run either. These deviations were declared in the pre-registration before any result.
-- **The online version of the escalation bet** (with audit) and **Q4 quantization** are left for later.
+- **The online version of the escalation bet** (with audit) is left for later. Q4 quantization is reported above, as a secondary result.

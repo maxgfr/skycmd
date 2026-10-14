@@ -130,7 +130,6 @@ The model on /live is a longer B\* run: 8000 steps instead of 2000, declared dur
 
 - **s5 in French** on mmBERT-small, with a pruned vocabulary.
 - **The baselines that score labels** through the MLM head.
-- **Q4 quantization.**
 - **The online escalation bet**, with an audited share of the accepted answers.
 
 The plan and its order are in the pre-registration.

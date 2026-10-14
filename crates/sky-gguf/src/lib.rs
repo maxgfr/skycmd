@@ -3,8 +3,8 @@
 //! * [`Gguf::parse`] reads a file held in memory without copying tensor data (metadata of all
 //!   types including nested arrays, tensor infos, aligned data offsets).
 //! * [`GgufWriter`] builds files (`general.alignment` = 32 by default).
-//! * Tensor types F32, F16, BF16, Q8_0 and I8 can be converted to and from f32
-//!   ([`dequantize`], [`encode_f32`], [`quantize_q8_0`]).
+//! * Tensor types F32, F16, BF16, Q8_0, Q4_0 and I8 can be converted to and from f32
+//!   ([`dequantize`], [`encode_f32`], [`quantize_q8_0`], [`quantize_q4_0`]).
 //!
 //! **Dimension order.** GGUF/ggml dimensions are listed innermost first: `ne[0]` is the
 //! fastest-varying, contiguous dimension. A PyTorch tensor of shape `[rows, cols]` (row-major)
@@ -17,7 +17,8 @@ mod writer;
 
 pub use dtype::{
     bf16_to_f32, dequantize, dequantize_into, encode_f32, f16_to_f32, f32_to_bf16, f32_to_f16,
-    quantize_q8_0, quantize_q8_0_into, GgmlType, Q8_0_BLOCK_BYTES, QK8_0,
+    q4_0_block, quantize_q4_0, quantize_q4_0_into, quantize_q8_0, quantize_q8_0_into, GgmlType,
+    Q4_0_BLOCK_BYTES, Q8_0_BLOCK_BYTES, QK4_0, QK8_0,
 };
 pub use reader::{Array, ArrayIter, Gguf, TensorInfo, Value};
 pub use writer::{GgufWriter, OwnedValue};

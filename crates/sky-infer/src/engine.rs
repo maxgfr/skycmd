@@ -121,8 +121,9 @@ pub struct ModelInfo {
     /// s1: longest sequence; s2: longest state stream.
     pub max_len: usize,
     pub head_max_len: usize,
+    /// Quantized products (Q8_0 or Q4_0 weights, int8 activations).
     pub q8: bool,
-    /// `f32`, `q8_0` (s1) or the s2 `weight_format` (`f32`, `f16`, `ternary`).
+    /// `f32`, `q8_0`, `q4_0` (s1, iso) or the s2 `weight_format` (`f32`, `f16`, `ternary`).
     pub weight_format: String,
     pub temperatures: Vec<(String, f32)>,
     /// s2: static-encoder blocks.
@@ -541,6 +542,7 @@ impl Engine {
         match &mut self.inner {
             Inner::S1(e) => {
                 let q8 = e.model.has_q8();
+                let format = e.model.weight_format();
                 let c = &e.model.cfg;
                 ModelInfo {
                     name: c.name.clone(),
@@ -555,7 +557,7 @@ impl Engine {
                     max_len: c.max_len,
                     head_max_len: c.head_max_len,
                     q8,
-                    weight_format: if q8 { "q8_0" } else { "f32" }.into(),
+                    weight_format: format.into(),
                     temperatures: c.temperatures.clone(),
                     static_layers: 0,
                     exits: Vec::new(),
@@ -610,7 +612,7 @@ impl Engine {
                     max_len: c.max_len,
                     head_max_len: c.head_max_len,
                     q8,
-                    weight_format: if q8 { "q8_0" } else { "f32" }.into(),
+                    weight_format: m.weight_format().into(),
                     temperatures: c.temperatures.clone(),
                     static_layers: 0,
                     exits: Vec::new(),

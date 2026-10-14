@@ -44,6 +44,10 @@ const selectiveAll = computed<J>(() =>
 const phase5 = computed<[string, J][]>(() =>
   ['f-ap', 'f-b'].filter((a) => reports.value[`phase5-${a}`]).map((a) => [a, reports.value[`phase5-${a}`]]),
 )
+/** Q4_0 against f32, the same analysis as Phase 5 (secondary, not pre-registered). */
+const phase5q4 = computed<[string, J][]>(() =>
+  ['f-ap', 'f-b'].filter((a) => reports.value[`phase5-q4-${a}`]).map((a) => [a, reports.value[`phase5-q4-${a}`]]),
+)
 const runs = computed<[string, J][]>(() => Object.entries(data.value?.runs ?? {}))
 const shippedIso = computed(() => {
   const r = shipped.value ? data.value?.runs?.[shipped.value] : null
@@ -205,6 +209,25 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         </tbody>
       </table>
       <p v-else class="s5r-note">Not analysed yet.</p>
+      <template v-if="phase5q4.length">
+        <p class="s5r-note">
+          Secondary, not pre-registered: the same analysis with 4-bit weights (Q4_0, recalibrated
+          the same way). The Phase 5 criterion stays that of q8_0.
+        </p>
+        <table>
+          <thead><tr><th>arm</th><th>ECE f32</th><th>ECE q4_0</th><th>q4_0 − f32 [95% CI]</th><th>≤ +0.01</th><th>accuracy q4_0 − f32</th></tr></thead>
+          <tbody>
+            <tr v-for="[a, v] in phase5q4" :key="a">
+              <td>{{ ARM[a] ?? a }}</td>
+              <td>{{ n(v.primary.bench_ece.paired.reference) }}</td>
+              <td>{{ n(v.primary.bench_ece.paired.variant) }}</td>
+              <td>{{ diff(v.primary.bench_ece.paired) }}</td>
+              <td>{{ yes(v.primary.bench_ece.non_inferior) }}</td>
+              <td>{{ diff(v.primary.bench_accuracy.paired) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
 
       <h3>s5-lite gates (shipped model, q8_0)</h3>
       <template v-if="gates">

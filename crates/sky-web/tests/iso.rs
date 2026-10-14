@@ -5,9 +5,12 @@
 //!   reference within 1e-4;
 //! - **guaranteed properties** (≤ 1e-6, any weights): permuting the options permutes the scores,
 //!   renaming them changes nothing, swapping the two `noul` definitions gives s + n = 1, and a
-//!   cached state answers exactly like a freshly encoded one.
+//!   cached state answers exactly like a freshly encoded one;
+//! - **Q4_0**: the golden model with its matrices in Q4_0 keeps those properties, and its scores
+//!   match an f32 model holding the same (dequantized) weights.
 
 use serde_json::Value;
+use sky_gguf::{GgmlType, Gguf, GgufWriter, OwnedValue};
 use sky_infer::QType;
 use sky_web::Model;
 
@@ -31,6 +34,23 @@ fn strings(v: &Value) -> Vec<String> {
         .iter()
         .map(|s| s.as_str().unwrap().to_string())
         .collect()
+}
+
+/// The model with every encoder matrix (and the token embeddings) re-encoded as `ty`, through
+/// f32; `iso.*` and the vectors stay as they are.
+fn requant(bytes: &[u8], ty: GgmlType) -> Vec<u8> {
+    let g = Gguf::parse(bytes).unwrap();
+    let mut w = GgufWriter::new();
+    for (k, v) in &g.kvs {
+        w.add_kv(*k, OwnedValue::from_value(v));
+    }
+    for t in &g.tensors {
+        let matrix = t.dims.len() == 2 && !t.name.starts_with("iso.") && t.dims[0] % 32 == 0;
+        let to = if matrix { ty } else { t.dtype };
+        let values = g.tensor_f32(t.name).unwrap();
+        w.add_tensor_f32(t.name, &t.dims, to, &values).unwrap();
+    }
+    w.to_bytes().unwrap()
 }
 
 fn assert_close(a: &[f32], b: &[f32], tol: f32, what: &str) {
@@ -68,7 +88,8 @@ fn matches_the_mlx_reference() {
 
 #[test]
 fn permutations_and_names() {
-    for bytes in [SHARED, RESET] {
+    let q4 = requant(SHARED, GgmlType::Q4_0);
+    for bytes in [SHARED, RESET, &q4] {
         let mut m = Model::load(bytes).unwrap();
         let opts = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let state = "temperature 39.5, heart rate 120, the patient is confused and pale";
@@ -106,7 +127,8 @@ fn permutations_and_names() {
 
 #[test]
 fn noul_swap_sums_to_one() {
-    for bytes in [SHARED, RESET] {
+    let q4 = requant(SHARED, GgmlType::Q4_0);
+    for bytes in [SHARED, RESET, &q4] {
         let mut m = Model::load(bytes).unwrap();
         let q = "The alert is real.";
         let state = "27 failed logins then a success from an unknown address";
@@ -151,4 +173,40 @@ fn cached_state_answers_like_a_fresh_one() {
     );
     assert!(!cold.last_stats().unwrap().state_hit);
     assert_close(&hit, &fresh, 0.0, "cache");
+}
+
+#[test]
+fn q4_0_matches_f32_on_the_same_weights() {
+    let q4 = requant(SHARED, GgmlType::Q4_0);
+    // The Q4_0 values written back as f32: the same weights through the f32 kernels.
+    let f32_of_q4 = requant(&q4, GgmlType::F32);
+    let mut mq = Model::load(&q4).unwrap();
+    let mut mf = Model::load(&f32_of_q4).unwrap();
+    assert_eq!(mq.info()["weight_format"], "q4_0");
+    assert_eq!(mf.info()["weight_format"], "f32");
+    assert!(
+        q4.len() < SHARED.len() / 3,
+        "{} vs {}",
+        q4.len(),
+        SHARED.len()
+    );
+    let g: Value = serde_json::from_str(GOLDEN).unwrap();
+    let mut worst = 0.0f32;
+    for (i, c) in g["cases"].as_array().unwrap().iter().enumerate() {
+        let args = (
+            c["t"].as_str().unwrap(),
+            c["ins"].as_str().unwrap(),
+            strings(&c["opts"]),
+            c["state"].as_str().unwrap(),
+        );
+        let a = scores(&mut mq, args.0, args.1, &args.2, args.3);
+        let b = scores(&mut mf, args.0, args.1, &args.2, args.3);
+        // Only the int8 rounding of the activations differs (Q8x2: ~15 bits).
+        assert_close(&a, &b, 2e-3, &format!("case {i}"));
+        worst = a
+            .iter()
+            .zip(&b)
+            .fold(worst, |m, (x, y)| m.max((x - y).abs()));
+    }
+    assert!(worst > 0.0, "the Q4_0 products did not run");
 }
