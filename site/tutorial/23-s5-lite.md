@@ -3,7 +3,7 @@
 s4 failed: 0.343 on the generic decision bench, below the 0.398 of always answering the majority class ([chapter 22](/tutorial/22-s4-generic-decisions)). s5 changes three things at once:
 
 - **The starting point.** It starts from a pretrained encoder (Ettin-17M) instead of from scratch.
-- **The label sources.** It learns from Apache-2.0 teachers and code generators instead of a hosted LLM whose terms forbid training on its outputs.
+- **The label sources.** It learns from Apache-2.0 teachers and code generators instead of a hosted LLM.
 - **What it claims.** It makes no claim that was not fixed in advance.
 
 ## Three bets, fixed before any test
@@ -61,7 +61,7 @@ The tests check these to 1e-6, natively and on wasm32. They are guarantees, not 
 
 ## Data without a hosted LLM
 
-The z.ai terms forbid using GLM outputs to train models, so no GLM output enters s5: training, validation, calibration, thresholds and published sets are all free of it. The labels come from five sources:
+No GLM output enters s5: training, validation, calibration, thresholds and published sets are all free of it. The labels come from five sources:
 
 - **gold labels** of permissively licensed datasets;
 - **a teacher**: laya-typed-decisions (Apache-2.0), run in Rust through mlx-rs, two option orders averaged. It is calibrated per group, and kept only where it agrees with the gold;

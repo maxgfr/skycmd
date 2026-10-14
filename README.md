@@ -25,7 +25,7 @@ For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M
   - The coherence losses only fix the identities they train.
   - 8-bit quantization moves the ECE by under 0.003 per seed, yet misses its pre-registered interval.
 - **The model on [Live](https://maxgfr.github.io/skycmd/live/).** It is a longer run declared outside the bets. It scores 0.696 on `typed_decisions_test`, where oscar-1-17m scores 0.682 on the same records, and answers 21 of the 30 English demo cases. The page also has three proof demos: keys and order, paraphrases, and a Dutch book on the model's own probabilities.
-- **No GLM outputs.** The z.ai terms rule out training on them; the teacher is laya-typed-decisions, run locally.
+- **No GLM outputs.** The teacher is laya-typed-decisions, run locally.
 - **Story:** [chapter 23](https://maxgfr.github.io/skycmd/tutorial/23-s5-lite).
 
 **s4-micro (experimental, before s5): a generic decision model.** 5.6M ternary parameters in a 2.4 MB `skycmd-s2` GGUF, with options in free text, distilled from Qwen3.5-4B in one night (`scripts/night-s4.sh`, [chapter 22](https://maxgfr.github.io/skycmd/tutorial/22-s4-generic-decisions)). It is still selectable on the [Live](https://maxgfr.github.io/skycmd/live/) page. It failed its gate: 0.343 on `typed_decisions_bench` (s3-pico 0.382, oscar-1-17m 0.6775, the teacher 0.501). It does better zero-shot on labels it never saw (Banking77 0.303 and MASSIVE English 0.335, 8 options each, against 0.247 and 0.187 for s3-pico), with ECE 0.066, but a fine-tuned 4.4M BERT-Tiny reaches 0.794 on Banking77. Language pretraining is the missing piece.
