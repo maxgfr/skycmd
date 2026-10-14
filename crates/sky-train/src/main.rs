@@ -13,6 +13,7 @@ use sky_train::{
         gguf::WeightFormat,
         train::{S2BenchArgs, S2DecideArgs, S2PretrainArgs},
     },
+    session::Progress,
     train::{self, BenchArgs, DecideArgs, PretrainArgs},
 };
 
@@ -239,8 +240,20 @@ enum Cmd {
         tokenizer: PathBuf,
         #[arg(long)]
         text: PathBuf,
+        /// Training time budget in minutes (the default schedule).
         #[arg(long)]
-        minutes: f64,
+        minutes: Option<f64>,
+        /// Step budget of the whole run instead of --minutes: the learning rate, the QAT
+        /// switch and the stop follow step / steps, the same on every machine.
+        #[arg(long)]
+        steps: Option<u64>,
+        /// Run this many steps from the starting step, save <out>/last and exit.
+        #[arg(long)]
+        stop_after: Option<u64>,
+        /// Start from these parameters (safetensors with the model's tensor names and
+        /// shapes); with --resume the optimizer state and RNG still come from <out>/last.
+        #[arg(long)]
+        init_params: Option<PathBuf>,
         #[arg(long)]
         out: PathBuf,
         #[arg(long)]
@@ -291,8 +304,20 @@ enum Cmd {
         records: String,
         #[arg(long)]
         weights: Option<String>,
+        /// Training time budget in minutes (the default schedule).
         #[arg(long)]
-        minutes: f64,
+        minutes: Option<f64>,
+        /// Step budget of the whole run instead of --minutes: the learning rate, the QAT
+        /// switch and the stop follow step / steps, the same on every machine.
+        #[arg(long)]
+        steps: Option<u64>,
+        /// Run this many steps from the starting step, save <out>/last and exit.
+        #[arg(long)]
+        stop_after: Option<u64>,
+        /// Start from these parameters (safetensors with the model's tensor names and
+        /// shapes); with --resume the optimizer state and RNG still come from <out>/last.
+        #[arg(long)]
+        init_params: Option<PathBuf>,
         #[arg(long)]
         out: PathBuf,
         #[arg(long)]
@@ -638,6 +663,9 @@ fn main() -> Result<()> {
             tokenizer,
             text,
             minutes,
+            steps,
+            stop_after,
+            init_params,
             out,
             resume,
             batch,
@@ -658,7 +686,9 @@ fn main() -> Result<()> {
             config,
             tokenizer,
             text,
-            minutes,
+            progress: Progress::from_flags(minutes, steps)?,
+            stop_after,
+            init_params,
             out,
             resume,
             batch,
@@ -683,6 +713,9 @@ fn main() -> Result<()> {
             records,
             weights,
             minutes,
+            steps,
+            stop_after,
+            init_params,
             out,
             resume,
             batch,
@@ -708,7 +741,9 @@ fn main() -> Result<()> {
             tokenizer,
             records: split_paths(&records),
             weights,
-            minutes,
+            progress: Progress::from_flags(minutes, steps)?,
+            stop_after,
+            init_params,
             out,
             resume,
             batch,

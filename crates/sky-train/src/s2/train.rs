@@ -29,7 +29,10 @@ use crate::{
         model::{self, expand_pretrained, S2Parts},
     },
     sequence::{Tok, QTYPES},
-    session::{apply_update, sorted_names, train_step, CompiledGrad},
+    session::{
+        apply_update, keep_going, qat_due, replace_params, sorted_names, stop_step, train_step,
+        CompiledGrad, Progress,
+    },
     train::{source_weights, JsonLog},
 };
 
@@ -41,6 +44,9 @@ pub struct S2State {
     pub step: u64,
     pub elapsed_secs: f64,
     pub budget_secs: f64,
+    /// Step budget of a `--steps` run (absent for a time budget).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steps: Option<u64>,
     pub seed: u64,
     pub rng: Rng,
     #[serde(default)]
@@ -174,6 +180,7 @@ impl S2Session {
             step: 0,
             elapsed_secs: 0.0,
             budget_secs,
+            steps: None,
             seed,
             rng: Rng::new(seed),
             cursor: Cursor::default(),
@@ -349,6 +356,9 @@ impl S2Session {
         state.config = self.cfg.clone();
         let mut j = serde_json::to_value(&state)?;
         j["optimizer_step"] = self.opt.step.into();
+        if let Some(n) = self.state.steps {
+            j["frac"] = (self.state.step as f64 / n as f64).into();
+        }
         std::fs::write(tmp.join("state.json"), serde_json::to_string_pretty(&j)?)?;
         std::fs::write(
             tmp.join("config.json"),
@@ -767,6 +777,61 @@ fn append_bench_md(
     Ok(())
 }
 
+// ----------------------------------------------------------------------------- schedule
+
+/// Seconds of a time budget (0 for a step budget, which never reads it).
+fn budget_secs(p: &Progress) -> f64 {
+    match *p {
+        Progress::Time { budget_secs } => budget_secs,
+        Progress::Steps { .. } => 0.0,
+    }
+}
+
+/// The budget as printed at start-up.
+fn budget_label(p: &Progress) -> String {
+    match *p {
+        Progress::Time { budget_secs } => format!("{:.1} min", budget_secs / 60.0),
+        Progress::Steps { steps } => format!("{steps} steps"),
+    }
+}
+
+/// The progress shown at the end of a log line.
+fn progress_label(p: &Progress, s: &S2State) -> String {
+    match *p {
+        Progress::Time { budget_secs } => {
+            format!("{:.1}/{:.1} min", s.elapsed_secs / 60.0, budget_secs / 60.0)
+        }
+        Progress::Steps { steps } => {
+            format!("step {}/{steps}, {:.1} min", s.step, s.elapsed_secs / 60.0)
+        }
+    }
+}
+
+/// Applies the budget to a new or resumed session and `--init-params`; returns the step
+/// at which `--stop-after` ends this invocation.
+fn start(
+    s: &mut S2Session,
+    progress: &Progress,
+    stop_after: Option<u64>,
+    init_params: Option<&Path>,
+) -> Result<Option<u64>> {
+    if let Progress::Time { budget_secs } = *progress {
+        s.state.budget_secs = budget_secs;
+    }
+    s.state.steps = progress.steps();
+    if let Some(path) = init_params {
+        let src = params::load(path)?;
+        replace_params(&mut s.params, &src)
+            .with_context(|| format!("loading {}", path.display()))?;
+        println!("parameters from {} ({} tensors)", path.display(), src.len());
+    }
+    let stop_at = stop_step(s.state.step, stop_after)?;
+    if let Some(at) = stop_at {
+        println!("stopping after step {at}");
+    }
+    Ok(stop_at)
+}
+
 // ----------------------------------------------------------------------------- pretrain
 
 /// Settings of `sky-train s2-pretrain`.
@@ -775,7 +840,12 @@ pub struct S2PretrainArgs {
     pub config: PathBuf,
     pub tokenizer: PathBuf,
     pub text: PathBuf,
-    pub minutes: f64,
+    /// Time or step budget of the whole run.
+    pub progress: Progress,
+    /// Steps to run in this invocation before saving and exiting.
+    pub stop_after: Option<u64>,
+    /// Parameters to start from (`--init-params`); the optimizer state stays local.
+    pub init_params: Option<PathBuf>,
     pub out: PathBuf,
     pub resume: bool,
     pub batch: usize,
@@ -874,23 +944,23 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
             a.opt.clone(),
             "s2-pretrain",
             a.seed,
-            a.minutes * 60.0,
+            budget_secs(&a.progress),
         );
         s.state.extra =
             json!({"batch": a.batch, "seq": a.seq, "text": a.text, "tokenizer": a.tokenizer});
         s
     };
-    s.state.budget_secs = a.minutes * 60.0;
+    let stop_at = start(&mut s, &a.progress, a.stop_after, a.init_params.as_deref())?;
     s.cfg.bf16 = a.bf16;
     s.compile = a.compile;
     s.num_weight = a.num_weight;
     println!(
-        "{}: {} parameters (pretraining stack), batch {}x{}, budget {:.1} min",
+        "{}: {} parameters (pretraining stack), batch {}x{}, budget {}",
         s.cfg.name,
         params::count(&s.params),
         a.batch,
         a.seq,
-        a.minutes
+        budget_label(&a.progress)
     );
     let mut vrng = Rng::new(a.seed ^ 0x5EED);
     let val: Vec<NumMlmBatch> = rows
@@ -912,8 +982,9 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
     let t0 = Instant::now();
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wt, mut ws, mut wtime) = (0.0f64, 0usize, 0u64, Instant::now());
-    while s.state.elapsed_secs < s.state.budget_secs {
-        let lr_scale = wsd(s.state.elapsed_secs / s.state.budget_secs) as f32;
+    while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
+        let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
+        let lr_scale = wsd(frac) as f32;
         let seed = s.state.seed;
         let n_num = match &numeric {
             Some(_) => (0..a.batch)
@@ -942,14 +1013,18 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
         let step = s.state.step;
         if step % a.log_every == 0 {
             let dt = wtime.elapsed().as_secs_f64();
-            log.write(&json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale,
-                "tok_s": wt as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0, "epoch": s.state.cursor.epoch}))?;
+            let mut rec = json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale,
+                "tok_s": wt as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0, "epoch": s.state.cursor.epoch});
+            if let Some(n) = s.state.steps {
+                rec["steps"] = n.into();
+                rec["frac"] = frac.into();
+            }
+            log.write(&rec)?;
             println!(
-                "step {step:>6} loss {:.4} lr x{lr_scale:.3} {:.0} tok/s ({:.1}/{:.1} min)",
+                "step {step:>6} loss {:.4} lr x{lr_scale:.3} {:.0} tok/s ({})",
                 wl / ws as f64,
                 wt as f64 / dt,
-                s.state.elapsed_secs / 60.0,
-                a.minutes
+                progress_label(&a.progress, &s.state)
             );
             (wl, wt, ws, wtime) = (0.0, 0, 0, Instant::now());
         }
@@ -999,7 +1074,12 @@ pub struct S2DecideArgs {
     pub tokenizer: Option<PathBuf>,
     pub records: Vec<PathBuf>,
     pub weights: Option<String>,
-    pub minutes: f64,
+    /// Time or step budget of the whole run.
+    pub progress: Progress,
+    /// Steps to run in this invocation before saving and exiting.
+    pub stop_after: Option<u64>,
+    /// Parameters to start from (`--init-params`); the optimizer state stays local.
+    pub init_params: Option<PathBuf>,
     pub out: PathBuf,
     pub resume: bool,
     pub batch: usize,
@@ -1133,13 +1213,13 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             a.opt.clone(),
             "s2-decide",
             a.seed,
-            a.minutes * 60.0,
+            budget_secs(&a.progress),
         );
         s.state.extra = json!({"batch": a.batch, "records": a.records, "weights": weights, "groups": data.groups,
             "init": a.init, "tokenizer": tok_path, "qat_frac": a.qat_frac, "loop_dropout": a.loop_dropout});
         s
     };
-    s.state.budget_secs = a.minutes * 60.0;
+    let stop_at = start(&mut s, &a.progress, a.stop_after, a.init_params.as_deref())?;
     s.cfg.bf16 = a.bf16;
     s.compile = a.compile;
     s.dis_beta = a.dis.map(|b0| model::dis_betas(s.cfg.n_exits(), b0));
@@ -1147,11 +1227,11 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         println!("deep improvement supervision: exit target exponents {beta:?}");
     }
     println!(
-        "{}: {} parameters, batch {}, budget {:.1} min, QAT over the last {:.0}%, loop dropout {}",
+        "{}: {} parameters, batch {}, budget {}, QAT over the last {:.0}%, loop dropout {}",
         s.cfg.name,
         params::count(&s.params),
         a.batch,
-        a.minutes,
+        budget_label(&a.progress),
         a.qat_frac * 100.0,
         a.loop_dropout
     );
@@ -1165,7 +1245,6 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wt, mut ws, mut wq, mut wtime) =
         (0.0f64, 0usize, 0u64, 0usize, Instant::now());
-    let qat_start = 1.0 - a.qat_frac.clamp(0.0, 1.0);
     let mut pending: std::collections::VecDeque<S2Batch> = Default::default();
     let (mut skipped, mut consecutive) = (0usize, 0usize);
     let seqs = match &a.seq_records {
@@ -1186,9 +1265,9 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         None => None,
     };
     let mut seq_loss_sum = (0.0f64, 0usize);
-    while s.state.elapsed_secs < s.state.budget_secs {
-        let frac = s.state.elapsed_secs / s.state.budget_secs;
-        if !s.state.qat && a.qat_frac > 0.0 && frac >= qat_start {
+    while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
+        let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
+        if !s.state.qat && qat_due(frac, a.qat_frac) {
             println!("step {}: starting ternary QAT", s.state.step);
             let before = validate(&s, &data, &val, false, "f32", &mut log)?;
             let ternary = validate(&s, &data, &val, true, "ternary", &mut log)?;
@@ -1283,18 +1362,22 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             let dt = wtime.elapsed().as_secs_f64();
             let mb =
                 |r: std::result::Result<usize, _>| r.map(|b| b as f64 / 1e6).unwrap_or(f64::NAN);
-            log.write(&json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale, "qat": qat,
+            let mut rec = json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale, "qat": qat,
                 "tok_s": wt as f64 / dt, "q_s": wq as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0,
                 "mlx_active_mb": mb(mlx_rs::memory::active_memory()),
-                "mlx_cache_mb": mb(mlx_rs::memory::cache_memory())}))?;
+                "mlx_cache_mb": mb(mlx_rs::memory::cache_memory())});
+            if let Some(n) = s.state.steps {
+                rec["steps"] = n.into();
+                rec["frac"] = frac.into();
+            }
+            log.write(&rec)?;
             println!(
-                "step {step:>6} loss {:.4} lr x{lr_scale:.3}{} {:.0} tok/s {:.0} q/s ({:.1}/{:.1} min)",
+                "step {step:>6} loss {:.4} lr x{lr_scale:.3}{} {:.0} tok/s {:.0} q/s ({})",
                 wl / ws as f64,
                 if qat { " qat" } else { "" },
                 wt as f64 / dt,
                 wq as f64 / dt,
-                s.state.elapsed_secs / 60.0,
-                a.minutes
+                progress_label(&a.progress, &s.state)
             );
             (wl, wt, ws, wq, wtime) = (0.0, 0, 0, 0, Instant::now());
         }

@@ -26,6 +26,106 @@ use crate::{
 
 type R<T> = std::result::Result<T, Exception>;
 
+/// What drives a run's schedule (WSD learning rate, QAT switch, stop).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Progress {
+    /// Wall-clock budget: `frac = elapsed / budget` (the default, `--minutes`).
+    Time { budget_secs: f64 },
+    /// Step budget: `frac = step / steps` (`--steps`), the same on every machine.
+    Steps { steps: u64 },
+}
+
+impl Progress {
+    /// The schedule chosen by `--minutes` / `--steps`; exactly one must be given.
+    pub fn from_flags(minutes: Option<f64>, steps: Option<u64>) -> Result<Self> {
+        match (minutes, steps) {
+            (Some(_), Some(_)) => {
+                anyhow::bail!("--minutes and --steps are exclusive: give a time or a step budget")
+            }
+            (None, None) => anyhow::bail!("give a budget with --minutes or --steps"),
+            (Some(m), None) => Ok(Self::Time {
+                budget_secs: m * 60.0,
+            }),
+            (None, Some(0)) => anyhow::bail!("--steps must be above 0"),
+            (None, Some(n)) => Ok(Self::Steps { steps: n }),
+        }
+    }
+
+    /// Position in the schedule, from 0 to 1.
+    pub fn frac(&self, step: u64, elapsed_secs: f64) -> f64 {
+        match *self {
+            Self::Time { budget_secs } => elapsed_secs / budget_secs,
+            Self::Steps { steps } => step as f64 / steps as f64,
+        }
+    }
+
+    /// True once the whole budget is spent.
+    pub fn done(&self, step: u64, elapsed_secs: f64) -> bool {
+        match *self {
+            Self::Time { budget_secs } => elapsed_secs >= budget_secs,
+            Self::Steps { steps } => step >= steps,
+        }
+    }
+
+    /// The step budget, if any.
+    pub fn steps(&self) -> Option<u64> {
+        match *self {
+            Self::Time { .. } => None,
+            Self::Steps { steps } => Some(steps),
+        }
+    }
+}
+
+/// True when ternary QAT should be running at `frac` (it covers the last `qat_frac`).
+pub fn qat_due(frac: f64, qat_frac: f64) -> bool {
+    qat_frac > 0.0 && frac >= 1.0 - qat_frac.clamp(0.0, 1.0)
+}
+
+/// The step at which a run that starts at `start` stops with `--stop-after k`.
+pub fn stop_step(start: u64, stop_after: Option<u64>) -> Result<Option<u64>> {
+    match stop_after {
+        None => Ok(None),
+        Some(0) => anyhow::bail!("--stop-after must be above 0"),
+        Some(k) => start
+            .checked_add(k)
+            .map(Some)
+            .context("--stop-after is too large"),
+    }
+}
+
+/// True while the run should take another step.
+pub fn keep_going(progress: &Progress, stop_at: Option<u64>, step: u64, elapsed_secs: f64) -> bool {
+    !progress.done(step, elapsed_secs) && stop_at.is_none_or(|s| step < s)
+}
+
+/// Replaces every parameter with the one of the same name in `src` (`--init-params`).
+/// Both sides must hold the same tensor names, shapes and dtypes; the error names the
+/// first offending tensor in name order.
+pub fn replace_params(dst: &mut ParamMap, src: &ParamMap) -> Result<()> {
+    for k in sorted_names(dst) {
+        let Some(s) = src.get(&k) else {
+            anyhow::bail!("--init-params has no tensor {k}");
+        };
+        let d = &dst[&k];
+        if s.shape() != d.shape() || s.dtype() != d.dtype() {
+            anyhow::bail!(
+                "--init-params tensor {k} is {:?} {:?}, the model expects {:?} {:?}",
+                s.dtype(),
+                s.shape(),
+                d.dtype(),
+                d.shape()
+            );
+        }
+    }
+    if let Some(extra) = sorted_names(src).into_iter().find(|k| !dst.contains_key(k)) {
+        anyhow::bail!("--init-params has tensor {extra}, which the model does not have");
+    }
+    for (k, v) in dst.iter_mut() {
+        *v = src[k].clone();
+    }
+    Ok(())
+}
+
 /// Serializable training progress.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TrainState {
