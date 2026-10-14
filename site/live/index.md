@@ -89,3 +89,11 @@ A coherent model gives s + n = 1 and Σ s = 1. When Σ s drifts from 1, a bookie
 <ClientOnly>
   <LiveProof mode="dutch" />
 </ClientOnly>
+
+## Cascade: s5 alone, or the auditor
+
+When s5 is not sure enough, it escalates the question to a System 2. Here the System 2 is an auditor: the dataset gold, standing in for a human. The auditor also checks a random share π of the answers s5 gave alone, and the threshold of each question type moves with the error estimated on those audits. This is bet 3, run after the offline results and therefore exploratory; it fails, and the demo shows why. It replays a recorded run: no model call, no network call, no GLM.
+
+<ClientOnly>
+  <LiveCascade />
+</ClientOnly>

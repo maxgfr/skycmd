@@ -8,6 +8,7 @@ import PlayGame from './components/PlayGame.vue'
 import BenchView from './components/BenchView.vue'
 import LiveDecide from './components/LiveDecide.vue'
 import LiveProof from './components/LiveProof.vue'
+import LiveCascade from './components/LiveCascade.vue'
 import S5Results from './components/S5Results.vue'
 import './custom.css'
 
@@ -25,6 +26,7 @@ export default {
     app.component('BenchView', BenchView)
     app.component('LiveDecide', LiveDecide)
     app.component('LiveProof', LiveProof)
+    app.component('LiveCascade', LiveCascade)
     app.component('S5Results', S5Results)
   },
 } satisfies Theme
