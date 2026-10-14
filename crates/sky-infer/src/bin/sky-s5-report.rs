@@ -235,7 +235,20 @@ mod native {
         stat: impl Fn(&[T], &[usize]) -> f64,
     ) -> Paired {
         let n = aligned(reference);
-        assert_eq!(n, aligned(variant), "both arms need the same items");
+        if n != aligned(variant) {
+            // An arm without this set (q8_0 holds only the bench): nothing to compare.
+            let nan = f64::NAN;
+            return Paired {
+                reference: nan,
+                variant: nan,
+                diff: Interval {
+                    value: nan,
+                    lo: nan,
+                    hi: nan,
+                },
+                p_value: nan,
+            };
+        }
         let all: Vec<usize> = (0..n).collect();
         let er: Vec<usize> = (0..reference.len()).collect();
         let ev: Vec<usize> = (0..variant.len()).collect();
@@ -1116,14 +1129,19 @@ mod native {
             .collect()
     }
 
+    /// The comparisons with their Holm-adjusted p-values; a comparison that could not be made
+    /// (an arm without the set) is reported with nulls and left out of the family.
     fn holm_table(rows: Vec<(&str, Paired)>) -> Value {
-        let adj = holm(&rows.iter().map(|(_, p)| p.p_value).collect::<Vec<_>>());
+        let done: Vec<usize> = (0..rows.len())
+            .filter(|&i| rows[i].1.p_value.is_finite())
+            .collect();
+        let adj = holm(&done.iter().map(|&i| rows[i].1.p_value).collect::<Vec<_>>());
         Value::Object(
             rows.iter()
-                .zip(adj)
-                .map(|((k, p), a)| {
+                .enumerate()
+                .map(|(i, (k, p))| {
                     let mut v = pv(p);
-                    v["p_holm"] = json!(a);
+                    v["p_holm"] = json!(done.iter().position(|&j| j == i).map(|r| adj[r]));
                     (k.to_string(), v)
                 })
                 .collect(),
