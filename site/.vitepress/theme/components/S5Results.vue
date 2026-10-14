@@ -37,6 +37,10 @@ const gates = computed<J>(() => (shipped.value ? reports.value[`gates-${shipped.
 const robust = computed<J>(() => (shipped.value ? reports.value[`robust-${shipped.value}-q8_0`] : null) ?? null)
 const coherence = computed<J>(() => (shipped.value ? reports.value[`coherence-${shipped.value}-q8_0`] : null) ?? null)
 const battery = computed<J>(() => (shipped.value ? reports.value[`battery-${shipped.value}-f32`] : null) ?? null)
+/** The original battery by arm, three seeds pooled. */
+const batteryArms = computed<[string, J][]>(() =>
+  ['f-ap', 'f-b'].filter((a) => reports.value[`battery-${a}`]).map((a) => [a, reports.value[`battery-${a}`]]),
+)
 const oscar = computed<J>(() => reports.value['robust-oscar-1-17m'] ?? null)
 const oscarSets = computed<J>(() => reports.value['sets-oscar-1-17m'] ?? null)
 const selective = computed<J>(() => (shipped.value ? reports.value[`selective-${shipped.value}-q8_0`] : null) ?? null)
@@ -334,6 +338,27 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
             <tr><td>|s − c|</td><td>{{ iv(battery.xf_abs) }}</td><td>0.091</td></tr>
           </tbody>
         </table>
+      </template>
+      <template v-if="batteryArms.length">
+        <p>
+          The same battery by arm, three seeds each (bootstrap over runs and items), next to Jev. Descriptive as well.
+        </p>
+        <table>
+          <thead>
+            <tr><th>identity</th><th v-for="[a] in batteryArms" :key="a">{{ ARM[a] }} [95% CI]</th><th>Jev (paper)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>MAD_neg |s + n − 1|</td><td v-for="[a, b] in batteryArms" :key="a">{{ iv(b.mad_neg) }}</td><td>0.064</td></tr>
+            <tr><td>Σ s</td><td v-for="[a, b] in batteryArms" :key="a">{{ iv(b.partition_sum) }}</td><td>1.14</td></tr>
+            <tr><td>|s − c|</td><td v-for="[a, b] in batteryArms" :key="a">{{ iv(b.xf_abs) }}</td><td>0.091</td></tr>
+          </tbody>
+        </table>
+        <p class="s5r-note">
+          Reading note: seed f-ap-s2 is degenerate on this battery. It puts s and n on the same side of 0.5 for 100% of
+          the items and its Σ s sits at 1.500 on every family: it answers about the same probability whatever the
+          question. That makes its MAD_neg almost zero (0.0002) and pulls the A′ MAD_neg down; the other two A′ seeds
+          give 0.067 and 0.026. On Σ s and |s − c|, where that constant answer costs, A′ is the farthest from Jev.
+        </p>
       </template>
 
       <h3>Phase 7: escalation with a controlled error (offline)</h3>
