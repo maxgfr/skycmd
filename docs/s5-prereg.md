@@ -516,3 +516,21 @@ Le pari réussit si toutes les cellules réussissent.
 ### Note : 14/10/2026, le français est hors périmètre
 
 La phase 6 (s5 en + fr, sur mmBERT-small) est close sans être lancée : s5 reste un petit modèle anglais. Aucun pari, aucun gate ni aucun critère de s5-lite ne change. Les gates qui ne portaient que sur la version française (SIB-200 fr, MTOP fr et les cas de démo français) sont sans objet. Le bandeau de /live dit désormais « s5 est un petit modèle anglais ; il n'a pas de version française », et les démos françaises gardent les presets anglais. Les données françaises (`sib200_fr`, les cas de démo fr) restent dans le store.
+
+### Amendement 5 : 14/10/2026 vers 15 h 30, calibration par source, exploratoire, fixée avant son calcul
+
+**Statut.** Analyse **exploratoire**, décidée après les résultats du pari 1, que l'on connaît. Elle ne change jamais le verdict du pari 1 ni aucun critère : le pari 1 reste jugé sur la calibration pré-enregistrée (section 5). Elle est publiée telle quelle, gain ou perte. Aucune nouvelle passe sur le test : elle réutilise les dumps du bench déjà écrits. Tout ce qui suit est fixé dans le code (`sky-s5-report retemper`, commit qui suit cet amendement) avant son premier calcul.
+
+**Question.** La calibration pré-enregistrée ajuste les températures sur tout le split `val`, toutes sources confondues. Le bench vient de typed-decisions. Des températures ajustées sur les seules questions de typed-decisions calibrent-elles mieux le bench, et l'écart entre B\* et A′ change-t-il ?
+
+**Températures par source.** Pour chaque run de A′ et de B\* (3 graines chacun, f32) :
+
+- on garde les lignes du dump `val` à T = 1 (`val.f32.dump.jsonl`) dont la source commence par `typed_decisions` (`typed_decisions_train` et ses variantes `+distract`, `+none`, `+pair`, `+para`) ;
+- on ajuste T_src par type et par type × nombre d'options (n ≥ 100) avec les fonctions de la calibration pré-enregistrée (`fit_t`, `temperatures`), même règle de repli (type × options, sinon type, sinon 1).
+
+**Application.** Le dump du bench a été produit à la température appliquée T, lue dans `temperatures.f32.json`. Chaque question reçoit p′ = softmax(ln p / T′), avec T′ = T_src / T, ce qui revient à diviser les logits par T_src. L'argmax ne change pas, donc la précision non plus. Les dumps re-tempérés vont dans `eval-f32-src` du run.
+
+**Rapporté :**
+
+- `pari1-src` : la comparaison du pari 1 (B\* contre A′), refaite sur les dumps re-tempérés. Seul le bench est re-tempéré : les comparaisons secondaires sur les autres jeux sont absentes (NaN) ;
+- `src-vs-global-{bras}` : pour chaque bras, l'ECE du bench avant et après (différence appariée, IC à 95 %).
