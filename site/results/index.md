@@ -39,13 +39,20 @@ All three pre-registered criteria were missed, and the reasons are instructive. 
 - **Per seed**, q8_0 changes the ECE of B\* by −0.0024, −0.0003 and −0.0005, and its accuracy by at most 0.3 points.
 - **Pooled**, the pre-registered two-level bootstrap resamples the seeds of each format independently. The seed-to-seed spread of the ECE (0.078 to 0.096) then makes the interval wider than the 0.01 margin.
 
+**Phase 7 accepts nothing under its guarantee.** Escalation with a controlled error was tested offline.
+
+- **Pre-registered calibration.** It uses the typed-decisions questions, exchangeable with the bench but only 214 to 275 per type. With them, Learn-then-Test certifies no acceptance threshold for any α ≤ 10 %.
+- **Larger calibration, for the /live model.** With every English calibration question, which are not exchangeable with the bench, it would accept 11.5 % of the bench at α = 5 %. The error of those accepted answers is 7.0 %: the guarantee does not survive the shift.
+
 **The s5-lite gates fail** for the pre-registered shipped model, which the rule made A′ (seed 0): fitted bench 0.541 and English demo cases 50 %.
 
 **The /live model.** /live serves a longer run of B\* (8000 steps instead of 2000), added for the demo before its result and outside the bets (amendment 3). Its numbers are below and are not claims:
 
 - 0.696 on the fitted bench, where oscar-1-17m scores 0.682 on the same records;
 - 21 of the 30 English demo cases;
-- four sets below their majority baseline.
+- four sets below their majority baseline;
+- no answer flips when the keys are reassigned, as the construction guarantees, but 26 % flip when the definitions are paraphrased;
+- on the original 2609.33209 battery, MAD_neg 0.045 (Jev: 0.064), Σ s 1.46 (Jev: 1.14) and \|s − c\| 0.158 (Jev: 0.091).
 
 ## What is guaranteed by construction (s5 iso architecture)
 

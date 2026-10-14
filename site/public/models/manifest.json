@@ -1,5 +1,14 @@
 [
   {
+    "name": "s5-lite",
+    "arch": "skycmd-iso",
+    "weight_format": "q8_0",
+    "task": "generic",
+    "params": 17060097,
+    "bytes": 20684640,
+    "file": "s5-lite.gguf"
+  },
+  {
     "name": "s3-pico",
     "arch": "skycmd-s2",
     "weight_format": "ternary",
