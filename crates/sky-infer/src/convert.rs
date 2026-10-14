@@ -15,9 +15,9 @@ pub const ARCH: &str = "modern-bert";
 /// Conversion options.
 #[derive(Clone, Debug)]
 pub struct ConvertOptions {
-    /// Type of the encoder matrices (F32, F16, BF16 or Q8_0). The token embeddings use the same
-    /// type, except Q8_0 where they stay F16 (a lookup gains no speed from int8 and the rounding
-    /// of the embeddings alone moves the probabilities by ~0.02 on oscar).
+    /// Type of the encoder matrices (F32, F16, BF16, Q8_0 or Q4_0). The token embeddings use the
+    /// same type, except Q8_0 and Q4_0 where they stay F16 (a lookup gains no speed from int8 and
+    /// the rounding of the embeddings alone moves the probabilities by ~0.02 on oscar in Q8_0).
     pub ftype: GgmlType,
     /// Type of the decision head matrices (head blocks, `token_types`, `cls.*`).
     pub head_type: GgmlType,
@@ -144,13 +144,13 @@ impl<'a> LayaSources<'a> {
                 GgmlType::F32
             } else if is_head {
                 opts.head_type
-            } else if gg == "token_embd.weight" && opts.ftype == GgmlType::Q8_0 {
+            } else if gg == "token_embd.weight" && is_block(opts.ftype) {
                 GgmlType::F16
             } else {
                 opts.ftype
             };
             let inner = *t.shape.last().unwrap_or(&1);
-            if ty == GgmlType::Q8_0 && inner % sky_gguf::QK8_0 != 0 {
+            if is_block(ty) && inner % sky_gguf::QK8_0 != 0 {
                 ty = GgmlType::F16; // as llama.cpp: fall back when rows do not split into blocks
             }
             let dims: Vec<u64> = t.shape.iter().rev().map(|&d| d as u64).collect();
@@ -169,6 +169,11 @@ impl<'a> LayaSources<'a> {
     }
 }
 
+/// Q8_0 and Q4_0: blocks of 32 values along the rows.
+fn is_block(t: GgmlType) -> bool {
+    matches!(t, GgmlType::Q8_0 | GgmlType::Q4_0)
+}
+
 fn is_head_block(name: &str, n_enc: usize) -> bool {
     name.strip_prefix("blk.")
         .and_then(|r| r.split('.').next())
@@ -180,6 +185,7 @@ fn file_type(t: GgmlType) -> u32 {
     match t {
         GgmlType::F32 => 0,
         GgmlType::F16 => 1,
+        GgmlType::Q4_0 => 2,
         GgmlType::Q8_0 => 7,
         GgmlType::BF16 => 32,
         GgmlType::I8 | GgmlType::Other(_) => 0,
@@ -226,7 +232,7 @@ pub fn write_metadata(
         opts.name.clone().unwrap_or_else(|| cfg.name.clone()),
     );
     w.add_kv("general.file_type", OwnedValue::U32(file_type(opts.ftype)));
-    if opts.ftype == GgmlType::Q8_0 || opts.head_type == GgmlType::Q8_0 {
+    if is_block(opts.ftype) || is_block(opts.head_type) {
         w.add_kv("general.quantization_version", OwnedValue::U32(2));
     }
     w.add_kv(k("context_length"), u(ctx));

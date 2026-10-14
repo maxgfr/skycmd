@@ -39,7 +39,7 @@ pub struct ExportArgs {
     pub run: PathBuf,
     #[arg(long)]
     pub out: PathBuf,
-    /// f32 | f16 | q8_0 (matrices whose rows are a multiple of 32; the readout stays f32).
+    /// f32 | f16 | q8_0 | q4_0 (matrices whose rows are a multiple of 32; the readout stays f32).
     #[arg(long, default_value = "f32")]
     pub format: String,
     /// Model name (default: the config name).
@@ -162,8 +162,8 @@ pub fn to_gguf(
         let dims: Vec<u64> = shape.iter().rev().map(|&d| d as u64).collect();
         let matrix = shape.len() == 2 && !gguf.starts_with("iso.");
         let ty = match format {
-            GgmlType::Q8_0 if matrix && shape[1].is_multiple_of(32) => GgmlType::Q8_0,
-            GgmlType::Q8_0 | GgmlType::F16 if matrix => GgmlType::F16,
+            GgmlType::Q8_0 | GgmlType::Q4_0 if matrix && shape[1].is_multiple_of(32) => format,
+            GgmlType::Q8_0 | GgmlType::Q4_0 | GgmlType::F16 if matrix => GgmlType::F16,
             _ => GgmlType::F32,
         };
         w.add_tensor(gguf, &dims, ty, encode_f32(ty, &values)?)?;
@@ -208,7 +208,8 @@ pub fn export(a: &ExportArgs) -> Result<()> {
         "f32" => GgmlType::F32,
         "f16" => GgmlType::F16,
         "q8_0" => GgmlType::Q8_0,
-        other => bail!("unknown format {other:?} (f32, f16, q8_0)"),
+        "q4_0" => GgmlType::Q4_0,
+        other => bail!("unknown format {other:?} (f32, f16, q8_0, q4_0)"),
     };
     let name = a.name.clone().unwrap_or_else(|| cfg.name.clone());
     let temps = read_temperatures(&a.run)?;

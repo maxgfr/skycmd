@@ -8,7 +8,8 @@
 //!   `runs/s5-gpu.lock`; a second one waits.
 //! - **Logs.** Each run tees its output to `runs/s5-logs/<stage>-<unix time>.log`.
 //! - **Resume.** A finished step leaves `runs/s5-state/<stage>/<step>.done` holding its command
-//!   line; a rerun skips the steps whose command line is unchanged (`--force` reruns them).
+//!   line; a rerun skips the steps whose command line is unchanged (`--force` reruns them), from
+//!   any worktree. Steps marked `always` (the results summary) run every time.
 //! - **Experiments.** The stages of [`exp`] are built against the store (their runs depend on
 //!   earlier validation results); `--jobs N` runs up to N of their independent steps at once
 //!   under one GPU lock (a failed step does not stop the others), `--runs a,b` names the runs
@@ -249,7 +250,10 @@ fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
         } else {
             state.join(format!("{i:02}-{}.done", step.name))
         };
-        if !force && fs::read_to_string(&done).is_ok_and(|s| s.trim() == line) {
+        let key = resume_key(&line, &store);
+        let unchanged =
+            fs::read_to_string(&done).is_ok_and(|s| resume_key(s.trim(), &store) == key);
+        if !force && !step.always && unchanged {
             log.line(&format!("[xtask] skip {} (done)", step.name));
             continue;
         }
@@ -317,6 +321,25 @@ fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
     }
     log.line(&format!("[xtask] stage {} complete", stage.name));
     Ok(())
+}
+
+/// A step's command line with every worktree checkout of the store (`<store>/.claude/worktrees/
+/// <name>`) written as the store itself: `{checkout}` arguments (the pre-registration, the demo
+/// cases) then compare equal from any worktree, and a step done from one is not redone from
+/// another.
+fn resume_key(line: &str, store: &Path) -> String {
+    let store = store.display().to_string();
+    let wt = format!("{store}/.claude/worktrees/");
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(i) = rest.find(&wt) {
+        out.push_str(&rest[..i]);
+        out.push_str(&store);
+        let after = &rest[i + wt.len()..];
+        rest = &after[after.find(['/', ' ']).unwrap_or(after.len())..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Exclusive lock on `runs/s5-gpu.lock`, held until the returned file is dropped.
@@ -453,6 +476,32 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn resume_key_ignores_the_worktree() {
+        let st = Path::new("/r/skycmd");
+        let line = |co: &str| {
+            format!(
+                "sky-eval m.gguf --prereg {co}/docs/s5-prereg.md --records {co}/eval/s5/d.jsonl"
+            )
+        };
+        let main = resume_key(&line("/r/skycmd"), st);
+        assert_eq!(main, line("/r/skycmd"));
+        assert_eq!(
+            resume_key(&line("/r/skycmd/.claude/worktrees/issue-8-x"), st),
+            main
+        );
+        assert_eq!(
+            resume_key(&line("/r/skycmd/.claude/worktrees/issue-10"), st),
+            main
+        );
+        // other arguments are compared as they are
+        assert_ne!(resume_key(&line("/elsewhere"), st), main);
+        assert_eq!(
+            resume_key("x --store /r/skycmd/.claude/worktrees/w", st),
+            "x --store /r/skycmd"
+        );
     }
 
     #[test]

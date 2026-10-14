@@ -175,9 +175,11 @@ impl GgufWriter {
                 dtype.name()
             )));
         }
-        if dtype == GgmlType::Q8_0 && !dims[0].is_multiple_of(crate::QK8_0 as u64) {
+        let bl = dtype.block_len().unwrap_or(1) as u64;
+        if bl > 1 && !dims[0].is_multiple_of(bl) {
             return Err(Error::Format(format!(
-                "tensor {name}: Q8_0 rows must be a multiple of 32"
+                "tensor {name}: {} rows must be a multiple of {bl}",
+                dtype.name()
             )));
         }
         if self.tensors.iter().any(|t| t.name == name) {
@@ -192,7 +194,7 @@ impl GgufWriter {
         Ok(self)
     }
 
-    /// Add a tensor from f32 values, encoded as `dtype` (F32, F16, BF16 or Q8_0).
+    /// Add a tensor from f32 values, encoded as `dtype` (F32, F16, BF16, Q8_0 or Q4_0).
     pub fn add_tensor_f32(
         &mut self,
         name: impl Into<String>,

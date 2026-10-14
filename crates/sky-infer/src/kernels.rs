@@ -1,4 +1,4 @@
-//! Compute kernels: f32 and Q8_0 matrix products, attention, norms and activations.
+//! Compute kernels: f32, Q8_0 and Q4_0 matrix products, attention, norms and activations.
 //!
 //! Layouts are row-major: activations `x[rows][k]`, weights `w[n][k]` (PyTorch `nn.Linear`
 //! layout, identical to the GGUF bytes), outputs `y[rows][n]` with `y[r][o] = x[r] . w[o] + b[o]`.
@@ -134,6 +134,83 @@ pub fn blocks_to_ggml(blocks: &[BlockQ8]) -> Vec<u8> {
 pub fn dequantize_q8(blocks: &[BlockQ8], out: &mut [f32]) {
     for (b, dst) in blocks.iter().zip(out.chunks_exact_mut(QK)) {
         for (o, &q) in dst.iter_mut().zip(&b.qs) {
+            *o = q as f32 * b.d;
+        }
+    }
+}
+
+/// A Q4_0 block with its scale already converted to f32. The 32 values `q - 8` (in -8..=7) are
+/// packed as in ggml: byte `j` holds element `j` in its low nibble and element `j + 16` in its
+/// high nibble.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[repr(C)]
+pub struct BlockQ4 {
+    pub d: f32,
+    pub qs: [u8; QK / 2],
+}
+
+impl BlockQ4 {
+    /// The 32 values `q - 8` as i8.
+    #[inline(always)]
+    pub fn unpack(&self) -> [i8; QK] {
+        let mut out = [0i8; QK];
+        for j in 0..QK / 2 {
+            out[j] = (self.qs[j] & 0x0f) as i8 - 8;
+            out[j + QK / 2] = (self.qs[j] >> 4) as i8 - 8;
+        }
+        out
+    }
+
+    /// Sets element `i` to zero (`q = 8`).
+    fn clear(&mut self, i: usize) {
+        let j = i % (QK / 2);
+        self.qs[j] = if i >= QK / 2 {
+            (self.qs[j] & 0x0f) | 0x80
+        } else {
+            (self.qs[j] & 0xf0) | 0x08
+        };
+    }
+}
+
+/// Quantize f32 to Q4_0 blocks like ggml `quantize_row_q4_0_ref` (scale rounded through f16).
+pub fn quantize_q4(x: &[f32], out: &mut [BlockQ4]) {
+    debug_assert_eq!(x.len(), out.len() * QK);
+    for (blk, dst) in x.chunks_exact(QK).zip(out.iter_mut()) {
+        let (d, qs) = sky_gguf::q4_0_block(blk);
+        dst.d = sky_gguf::f16_to_f32(sky_gguf::f32_to_f16(d));
+        dst.qs = qs;
+    }
+}
+
+/// Parse ggml Q4_0 bytes (f16 scale + 16 bytes per block).
+pub fn blocks_q4_from_ggml(bytes: &[u8]) -> Vec<BlockQ4> {
+    bytes
+        .chunks_exact(sky_gguf::Q4_0_BLOCK_BYTES)
+        .map(|b| {
+            let mut qs = [0u8; QK / 2];
+            qs.copy_from_slice(&b[2..]);
+            BlockQ4 {
+                d: sky_gguf::f16_to_f32(u16::from_le_bytes([b[0], b[1]])),
+                qs,
+            }
+        })
+        .collect()
+}
+
+/// Serialize blocks to ggml Q4_0 bytes.
+pub fn blocks_q4_to_ggml(blocks: &[BlockQ4]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(blocks.len() * sky_gguf::Q4_0_BLOCK_BYTES);
+    for b in blocks {
+        out.extend_from_slice(&sky_gguf::f32_to_f16(b.d).to_le_bytes());
+        out.extend_from_slice(&b.qs);
+    }
+    out
+}
+
+/// Dequantize Q4_0 blocks to f32.
+pub fn dequantize_q4(blocks: &[BlockQ4], out: &mut [f32]) {
+    for (b, dst) in blocks.iter().zip(out.chunks_exact_mut(QK)) {
+        for (o, q) in dst.iter_mut().zip(b.unpack()) {
             *o = q as f32 * b.d;
         }
     }
@@ -1505,22 +1582,50 @@ fn vi_from(a: [i32; 4]) -> VI {
     unsafe { core::mem::transmute::<[i32; 4], VI>(a) }
 }
 
-// ----------------------------------------------------------------------------- Q8_0 products
+// ----------------------------------------------------------------------------- Q8_0 / Q4_0 products
+
+/// A weight block of 32 values with one scale: Q8_0, or Q4_0 widened to i8 before the products.
+trait WeightBlock: Copy {
+    fn scale(&self) -> f32;
+    fn values(&self) -> P;
+}
+
+impl WeightBlock for BlockQ8 {
+    #[inline(always)]
+    fn scale(&self) -> f32 {
+        self.d
+    }
+    #[inline(always)]
+    fn values(&self) -> P {
+        prep(&self.qs)
+    }
+}
+
+impl WeightBlock for BlockQ4 {
+    #[inline(always)]
+    fn scale(&self) -> f32 {
+        self.d
+    }
+    #[inline(always)]
+    fn values(&self) -> P {
+        prep(&self.unpack())
+    }
+}
 
 #[inline(always)]
-fn tile_q8<const R: usize, const C: usize, const DOUBLE: bool>(
+fn tile_q8<B: WeightBlock, const R: usize, const C: usize, const DOUBLE: bool>(
     x: [&[ActBlock]; R],
-    w: [&[BlockQ8]; C],
+    w: [&[B]; C],
 ) -> [[f32; C]; R] {
-    let acc = tile_q8_acc::<R, C, DOUBLE>(x, w);
+    let acc = tile_q8_acc::<B, R, C, DOUBLE>(x, w);
     core::array::from_fn(|r| core::array::from_fn(|c| hsum(acc[r][c])))
 }
 
-/// R x C tile of unreduced SIMD accumulators.
+/// R x C tile of unreduced SIMD accumulators (Q8_0 activations, Q8_0 or Q4_0 weights).
 #[inline(always)]
-fn tile_q8_acc<const R: usize, const C: usize, const DOUBLE: bool>(
+fn tile_q8_acc<B: WeightBlock, const R: usize, const C: usize, const DOUBLE: bool>(
     x: [&[ActBlock]; R],
-    w: [&[BlockQ8]; C],
+    w: [&[B]; C],
 ) -> [[V; C]; R] {
     let mut acc = [[zero(); C]; R];
     let nb = w[0].len();
@@ -1537,14 +1642,14 @@ fn tile_q8_acc<const R: usize, const C: usize, const DOUBLE: bool>(
         });
         for c in 0..C {
             let wb = &w[c][b];
-            let wp = prep(&wb.qs);
+            let wp = wb.values();
             for r in 0..R {
                 let s = if DOUBLE {
                     shl7_add(pdot(&xq[r], &wp), pdot(&xr[r], &wp))
                 } else {
                     pdot(&xq[r], &wp)
                 };
-                acc[r][c] = fma(acc[r][c], i2f(s), splat(xd[r] * wb.d));
+                acc[r][c] = fma(acc[r][c], i2f(s), splat(xd[r] * wb.scale()));
             }
         }
     }
@@ -1553,11 +1658,11 @@ fn tile_q8_acc<const R: usize, const C: usize, const DOUBLE: bool>(
 
 /// Quantized product: `xq` already quantized (`rows * k/32` blocks), `w: [n][k/32]` blocks.
 #[allow(clippy::too_many_arguments)]
-fn matmul_q8_impl<const DOUBLE: bool>(
+fn matmul_q8_impl<B: WeightBlock, const DOUBLE: bool>(
     xq: &[ActBlock],
     rows: usize,
     k: usize,
-    w: &[BlockQ8],
+    w: &[B],
     n: usize,
     bias: Option<&[f32]>,
     y: &mut [f32],
@@ -1568,7 +1673,7 @@ fn matmul_q8_impl<const DOUBLE: bool>(
     assert!(xq.len() >= rows * nb && w.len() >= n * nb && y.len() >= rows * n);
     let xrow = |r: usize| &xq[r * nb..r * nb + nb];
     let wrow = |o: usize| &w[o * nb..o * nb + nb];
-    let (rb, ob) = block_sizes(nb * core::mem::size_of::<BlockQ8>());
+    let (rb, ob) = block_sizes(nb * core::mem::size_of::<B>());
     for r0 in (0..rows).step_by(rb) {
         let r1 = (r0 + rb).min(rows);
         for o0 in (0..n).step_by(ob) {
@@ -1581,7 +1686,7 @@ fn matmul_q8_impl<const DOUBLE: bool>(
                     let no = if o + 4 <= o1 { 4 } else { 1 };
                     match (nr, no) {
                         (2, 4) => {
-                            let t = tile_q8_acc::<2, 4, DOUBLE>(
+                            let t = tile_q8_acc::<B, 2, 4, DOUBLE>(
                                 [xrow(r), xrow(r + 1)],
                                 [wrow(o), wrow(o + 1), wrow(o + 2), wrow(o + 3)],
                             );
@@ -1591,12 +1696,12 @@ fn matmul_q8_impl<const DOUBLE: bool>(
                             }
                         }
                         (2, _) => {
-                            let t = tile_q8::<2, 1, DOUBLE>([xrow(r), xrow(r + 1)], [wrow(o)]);
+                            let t = tile_q8::<B, 2, 1, DOUBLE>([xrow(r), xrow(r + 1)], [wrow(o)]);
                             store_out(y, r * n + o, t[0][0], bias, o, accumulate);
                             store_out(y, (r + 1) * n + o, t[1][0], bias, o, accumulate);
                         }
                         (_, 4) => {
-                            let t = tile_q8::<1, 4, DOUBLE>(
+                            let t = tile_q8::<B, 1, 4, DOUBLE>(
                                 [xrow(r)],
                                 [wrow(o), wrow(o + 1), wrow(o + 2), wrow(o + 3)],
                             );
@@ -1605,7 +1710,7 @@ fn matmul_q8_impl<const DOUBLE: bool>(
                             }
                         }
                         _ => {
-                            let t = tile_q8::<1, 1, DOUBLE>([xrow(r)], [wrow(o)]);
+                            let t = tile_q8::<B, 1, 1, DOUBLE>([xrow(r)], [wrow(o)]);
                             store_out(y, r * n + o, t[0][0], bias, o, accumulate);
                         }
                     }
@@ -1668,6 +1773,28 @@ impl Outliers {
             mask,
         }
     }
+
+    /// [`Outliers::split_q8`] for a matrix in Q4_0 (the columns move to f32, their values are
+    /// set to zero).
+    pub fn split_q4(w: &mut [BlockQ4], n: usize, k: usize, idx: &[usize]) -> Self {
+        let nb = k / QK;
+        let mut cols = vec![0.0; idx.len() * n];
+        let mut mask = vec![0u32; nb];
+        for (j, &c) in idx.iter().enumerate() {
+            let (b, i) = (c / QK, c % QK);
+            mask[b] |= 1 << i;
+            for o in 0..n {
+                let blk = &mut w[o * nb + b];
+                cols[j * n + o] = blk.unpack()[i] as f32 * blk.d;
+                blk.clear(i);
+            }
+        }
+        Outliers {
+            idx: idx.to_vec(),
+            cols,
+            mask,
+        }
+    }
 }
 
 /// `y[r][o] (+)= x[r] . w[o] + bias[o]` with `w` in Q8_0: the activations are quantized into
@@ -1689,14 +1816,50 @@ pub fn matmul_q8(
     outliers: Option<(&Outliers, usize, usize)>,
     mode: ActQuant,
 ) {
+    matmul_quant(x, rows, k, w, n, bias, y, accumulate, xq, outliers, mode)
+}
+
+/// [`matmul_q8`] with `w` in Q4_0: the 4-bit values are widened to i8 block by block and go
+/// through the same i8 x i8 -> i32 dot products.
+#[allow(clippy::too_many_arguments)]
+pub fn matmul_q4(
+    x: &[f32],
+    rows: usize,
+    k: usize,
+    w: &[BlockQ4],
+    n: usize,
+    bias: Option<&[f32]>,
+    y: &mut [f32],
+    accumulate: bool,
+    xq: &mut [ActBlock],
+    outliers: Option<(&Outliers, usize, usize)>,
+    mode: ActQuant,
+) {
+    matmul_quant(x, rows, k, w, n, bias, y, accumulate, xq, outliers, mode)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn matmul_quant<B: WeightBlock>(
+    x: &[f32],
+    rows: usize,
+    k: usize,
+    w: &[B],
+    n: usize,
+    bias: Option<&[f32]>,
+    y: &mut [f32],
+    accumulate: bool,
+    xq: &mut [ActBlock],
+    outliers: Option<(&Outliers, usize, usize)>,
+    mode: ActQuant,
+) {
     let nb = k / QK;
     let mask: &[u32] = outliers.map_or(&[], |(o, _, _)| &o.mask);
     let double = mode == ActQuant::Q8x2;
     quantize_act(&x[..rows * k], k, mask, &mut xq[..rows * nb], double);
     if double {
-        matmul_q8_impl::<true>(xq, rows, k, w, n, bias, y, accumulate);
+        matmul_q8_impl::<B, true>(xq, rows, k, w, n, bias, y, accumulate);
     } else {
-        matmul_q8_impl::<false>(xq, rows, k, w, n, bias, y, accumulate);
+        matmul_q8_impl::<B, false>(xq, rows, k, w, n, bias, y, accumulate);
     }
     if let Some((outl, out_start, out_total)) = outliers {
         for r in 0..rows {
@@ -2264,7 +2427,7 @@ pub fn attend_partial(
 
 /// Plain reference implementations (used by tests to validate the SIMD kernels).
 pub mod scalar {
-    use super::{ActBlock, BlockQ8};
+    use super::{ActBlock, BlockQ4, BlockQ8};
 
     pub fn matmul_f32(
         x: &[f32],
@@ -2314,6 +2477,45 @@ pub mod scalar {
                             .zip(&wb.qs)
                             .map(|(&a, &c)| a as i64 * c as i64)
                             .sum();
+                    let v = if double {
+                        iq as f64 + ir as f64 / 128.0
+                    } else {
+                        iq as f64
+                    };
+                    s += v * xb.d as f64 * wb.d as f64;
+                }
+                y[r * n + o] = s as f32 + bias.map_or(0.0, |b| b[o]);
+            }
+        }
+    }
+
+    /// Reference for [`super::matmul_q4`] on already quantized activations (nibbles read
+    /// directly from the ggml layout).
+    #[allow(clippy::too_many_arguments)]
+    pub fn matmul_q4(
+        xq: &[ActBlock],
+        rows: usize,
+        k: usize,
+        w: &[BlockQ4],
+        n: usize,
+        bias: Option<&[f32]>,
+        y: &mut [f32],
+        double: bool,
+    ) {
+        let nb = k / super::QK;
+        let half = super::QK / 2;
+        for r in 0..rows {
+            for o in 0..n {
+                let mut s = 0.0f64;
+                for b in 0..nb {
+                    let (xb, wb) = (&xq[r * nb + b], &w[o * nb + b]);
+                    let wq = |i: usize| -> i64 {
+                        let byte = wb.qs[i % half];
+                        let nib = if i < half { byte & 0x0f } else { byte >> 4 };
+                        nib as i64 - 8
+                    };
+                    let iq: i64 = (0..super::QK).map(|i| xb.q[i] as i64 * wq(i)).sum();
+                    let ir: i64 = (0..super::QK).map(|i| xb.r[i] as i64 * wq(i)).sum();
                     let v = if double {
                         iq as f64 + ir as f64 / 128.0
                     } else {
@@ -2571,6 +2773,105 @@ mod tests {
         quantize_q8(&x, &mut b);
         assert_eq!(blocks_from_ggml(&blocks_to_ggml(&b)), b);
         assert_eq!(blocks_to_ggml(&b), sky_gguf::quantize_q8_0(&x));
+    }
+
+    #[test]
+    fn simd_q4_matches_scalar_and_f32() {
+        let mut seed = 13;
+        for &(rows, k, n) in &[(1, 32, 1), (2, 64, 4), (3, 96, 5), (5, 96, 7), (8, 256, 12)] {
+            let x = rnd(rows * k, &mut seed);
+            let w = rnd(n * k, &mut seed);
+            let b = rnd(n, &mut seed);
+            let mut wq = vec![BlockQ4::default(); n * k / QK];
+            quantize_q4(&w, &mut wq);
+            // f32 product on the dequantized weights: only the activation rounding differs
+            let mut wd = vec![0.0; n * k];
+            dequantize_q4(&wq, &mut wd);
+            let mut yw = vec![0.0; rows * n];
+            scalar::matmul_f32(&x, rows, k, &wd, n, Some(&b), &mut yw);
+            for mode in [ActQuant::Q8, ActQuant::Q8x2] {
+                let mut xq = vec![ActBlock::default(); rows * k / QK];
+                let mut y = vec![0.0; rows * n];
+                matmul_q4(
+                    &x,
+                    rows,
+                    k,
+                    &wq,
+                    n,
+                    Some(&b),
+                    &mut y,
+                    false,
+                    &mut xq,
+                    None,
+                    mode,
+                );
+                let mut yr = vec![0.0; rows * n];
+                let double = mode == ActQuant::Q8x2;
+                scalar::matmul_q4(&xq, rows, k, &wq, n, Some(&b), &mut yr, double);
+                let tol = if double { 2e-3 } else { 0.02 } * (k as f32).sqrt();
+                for i in 0..y.len() {
+                    assert!(
+                        (y[i] - yr[i]).abs() < 1e-4,
+                        "{mode:?}: {} vs {}",
+                        y[i],
+                        yr[i]
+                    );
+                    assert!(
+                        (y[i] - yw[i]).abs() < tol,
+                        "{mode:?} {rows}x{k}x{n}: q4 {} vs f32 on the same weights {}",
+                        y[i],
+                        yw[i]
+                    );
+                }
+                // accumulate adds on top
+                matmul_q4(
+                    &x,
+                    rows,
+                    k,
+                    &wq,
+                    n,
+                    Some(&b),
+                    &mut y,
+                    true,
+                    &mut xq,
+                    None,
+                    mode,
+                );
+                for i in 0..y.len() {
+                    assert!((y[i] - 2.0 * yr[i]).abs() < 2e-4);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn q4_ggml_round_trip_and_outliers() {
+        let mut seed = 5;
+        let x = rnd(96, &mut seed);
+        let mut b = vec![BlockQ4::default(); 3];
+        quantize_q4(&x, &mut b);
+        assert_eq!(blocks_q4_from_ggml(&blocks_q4_to_ggml(&b)), b);
+        assert_eq!(blocks_q4_to_ggml(&b), sky_gguf::quantize_q4_0(&x));
+        let mut d = vec![0.0; 96];
+        dequantize_q4(&b, &mut d);
+        assert_eq!(
+            d,
+            sky_gguf::dequantize(sky_gguf::GgmlType::Q4_0, &blocks_q4_to_ggml(&b)).unwrap()
+        );
+        // split_q4 moves columns to f32 and leaves zeros (q = 8) in their place
+        let (n, k) = (3, 32);
+        let mut w = b.clone();
+        let outl = Outliers::split_q4(&mut w, n, k, &[2, 20]);
+        for o in 0..n {
+            let (before, after) = (b[o].unpack(), w[o].unpack());
+            assert_eq!(outl.cols[o], before[2] as f32 * b[o].d);
+            assert_eq!(outl.cols[n + o], before[20] as f32 * b[o].d);
+            for i in 0..QK {
+                let want = if i == 2 || i == 20 { 0 } else { before[i] };
+                assert_eq!(after[i], want, "row {o} value {i}");
+            }
+        }
+        assert_eq!(outl.mask, vec![(1 << 2) | (1 << 20)]);
     }
 
     #[test]

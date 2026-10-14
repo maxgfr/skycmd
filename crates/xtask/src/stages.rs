@@ -7,6 +7,9 @@ pub struct Step {
     pub args: Vec<String>,
     /// Holds the GPU lock while it runs.
     pub gpu: bool,
+    /// Runs on every invocation of its stage (its output lives in the checkout, or it gathers
+    /// the outputs of other steps).
+    pub always: bool,
     pub env: Vec<(String, String)>,
 }
 
@@ -17,12 +20,18 @@ impl Step {
             prog,
             args: args.iter().map(|s| s.to_string()).collect(),
             gpu: false,
+            always: false,
             env: Vec::new(),
         }
     }
 
     pub fn gpu(mut self) -> Self {
         self.gpu = true;
+        self
+    }
+
+    pub fn always(mut self) -> Self {
+        self.always = true;
         self
     }
 }

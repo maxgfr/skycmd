@@ -18,7 +18,7 @@
 //! `score = W1 · gelu(W0 · [h, q, h ⊙ q, |h - q|] + b0) + b1` and a softmax with the
 //! temperature of the question type.
 
-use sky_gguf::{GgmlType, Gguf};
+use sky_gguf::Gguf;
 
 use crate::kernels::{self, ActBlock, ActQuant, Attention, AttnScratch, Rope, QK};
 use crate::model::{linear, Act, Embedding, EncoderLayer, Linear, Norm, Weight};
@@ -300,11 +300,7 @@ impl IsoModel {
             let info = g
                 .tensor(name)
                 .ok_or_else(|| Error::Missing(format!("tensor {name}")))?;
-            let bytes = g.tensor_bytes(info);
-            let w = match info.dtype {
-                GgmlType::Q8_0 => Weight::Q8(kernels::blocks_from_ggml(bytes)),
-                ty => Weight::F32(sky_gguf::dequantize(ty, bytes)?),
-            };
+            let w = Weight::from_ggml(info.dtype, g.tensor_bytes(info))?;
             Ok(Loaded {
                 shape: info.shape(),
                 w,
@@ -381,13 +377,23 @@ impl IsoModel {
                 lin.dequantize();
             }
         }
-        if self.tok_emb.w.is_q8() {
+        if self.tok_emb.w.is_quantized() {
             self.tok_emb.w = Weight::F32(self.tok_emb.w.to_f32());
         }
     }
 
+    /// True if any matrix is stored as Q8_0 or Q4_0.
     pub fn has_q8(&self) -> bool {
-        self.layers.iter().any(|l| l.wqkv.w.is_q8()) || self.tok_emb.w.is_q8()
+        self.layers.iter().any(|l| l.wqkv.w.is_quantized()) || self.tok_emb.w.is_quantized()
+    }
+
+    /// `q4_0`, `q8_0` or `f32`.
+    pub fn weight_format(&self) -> &'static str {
+        let mats = self
+            .layers
+            .iter()
+            .flat_map(|l| [&l.wqkv.w, &l.wo.w, &l.wi.w, &l.mlp_wo.w]);
+        crate::model::weight_format(mats.chain([&self.tok_emb.w]))
     }
 
     pub fn n_params(&self) -> usize {

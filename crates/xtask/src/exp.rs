@@ -10,10 +10,10 @@
 //!   and A × seed 0 at the configuration of A′. Their step count (also that of bet 2) is fixed
 //!   mechanically from the throughput of the exploration only ([`final_steps`]).
 //! - `eval` (CPU): for each finished run (`--runs a,b` or every run of `final` and `lambda*`):
-//!   f32 and q8_0 exports, temperatures fitted on the English `val` split of each format, the
-//!   calibrated model on the `cal` split (escalation thresholds), every test set in f32, the
-//!   fitted bench in q8_0 (Phase 5), the demo cases in both formats.
-//! - `eval-q8` (CPU, `--runs`): the other test sets in q8_0, for the shipped model.
+//!   f32, q8_0 and q4_0 exports, temperatures fitted on the English `val` split of each format,
+//!   the calibrated model on the `cal` split (escalation thresholds), every test set in f32, the
+//!   fitted bench in q8_0 and q4_0 (Phase 5; q4_0 is secondary), the demo cases in every format.
+//! - `eval-q8`, `eval-q4` (CPU, `--runs`): the other test sets in q8_0 or q4_0.
 //! - `lambda`: bet 2, λ ∈ {0.1, 0.3} at seed 0 on its support (B* when bet 1 succeeded in
 //!   `runs/s5-report/pari1.json`, else A′); `lambda-final`: λ* × seeds 1 and 2, λ* the lower val
 //!   MAD_neg among the λ whose val accuracy is at least that of λ = 0 (seed 0) − 0.01.
@@ -50,7 +50,7 @@ pub const SEEDS: [u64; 3] = [0, 1, 2];
 pub const BATTERY: &str = "data/s5/battery/coherence_2609_33209.jsonl";
 
 /// The dynamic stages, in pipeline order.
-pub const STAGES: [(&str, &str); 10] = [
+pub const STAGES: [(&str, &str); 11] = [
     (
         "explore",
         "bet 1 exploration: A′ and B-i × 3 LR × 2 inits, seed 0 [GPU]",
@@ -75,6 +75,10 @@ pub const STAGES: [(&str, &str); 10] = [
     (
         "eval-q8",
         "every test set in q8_0 for the given runs (--runs a,b), after eval",
+    ),
+    (
+        "eval-q4",
+        "every test set in q4_0 for the given runs (--runs a,b), after eval",
     ),
     (
         "lambda",
@@ -135,6 +139,7 @@ impl Run {
             prog: "sky-train",
             args,
             gpu: true,
+            always: false,
             // MLX keeps freed buffers for reuse; with batches of varying shapes the cache grows
             // to ~12 GB per run, and three runs swap. The cap changes no number.
             env: vec![("SKY_MLX_CACHE_GB".into(), MLX_CACHE_GB.into())],
@@ -526,13 +531,28 @@ fn test_step(run: &str, f: &str, set: &str) -> Step {
     )
 }
 
-/// The q8_0 test sets that `eval` leaves out (all but the fitted bench).
-fn eval_q8_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
+/// The quantized formats of `eval`: the fitted bench only, the rest with `eval-q8` / `eval-q4`.
+const QUANT_FORMATS: [&str; 2] = ["q8_0", "q4_0"];
+/// Every format of `eval`.
+const FORMATS: [&str; 3] = ["f32", "q8_0", "q4_0"];
+
+/// The test sets in format `f` (q8_0 or q4_0) that `eval` leaves out (all but the fitted bench).
+fn eval_quant_steps(store: &Path, run: &str, f: &str) -> Result<Vec<Step>> {
     Ok(eval_sets(store)?
         .iter()
         .filter(|s| *s != "typed_decisions_test")
-        .map(|s| test_step(run, "q8_0", s))
+        .map(|s| test_step(run, f, s))
         .collect())
+}
+
+/// [`eval_quant_steps`] in q8_0 (the shipped model).
+fn eval_q8_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
+    eval_quant_steps(store, run, "q8_0")
+}
+
+/// [`eval_quant_steps`] in q4_0.
+fn eval_q4_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
+    eval_quant_steps(store, run, "q4_0")
 }
 
 fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
@@ -546,10 +566,11 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
             &md,
             &format!("{rd}/eval-f32"),
             &format!("{rd}/eval-q8_0"),
+            &format!("{rd}/eval-q4_0"),
         ],
     )];
     if variant.starts_with("b-") {
-        for f in ["f32", "q8_0"] {
+        for f in FORMATS {
             v.push(Step::new(
                 &format!("{run}-export-{f}"),
                 "sky-train",
@@ -576,7 +597,7 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
                 &format!("{rd}/laya"),
             ],
         ));
-        for f in ["f32", "q8_0"] {
+        for f in FORMATS {
             v.push(Step::new(
                 &format!("{run}-convert-{f}"),
                 "sky-convert",
@@ -592,7 +613,7 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
         }
     }
     let sets = eval_sets(store)?;
-    for f in ["f32", "q8_0"] {
+    for f in FORMATS {
         // Temperatures on the English val split (already spent on model selection), so that the
         // cal split stays independent for the escalation thresholds of the calibrated model.
         v.push(Step::new(
@@ -644,7 +665,7 @@ fn eval_steps(store: &Path, run: &str) -> Result<Vec<Step>> {
             ],
         ));
         for s in &sets {
-            // q8_0: the fitted bench only (Phase 5); `eval-q8` adds the rest for the shipped model.
+            // q8_0, q4_0: the fitted bench only (Phase 5); `eval-q8` / `eval-q4` add the rest.
             if f == "f32" || s == "typed_decisions_test" {
                 v.push(test_step(run, f, s));
             }
@@ -702,7 +723,7 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
     let full = |r: &str, f: &str| has(r, f, "wikitoxic_toxicaggregated") && has(r, f, "demo-cases");
     let bench = |r: &str, f: &str| has(r, f, "typed_decisions_test");
     for (r, _) in &runs {
-        for f in ["f32", "q8_0"] {
+        for f in FORMATS {
             if !full(r, f) {
                 continue;
             }
@@ -826,10 +847,18 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
         ));
     }
     for arm in ["f-ap", "f-b"] {
-        if let (Some(a), Some(q)) = (dirs(arm, "f32", &bench), dirs(arm, "q8_0", &bench)) {
-            // Phase 5: q8_0 (recalibrated) against f32 on the same items; bench_ece is the criterion.
+        for f in QUANT_FORMATS {
+            let (Some(a), Some(q)) = (dirs(arm, "f32", &bench), dirs(arm, f, &bench)) else {
+                continue;
+            };
+            // Phase 5: q8_0 (recalibrated) against f32 on the same items; bench_ece is the
+            // criterion. q4_0 is reported the same way, as a secondary result.
+            let name = match f {
+                "q8_0" => format!("phase5-{arm}"),
+                _ => format!("phase5-q4-{arm}"),
+            };
             v.push(Step::new(
-                &format!("phase5-{arm}"),
+                &name,
                 "sky-s5-report",
                 &[
                     "pari1",
@@ -838,7 +867,7 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
                     "--variant",
                     &q,
                     "--json",
-                    &format!("runs/s5-report/phase5-{arm}.json"),
+                    &format!("runs/s5-report/{name}.json"),
                 ],
             ));
         }
@@ -892,17 +921,20 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
         "mkdir",
         &["-p", "{checkout}/site/public/results"],
     ));
-    v.push(Step::new(
-        "summary",
-        "sky-s5-report",
-        &[
+    v.push(
+        Step::new(
             "summary",
-            "--store",
-            "{store}",
-            "--out",
-            "{checkout}/site/public/results/s5.json",
-        ],
-    ));
+            "sky-s5-report",
+            &[
+                "summary",
+                "--store",
+                "{store}",
+                "--out",
+                "{checkout}/site/public/results/s5.json",
+            ],
+        )
+        .always(),
+    );
     Ok(v)
 }
 
@@ -947,13 +979,17 @@ pub fn stage(name: &str, store: &Path, runs: Option<&str>) -> Result<Option<Stag
             }
             v
         }
-        "eval-q8" => {
+        "eval-q8" | "eval-q4" => {
             let Some(r) = runs else {
-                bail!("eval-q8 needs --runs a,b");
+                bail!("{name} needs --runs a,b");
             };
             let mut v = Vec::new();
             for r in r.split(',').filter(|s| !s.is_empty()) {
-                v.extend(eval_q8_steps(store, r)?);
+                v.extend(if name == "eval-q8" {
+                    eval_q8_steps(store, r)?
+                } else {
+                    eval_q4_steps(store, r)?
+                });
             }
             v
         }

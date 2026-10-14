@@ -4,7 +4,7 @@ use sky_gguf::{GgmlType, Gguf};
 
 use crate::json::Json;
 use crate::kernels::{
-    self, ActBlock, ActQuant, Attention, AttnScratch, BlockQ8, Outliers, Rope, QK,
+    self, ActBlock, ActQuant, Attention, AttnScratch, BlockQ4, BlockQ8, Outliers, Rope, QK,
 };
 use crate::quant::{self, Calibration};
 use crate::safetensors::SafeTensors;
@@ -269,18 +269,44 @@ pub enum Weight {
     F32(Vec<f32>),
     /// Q8_0 blocks, `cols / 32` per row.
     Q8(Vec<BlockQ8>),
+    /// Q4_0 blocks, `cols / 32` per row.
+    Q4(Vec<BlockQ4>),
 }
 
 impl Weight {
+    /// Reads a GGUF tensor: Q8_0 and Q4_0 stay quantized, other types become f32.
+    pub fn from_ggml(ty: GgmlType, bytes: &[u8]) -> Result<Self> {
+        Ok(match ty {
+            GgmlType::Q8_0 => Weight::Q8(kernels::blocks_from_ggml(bytes)),
+            GgmlType::Q4_0 => Weight::Q4(kernels::blocks_q4_from_ggml(bytes)),
+            ty => Weight::F32(sky_gguf::dequantize(ty, bytes)?),
+        })
+    }
+
     fn n_elements(&self) -> usize {
         match self {
             Weight::F32(v) => v.len(),
             Weight::Q8(b) => b.len() * QK,
+            Weight::Q4(b) => b.len() * QK,
         }
     }
 
     pub fn is_q8(&self) -> bool {
         matches!(self, Weight::Q8(_))
+    }
+
+    /// True for Q8_0 and Q4_0 (products with quantized activations).
+    pub fn is_quantized(&self) -> bool {
+        !matches!(self, Weight::F32(_))
+    }
+
+    /// `f32`, `q8_0` or `q4_0`.
+    pub fn format(&self) -> &'static str {
+        match self {
+            Weight::F32(_) => "f32",
+            Weight::Q8(_) => "q8_0",
+            Weight::Q4(_) => "q4_0",
+        }
     }
 
     /// All values as f32.
@@ -292,8 +318,23 @@ impl Weight {
                 kernels::dequantize_q8(b, &mut out);
                 out
             }
+            Weight::Q4(b) => {
+                let mut out = vec![0.0; b.len() * QK];
+                kernels::dequantize_q4(b, &mut out);
+                out
+            }
         }
     }
+}
+
+/// The weight format of a model: `q4_0` if any matrix is in Q4_0, else `q8_0` if any is in
+/// Q8_0, else `f32`.
+pub(crate) fn weight_format<'a>(ws: impl IntoIterator<Item = &'a Weight>) -> &'static str {
+    ws.into_iter().fold("f32", |f, w| match (f, w.format()) {
+        ("q4_0", _) | (_, "q4_0") => "q4_0",
+        ("q8_0", _) | (_, "q8_0") => "q8_0",
+        _ => "f32",
+    })
 }
 
 /// A linear layer `y = x W^T + b` with `W: [n_out][n_in]`.
@@ -303,7 +344,7 @@ pub struct Linear {
     pub b: Option<Vec<f32>>,
     pub n_in: usize,
     pub n_out: usize,
-    /// Input channels computed in f32 when `w` is Q8_0 (see [`crate::quant`]).
+    /// Input channels computed in f32 when `w` is quantized (see [`crate::quant`]).
     pub outliers: Option<Outliers>,
 }
 
@@ -311,6 +352,7 @@ pub struct Linear {
 pub(crate) enum WeightRef<'a> {
     F32(&'a [f32]),
     Q8(&'a [BlockQ8]),
+    Q4(&'a [BlockQ4]),
 }
 
 /// A view over a range of output rows of a [`Linear`].
@@ -336,6 +378,10 @@ impl Linear {
                 let nb = self.n_in / QK;
                 WeightRef::Q8(&b[start * nb..end * nb])
             }
+            Weight::Q4(b) => {
+                let nb = self.n_in / QK;
+                WeightRef::Q4(&b[start * nb..end * nb])
+            }
         };
         let outliers = self.outliers.as_ref().map(|o| (o, start, self.n_out));
         LinearView {
@@ -360,7 +406,7 @@ impl Linear {
 
     /// Convert the weight to f32 (outlier columns are put back).
     pub fn dequantize(&mut self) {
-        if self.w.is_q8() {
+        if self.w.is_quantized() {
             let mut w = self.w.to_f32();
             if let Some(o) = self.outliers.take() {
                 for (j, &c) in o.idx.iter().enumerate() {
@@ -374,7 +420,7 @@ impl Linear {
     }
 
     /// Quantize to Q8_0 with the input channels `idx` computed in f32: exact columns when the
-    /// weight is f32; when it is already Q8_0 the stored columns move to f32 unchanged.
+    /// weight is f32; when it is already Q8_0 or Q4_0 the stored columns move to f32 unchanged.
     pub fn quantize_with_outliers(&mut self, idx: &[usize]) {
         if !self.n_in.is_multiple_of(QK) || self.outliers.is_some() {
             return;
@@ -390,6 +436,9 @@ impl Linear {
             }
             Weight::Q8(b) => {
                 self.outliers = (!idx.is_empty()).then(|| Outliers::split_q8(b, n, k, idx));
+            }
+            Weight::Q4(b) => {
+                self.outliers = (!idx.is_empty()).then(|| Outliers::split_q4(b, n, k, idx));
             }
         }
     }
@@ -437,6 +486,10 @@ impl Embedding {
             Weight::Q8(b) => {
                 let nb = self.d / QK;
                 kernels::dequantize_q8(&b[id * nb..(id + 1) * nb], out);
+            }
+            Weight::Q4(b) => {
+                let nb = self.d / QK;
+                kernels::dequantize_q4(&b[id * nb..(id + 1) * nb], out);
             }
         }
     }
@@ -810,7 +863,7 @@ impl Model {
         )
     }
 
-    /// Load from GGUF (llama.cpp `modern-bert` names). Q8_0 tensors stay quantized.
+    /// Load from GGUF (llama.cpp `modern-bert` names). Q8_0 and Q4_0 tensors stay quantized.
     pub fn from_gguf(g: &Gguf<'_>) -> Result<Self> {
         let cfg = ModelConfig::from_gguf(g)?;
         let n_enc = cfg.num_layers;
@@ -819,11 +872,7 @@ impl Model {
                 return Ok(None);
             };
             let shape = info.shape();
-            let bytes = g.tensor_bytes(info);
-            let w = match info.dtype {
-                GgmlType::Q8_0 => Weight::Q8(kernels::blocks_from_ggml(bytes)),
-                ty => Weight::F32(sky_gguf::dequantize(ty, bytes)?),
-            };
+            let w = Weight::from_ggml(info.dtype, g.tensor_bytes(info))?;
             Ok(Some(Loaded { shape, w }))
         };
         Model::load(
@@ -932,12 +981,13 @@ impl Model {
     }
 
     /// Quantize the selected matrices to Q8_0, keeping the outlier input channels found by
-    /// `cal` in f32 (`ratio`: see [`quant::outlier_channels`]). Matrices already in Q8_0 (from a
-    /// GGUF file) are always processed: they keep their values and only move the outlier columns
-    /// to the f32 path.
+    /// `cal` in f32 (`ratio`: see [`quant::outlier_channels`]). Matrices already in Q8_0 or Q4_0
+    /// (from a GGUF file) are always processed: they keep their values and only move the outlier
+    /// columns to the f32 path.
     pub fn quantize_calibrated(&mut self, spec: QuantizeSpec, cal: &Calibration, ratio: f32) {
         for (site, is_head, lin) in self.sites_mut() {
-            let selected = (is_head && spec.head) || (!is_head && spec.encoder) || lin.w.is_q8();
+            let selected =
+                (is_head && spec.head) || (!is_head && spec.encoder) || lin.w.is_quantized();
             if !selected || !lin.n_in.is_multiple_of(QK) {
                 continue;
             }
@@ -978,14 +1028,19 @@ impl Model {
         for (_, lin) in self.linears_mut() {
             lin.dequantize();
         }
-        if self.tok_emb.w.is_q8() {
+        if self.tok_emb.w.is_quantized() {
             self.tok_emb.w = Weight::F32(self.tok_emb.w.to_f32());
         }
     }
 
-    /// True if any matrix is stored as Q8_0.
+    /// True if any matrix is stored as Q8_0 or Q4_0.
     pub fn has_q8(&mut self) -> bool {
-        self.linears_mut().any(|(_, l)| l.w.is_q8())
+        self.linears_mut().any(|(_, l)| l.w.is_quantized())
+    }
+
+    /// `q4_0`, `q8_0` or `f32` (see [`weight_format`]).
+    pub fn weight_format(&mut self) -> &'static str {
+        weight_format(self.linears_mut().map(|(_, l)| &l.w))
     }
 
     /// Total number of parameters (all tensors, embeddings included).
@@ -1274,6 +1329,19 @@ pub(crate) fn linear(
             kernels::matmul_f32(x, rows, lin.n_in, w, lin.n_out, lin.b, y, accumulate)
         }
         WeightRef::Q8(w) => kernels::matmul_q8(
+            x,
+            rows,
+            lin.n_in,
+            w,
+            lin.n_out,
+            lin.b,
+            y,
+            accumulate,
+            act.xq,
+            lin.outliers,
+            act.mode,
+        ),
+        WeightRef::Q4(w) => kernels::matmul_q4(
             x,
             rows,
             lin.n_in,

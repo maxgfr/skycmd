@@ -1,7 +1,7 @@
 //! Convert a Laya checkpoint directory (safetensors + configs + tokenizer) to GGUF with the
 //! llama.cpp `modern-bert` names and keys.
 //!
-//! Usage: `sky-convert <laya_dir> <out.gguf> [--type f32|f16|bf16|q8_0] [--head-type f32|f16|bf16|q8_0]
+//! Usage: `sky-convert <laya_dir> <out.gguf> [--type f32|f16|bf16|q8_0|q4_0] [--head-type f32|f16|bf16|q8_0|q4_0]
 //! [--pre NAME] [--name NAME]`
 //!
 //! `sky-convert --random s1-pico|s1-nano|s1-micro <out.gguf> [--type ...]` writes a model with
@@ -26,12 +26,13 @@ mod native {
             "f16" => Some(GgmlType::F16),
             "bf16" => Some(GgmlType::BF16),
             "q8_0" | "q8" => Some(GgmlType::Q8_0),
+            "q4_0" | "q4" => Some(GgmlType::Q4_0),
             _ => None,
         }
     }
 
     const USAGE: &str =
-        "usage: sky-convert <laya_dir | --random s1-pico|s1-nano|s1-micro> <out.gguf> [--type f32|f16|bf16|q8_0] [--head-type f32|f16|bf16|q8_0] [--pre NAME] [--name NAME]\n       sky-convert --random s2-pico|s2-nano|s2-micro|s3-pico|s3-nano <out.gguf> [--format f32|f16|ternary] [--tokenizer tok-s2.json] [--name NAME]";
+        "usage: sky-convert <laya_dir | --random s1-pico|s1-nano|s1-micro> <out.gguf> [--type f32|f16|bf16|q8_0|q4_0] [--head-type f32|f16|bf16|q8_0|q4_0] [--pre NAME] [--name NAME]\n       sky-convert --random s2-pico|s2-nano|s2-micro|s3-pico|s3-nano <out.gguf> [--format f32|f16|ternary] [--tokenizer tok-s2.json] [--name NAME]";
 
     fn fail(msg: &str) -> ! {
         eprintln!("{msg}");
