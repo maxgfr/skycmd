@@ -34,6 +34,8 @@ Chapter 19 showed that a threshold fitted on i.i.d. validation questions breaks 
 
 Most frames stop after the **first** pass of the shared block.
 
+Over five arena seeds (7, 11, 13, 17, 19) × 30 episodes, `cargo xtask loopcal` found no difference between τ = 1, τ = 0.6 and τ = 0.5 on any of the four games: same scores (200 Flappy pipes, 3.00 rescues, 9.24 Dodge, 3.29 Doom), no crashes, and Dodge vetoes 9.6 ± 4.1 at τ = 1 and 0.6 against 9.8 ± 4.4 at τ = 0.5. Mean layers at τ = 0.6: 1.44 / 1.57 / 1.05 / 1.73 (flappy / rescue / dodge / doom). Unlike s2-nano (chapter 19), s3-pico's shallow exits are safe across the whole range tried. Results: `site/public/results/loopcal.json`.
+
 ## Ternary all the way, and DAgger
 
 s3-pico is trained ternary from 10 % of the decision phase onward (QAT). The file stores 2-bit weights and int8 embeddings, so 445k parameters fit in 251 KB. It then went through three DAgger rounds (chapter 20), with the model playing and the oracle labelling the states it reached:

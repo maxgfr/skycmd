@@ -19,6 +19,7 @@
 //! the store as their working directory.
 
 mod exp;
+mod loopcal;
 mod regress;
 mod stages;
 
@@ -39,7 +40,7 @@ const XCODE: &str = "/Applications/Xcode.app/Contents/Developer";
 fn usage() -> ! {
     eprintln!(
         "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run] [--jobs N] [--runs a,b]\n  cargo xtask store\n  \
-         cargo xtask regress [--update]\n\n\
+         cargo xtask regress [--update]\n  cargo xtask loopcal [--force] [--jobs N]\n\n\
          SKYCMD_STORE must point at the main checkout of this repository."
     );
     std::process::exit(2)
@@ -59,6 +60,30 @@ fn main() -> Result<()> {
                 Some(bad) => bail!("unknown argument {bad:?}"),
             };
             regress::regress(&checkout(), &store()?, update)
+        }
+        Some("loopcal") => {
+            let (mut force, mut jobs) = (false, 4usize);
+            let mut it = args[1..].iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--force" => force = true,
+                    "--jobs" => {
+                        jobs = it
+                            .next()
+                            .and_then(|v| v.parse().ok())
+                            .filter(|&n| n >= 1)
+                            .context("--jobs N (N >= 1)")?
+                    }
+                    bad => bail!("unknown argument {bad:?}"),
+                }
+            }
+            let store = store()?;
+            for c in loopcal::configs() {
+                fs::create_dir_all(store.join("runs/loopcal").join(c.name))?;
+            }
+            run_stage(&loopcal::prepare(&checkout())?, force, false, 1)?;
+            run_stage(&loopcal::arena(), force, false, jobs)?;
+            loopcal::summarize(&store, &checkout())
         }
         Some("s5") => {
             let Some(name) = args.get(1) else { usage() };
@@ -407,6 +432,7 @@ impl Step {
             }
             "skycmd" => "sky-serve",
             "sky-arena" => "sky-arena",
+            "gguf-set" => "sky-gguf",
             _ => return None,
         })
     }

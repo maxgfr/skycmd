@@ -1,0 +1,667 @@
+{
+  "about": "Early exits: i.i.d. vs closed-loop τ, sky-arena over 5 seeds (exploratory, issue #29)",
+  "configs": [
+    {
+      "about": "s2-nano, τ calibrated on i.i.d. val (0.62 / 0.62 / 0.69)",
+      "games": {
+        "dodge": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.098622390380233,
+            "n": 5,
+            "std": 0.026160248408207628
+          },
+          "oracle_score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "score": {
+            "mean": 7.5466667175292965,
+            "n": 5,
+            "std": 0.55156341706352
+          },
+          "vetoes": {
+            "mean": 1931.4,
+            "n": 5,
+            "std": 1105.7550813810444
+          }
+        },
+        "doom": {
+          "crashes": {
+            "mean": 4.6,
+            "n": 5,
+            "std": 0.5477225575051662
+          },
+          "mean_layers": {
+            "mean": 1.4552348354753115,
+            "n": 5,
+            "std": 0.06449569777069263
+          },
+          "oracle_score": {
+            "mean": 3.339999961853027,
+            "n": 5,
+            "std": 0.12560959649321365
+          },
+          "score": {
+            "mean": 2.859999990463257,
+            "n": 5,
+            "std": 0.2542964334088669
+          },
+          "vetoes": {
+            "mean": 820.2,
+            "n": 5,
+            "std": 237.81862837044537
+          }
+        },
+        "flappy": {
+          "crashes": {
+            "mean": 30.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.321305403759945,
+            "n": 5,
+            "std": 0.005301994365253716
+          },
+          "oracle_score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 15.860000038146973,
+            "n": 5,
+            "std": 2.2964222848499687
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        },
+        "rescue": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 2.034481647102155,
+            "n": 5,
+            "std": 0.09813517961813602
+          },
+          "oracle_score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 2.9800000190734863,
+            "n": 5,
+            "std": 0.02981421126692253
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        }
+      },
+      "models": [
+        {
+          "games": "flappy,rescue,dodge",
+          "model": "s2-nano"
+        },
+        {
+          "games": "doom",
+          "model": "s2-nano-doom"
+        }
+      ],
+      "name": "s2-nano-iid",
+      "tau": {
+        "s2-nano": [
+          0.62,
+          0.62,
+          0.69
+        ],
+        "s2-nano-doom": [
+          0.62,
+          0.62,
+          0.69
+        ]
+      }
+    },
+    {
+      "about": "s2-nano, closed-loop τ 0.95 (published)",
+      "games": {
+        "dodge": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 3.3178779954405235,
+            "n": 5,
+            "std": 0.05842035591069514
+          },
+          "oracle_score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "score": {
+            "mean": 9.15999984741211,
+            "n": 5,
+            "std": 0.2762847287083823
+          },
+          "vetoes": {
+            "mean": 250.4,
+            "n": 5,
+            "std": 505.71513720670856
+          }
+        },
+        "doom": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 3.9894882055259777,
+            "n": 5,
+            "std": 0.003261501978636575
+          },
+          "oracle_score": {
+            "mean": 3.339999961853027,
+            "n": 5,
+            "std": 0.12560959649321365
+          },
+          "score": {
+            "mean": 3.286666679382324,
+            "n": 5,
+            "std": 0.10954448683457853
+          },
+          "vetoes": {
+            "mean": 7.4,
+            "n": 5,
+            "std": 3.2093613071762426
+          }
+        },
+        "flappy": {
+          "crashes": {
+            "mean": 2.4,
+            "n": 5,
+            "std": 2.073644135332772
+          },
+          "mean_layers": {
+            "mean": 3.4331599838484324,
+            "n": 5,
+            "std": 0.0022296052133456796
+          },
+          "oracle_score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 191.93999938964845,
+            "n": 5,
+            "std": 7.158265785547051
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        },
+        "rescue": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 3.177469448745847,
+            "n": 5,
+            "std": 0.01803958848334021
+          },
+          "oracle_score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        }
+      },
+      "models": [
+        {
+          "games": "flappy,rescue,dodge",
+          "model": "s2-nano"
+        },
+        {
+          "games": "doom",
+          "model": "s2-nano-doom"
+        }
+      ],
+      "name": "s2-nano-closed",
+      "tau": {
+        "s2-nano": [
+          0.95,
+          0.95,
+          0.95
+        ],
+        "s2-nano-doom": [
+          0.95,
+          0.95,
+          0.95
+        ]
+      }
+    },
+    {
+      "about": "s3-pico, τ = 1 (full depth)",
+      "games": {
+        "dodge": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 4.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "oracle_score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "vetoes": {
+            "mean": 9.6,
+            "n": 5,
+            "std": 4.098780306383839
+          }
+        },
+        "doom": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 4.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "oracle_score": {
+            "mean": 3.339999961853027,
+            "n": 5,
+            "std": 0.12560959649321365
+          },
+          "score": {
+            "mean": 3.286666679382324,
+            "n": 5,
+            "std": 0.10954448683457853
+          },
+          "vetoes": {
+            "mean": 14.4,
+            "n": 5,
+            "std": 4.560701700396552
+          }
+        },
+        "flappy": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 4.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "oracle_score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        },
+        "rescue": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 4.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "oracle_score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        }
+      },
+      "models": [
+        {
+          "games": "flappy,rescue,dodge,doom",
+          "model": "s3-pico"
+        }
+      ],
+      "name": "s3-pico-full",
+      "tau": {
+        "s3-pico": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "about": "s3-pico, shipped closed-loop τ",
+      "games": {
+        "dodge": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.0507851605910274,
+            "n": 5,
+            "std": 0.0034683120348189063
+          },
+          "oracle_score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "vetoes": {
+            "mean": 9.6,
+            "n": 5,
+            "std": 4.098780306383839
+          }
+        },
+        "doom": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.729895957322737,
+            "n": 5,
+            "std": 0.02471202419660962
+          },
+          "oracle_score": {
+            "mean": 3.339999961853027,
+            "n": 5,
+            "std": 0.12560959649321365
+          },
+          "score": {
+            "mean": 3.286666679382324,
+            "n": 5,
+            "std": 0.10954448683457853
+          },
+          "vetoes": {
+            "mean": 14.4,
+            "n": 5,
+            "std": 4.560701700396552
+          }
+        },
+        "flappy": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.4396870109546165,
+            "n": 5,
+            "std": 0.003029540962114195
+          },
+          "oracle_score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        },
+        "rescue": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.5739185335931611,
+            "n": 5,
+            "std": 0.07555745282860037
+          },
+          "oracle_score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        }
+      },
+      "models": [
+        {
+          "games": "flappy,rescue,dodge,doom",
+          "model": "s3-pico"
+        }
+      ],
+      "name": "s3-pico-shipped",
+      "tau": {
+        "s3-pico": [
+          0.6,
+          0.6,
+          0.6
+        ]
+      }
+    },
+    {
+      "about": "s3-pico, τ = 0.5",
+      "games": {
+        "dodge": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.0132117210309912,
+            "n": 5,
+            "std": 0.002300687348835549
+          },
+          "oracle_score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "score": {
+            "mean": 9.239999961853027,
+            "n": 5,
+            "std": 0.1906127725654186
+          },
+          "vetoes": {
+            "mean": 9.8,
+            "n": 5,
+            "std": 4.381780460041329
+          }
+        },
+        "doom": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.231980556123132,
+            "n": 5,
+            "std": 0.008739149252661952
+          },
+          "oracle_score": {
+            "mean": 3.339999961853027,
+            "n": 5,
+            "std": 0.12560959649321365
+          },
+          "score": {
+            "mean": 3.286666679382324,
+            "n": 5,
+            "std": 0.10954448683457853
+          },
+          "vetoes": {
+            "mean": 14.4,
+            "n": 5,
+            "std": 4.560701700396552
+          }
+        },
+        "flappy": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "oracle_score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 200.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        },
+        "rescue": {
+          "crashes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "mean_layers": {
+            "mean": 1.2510827921241332,
+            "n": 5,
+            "std": 0.05015520778657356
+          },
+          "oracle_score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "score": {
+            "mean": 3.0,
+            "n": 5,
+            "std": 0.0
+          },
+          "vetoes": {
+            "mean": 0.0,
+            "n": 5,
+            "std": 0.0
+          }
+        }
+      },
+      "models": [
+        {
+          "games": "flappy,rescue,dodge,doom",
+          "model": "s3-pico"
+        }
+      ],
+      "name": "s3-pico-0.5",
+      "tau": {
+        "s3-pico": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    }
+  ],
+  "episodes": 30,
+  "seeds": [
+    7,
+    11,
+    13,
+    17,
+    19
+  ],
+  "std": "sample standard deviation over seeds"
+}
