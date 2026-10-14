@@ -883,6 +883,19 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
                     &format!("runs/s5-report/coherence-{arm}.json"),
                 ],
             ));
+            // The original 2609.33209 battery by arm (comparison with Jev), same bootstrap.
+            v.push(Step::new(
+                &format!("battery-{arm}"),
+                "sky-s5-report",
+                &[
+                    "coherence",
+                    &a,
+                    "--set",
+                    "battery_2609_33209",
+                    "--json",
+                    &format!("runs/s5-report/battery-{arm}.json"),
+                ],
+            ));
         }
     }
     if let Ok(sel) = final_selection(store) {
