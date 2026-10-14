@@ -10,6 +10,7 @@
 //! sky-s5-report selective <cal.dump> <eval dir> [--cal-src typed_decisions_train] [--json out.json]
 //! sky-s5-report pari1 --ref <dirs> --variant <dirs> [--json out.json]
 //! sky-s5-report pari2 --ref <dirs> --variant <dirs> [--json out.json]
+//! sky-s5-report pari3 --store <store> [--format q8_0] [--cal-src typed_decisions_train] [--json out.json] [--trajectory cascade.json]
 //! sky-s5-report summary --store <store> --out results.json
 //! ```
 //!
@@ -52,6 +53,16 @@
 //!   bench accuracy non-inferiority (0.02), monotonicity violations reduced by ≥ 30 % with an
 //!   interval of the difference below 0; secondary (Holm): MAD_neg, |Σ s − 1|, |s − c|,
 //!   additivity, description invariance, bench ECE.
+//! - `pari3` (exploratory, amendment 4): online escalation with audit on the bench dump of the
+//!   shipped model. Every escalated question and a share π of the accepted ones, drawn at random,
+//!   go to the auditor (the gold); `ê_t = err_t · O_t / P(O_t)` and, per type,
+//!   `λ_{t+1} = λ_t + η · 1{accepted} · (ê_t − α)`, from the plug-in threshold of the calibration
+//!   dump (`--cal-src`). The stream replays the bench twice its size with replacement, the second
+//!   half under a prevalence drift (hard questions and minority answers × 3 each), for
+//!   α ∈ {5, 10} %, π ∈ {0.1, 0.2, 0.5}, η = 0.005 and 20 stream seeds. Success in a cell: mean
+//!   estimated error of the accepted after the drift ≤ α + 0.01, with at most 1.2 times the
+//!   escalations of the fixed threshold after the drift; the bet succeeds when every cell does.
+//!   `--trajectory` writes 200 steps of stream seed 0 for the /live cascade demo.
 //! - `summary`: one compact JSON for the results page: every report of `runs/s5-report/`, the
 //!   frozen selections of `runs/s5-select/`, the validation summary of every s5 run, the log of
 //!   the test passes, and the shipped model by the pre-registered rule (lowest val NLL among the
@@ -1094,6 +1105,322 @@ mod native {
         json!({"by_alpha": out, "aurc": s.aurc, "coverage_at_5pct_error": s.coverage_at_5pct_error})
     }
 
+    // ------------------------------------------------------------------------- bet 3
+
+    /// Bet 3 (exploratory, amendment 4): risk levels, audit rates of the accepted questions,
+    /// stream seeds and step of the threshold update. Fixed before the first run.
+    pub const P3_ALPHAS: [f64; 2] = [0.05, 0.10];
+    pub const P3_PIS: [f64; 3] = [0.1, 0.2, 0.5];
+    pub const P3_SEEDS: u64 = 20;
+    pub const P3_ETA: f64 = 0.005;
+    /// Success: estimated error of the accepted after the drift ≤ α + margin, with at most
+    /// `P3_ESCALATIONS` times the escalations of the fixed threshold after the drift.
+    pub const P3_MARGIN: f64 = 0.01;
+    pub const P3_ESCALATIONS: f64 = 1.2;
+    /// Questions of the stream sampled into the /live trajectory.
+    const P3_TRACE: usize = 200;
+
+    /// Starting (and fixed) threshold of a type: the lowest max-p threshold of the 200-point grid
+    /// whose empirical error among the accepted calibration questions is at most α. A plug-in
+    /// choice without guarantee (Learn-then-Test certifies nothing at these α); 1 when none.
+    pub fn plugin_threshold(cal: &[&Item], alpha: f64) -> f64 {
+        let mut best = 1.0;
+        for i in 0..200 {
+            let t = 1.0 - i as f64 / 200.0;
+            let acc: Vec<&&Item> = cal.iter().filter(|it| it.probs[it.pred()] >= t).collect();
+            let errs = acc.iter().filter(|it| !it.correct()).count();
+            if !acc.is_empty() && errs as f64 <= alpha * acc.len() as f64 {
+                best = t;
+            }
+        }
+        best
+    }
+
+    /// Sampling weights of the bench after the drift (frozen scheme): × 3 for a hard question
+    /// (max p below the median of its type), × 3 for a minority answer (a gold option whose count
+    /// in its type is below the median count of the gold options of that type); they multiply.
+    pub fn drift_weights(bench: &[Item]) -> Vec<f64> {
+        let median = |mut v: Vec<f64>| -> f64 {
+            v.sort_by(f64::total_cmp);
+            quantile(&v, 0.5)
+        };
+        let mut conf: BTreeMap<&str, Vec<f64>> = BTreeMap::new();
+        let mut golds: BTreeMap<&str, BTreeMap<usize, usize>> = BTreeMap::new();
+        for it in bench {
+            conf.entry(&it.t).or_default().push(it.probs[it.pred()]);
+            *golds
+                .entry(&it.t)
+                .or_default()
+                .entry(it.gold())
+                .or_default() += 1;
+        }
+        let conf_med: BTreeMap<&str, f64> = conf.into_iter().map(|(t, v)| (t, median(v))).collect();
+        let gold_med: BTreeMap<&str, f64> = golds
+            .iter()
+            .map(|(t, g)| (*t, median(g.values().map(|&c| c as f64).collect())))
+            .collect();
+        bench
+            .iter()
+            .map(|it| {
+                let hard = it.probs[it.pred()] < conf_med[it.t.as_str()];
+                let count = golds[it.t.as_str()][&it.gold()] as f64;
+                let minority = count < gold_med[it.t.as_str()];
+                (if hard { 3.0 } else { 1.0 }) * (if minority { 3.0 } else { 1.0 })
+            })
+            .collect()
+    }
+
+    /// A replayed stream: `2 n` bench questions drawn with replacement, uniformly for the first
+    /// half and with [`drift_weights`] for the second (`true` after the drift).
+    pub fn p3_stream(n: usize, weights: &[f64], seed: u64) -> Vec<(usize, bool)> {
+        let mut rng = Rng::new(seed);
+        let mut cum = Vec::with_capacity(weights.len());
+        let mut total = 0.0;
+        for w in weights {
+            total += w;
+            cum.push(total);
+        }
+        let mut out: Vec<(usize, bool)> = (0..n).map(|_| (rng.below(n), false)).collect();
+        for _ in 0..n {
+            let u = rng.f64() * total;
+            out.push((cum.partition_point(|&c| c <= u).min(n - 1), true));
+        }
+        out
+    }
+
+    /// Inverse-probability estimate of an error: `err · O / P(O)`, with `P(O) = π` for an
+    /// accepted question (audited at random) and 1 for an escalated one (always audited).
+    pub fn ipw(wrong: bool, audited: bool, p_audit: f64) -> f64 {
+        if wrong && audited {
+            1.0 / p_audit
+        } else {
+            0.0
+        }
+    }
+
+    /// `λ_{t+1} = λ_t + η · 1{accepted} · (ê_t − α)`, kept in [0, 1].
+    pub fn p3_update(lambda: f64, accepted: bool, e_hat: f64, alpha: f64, eta: f64) -> f64 {
+        if accepted {
+            (lambda + eta * (e_hat - alpha)).clamp(0.0, 1.0)
+        } else {
+            lambda
+        }
+    }
+
+    /// Counts of one half of a stream, for the online and the fixed thresholds.
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct P3Half {
+        pub n: usize,
+        pub accepted: usize,
+        pub wrong: usize,
+        pub est: f64,
+        pub audited: usize,
+        pub fixed_accepted: usize,
+        pub fixed_wrong: usize,
+    }
+
+    impl P3Half {
+        fn rate(a: f64, b: usize) -> f64 {
+            if b > 0 {
+                a / b as f64
+            } else {
+                f64::NAN
+            }
+        }
+        pub fn error_est(&self) -> f64 {
+            Self::rate(self.est, self.accepted)
+        }
+        pub fn error_true(&self) -> f64 {
+            Self::rate(self.wrong as f64, self.accepted)
+        }
+        pub fn escalations(&self) -> usize {
+            self.n - self.accepted
+        }
+        pub fn fixed_escalations(&self) -> usize {
+            self.n - self.fixed_accepted
+        }
+    }
+
+    /// One step of a recorded trajectory.
+    pub struct P3Step {
+        pub lambda: f64,
+        pub accepted: bool,
+        pub audited: bool,
+        /// Estimated and true error of the accepted so far in the current half.
+        pub est: f64,
+        pub wrong: f64,
+    }
+
+    /// Replays `stream` with one threshold per type, starting at `lambda0` (also the fixed
+    /// threshold). Returns the two halves and the steps at `trace` positions.
+    pub fn p3_simulate(
+        bench: &[Item],
+        stream: &[(usize, bool)],
+        lambda0: &BTreeMap<String, f64>,
+        (alpha, pi, eta): (f64, f64, f64),
+        audit_seed: u64,
+        trace: &[usize],
+    ) -> ([P3Half; 2], Vec<P3Step>) {
+        let mut rng = Rng::new(audit_seed);
+        let mut lambda = lambda0.clone();
+        let mut halves = [P3Half::default(); 2];
+        let mut steps = Vec::with_capacity(trace.len());
+        for (pos, &(i, drifted)) in stream.iter().enumerate() {
+            let it = &bench[i];
+            let p = it.probs[it.pred()];
+            let wrong = !it.correct();
+            let l0 = lambda0.get(&it.t).copied().unwrap_or(1.0);
+            let l = lambda.entry(it.t.clone()).or_insert(l0);
+            let before = *l;
+            let accepted = p >= before;
+            let audited = !accepted || rng.f64() < pi;
+            let e_hat = ipw(wrong, audited, if accepted { pi } else { 1.0 });
+            *l = p3_update(before, accepted, e_hat, alpha, eta);
+            let h = &mut halves[usize::from(drifted)];
+            h.n += 1;
+            h.audited += usize::from(audited);
+            if accepted {
+                h.accepted += 1;
+                h.wrong += usize::from(wrong);
+                h.est += e_hat;
+            }
+            if p >= l0 {
+                h.fixed_accepted += 1;
+                h.fixed_wrong += usize::from(wrong);
+            }
+            if trace.binary_search(&pos).is_ok() {
+                steps.push(P3Step {
+                    lambda: before,
+                    accepted,
+                    audited,
+                    est: h.error_est(),
+                    wrong: h.error_true(),
+                });
+            }
+        }
+        (halves, steps)
+    }
+
+    /// Mean and 95 % range over the stream seeds (NaN draws left out).
+    fn over_seeds(v: &[f64]) -> Value {
+        let mut s: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
+        s.sort_by(f64::total_cmp);
+        json!({"mean": mean(s.iter().copied()), "lo": quantile(&s, 0.025), "hi": quantile(&s, 0.975)})
+    }
+
+    /// Bet 3 on the bench dump of one model, thresholds started on its calibration dump.
+    /// With `trajectory`, also the /live sample of stream seed 0 for every (α, π).
+    pub fn pari3(cal: &[Item], bench: &[Item], with_trajectory: bool) -> (Value, Option<Value>) {
+        let mut types: Vec<String> = bench.iter().map(|i| i.t.clone()).collect();
+        types.sort();
+        types.dedup();
+        let weights = drift_weights(bench);
+        let n = bench.len();
+        let streams: Vec<Vec<(usize, bool)>> =
+            (0..P3_SEEDS).map(|s| p3_stream(n, &weights, s)).collect();
+        let trace: Vec<usize> = (0..P3_TRACE).map(|j| j * 2 * n / P3_TRACE).collect();
+        let mut cells = Vec::new();
+        let mut traj_cells = Vec::new();
+        let mut lambda0_all = serde_json::Map::new();
+        let mut success = true;
+        for alpha in P3_ALPHAS {
+            let lambda0: BTreeMap<String, f64> = types
+                .iter()
+                .map(|t| {
+                    let c: Vec<&Item> = cal.iter().filter(|i| &i.t == t).collect();
+                    (t.clone(), plugin_threshold(&c, alpha))
+                })
+                .collect();
+            lambda0_all.insert(format!("{:.0}%", alpha * 100.0), json!(lambda0));
+            for pi in P3_PIS {
+                let mut per: Vec<[P3Half; 2]> = Vec::new();
+                for (s, stream) in streams.iter().enumerate() {
+                    let tr: &[usize] = if s == 0 { &trace } else { &[] };
+                    let (h, steps) = p3_simulate(
+                        bench,
+                        stream,
+                        &lambda0,
+                        (alpha, pi, P3_ETA),
+                        1000 + s as u64,
+                        tr,
+                    );
+                    if s == 0 && with_trajectory {
+                        traj_cells.push(json!({
+                            "alpha": alpha, "pi": pi, "lambda0": lambda0,
+                            "steps": steps.iter().map(|st| json!({
+                                "lambda": (st.lambda * 1e4).round() / 1e4, "accepted": st.accepted,
+                                "audited": st.audited, "est": st.est, "wrong": st.wrong,
+                            })).collect::<Vec<_>>(),
+                            "after": {"error_est": h[1].error_est(), "error_true": h[1].error_true(),
+                                      "escalations": h[1].escalations(),
+                                      "fixed_escalations": h[1].fixed_escalations()},
+                        }));
+                    }
+                    per.push(h);
+                }
+                let col = |f: &dyn Fn(&P3Half) -> f64, half: usize| -> Vec<f64> {
+                    per.iter().map(|h| f(&h[half])).collect()
+                };
+                let half = |k: usize| {
+                    json!({
+                        "coverage": over_seeds(&col(&|h| h.accepted as f64 / h.n as f64, k)),
+                        "error_est": over_seeds(&col(&P3Half::error_est, k)),
+                        "error_true": over_seeds(&col(&P3Half::error_true, k)),
+                        "escalations": over_seeds(&col(&|h| h.escalations() as f64, k)),
+                        "audit_rate": over_seeds(&col(&|h| h.audited as f64 / h.n as f64, k)),
+                        "fixed": {
+                            "coverage": over_seeds(&col(&|h| h.fixed_accepted as f64 / h.n as f64, k)),
+                            "error_true": over_seeds(&col(&|h| P3Half::rate(h.fixed_wrong as f64, h.fixed_accepted), k)),
+                            "escalations": over_seeds(&col(&|h| h.fixed_escalations() as f64, k)),
+                        },
+                    })
+                };
+                let est_after = mean(
+                    col(&P3Half::error_est, 1)
+                        .into_iter()
+                        .filter(|x| x.is_finite()),
+                );
+                let esc = mean(col(&|h| h.escalations() as f64, 1));
+                let esc_fixed = mean(col(&|h| h.fixed_escalations() as f64, 1));
+                let ratio = esc / esc_fixed;
+                let error_ok = est_after <= alpha + P3_MARGIN;
+                let esc_ok = ratio <= P3_ESCALATIONS;
+                success &= error_ok && esc_ok;
+                cells.push(json!({
+                    "alpha": alpha, "pi": pi,
+                    "before": half(0), "after": half(1),
+                    "error_est_after": est_after, "escalation_ratio_after": ratio,
+                    "criteria": {"error_est_after_le_alpha_plus_margin": error_ok,
+                                 "escalations_le_ratio": esc_ok},
+                    "seeds_error_ok": col(&P3Half::error_est, 1).iter().filter(|&&e| e <= alpha + P3_MARGIN).count(),
+                    "success": error_ok && esc_ok,
+                }));
+            }
+        }
+        let report = json!({
+            "exploratory": true,
+            "n_bench": n, "n_cal": cal.len(), "stream_len": 2 * n, "seeds": P3_SEEDS,
+            "eta": P3_ETA, "margin": P3_MARGIN, "escalation_ratio_max": P3_ESCALATIONS,
+            "lambda0": lambda0_all,
+            "cells": cells,
+            "success": success,
+        });
+        let traj = with_trajectory.then(|| {
+            json!({
+                "eta": P3_ETA, "stream_len": 2 * n, "drift_at": n,
+                "items": trace.iter().map(|&pos| {
+                    let (i, drifted) = streams[0][pos];
+                    let it = &bench[i];
+                    json!({"pos": pos, "t": it.t, "k": it.probs.len(),
+                           "probs": it.probs.iter().map(|p| (p * 1e3).round() / 1e3).collect::<Vec<_>>(),
+                           "gold": it.gold(), "pred": it.pred(), "drift": drifted})
+                }).collect::<Vec<_>>(),
+                "cells": traj_cells,
+            })
+        });
+        (report, traj)
+    }
+
     // ------------------------------------------------------------------------- bets
 
     /// The English zero-shot items of a run, tagged with their set index.
@@ -1335,7 +1662,8 @@ mod native {
         }
     }
 
-    pub fn summary(store: &Path) -> Value {
+    /// The validation summary of every s5 run of the store, by run name.
+    fn run_summaries(store: &Path) -> serde_json::Map<String, Value> {
         let mut runs = serde_json::Map::new();
         let mut dirs: Vec<PathBuf> = std::fs::read_dir(store.join("runs"))
             .map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).collect())
@@ -1364,6 +1692,11 @@ mod native {
                        "all": v["all"], "coherence": v["coherence"]}),
             );
         }
+        runs
+    }
+
+    pub fn summary(store: &Path) -> Value {
+        let runs = run_summaries(store);
         let log: Vec<Value> = std::fs::read_to_string(store.join("runs/s5-test-log.jsonl"))
             .unwrap_or_default()
             .lines()
@@ -1423,7 +1756,7 @@ mod native {
         let args: Vec<String> = std::env::args().skip(1).collect();
         let usage = || -> ! {
             eprintln!(
-                "usage: sky-s5-report calibrate|gates|coherence|robust|selective|pari1|pari2|summary ... (see the source)"
+                "usage: sky-s5-report calibrate|gates|coherence|robust|selective|pari1|pari2|pari3|summary ... (see the source)"
             );
             std::process::exit(2)
         };
@@ -1476,6 +1809,37 @@ mod native {
                 std::fs::write(&out, v.to_string() + "\n").unwrap_or_else(|e| panic!("{out}: {e}"));
                 eprintln!("wrote {out} (shipped: {})", v["shipped"]);
             }
+            "pari3" => {
+                let store = PathBuf::from(need("--store"));
+                let format = arg(&args, "--format").unwrap_or_else(|| "q8_0".into());
+                let src = arg(&args, "--cal-src").unwrap_or_else(|| "typed_decisions_train".into());
+                let reports = json_dir(&store.join("runs/s5-report"));
+                let selection = json_dir(&store.join("runs/s5-select"));
+                let Some(ship) = shipped(&reports, &selection, &run_summaries(&store)) else {
+                    eprintln!("sky-s5-report pari3: no shipped model yet (bet 1 not analysed)");
+                    std::process::exit(1)
+                };
+                let rd = store.join(format!("runs/s5-{ship}"));
+                let cal: Vec<Item> = read(&rd.join(format!("cal.{format}.dump.jsonl")))
+                    .into_iter()
+                    .filter(|it| it.src.starts_with(src.as_str()))
+                    .collect();
+                let bench = dump(&rd.join(format!("eval-{format}")), BENCH);
+                let traj_path = arg(&args, "--trajectory");
+                let (mut report, traj) = pari3(&cal, &bench, traj_path.is_some());
+                let about = json!({"run": ship, "format": format, "cal_src": src});
+                for (k, v) in about.as_object().into_iter().flatten() {
+                    report[k] = v.clone();
+                }
+                if let (Some(p), Some(mut t)) = (traj_path, traj) {
+                    for (k, v) in about.as_object().into_iter().flatten() {
+                        t[k] = v.clone();
+                    }
+                    std::fs::write(&p, t.to_string() + "\n").unwrap_or_else(|e| panic!("{p}: {e}"));
+                    eprintln!("wrote {p}");
+                }
+                emit(report, &args)
+            }
             "pari2" => emit(
                 pari2(
                     &list(&need("--ref")),
@@ -1502,6 +1866,110 @@ mod native {
                 target,
                 uid: uid.into(),
             }
+        }
+
+        #[test]
+        fn ipw_error_estimate_is_unbiased() {
+            let mut rng = Rng::new(7);
+            let n = 200_000;
+            for (e, pi) in [(0.05, 0.1), (0.05, 0.5), (0.2, 0.2), (0.3, 1.0)] {
+                let sum: f64 = (0..n).map(|_| ipw(rng.f64() < e, rng.f64() < pi, pi)).sum();
+                let sd = ((e / pi - e * e) / n as f64).sqrt();
+                let m = sum / n as f64;
+                assert!((m - e).abs() < 4.0 * sd, "e {e} pi {pi}: mean {m}");
+            }
+            // an escalated question is always audited: the estimate is the error itself
+            assert_eq!(ipw(true, true, 1.0), 1.0);
+            assert_eq!(ipw(false, true, 1.0), 0.0);
+            assert_eq!(ipw(true, false, 0.2), 0.0);
+        }
+
+        #[test]
+        fn threshold_update_rule() {
+            let (a, eta) = (0.05, 0.01);
+            // escalated: no update
+            assert_eq!(p3_update(0.5, false, 10.0, a, eta), 0.5);
+            // accepted, no audited error: down by η α
+            assert!((p3_update(0.5, true, 0.0, a, eta) - (0.5 - eta * a)).abs() < 1e-15);
+            // accepted, audited error at π = 0.1: up by η (10 − α)
+            assert!((p3_update(0.5, true, 10.0, a, eta) - (0.5 + eta * (10.0 - a))).abs() < 1e-12);
+            assert_eq!(p3_update(0.99, true, 10.0, a, eta), 1.0);
+            assert_eq!(p3_update(0.0, true, 0.0, a, eta), 0.0);
+        }
+
+        /// Calibrated binary questions: max p uniform in [0.5, 1], right with probability max p.
+        fn calibrated(n: usize, seed: u64) -> Vec<Item> {
+            let mut rng = Rng::new(seed);
+            (0..n)
+                .map(|i| {
+                    let p = 0.5 + 0.5 * rng.f64();
+                    let gold = usize::from(rng.f64() >= p);
+                    let mut x = it(&i.to_string(), &[p, 1.0 - p], gold);
+                    x.t = "noul".into();
+                    x
+                })
+                .collect()
+        }
+
+        #[test]
+        fn online_threshold_tracks_the_error_level() {
+            // Without drift the estimated error of the accepted settles near α from a threshold
+            // far too low (0.5 accepts everything: error 25 %).
+            let bench = calibrated(5000, 3);
+            let stream = p3_stream(bench.len(), &vec![1.0; bench.len()], 0);
+            let stream: Vec<(usize, bool)> =
+                stream.into_iter().map(|(i, _)| (i, i % 2 == 1)).collect();
+            let lambda0 = BTreeMap::from([("noul".to_string(), 0.5)]);
+            for pi in [0.2, 0.5] {
+                let (h, _) = p3_simulate(&bench, &stream, &lambda0, (0.1, pi, 0.005), 9, &[]);
+                let all = P3Half {
+                    n: h[0].n + h[1].n,
+                    accepted: h[0].accepted + h[1].accepted,
+                    wrong: h[0].wrong + h[1].wrong,
+                    est: h[0].est + h[1].est,
+                    ..Default::default()
+                };
+                assert!((all.error_true() - 0.1).abs() < 0.03, "pi {pi}: {all:?}");
+                assert!(
+                    (all.error_est() - all.error_true()).abs() < 0.03,
+                    "pi {pi}: {all:?}"
+                );
+                // the fixed threshold 0.5 keeps the error of the whole bench
+                let fixed = (h[0].fixed_wrong + h[1].fixed_wrong) as f64 / 10_000.0;
+                assert!((fixed - 0.25).abs() < 0.03, "{fixed}");
+            }
+        }
+
+        #[test]
+        fn plugin_threshold_and_drift_weights() {
+            let cal = calibrated(4000, 5);
+            let refs: Vec<&Item> = cal.iter().collect();
+            // error of the accepted above t is (1 − t) / 2 for this model: α = 0.1 at t ≈ 0.8
+            let t = plugin_threshold(&refs, 0.1);
+            assert!((t - 0.8).abs() < 0.04, "{t}");
+            assert!(plugin_threshold(&refs, 0.0) > 0.95);
+            // no threshold keeps the error at α: 1 (escalate everything)
+            let wrong = [it("w", &[0.9, 0.1], 1)];
+            assert_eq!(
+                plugin_threshold(&wrong.iter().collect::<Vec<_>>(), 0.1),
+                1.0
+            );
+            // hard (below the median max p) × 3, minority gold × 3
+            let b = vec![
+                it("a", &[0.9, 0.1], 0),
+                it("b", &[0.8, 0.2], 0),
+                it("c", &[0.6, 0.4], 0),
+                it("d", &[0.3, 0.7], 1),
+            ];
+            assert_eq!(drift_weights(&b), vec![1.0, 1.0, 3.0, 9.0]);
+            // the drifted half follows the weights
+            let w = drift_weights(&b);
+            let s = p3_stream(4, &w, 1);
+            assert!(s[..4].iter().all(|x| !x.1) && s[4..].iter().all(|x| x.1));
+            let big: Vec<f64> = (0..20_000).map(|i| w[i % 4]).collect();
+            let s = p3_stream(20_000, &big, 2);
+            let hard_minority = s[20_000..].iter().filter(|x| x.0 % 4 == 3).count();
+            assert!((hard_minority as f64 / 20_000.0 - 9.0 / 14.0).abs() < 0.02);
         }
 
         #[test]

@@ -344,7 +344,7 @@ Pour chaque run évalué, la chaîne est la suivante :
 - AURC ;
 - couverture à ≤ 5 % d'erreur.
 
-**Promesse :** P(erreur | accepté) ≤ α, par rapport au gold. Le pari 3 (en ligne, avec audit) n'est pas lancé ici.
+**Promesse :** P(erreur | accepté) ≤ α, par rapport au gold. Le pari 3 (en ligne, avec audit) n'est pas lancé ici ; il l'a été ensuite, comme analyse exploratoire (amendement 4).
 
 ## 7. Statistiques
 
@@ -372,7 +372,7 @@ Pour chaque run évalué, la chaîne est la suivante :
 - **Comparaison à Jev (MAD_neg 0,064, Σ s 1,14, |s − c| 0,091) :** faite sur la batterie d'origine de 2609.33209, convertie en jeu s5 (amendement 1). Elle reste **descriptive** : une seule mesure par modèle, sans test d'hypothèse. Nos négations reformulées forment un autre jeu, rapporté séparément.
 - **Repoussés :**
   - le Q4 ;
-  - le pari 3 en ligne ;
+  - le pari 3 en ligne (lancé ensuite, exploratoire : amendement 4) ;
   - la phase 6 (s5 en + fr, mmBERT-small).
 - **Repli du français :** les démos françaises de /live affichent « français indisponible : s5-fr en échec, voir résultats » et basculent sur les presets anglais.
 - **Licences :**
@@ -478,3 +478,37 @@ B-i, graine 0, atteint 0,529 sur la même validation. Sélectionner sur des runs
 
 Une ligne de la section 3 (sources exclues) a été reformulée pour ne plus nommer le fournisseur de GLM. Aucun jeu, aucun critère, aucune marge ni aucune règle n'a changé. La version d'origine reste dans l'historique du dépôt ; ses hashes sont ceux journalisés avec chaque passage sur le test.
 
+### Amendement 4 : 14/10/2026 vers 11 h, pari 3 lancé après coup, paramètres fixés avant son premier passage
+
+**Statut.** Le pari 3 (escalade en ligne avec audit) avait été repoussé (section 8). Il est lancé après les résultats de la Phase 7 hors ligne, que l'on connaît : sur la calibration pré-enregistrée, Learn-then-Test ne certifie aucun seuil pour α ≤ 10 %. Le pari 3 est donc **exploratoire**. Il est publié tel quel, réussite ou échec, et n'appuie aucune revendication confirmatoire. Tout ce qui suit est fixé dans le code (`sky-s5-report pari3`, commit de cet amendement) avant son premier passage.
+
+**Modèle et données :**
+
+- le modèle livré par la règle pré-enregistrée, au format q8_0 calibré ;
+- le flux rejoue le dump du bench de ce modèle (`typed_decisions_test`), déjà analysé hors ligne ;
+- la calibration est son dump `cal`, restreint à la source `typed_decisions_train`, comme la calibration principale de la Phase 7.
+
+**Seuil de départ, par type.** C'est le plus bas des 200 seuils de max p dont l'erreur empirique des acceptés de calibration est ≤ α. Ce choix « plug-in » n'a pas de garantie, puisque LTT ne certifie rien à ces α. Le même seuil, gardé fixe, sert de **seuil figé** de comparaison.
+
+**Flux.** Avec n la taille du bench, chaque flux compte 2n questions tirées avec remise (graine s) :
+
+- **première moitié :** tirage uniforme ;
+- **seconde moitié, dérive de prévalence :** poids × 3 pour une question difficile (max p sous la médiane de son type) et × 3 pour une réponse minoritaire (option gold dont l'effectif dans son type est sous la médiane des effectifs des options gold de ce type). Les deux facteurs se multiplient.
+
+**Audit.** L'auditeur reçoit tous les escaladés et chaque accepté avec une probabilité π, tirée au hasard (graine 1000 + s). Dans l'expérience, l'auditeur est le gold du jeu.
+
+**Mise à jour, par type :**
+
+- ê_t = err_t · O_t / P(O_t), avec P(O_t) = 1 pour un escaladé et π pour un accepté ;
+- λ_{t+1} = λ_t + η · 1{accepté_t} · (ê_t − α), borné dans [0, 1].
+
+**Grille :** α ∈ {5, 10} %, π ∈ {0,1 ; 0,2 ; 0,5}, η = 0,005, 20 graines de flux (0 à 19).
+
+**Critère, par cellule (α, π) :**
+
+- la moyenne sur les graines de l'erreur estimée des acceptés de la seconde moitié est ≤ α + 0,01 ;
+- la moyenne des escalades de la seconde moitié est au plus 1,2 fois celle du seuil figé sur les mêmes flux.
+
+Le pari réussit si toutes les cellules réussissent.
+
+**Rapporté (`runs/s5-report/pari3.json`) :** erreur estimée et erreur vraie des acceptés avant et après la dérive, couverture, escalades en ligne et au seuil figé, taux d'audit, et nombre de graines qui respectent le critère d'erreur. Une trajectoire de la graine 0 (200 pas, sans aucune sortie GLM) alimente la démo cascade de /live.
