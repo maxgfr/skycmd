@@ -464,6 +464,12 @@ fn finished(store: &Path) -> Vec<(String, String)> {
                 }
             }
         }
+        // Amendments 2 and 3: the sensitivity runs and the long run of /live.
+        for r in sens_runs(&sel, FINAL_STEP_CHOICES[0]) {
+            v.push((r.name, r.variant));
+        }
+        let long = long_run(&sel);
+        v.push((long.name, long.variant));
     }
     v.retain(|(r, _)| store.join(format!("runs/s5-{r}/val.json")).exists());
     v
