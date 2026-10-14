@@ -807,14 +807,35 @@ fn progress_label(p: &Progress, s: &S2State) -> String {
     }
 }
 
+/// Refuses to resume a run under another kind of budget or another step budget: the
+/// schedule position (`frac`) would jump. A time budget may still be extended.
+fn check_resume_budget(saved: Option<u64>, progress: &Progress) -> Result<()> {
+    match (saved, progress.steps()) {
+        (Some(n), Some(m)) if n != m => {
+            bail!(
+                "--steps {m} does not match the resumed run (--steps {n}); resume with --steps {n}"
+            )
+        }
+        (Some(n), None) => {
+            bail!("the resumed run has a step budget (--steps {n}); resume with --steps {n}, not --minutes")
+        }
+        (None, Some(_)) => bail!("the resumed run has a time budget; resume with --minutes"),
+        _ => Ok(()),
+    }
+}
+
 /// Applies the budget to a new or resumed session and `--init-params`; returns the step
 /// at which `--stop-after` ends this invocation.
 fn start(
     s: &mut S2Session,
+    resumed: bool,
     progress: &Progress,
     stop_after: Option<u64>,
     init_params: Option<&Path>,
 ) -> Result<Option<u64>> {
+    if resumed {
+        check_resume_budget(s.state.steps, progress)?;
+    }
     if let Progress::Time { budget_secs } = *progress {
         s.state.budget_secs = budget_secs;
     }
@@ -823,6 +844,12 @@ fn start(
         let src = params::load(path)?;
         replace_params(&mut s.params, &src)
             .with_context(|| format!("loading {}", path.display()))?;
+        if resumed {
+            println!(
+                "--init-params replaces the resumed weights of step {} (optimizer state and RNG kept)",
+                s.state.step
+            );
+        }
         println!("parameters from {} ({} tensors)", path.display(), src.len());
     }
     let stop_at = stop_step(s.state.step, stop_after)?;
@@ -932,7 +959,8 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
         bail!("corpus too small");
     }
     let last = a.out.join("last");
-    let mut s = if a.resume && last.join("state.json").exists() {
+    let resumed = a.resume && last.join("state.json").exists();
+    let mut s = if resumed {
         let s = S2Session::load(&last)?;
         println!("resumed from {} at step {}", last.display(), s.state.step);
         s
@@ -950,7 +978,13 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
             json!({"batch": a.batch, "seq": a.seq, "text": a.text, "tokenizer": a.tokenizer});
         s
     };
-    let stop_at = start(&mut s, &a.progress, a.stop_after, a.init_params.as_deref())?;
+    let stop_at = start(
+        &mut s,
+        resumed,
+        &a.progress,
+        a.stop_after,
+        a.init_params.as_deref(),
+    )?;
     s.cfg.bf16 = a.bf16;
     s.compile = a.compile;
     s.num_weight = a.num_weight;
@@ -1038,6 +1072,17 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
             save(&s)?;
             last_ckpt = Instant::now();
         }
+    }
+    if !a.progress.done(s.state.step, s.state.elapsed_secs) {
+        // --stop-after: save and exit; the validation and the decision init wait for the
+        // invocation that ends the schedule.
+        save(&s)?;
+        println!(
+            "stopped at step {}: checkpoint {}",
+            s.state.step,
+            last.display()
+        );
+        return Ok(());
     }
     let (ce, mse) = if val.is_empty() {
         (f64::NAN, f64::NAN)
@@ -1188,7 +1233,8 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     }
     std::fs::create_dir_all(&a.out)?;
     let last = a.out.join("last");
-    let mut s = if a.resume && last.join("state.json").exists() {
+    let resumed = a.resume && last.join("state.json").exists();
+    let mut s = if resumed {
         let s = S2Session::load(&last)?;
         println!("resumed from {} at step {}", last.display(), s.state.step);
         s
@@ -1219,7 +1265,13 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             "init": a.init, "tokenizer": tok_path, "qat_frac": a.qat_frac, "loop_dropout": a.loop_dropout});
         s
     };
-    let stop_at = start(&mut s, &a.progress, a.stop_after, a.init_params.as_deref())?;
+    let stop_at = start(
+        &mut s,
+        resumed,
+        &a.progress,
+        a.stop_after,
+        a.init_params.as_deref(),
+    )?;
     s.cfg.bf16 = a.bf16;
     s.compile = a.compile;
     s.dis_beta = a.dis.map(|b0| model::dis_betas(s.cfg.n_exits(), b0));
@@ -1395,6 +1447,16 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             save(&s, &last)?;
             last_ckpt = Instant::now();
         }
+    }
+    if !a.progress.done(s.state.step, s.state.elapsed_secs) {
+        // --stop-after: save and exit without the final validation.
+        save(&s, &last)?;
+        println!(
+            "stopped at step {}: checkpoint {}",
+            s.state.step,
+            last.display()
+        );
+        return Ok(());
     }
     println!("done: {} steps", s.state.step);
     let f = validate(&s, &data, &val, false, "f32", &mut log)?;

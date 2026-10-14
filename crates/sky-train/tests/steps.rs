@@ -331,3 +331,157 @@ fn s2_decide_stops_after_k_steps_from_given_params() {
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains(&format!("tensor {name}")), "{err}");
 }
+
+#[test]
+fn s2_decide_refuses_another_budget_on_resume() {
+    let tmp = tempfile::tempdir().unwrap();
+    let records = tmp.path().join("syn.jsonl");
+    write_records(&records, 80);
+    let a = tmp.path().join("a");
+    ok(&decide(
+        &records,
+        &a,
+        &["--steps", "10", "--stop-after", "2", "--qat-frac", "0"],
+    ));
+    // --stop-after skips the final validation: no "final" record in the log.
+    let log = std::fs::read_to_string(a.join("log.jsonl")).unwrap();
+    assert!(!log.contains("\"final\""), "{log}");
+
+    for (flags, msg) in [
+        (&["--steps", "12"][..], "--steps 12 does not match"),
+        (&["--minutes", "1"][..], "not --minutes"),
+    ] {
+        let o = decide(
+            &records,
+            &a,
+            &[flags, &["--stop-after", "1", "--qat-frac", "0", "--resume"]].concat(),
+        );
+        assert!(!o.status.success());
+        let err = String::from_utf8_lossy(&o.stderr);
+        assert!(err.contains(msg), "{err}");
+        assert_eq!(
+            state(&a)["step"],
+            2,
+            "a refused resume leaves the checkpoint"
+        );
+    }
+
+    // The same budget resumes to the end, which runs the final validation.
+    ok(&decide(
+        &records,
+        &a,
+        &["--steps", "10", "--qat-frac", "0", "--resume"],
+    ));
+    assert_eq!(state(&a)["step"], 10);
+    let log = std::fs::read_to_string(a.join("log.jsonl")).unwrap();
+    assert!(log.contains("\"final\""), "{log}");
+
+    // A time-budgeted run does not resume under a step budget.
+    let t = tmp.path().join("t");
+    ok(&decide(
+        &records,
+        &t,
+        &["--minutes", "10", "--stop-after", "1", "--qat-frac", "0"],
+    ));
+    let o = decide(
+        &records,
+        &t,
+        &["--steps", "10", "--stop-after", "1", "--resume"],
+    );
+    assert!(!o.status.success());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("time budget"));
+}
+
+/// MLM text with numbers for `s2-pretrain`.
+fn write_text(dir: &Path, n: usize) {
+    std::fs::create_dir_all(dir).unwrap();
+    let lines: Vec<String> = (0..n)
+        .map(|i| {
+            serde_json::json!({"text": format!(
+                "gate {} is free, wind {} knots, lane {} blocked after {} minutes",
+                i % 7, i % 23, (i * 3) % 11, i % 60
+            )})
+            .to_string()
+        })
+        .collect();
+    std::fs::write(dir.join("mlm.jsonl"), lines.join("\n")).unwrap();
+}
+
+fn pretrain(text: &Path, out: &Path, extra: &[&str]) -> std::process::Output {
+    let root = repo();
+    Command::new(env!("CARGO_BIN_EXE_sky-train"))
+        .arg("s2-pretrain")
+        .arg("--config")
+        .arg(root.join("configs/s2-pico.json"))
+        .arg("--tokenizer")
+        .arg(root.join("crates/sky-infer/tests/fixtures/small_tokenizer_s2.json"))
+        .arg("--text")
+        .arg(text)
+        .arg("--out")
+        .arg(out)
+        .args(["--batch", "4", "--seq", "32", "--val-batches", "1"])
+        .args(["--log-every", "1", "--eval-every", "1000"])
+        .args(extra)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn s2_pretrain_stops_after_k_steps_without_the_decision_init() {
+    let tmp = tempfile::tempdir().unwrap();
+    let text = tmp.path().join("text");
+    write_text(&text, 400);
+    let a = tmp.path().join("a");
+    let b = tmp.path().join("b");
+
+    // Round 1: 2 of 5 steps; `last` is saved, `init` waits for the end of the schedule.
+    ok(&pretrain(&text, &a, &["--steps", "5", "--stop-after", "2"]));
+    let s = state(&a);
+    assert_eq!(s["step"], 2);
+    assert_eq!(s["steps"], 5);
+    assert!(!a.join("init").exists(), "--stop-after wrote init/");
+    let trained = params::load(&a.join("last/model.safetensors")).unwrap();
+
+    // A fresh run from these parameters at zero learning rate keeps them exactly.
+    let init = a.join("last/model.safetensors").display().to_string();
+    ok(&pretrain(
+        &text,
+        &b,
+        &[
+            "--steps",
+            "5",
+            "--stop-after",
+            "1",
+            "--seed",
+            "7",
+            "--adam-lr",
+            "0",
+            "--muon-lr",
+            "0",
+            "--init-params",
+            &init,
+        ],
+    ));
+    assert_eq!(state(&b)["step"], 1);
+    assert_same(
+        &params::load(&b.join("last/model.safetensors")).unwrap(),
+        &trained,
+    );
+    assert!(!b.join("init").exists());
+
+    // Another step budget is refused on resume.
+    let o = pretrain(&text, &a, &["--steps", "6", "--resume"]);
+    assert!(!o.status.success());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("--steps 6 does not match"));
+
+    // Round 2 resumes with --init-params (logged) and ends the schedule: init/ appears.
+    let o = pretrain(
+        &text,
+        &a,
+        &["--steps", "5", "--resume", "--init-params", &init],
+    );
+    ok(&o);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("replaces the resumed weights"));
+    assert_eq!(state(&a)["step"], 5);
+    assert!(a.join("init/model.safetensors").exists());
+}
