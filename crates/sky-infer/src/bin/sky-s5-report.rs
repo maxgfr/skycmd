@@ -148,8 +148,12 @@ mod native {
     }
 
     /// The dumps of `set` in several runs, checked to hold the same questions in the same order.
+    /// A set that some runs lack is missing for the whole arm (every run comes back empty).
     fn runs(dirs: &[PathBuf], set: &str) -> Vec<Vec<Item>> {
         let v: Vec<Vec<Item>> = dirs.iter().map(|d| dump(d, set)).collect();
+        if v.iter().any(Vec::is_empty) {
+            return vec![Vec::new(); v.len()];
+        }
         for (d, r) in dirs.iter().zip(&v).skip(1) {
             assert_eq!(
                 r.len(),
