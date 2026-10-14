@@ -98,7 +98,33 @@ Everything is chosen on validation only:
 
 ## Results
 
-The verdicts, with their 95% intervals (paired bootstrap over items and seeds), are on [the results page](/results/). That page reads them from the analysis files, so nothing is copied by hand.
+The full tables, with 95% intervals (paired bootstrap over items and seeds), are on [the results page](/results/), read from the analysis files. In short, every pre-registered criterion was missed, each for a reason worth knowing.
+
+### Iso is more accurate but calibrated worse
+
+On the fitted bench, B\* (iso) reaches 0.674 against 0.429 for A′ (Laya format), three seeds each. The ECE margin fails: 0.088 against 0.057.
+
+The cause shows on validation. B\* is underconfident on typed decisions (confidence 0.59 for an accuracy of 0.71). Its temperatures were fitted on a validation split dominated by the corpus, and they do not transfer.
+
+NLL and Brier, proper scores that also reward calibration, favour B\*. Calibrating per source would probably fix the ECE, but it was not pre-registered, so bet 1 stays a failure.
+
+### Choosing a learning rate on short runs is risky
+
+All 12 exploration runs lasted 600 steps. Both variants picked the highest rate, 2e-4. At 2000 steps the A′ finalists became unstable: one seed plateaued after a gradient spike at step 400.
+
+The sensitivity analysis declared during the night (A′ at 1e-4) narrows the gap to +0.079 in accuracy. It does not change the verdict.
+
+### Coherence losses work on what they train
+
+On A′, λ = 0.1 cuts \|Σ s − 1\| from 0.79 to 0.12 and \|s − c\| from 0.19 to 0.04. The held-out identity, monotonicity, could not be measured: the model at λ = 0 is no better than the majority class on "x or y" questions.
+
+### Quantization costs nothing measurable
+
+Per seed, q8_0 moves the ECE of B\* by less than 0.003 and its accuracy by at most 0.3 points. The pre-registered interval resamples seeds independently, which makes it too wide for the 0.01 margin, so Phase 5 is reported as failed.
+
+### The model on /live
+
+The model on /live is a longer B\* run: 8000 steps instead of 2000, declared during the night and outside the bets. It reaches 0.696 on the fitted bench (oscar-1-17m: 0.682 on the same records) and 21 of the 30 English demo cases. It is a 20.7 MB GGUF that answers in about 20 ms in the browser.
 
 ## What is not done yet
 

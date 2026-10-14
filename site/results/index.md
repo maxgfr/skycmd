@@ -16,6 +16,37 @@ Every property below carries a status:
 - **held out of training**: never in the loss or the targets, so a gain there is a real generalization.
 - **result**: a measured cost or benefit.
 
+## In short
+
+All three pre-registered criteria were missed, and the reasons are instructive. The pre-registration was committed before any test pass, and so were the three amendments made during the night (each explains what had been seen when it was written). Every test pass is logged; the count is in the tables below.
+
+**Bet 1 failed, on calibration and not on accuracy.**
+
+- **Accuracy.** On the fitted bench, the iso model B\* is far more accurate than the same encoder in the Laya format A′: 0.674 against 0.429 (3 seeds each; +0.245, 95% CI [+0.136, +0.321]).
+- **ECE.** Its top-label ECE is worse: 0.088 against 0.057 (+0.031, CI [+0.006, +0.054]), and the margin fixed in advance was +0.01.
+- **Proper scores.** NLL and Brier, which also reward calibration, are both better for B\* (Holm-adjusted p = 0.003).
+- **Cause, seen on validation.** B\* is underconfident on typed decisions: mean confidence 0.59 for an accuracy of 0.71. Its temperatures, fitted on a validation split dominated by other sources, do not correct that. A per-source calibration was not pre-registered.
+- **The A′ caveat.** The A′ finalists were unstable at the learning rate chosen on short runs. Against A′ at the next lower rate (amendment 2), the conclusion is the same: accuracy +0.079 [+0.054, +0.106], ECE +0.020 [−0.001, +0.042].
+
+**Bet 2 improved only the trained identities.** Because bet 1 failed, the pre-registered support was A′.
+
+- With λ\* = 0.1, the partition and cross-format errors drop sharply: \|Σ s − 1\| goes from 0.79 to 0.12, and \|s − c\| from 0.19 to 0.04 (Holm p = 0.0025).
+- MAD_neg (0.028) and the sum Σ s (0.972) meet their thresholds.
+- The held-out identity, monotonicity, is not measurable. At λ = 0 the model is not competent on "x or y" questions: accuracy 0.528 [0.440, 0.588] against a majority rate of 0.559.
+
+**Phase 5 failed for lack of power, not for a cost of quantization.**
+
+- **Per seed**, q8_0 changes the ECE of B\* by −0.0024, −0.0003 and −0.0005, and its accuracy by at most 0.3 points.
+- **Pooled**, the pre-registered two-level bootstrap resamples the seeds of each format independently. The seed-to-seed spread of the ECE (0.078 to 0.096) then makes the interval wider than the 0.01 margin.
+
+**The s5-lite gates fail** for the pre-registered shipped model, which the rule made A′ (seed 0): fitted bench 0.541 and English demo cases 50 %.
+
+**The /live model.** /live serves a longer run of B\* (8000 steps instead of 2000), added for the demo before its result and outside the bets (amendment 3). Its numbers are below and are not claims:
+
+- 0.696 on the fitted bench, where oscar-1-17m scores 0.682 on the same records;
+- 21 of the 30 English demo cases;
+- four sets below their majority baseline.
+
 ## What is guaranteed by construction (s5 iso architecture)
 
 | property | how |

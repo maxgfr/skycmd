@@ -239,3 +239,39 @@ Test split, `sky-eval` (the shipping engine, each GGUF with its own tokenizer, e
 | BERT-Tiny fine-tuned 70 min CPU (4.4M) | 0.396 | 0.794 | 0.570 | 0.302 | 0.468 | 0.519 | 0.114 | - | 1.6 ms CPU batched |
 
 Gate (bench > 0.55): **failed**, published as experimental on `/live/`. Validation of the cases (agreement with the target): tools 0.771, triage 0.890, moderation 0.976 (= the base rate of "does not violate"). WASM vs native on 40 requests: max |Δp| 6.3e-7, 40/40 argmax, median 6.9 ms per uncached decision under Node; natively a short cached input takes 0.8 ms (int8 kernel), a long bench state about 18 ms.
+
+## skycmd-s5 (s5-lite): iso decision model on Ettin-17M, pre-registered
+
+Pre-registration: [`docs/s5-prereg.md`](docs/s5-prereg.md) and its three amendments. Verdicts and intervals: the [results page](https://maxgfr.github.io/skycmd/results/), read from `site/public/results/s5.json` (`sky-s5-report summary`).
+
+**Training throughput.** `sky-train s5-train`, Apple M5, bf16, batch 32, mlx-rs 0.32, MLX allocator cache capped at 1 GB:
+
+- one B-i run alone: about 42k tok/s;
+- three runs at once: about 9–10k tok/s each, which is not faster in total;
+- 2000 steps take 19 min for B-i and 27–31 min for A′, three at a time.
+
+**Evaluation.** `sky-eval` on CPU, f32 GGUF calibrated on the val split:
+
+| run | variant | lr | λ | steps | val acc | val NLL | bench acc | bench ECE | bench NLL |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|
+| f-a-s0 | A | 2e-4 | 0 | 2000 | 0.436 | 1.136 | 0.5285 | 0.080 | 1.062 |
+| f-ap-s0 (shipped by the rule) | A′ | 2e-4 | 0 | 2000 | 0.426 | 1.097 | 0.5410 | 0.051 | 1.047 |
+| f-ap-s1 | A′ | 2e-4 | 0 | 2000 | 0.373 | 1.155 | 0.3670 | 0.058 | 1.210 |
+| f-ap-s2 | A′ | 2e-4 | 0 | 2000 | 0.374 | 1.156 | 0.3795 | 0.062 | 1.209 |
+| s-ap-1e-4-s0 | A′ | 1e-4 | 0 | 2000 | 0.455 | 1.079 | 0.5740 | 0.057 | 1.034 |
+| s-ap-1e-4-s1 | A′ | 1e-4 | 0 | 2000 | 0.464 | 1.064 | 0.6045 | 0.071 | 1.004 |
+| s-ap-1e-4-s2 | A′ | 1e-4 | 0 | 2000 | 0.478 | 1.052 | 0.6065 | 0.075 | 0.999 |
+| f-b-s0 | B-i | 2e-4 | 0 | 2000 | 0.529 | 0.998 | 0.6665 | 0.078 | 0.964 |
+| f-b-s1 | B-i | 2e-4 | 0 | 2000 | 0.521 | 0.995 | 0.6780 | 0.096 | 0.960 |
+| f-b-s2 | B-i | 2e-4 | 0 | 2000 | 0.529 | 0.995 | 0.6775 | 0.090 | 0.957 |
+| l-ap-0.1-s0 | A′ | 2e-4 | 0.1 | 2000 | 0.428 | 1.093 | 0.5285 | 0.056 | 1.068 |
+| l-ap-0.1-s1 | A′ | 2e-4 | 0.1 | 2000 | 0.437 | 1.094 | 0.5345 | 0.039 | 1.054 |
+| l-ap-0.1-s2 | A′ | 2e-4 | 0.1 | 2000 | 0.436 | 1.097 | 0.5500 | 0.053 | 1.030 |
+| long-b-s0 (/live, outside the bets) | B-i | 2e-4 | 0 | 8000 | 0.581 | 0.902 | 0.6950 | 0.088 | 0.945 |
+
+**Notes:**
+
+- **The bench** is `typed_decisions_test`: 2000 questions, our rendering of the typed-decisions test split. On the same records, oscar-1-17m scores 0.682 (published: 0.6775).
+- **Inits.** Every A′ and B-i run starts from `ettin-reranker-17m`, the init chosen on validation.
+- **Quantization.** q8_0 changes the bench ECE of the B-i finalists by −0.0024, −0.0003 and −0.0005, and their accuracy by at most 0.3 points.
+- **In the browser.** The /live model answers a 6-option question in about 20 ms in headless Chrome (wasm, SIMD128), and its state is reused across questions.
