@@ -1,0 +1,68 @@
+[
+  {
+    "model": "s5-lite",
+    "kind": "decision",
+    "proofs": true,
+    "extra_models": ["s4-micro"],
+    "emoji": "🧭",
+    "color_from": "indigo",
+    "color_to": "blue",
+    "tagline": "A 17M-parameter decision model whose options cannot see each other: reordering the options or renaming their keys cannot change an answer.",
+    "short_description": "17M decision model, invariant to option order and keys",
+    "notes": [
+      "This checkpoint is a longer run (8,000 steps) added for the demo outside the pre-registered bets; see the results page for what failed and why.",
+      "It answers 21 of the 30 English demo cases: expect mistakes, especially on incidents and severity."
+    ]
+  },
+  {
+    "model": "s4-micro",
+    "kind": "decision",
+    "proofs": false,
+    "extra_models": [],
+    "emoji": "🧪",
+    "color_from": "gray",
+    "color_to": "purple",
+    "tagline": "An experimental 5.6M ternary decision model with free-text options, distilled from Qwen3.5-4B in one night. It failed its quality gate.",
+    "short_description": "Experimental 2.4 MB ternary decision model",
+    "notes": [
+      "Published as a documented negative result: it scores below the majority class on the typed-decisions bench."
+    ]
+  },
+  {
+    "model": "s3-pico",
+    "kind": "game",
+    "emoji": "🛩️",
+    "color_from": "blue",
+    "color_to": "green",
+    "tagline": "A 251 KB ternary decision model that plays four games in your browser, with a looped state block and early exits.",
+    "short_description": "251 KB model playing four games in the browser"
+  },
+  {
+    "model": "s1-pico",
+    "kind": "game",
+    "emoji": "🚁",
+    "color_from": "yellow",
+    "color_to": "blue",
+    "tagline": "A 545 KB ModernBERT decision model in the System One format, the same file that runs in llama.cpp and wllama.",
+    "short_description": "545 KB ModernBERT decision model playing games"
+  },
+  {
+    "model": "s2-nano",
+    "kind": "game",
+    "emoji": "🎮",
+    "color_from": "green",
+    "color_to": "blue",
+    "tagline": "A 702 KB ternary decision model with a cached question stream and early exits.",
+    "short_description": "702 KB ternary decision model with early exits"
+  },
+  {
+    "model": "s2-nano-doom",
+    "kind": "game",
+    "game": "doom",
+    "emoji": "👾",
+    "color_from": "red",
+    "color_to": "gray",
+    "tagline": "A 702 KB ternary model that plays a Doom-like shooter from 14 numbers (Freedoom art).",
+    "short_description": "702 KB model playing a Doom-like shooter"
+  }
+]

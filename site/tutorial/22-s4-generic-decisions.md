@@ -164,7 +164,7 @@ Two facts reframed this chapter after the fact.
 
 **The majority class beats s4.** Always answering the majority class scores 0.398 on `typed_decisions_bench`, above the 0.343 of s4-micro: the model learned less than the class prior.
 
-**The z.ai terms rule out GLM.** They forbid using GLM outputs to develop or train models (§ 1(f)(xii), updated 2026-04-14). s5 therefore uses no GLM output anywhere. Its labels come from:
+**s5 uses no GLM output.** Its labels come from:
 
 - the gold labels of permissive datasets;
 - Apache-2.0 teachers run locally;
