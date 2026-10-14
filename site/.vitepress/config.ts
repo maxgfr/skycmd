@@ -66,7 +66,7 @@ export default defineConfig({
       { text: 'Bench', link: '/bench/' },
       { text: 'Results', link: '/results/' },
       { text: 'Install', link: '/install/' },
-      { text: 'What\'s new', link: '/novelty/' },
+      { text: 'What we bring', link: '/novelty/' },
       { text: 'Sources', link: '/sources/' },
     ],
     socialLinks: [{ icon: 'github', link: 'https://github.com/maxgfr/skycmd' }],

@@ -1,14 +1,16 @@
 ---
-title: What's new
+title: What we bring
 ---
 
-# What's new here
+# What skycmd brings
 
-*Written on 12 October 2026, after the first night of experiments.*
+*Updated on 14 October 2026, after three nights of experiments (s3, s4, s5).*
 
-**In short:** a System One decision model, the kind of model Jev, Laya and Julia-1 introduced in September 2026, fits in **251 KB**. It was trained **from scratch in under an hour** on a laptop, and it plays four control games, including a Doom-like shooter, **at the level of an exact oracle**, in about **50 µs per frame in a web browser**. As far as we could find, nothing this small exists in this format, and none of it uses Python.
+**In short:** a System One decision model, the kind of model Jev, Laya and Julia-1 introduced in September 2026, fits in **251 KB**. It was trained **from scratch in under an hour** on a laptop and plays four control games **at the level of an exact oracle**, in about **50 µs per frame in a web browser**. Around it, skycmd brings a decision format that is invariant to the order and names of the options by construction, a calibration lesson for early exits, experiments whose criteria were fixed before any test, and a whole chain in Rust that runs in the browser. As far as we could find, nothing this small exists in this format, and none of it uses Python.
 
-## The numbers
+## 1. A decision model 40× to 300× smaller
+
+Every open decision model we found starts from a pretrained backbone of at least 17M parameters. [s3-pico](/tutorial/21-s3-recursive-tiny) was trained from zero, and it still answers typed questions (choice / score / noul) with calibrated probabilities in one forward pass.
 
 | | skycmd s3-pico | smallest public model in the same format | typical decision models |
 |---|---|---|---|
@@ -18,62 +20,82 @@ title: What's new
 | per decision | **21 µs native, ~50 µs per frame in WASM** | milliseconds | milliseconds to seconds (Jev: 70–500 ms, vendor figure) |
 
 What s3-pico does with that budget, over 30 seeded episodes per game, with the shipped file (`runs/ship-s3-pico.arena.json`):
+
 - **Flappy Drone:** 200/200 pipes, 0 crashes.
 - **Rescue Run:** 100% of hikers rescued.
 - **Obstacle Dodge:** 87% of courses completed, exactly the oracle's rate. The coded safety reflex had to step in only 14 times, against 1,026 for our first model.
 - **Doom-like:** 100% of levels completed and the same kill rate as the oracle, with no deaths.
 - **Depth used:** 1.05 to 1.73 loops out of 4, thanks to early exits.
 
-## What is new
+You can play against it on the [Play](/play/) page.
 
-1. **Size: 40× to 300× smaller.** Every open decision model we found starts from a pretrained backbone of at least 17M parameters. s3-pico is about 40 times smaller than the smallest one and about 300 times smaller than Julia-1. It was trained from zero, and it still answers typed questions (choice / score / noul) with calibrated probabilities in one forward pass.
-2. **An architecture designed for decisions in a loop.** Each piece below is known on its own; the combination is ours.
-   - **Two streams with a cache:** the question and the options are encoded once and cached, and each frame encodes only the state.
-   - **Options never see each other,** so the answer cannot depend on their order. This holds by construction, not by augmentation.
-   - **One token per measured value:** a pair such as `vy -3` becomes a single token, combining FT-Transformer and FoNE.
-   - **Depth from recursion, not from parameters:** one shared block is looped four times, with an exit after every loop, as in TRM and Ouro.
-   - **Ternary weights trained in** with QAT, BitNet-style.
-3. **A lesson worth sharing: calibrate early exits where the model is used.**
-   - Early-exit thresholds are normally fitted on i.i.d. validation questions. Fitted that way (τ = 0.62), our model **failed** in closed loop: confident shallow exits were wrong exactly in the critical states.
-   - Calibrated **by playing the games** instead, the same model reached oracle level while using about 1.3 of its 4 loops.
-   - We found little prior work on calibrating early exits in closed-loop control. It looks like a general rule for any early-exit model that drives something.
-4. **The whole chain in Rust, end to end:**
-   - data from Hugging Face;
-   - training with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon;
-   - a GGUF writer;
-   - an inference engine compiled to WebAssembly.
+## 2. An architecture designed for decisions in a loop
 
-   The same file runs in the browser, in a CLI that speaks the `/v1/systemone` API, in Node and in Python (built from source). Our s1 models also run in llama.cpp and wllama.
-5. **Imitation that holds up in closed loop.** DAgger, where the model plays and the oracle labels the states it reaches, turned "crashes before the first pipe" into "200/200" in two to three rounds of 8 minutes each.
+Each piece below is known on its own; the combination is ours.
 
-## What it is not (honestly)
-- **None of the building blocks is new.** The novelty is in how they are combined, in the scale and in the closed-loop calibration lesson. Our literature search was two research passes, not a systematic review.
-- **The games are friendly.** Code measures the useful features (relative clearances, an A* waypoint) and the model decides, following the [jev-drone](https://github.com/RomanSlack/jev-drone) philosophy. A small MLP on the same features would be a fair baseline, and we have not run it yet.
-- **It is a specialist.** On general decisions it is modest: 0.54 on our held-out mix and 0.38 on the external typed-decisions benchmark, against about 0.73 for the 144M Julia-1.
-- **The results are not peer-reviewed.** They come from single runs on our own benchmarks, with a shared GPU during training.
+- **Two streams with a cache:** the question and the options are encoded once and cached, and each frame encodes only the state.
+- **Options never see each other,** so the answer cannot depend on their order. This holds by construction, not by augmentation.
+- **One token per measured value:** a pair such as `vy -3` becomes a single token, combining FT-Transformer and FoNE.
+- **Depth from recursion, not from parameters:** one shared block is looped four times, with an exit after every loop, as in TRM and Ouro.
+- **Ternary weights trained in** with QAT, BitNet-style.
 
-## Second night: s4, a generic model (experimental)
+## 3. A lesson: calibrate early exits where the model is used
 
-*Added on 13 October 2026.* [s4-micro](/tutorial/22-s4-generic-decisions) tried to make the same architecture generic: 5.6M ternary parameters (2.4 MB), options given in free text, distilled from Qwen3.5-4B in one night. You can try it on the [Live](/live/) page. What is new in the attempt:
+- Early-exit thresholds are normally fitted on i.i.d. validation questions. Fitted that way (τ = 0.62), our model **failed** in closed loop: confident shallow exits were wrong exactly in the critical states.
+- Calibrated **by playing the games** instead, the same model reached oracle level while using about 1.3 of its 4 loops.
+- We found little prior work on calibrating early exits in closed-loop control. It looks like a general rule for any early-exit model that drives something.
+
+A related recipe: **imitation that holds up in closed loop.** With DAgger, the model plays and the oracle labels the states it reaches. It turned "crashes before the first pipe" into "200/200" in two to three rounds of 8 minutes each ([DAgger chapter](/tutorial/20-dagger-lessons)).
+
+## 4. Decisions that cannot depend on the order or names of the options
+
+The s5 iso format ([chapter 23](/tutorial/23-s5-lite)) gives these properties by construction. Each one is checked by an exact test, natively and in WASM, so none of them is an experimental result:
+
+- permuting the options changes nothing;
+- renaming the option keys changes nothing, since the model reads the definitions only (this removes the yes/no swap of 2609.26758);
+- s + n = 1 when a negation only swaps the two definitions;
+- the state encoding does not depend on the question, so it is cached per state.
+
+At equal data, the same encoder was much more accurate in this format than in the usual one on the fitted bench: 0.674 against 0.429 (+0.245, 95% CI [+0.136, +0.321]). It was less well calibrated, though, and the calibration margin fixed in advance failed (see below).
+
+## 5. Experiments you can check, failures included
+
+- **Criteria fixed before any test.** The s5 [pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s5-prereg.md) was committed first. Every amendment is dated and says what had been seen when it was written.
+- **The test split is locked by the tooling.** The evaluation tool refuses the test split of a frozen set unless the pre-registration lists the set's hash, and it logs every test pass.
+- **Failures are published like successes.** s4 missed its gate, and the three pre-registered s5 bets each missed their criterion. The online escalation bet failed in all six cells. The [Results](/results/) page shows each of them with its interval and the reason.
+
+## 6. The whole chain in Rust, down to the browser
+
+- data from Hugging Face;
+- training with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon;
+- a GGUF writer, with f32, q8_0 and Q4_0 exports;
+- an inference engine compiled to WebAssembly, with SIMD kernels for 8-bit and 4-bit weights.
+
+The same file runs in the browser, in a CLI that speaks the `/v1/systemone` API, in Node and in Python (built from source). Our s1 models also run in llama.cpp and wllama. The s5 model takes 21 MB in q8_0 and 12 MB in Q4_0, against 70 MB in f32.
+
+The [Live](/live/) page runs everything on your machine, with no server: the decision models, and a cascade replay in which s5 answers alone or escalates to an auditor that also audits a random share of the accepted answers.
+
+## 7. Methods worth reusing, even from a failed model
+
+[s4-micro](/tutorial/22-s4-generic-decisions) tried to make the architecture generic by distilling Qwen3.5-4B in one night. It missed its gate (0.343 on the typed-decisions bench, against a target of 0.55), but three of its methods are worth reusing:
+
 - **A scoring teacher with per-group bias calibration.** The 4B never generates: one prefill, the logits of the option letters only. A temperature and a bias per option are then fitted per (source, type, number of options) against the gold labels, which removed a strong "true" bias on nouls.
 - **Randomized label sets with abstention.** Options are shuffled, distractors are added, an abstention option is appended, and in 12 % of the records the gold option is removed so that "I don't know" is the target.
 - **Deep improvement supervision on early exits.** Each exit trains toward the target raised to a power that grows from 0.5 to 1, so the early exits learn a softer copy of the target.
 
-**It failed its gate.** It scores 0.343 on the typed-decisions bench (s3-pico: 0.382, target: 0.55). Zero-shot it does better than s3-pico (Banking77 0.303 against 0.247, MASSIVE English 0.335 against 0.187), but a BERT-Tiny of 4.4M parameters fine-tuned on the same data reaches 0.794 on Banking77. The missing piece is language pretraining: 30 minutes of masked-language modelling from scratch is not enough, and the loops cannot make up for it (the three exits score within 0.01 of each other). The next s4 starts from a pretrained encoder.
+Its failure is a lesson too: without language pretraining, loops cannot make up for it. A BERT-Tiny of 4.4M parameters fine-tuned on the same data reaches 0.794 on Banking77, against 0.303 for s4.
 
-## Third night: s5, three pre-registered bets (14 October 2026)
+## What it does not bring (honestly)
 
-[s5-lite](/tutorial/23-s5-lite) bet on three novelties, each judged against criteria committed before any test pass:
-
-- **Invariance by construction:** options isolated, keys never read.
-- **Coherence across separate questions:** trained by three small losses.
-- **Calibration that survives 8-bit quantization.**
-
-**None of the three is claimed: each missed its criterion** ([results](/results/)).
-
-What is new, and what can be said, is narrower. The construction guarantees invariance to option order and key names, as an exact test, not as a result. At equal data, it was much more accurate than the usual format on the fitted bench, but less well calibrated, and the pre-registered margin on calibration failed. The model on [Live](/live/) is a longer run, declared outside the bets.
+- **None of the building blocks is new.** The novelty is in how they are combined, in the scale and in the closed-loop calibration lesson. Our literature search was two research passes, not a systematic review.
+- **The games are friendly.** Code measures the useful features (relative clearances, an A* waypoint) and the model decides, following the [jev-drone](https://github.com/RomanSlack/jev-drone) philosophy. A small MLP on the same features would be a fair baseline, and we have not run it yet.
+- **The tiny model is a specialist.** On general decisions it is modest: 0.54 on our held-out mix and 0.38 on the external typed-decisions benchmark, against about 0.73 for the 144M Julia-1.
+- **No pre-registered claim for s5.** None of the three bets is claimed: the iso format missed its calibration margin, the coherence losses improved only the identities they were trained on, and 8-bit quantization could not be shown non-inferior for lack of power.
+- **s5 is a small English model.** There is no French version.
+- **The results are not peer-reviewed.** They come from our own benchmarks, with single runs for s3 and s4 and three seeds for s5.
 
 ## What would turn this into a paper
+
 - Ablations over several seeds: fused values, recursion, static cache, closed-loop vs i.i.d. calibration, DAgger.
 - A standard control benchmark with vector states.
 - Baselines: a same-size MLP, an RL policy, oscar-1-17m.
@@ -81,4 +103,4 @@ What is new, and what can be said, is narrower. The construction guarantees inva
 
 The natural first target is a short workshop paper: *closed-loop calibration of early exits for tiny decision models*, with skycmd as the open-source demonstrator.
 
-See also the [s3 chapter](/tutorial/21-s3-recursive-tiny), the [DAgger chapter](/tutorial/20-dagger-lessons), the [night experiments](https://github.com/maxgfr/skycmd/blob/main/docs/night-experiments.md) and the [sources](/sources/).
+See also the [tutorial](/tutorial/), the [night experiments](https://github.com/maxgfr/skycmd/blob/main/docs/night-experiments.md) and the [sources](/sources/).
