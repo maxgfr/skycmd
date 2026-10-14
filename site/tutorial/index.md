@@ -21,7 +21,7 @@ The pipeline in one picture:
 ```text
 Hugging Face datasets ─┐                       ┌─ sky-infer (native) ── sky-bench, sky-arena, skycmd
 game oracles (sky-games)┼─ sky-data ─ sky-train ─ export ─ GGUF ─┤
-GLM teacher (z.ai) ─────┘   (records)  (mlx-rs)                  └─ sky-web (wasm) ── this site
+GLM teacher ────────────┘   (records)  (mlx-rs)                  └─ sky-web (wasm) ── this site
 ```
 
 ## Foundations
@@ -34,7 +34,7 @@ GLM teacher (z.ai) ─────┘   (records)  (mlx-rs)                  └
 ## Data
 
 5. [Pulling data from Hugging Face in Rust](./05-hugging-face-data)
-6. [GLM top-up via z.ai](./06-glm-top-up)
+6. [GLM top-up](./06-glm-top-up)
 7. [A tokenizer with small vocabularies](./07-tokenizer)
 
 ## Model and training

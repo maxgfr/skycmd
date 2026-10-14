@@ -6,7 +6,7 @@ const chapters: [string, string][] = [
   ['03-typed-decisions', '03 Typed decisions: schema, unknown and the veto rule'],
   ['04-game-cores-and-oracles', '04 Game cores and oracles'],
   ['05-hugging-face-data', '05 Pulling data from Hugging Face in Rust'],
-  ['06-glm-top-up', '06 GLM top-up via z.ai'],
+  ['06-glm-top-up', '06 GLM top-up'],
   ['07-tokenizer', '07 A tokenizer with small vocabularies'],
   ['08-encoder-and-decision-head', '08 The encoder and the decision head'],
   ['09-muon-wsd-training-loop', '09 Muon, WSD and the mlx-rs training loop'],

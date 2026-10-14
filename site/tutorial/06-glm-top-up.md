@@ -1,6 +1,6 @@
-# 06 GLM top-up via z.ai
+# 06 GLM top-up
 
-Some data does not exist on the Hub in the form skycmd needs: French paraphrases of decision questions, and civil drone orders paired with valid command plans. `sky-data teacher` generates both with a GLM model behind z.ai's Anthropic-compatible endpoint. Every reply has to pass strict parsing and coded validation before it is written. This chapter covers the client, its budget controls and the two teacher tasks.
+Some data does not exist on the Hub in the form skycmd needs: French paraphrases of decision questions, and civil drone orders paired with valid command plans. `sky-data teacher` generates both with a GLM model behind an Anthropic-compatible endpoint. Every reply has to pass strict parsing and coded validation before it is written. This chapter covers the client, its budget controls and the two teacher tasks.
 
 ## What the teacher is for
 
@@ -14,7 +14,7 @@ The game questions do not need the teacher. Their English and French paraphrases
 
 ## Endpoint, key and model
 
-Configuration is resolved at runtime, first from environment variables, then from the `ccs` CLI's `zai` profile:
+Configuration is resolved at runtime, first from environment variables, then from the `ccs` CLI profile named by `SKY_TEACHER_PROFILE`:
 
 `crates/sky-data/src/teacher.rs`
 
@@ -22,12 +22,12 @@ Configuration is resolved at runtime, first from environment variables, then fro
     pub fn resolve(args: &TeacherArgs) -> Result<Self> {
         let base_url = env_nonempty("SKY_TEACHER_URL")
             .or_else(|| ccs_get("base_url"))
-            .unwrap_or_else(|| "https://api.z.ai/api/anthropic".into())
+            .ok_or_else(|| anyhow!("no teacher endpoint: set SKY_TEACHER_URL (Anthropic Messages protocol) or SKY_TEACHER_PROFILE"))?
             .trim_end_matches('/')
             .to_string();
         let api_key = env_nonempty("SKY_TEACHER_KEY")
             .or_else(|| ccs_get("api_key"))
-            .ok_or_else(|| anyhow!("no teacher API key: set SKY_TEACHER_KEY or configure `ccs config ... zai api_key`"))?;
+            .ok_or_else(|| anyhow!("no teacher API key: set SKY_TEACHER_KEY or SKY_TEACHER_PROFILE"))?;
         let model = args
             .model
             .clone()
@@ -38,8 +38,9 @@ Configuration is resolved at runtime, first from environment variables, then fro
 
 | variable | default |
 |---|---|
-| `SKY_TEACHER_URL` | `https://api.z.ai/api/anthropic` |
-| `SKY_TEACHER_KEY` | none, required (or `ccs config get zai api_key`) |
+| `SKY_TEACHER_URL` | none, required (an Anthropic Messages endpoint), or from the `ccs` profile |
+| `SKY_TEACHER_KEY` | none, required (or from the `ccs` profile) |
+| `SKY_TEACHER_PROFILE` | none: the `ccs` profile to read when the variables above are unset |
 | `SKY_TEACHER_MODEL` | `auto` (overridden by `--model`) |
 
 The key is a private field of `TeacherConfig`, and the struct's `Debug` implementation prints `<redacted>` in its place. A unit test (`debug_redacts_key`) checks this. The key is only ever sent as the `x-api-key` header and is never logged or written to disk.

@@ -49,7 +49,7 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 ### Generated data
 - **Game oracles**, written in Rust (`crates/sky-games`). They give exact labels for Flappy Drone, Rescue Run, Obstacle Dodge and the Doom-like game, plus the DAgger rounds, in which the model plays and the oracle labels the states it reaches.
 - **Numeric curriculum** (`sky-train s2-numeric`): comparisons, ordering and closest values, with exact answers, in English and French.
-- **GLM 5.3**, through the [z.ai](https://z.ai) API: 3,000 civil drone orders and about 2,000 paraphrases of question instructions.
+- **GLM 5.3**: 3,000 civil drone orders and about 2,000 paraphrases of question instructions (used by s1–s3 only).
 
 ### Evaluation only (never trained on)
 - [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (Apache-2.0)
@@ -77,7 +77,7 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 | [DeepPavlov/hwu64](https://huggingface.co/datasets/DeepPavlov/hwu64) (HWU64, [original data](https://github.com/xliuhw/NLU-Evaluation-Data)) | CC-BY-4.0 | **held out** for s5-lite only (its training excludes MASSIVE in every language) |
 | [bro789/typed-decision-coherence](https://github.com/bro789/typed-decision-coherence) (ChaosNLI CC BY-NC 4.0, PubMedQA MIT) | MIT code; items under their own terms | the original coherence battery of 2609.33209: **evaluation only**, never redistributed |
 
-No output of a hosted LLM is used by s5 (the z.ai terms forbid training on GLM outputs).
+No output of a hosted LLM is used by s5.
 
 ## Libraries and technologies
 

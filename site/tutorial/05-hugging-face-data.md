@@ -264,4 +264,4 @@ The game records from [chapter 04](./04-game-cores-and-oracles) go to `data/game
 
 ## Next
 
-[06 GLM top-up via z.ai](./06-glm-top-up)
+[06 GLM top-up](./06-glm-top-up)

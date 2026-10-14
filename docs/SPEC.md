@@ -21,7 +21,7 @@ All docs, comments and UI text are in **English**. The project is civil only: th
 | `sky-games` | pure-Rust game cores (flappy, rescue, dodge), state → text, questions, oracles, rollout harness. `no_std`-friendly (uses `alloc`), compiles to wasm32 |
 | `sky-gguf` | GGUF v3 reader + writer, F32/F16/BF16/Q8_0, quantizer, `gguf-inspect` bin |
 | `sky-infer` | inference engine: byte-level BPE tokenizer, ModernBERT encoder, Laya decision head, prompt builder, f32 + int8 paths, wasm-bindgen API (feature `wasm`) |
-| `sky-data` | Hugging Face download (hf-hub + parquet) → decision/MLM records; tokenizer training (HF `tokenizers`); GLM teacher client (z.ai) |
+| `sky-data` | Hugging Face download (hf-hub + parquet) → decision/MLM records; tokenizer training (HF `tokenizers`); GLM teacher client (Anthropic Messages protocol) |
 | `sky-train` | mlx-rs training: model, MLM pretrain, decision training, Muon + AdamW + WSD, temperature calibration, export to HF-layout safetensors + GGUF |
 | `site/` | VitePress site + games UI (TS) using the wasm pkg of `sky-infer` + `sky-games` |
 

@@ -1,7 +1,8 @@
-//! GLM teacher client (z.ai, Anthropic Messages protocol) and the teacher tasks:
-//! question paraphrases and civil drone orders.
+//! GLM teacher client (any endpoint speaking the Anthropic Messages protocol) and the teacher
+//! tasks: question paraphrases and civil drone orders.
 //!
-//! The API key is read at runtime (env `SKY_TEACHER_KEY` or `ccs config get zai api_key`)
+//! The endpoint, key and model are read at runtime (env `SKY_TEACHER_URL`, `SKY_TEACHER_KEY`,
+//! `SKY_TEACHER_MODEL`, or the `ccs` profile named by `SKY_TEACHER_PROFILE`). The API key
 //! and is never printed, logged or written: it lives only inside [`TeacherConfig`], whose
 //! `Debug` output redacts it, and is only ever sent as the `x-api-key` request header.
 
@@ -52,9 +53,11 @@ impl fmt::Debug for TeacherConfig {
 }
 
 /// `ccs config get zai <key>`, stdout trimmed; `None` when unavailable or empty.
+/// A value of the `ccs` profile named by `SKY_TEACHER_PROFILE` (none when unset).
 fn ccs_get(key: &str) -> Option<String> {
+    let profile = env_nonempty("SKY_TEACHER_PROFILE")?;
     let out = Command::new("ccs")
-        .args(["config", "get", "zai", key])
+        .args(["config", "get", &profile, key])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -86,12 +89,14 @@ impl TeacherConfig {
     pub fn resolve(args: &TeacherArgs) -> Result<Self> {
         let base_url = env_nonempty("SKY_TEACHER_URL")
             .or_else(|| ccs_get("base_url"))
-            .unwrap_or_else(|| "https://api.z.ai/api/anthropic".into())
+            .ok_or_else(|| anyhow!("no teacher endpoint: set SKY_TEACHER_URL (Anthropic Messages protocol) or SKY_TEACHER_PROFILE"))?
             .trim_end_matches('/')
             .to_string();
         let api_key = env_nonempty("SKY_TEACHER_KEY")
             .or_else(|| ccs_get("api_key"))
-            .ok_or_else(|| anyhow!("no teacher API key: set SKY_TEACHER_KEY or configure `ccs config ... zai api_key`"))?;
+            .ok_or_else(|| {
+                anyhow!("no teacher API key: set SKY_TEACHER_KEY or SKY_TEACHER_PROFILE")
+            })?;
         let model = args
             .model
             .clone()
