@@ -24,6 +24,8 @@ const chapters: [string, string][] = [
   ['21-s3-recursive-tiny', '21 s3: a 251 KB model that plays four games'],
   ['22-s4-generic-decisions', '22 s4: a generic decision model distilled from Qwen3.5'],
   ['23-s5-lite', '23 s5-lite: invariant by construction, tested in the open'],
+  ['24-reproduce-s5-lite', '24 Reproducing s5-lite step by step'],
+  ['25-hugging-face', '25 Publishing on Hugging Face'],
 ]
 
 const groups: [string, number, number][] = [
@@ -31,7 +33,8 @@ const groups: [string, number, number][] = [
   ['Data', 4, 7],
   ['Model and training', 7, 12],
   ['Shipping', 12, 17],
-  ['Going further', 17, 23],
+  ['Going further', 17, 21],
+  ['Decision models for any question (s4, s5)', 21, 25],
 ]
 
 export default defineConfig({

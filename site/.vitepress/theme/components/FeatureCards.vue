@@ -28,6 +28,14 @@ const fast = computed(() =>
       <h3>Fast</h3>
       <p>{{ fast }}</p>
     </a>
+    <a class="card" :href="withBase('/live/')">
+      <div class="icon" aria-hidden="true">?</div>
+      <h3>Any question</h3>
+      <p>
+        s5-lite reads each option by its definition only, isolated from the others: reordering the options or
+        renaming their keys cannot change an answer. Try it on your own questions.
+      </p>
+    </a>
     <a class="card" :href="withBase('/tutorial/03-typed-decisions')">
       <div class="icon" aria-hidden="true">{ }</div>
       <h3>Typed</h3>
@@ -42,7 +50,7 @@ const fast = computed(() =>
 <style scoped>
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
   margin: 28px 0 8px;
 }
