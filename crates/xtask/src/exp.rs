@@ -17,7 +17,8 @@
 //! - `lambda`: bet 2, λ ∈ {0.1, 0.3} at seed 0 on its support (B* when bet 1 succeeded in
 //!   `runs/s5-report/pari1.json`, else A′); `lambda-final`: λ* × seeds 1 and 2, λ* the lower val
 //!   MAD_neg among the λ whose val accuracy is at least that of λ = 0 (seed 0) − 0.01.
-//! - `report` (CPU): the pre-registered analyses (`sky-s5-report`) into `runs/s5-report/`.
+//! - `report` (CPU): the pre-registered analyses (`sky-s5-report`) into `runs/s5-report/`, and
+//!   bet 3 (exploratory, amendment 4) with the trajectory of the /live cascade demo.
 
 use std::path::Path;
 
@@ -921,6 +922,26 @@ fn report_steps(store: &Path) -> Result<Vec<Step>> {
         "mkdir",
         &["-p", "{checkout}/site/public/results"],
     ));
+    // Bet 3 (exploratory, amendment 4) on the shipped model, once bet 1 has been analysed; its
+    // trajectory feeds the cascade demo of /live.
+    if v.iter().any(|s| s.name == "pari1") || store.join("runs/s5-report/pari1.json").exists() {
+        v.push(
+            Step::new(
+                "pari3",
+                "sky-s5-report",
+                &[
+                    "pari3",
+                    "--store",
+                    "{store}",
+                    "--json",
+                    "runs/s5-report/pari3.json",
+                    "--trajectory",
+                    "{checkout}/site/public/results/cascade.json",
+                ],
+            )
+            .always(),
+        );
+    }
     v.push(
         Step::new(
             "summary",
