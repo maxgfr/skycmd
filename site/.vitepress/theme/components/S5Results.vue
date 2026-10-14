@@ -29,6 +29,8 @@ const liveGates = computed<J>(() =>
 )
 const p1 = computed<J>(() => reports.value.pari1 ?? null)
 const p2 = computed<J>(() => reports.value.pari2 ?? null)
+/** Bet 3, exploratory (amendment 4). */
+const p3 = computed<J>(() => reports.value.pari3 ?? null)
 /** Amendment 2: B* against A′ at the next lower learning rate (secondary). */
 const p1s = computed<J>(() => reports.value['pari1-sensitivity'] ?? null)
 const gates = computed<J>(() => (shipped.value ? reports.value[`gates-${shipped.value}-q8_0`] : null) ?? null)
@@ -63,6 +65,9 @@ function iv(i: J, d = 3): string {
 }
 function diff(p: J, d = 3): string {
   return p ? iv(p.diff, d) : '–'
+}
+function pct(x: unknown): string {
+  return typeof x === 'number' ? `${Math.round(x * 100)}%` : '–'
 }
 function yes(b: unknown): string {
   return b === true ? 'pass' : b === false ? 'fail' : '–'
@@ -353,6 +358,42 @@ const ARM: Record<string, string> = { 'f-ap': 'A′ (Laya format, random names)'
         </p>
       </template>
       <p v-else class="s5r-note">Not evaluated yet.</p>
+
+      <h3>Bet 3: online escalation with an audit (exploratory)</h3>
+      <template v-if="p3">
+        <p>
+          Verdict: <strong :class="p3.success ? 'ok' : 'ko'">{{ p3.success ? 'success' : 'failure' }}</strong>
+          (every (α, π) cell must pass). Run after the offline results (amendment 4), so exploratory:
+          {{ p3.run }} ({{ p3.format }}), {{ p3.seeds }} replayed streams of {{ p3.stream_len }} bench
+          questions, a prevalence drift in the second half, η = {{ p3.eta }}.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>α</th><th>π</th><th>est. error after drift</th><th>true error after drift</th>
+              <th>fixed threshold, true error</th><th>escalations vs fixed</th><th>audited</th><th>verdict</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in p3.cells" :key="`${c.alpha}-${c.pi}`">
+              <td>{{ pct(c.alpha) }}</td><td>{{ c.pi }}</td>
+              <td>{{ n(c.after.error_est.mean) }} [{{ n(c.after.error_est.lo) }}, {{ n(c.after.error_est.hi) }}]</td>
+              <td>{{ n(c.after.error_true.mean) }}</td>
+              <td>{{ n(c.after.fixed.error_true.mean) }}</td>
+              <td>× {{ n(c.escalation_ratio_after, 2) }}</td>
+              <td>{{ n(c.after.audit_rate.mean) }}</td>
+              <td>{{ yes(c.success) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="s5r-note">
+          After the drift: mean over the streams with the 95% range of the streams. Success in a cell:
+          estimated error of the accepted ≤ α + {{ p3.margin }}, with at most {{ p3.escalation_ratio_max }}
+          times the escalations of the fixed (plug-in) threshold. The auditor is the dataset gold,
+          standing in for a human audit.
+        </p>
+      </template>
+      <p v-else class="s5r-note">Not run yet.</p>
 
       <h3>Every run (validation only)</h3>
       <table v-if="runs.length">
