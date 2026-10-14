@@ -247,7 +247,8 @@ enum Cmd {
         /// switch and the stop follow step / steps, the same on every machine.
         #[arg(long)]
         steps: Option<u64>,
-        /// Run this many steps from the starting step, save <out>/last and exit.
+        /// Run this many steps from the starting step, save <out>/last and exit (the final
+        /// validation and the decision init wait for the end of the schedule).
         #[arg(long)]
         stop_after: Option<u64>,
         /// Start from these parameters (safetensors with the model's tensor names and
@@ -311,7 +312,8 @@ enum Cmd {
         /// switch and the stop follow step / steps, the same on every machine.
         #[arg(long)]
         steps: Option<u64>,
-        /// Run this many steps from the starting step, save <out>/last and exit.
+        /// Run this many steps from the starting step, save <out>/last and exit (the final
+        /// validation waits for the end of the schedule).
         #[arg(long)]
         stop_after: Option<u64>,
         /// Start from these parameters (safetensors with the model's tensor names and
