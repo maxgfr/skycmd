@@ -1,17 +1,16 @@
 //! GLM teacher client (any endpoint speaking the Anthropic Messages protocol) and the teacher
 //! tasks: question paraphrases and civil drone orders.
 //!
-//! The endpoint, key and model are read at runtime (env `SKY_TEACHER_URL`, `SKY_TEACHER_KEY`,
-//! `SKY_TEACHER_MODEL`, or the `ccs` profile named by `SKY_TEACHER_PROFILE`). The API key
-//! and is never printed, logged or written: it lives only inside [`TeacherConfig`], whose
-//! `Debug` output redacts it, and is only ever sent as the `x-api-key` request header.
+//! The endpoint, key and model are read at runtime from the environment (`SKY_TEACHER_URL`,
+//! `SKY_TEACHER_KEY`, `SKY_TEACHER_MODEL`). The API key is never printed, logged or written: it
+//! lives only inside [`TeacherConfig`], whose `Debug` output redacts it, and is only ever sent as
+//! the `x-api-key` request header.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -52,23 +51,6 @@ impl fmt::Debug for TeacherConfig {
     }
 }
 
-/// `ccs config get zai <key>`, stdout trimmed; `None` when unavailable or empty.
-/// A value of the `ccs` profile named by `SKY_TEACHER_PROFILE` (none when unset).
-fn ccs_get(key: &str) -> Option<String> {
-    let profile = env_nonempty("SKY_TEACHER_PROFILE")?;
-    let out = Command::new("ccs")
-        .args(["config", "get", &profile, key])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8(out.stdout).ok()?.trim().to_string();
-    (!s.is_empty()).then_some(s)
-}
-
 fn env_nonempty(k: &str) -> Option<String> {
     std::env::var(k)
         .ok()
@@ -85,23 +67,20 @@ pub struct TeacherArgs {
 }
 
 impl TeacherConfig {
-    /// Resolves URL, key and model from the environment or `ccs`.
+    /// Resolves URL, key and model from the environment.
     pub fn resolve(args: &TeacherArgs) -> Result<Self> {
         let base_url = env_nonempty("SKY_TEACHER_URL")
-            .or_else(|| ccs_get("base_url"))
-            .ok_or_else(|| anyhow!("no teacher endpoint: set SKY_TEACHER_URL (Anthropic Messages protocol) or SKY_TEACHER_PROFILE"))?
+            .ok_or_else(|| {
+                anyhow!("no teacher endpoint: set SKY_TEACHER_URL (Anthropic Messages protocol)")
+            })?
             .trim_end_matches('/')
             .to_string();
         let api_key = env_nonempty("SKY_TEACHER_KEY")
-            .or_else(|| ccs_get("api_key"))
-            .ok_or_else(|| {
-                anyhow!("no teacher API key: set SKY_TEACHER_KEY or SKY_TEACHER_PROFILE")
-            })?;
+            .ok_or_else(|| anyhow!("no teacher API key: set SKY_TEACHER_KEY"))?;
         let model = args
             .model
             .clone()
             .or_else(|| env_nonempty("SKY_TEACHER_MODEL"))
-            .or_else(|| ccs_get("model"))
             .unwrap_or_else(|| "auto".into());
         let mut cfg = Self {
             base_url,

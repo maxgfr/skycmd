@@ -14,33 +14,31 @@ The game questions do not need the teacher. Their English and French paraphrases
 
 ## Endpoint, key and model
 
-Configuration is resolved at runtime, first from environment variables, then from the `ccs` CLI profile named by `SKY_TEACHER_PROFILE`:
+Configuration is resolved at runtime from environment variables, so any Anthropic-compatible endpoint works without extra tooling:
 
 `crates/sky-data/src/teacher.rs`
 
 ```rust
     pub fn resolve(args: &TeacherArgs) -> Result<Self> {
         let base_url = env_nonempty("SKY_TEACHER_URL")
-            .or_else(|| ccs_get("base_url"))
-            .ok_or_else(|| anyhow!("no teacher endpoint: set SKY_TEACHER_URL (Anthropic Messages protocol) or SKY_TEACHER_PROFILE"))?
+            .ok_or_else(|| {
+                anyhow!("no teacher endpoint: set SKY_TEACHER_URL (Anthropic Messages protocol)")
+            })?
             .trim_end_matches('/')
             .to_string();
         let api_key = env_nonempty("SKY_TEACHER_KEY")
-            .or_else(|| ccs_get("api_key"))
-            .ok_or_else(|| anyhow!("no teacher API key: set SKY_TEACHER_KEY or SKY_TEACHER_PROFILE"))?;
+            .ok_or_else(|| anyhow!("no teacher API key: set SKY_TEACHER_KEY"))?;
         let model = args
             .model
             .clone()
             .or_else(|| env_nonempty("SKY_TEACHER_MODEL"))
-            .or_else(|| ccs_get("model"))
             .unwrap_or_else(|| "auto".into());
 ```
 
 | variable | default |
 |---|---|
-| `SKY_TEACHER_URL` | none, required (an Anthropic Messages endpoint), or from the `ccs` profile |
-| `SKY_TEACHER_KEY` | none, required (or from the `ccs` profile) |
-| `SKY_TEACHER_PROFILE` | none: the `ccs` profile to read when the variables above are unset |
+| `SKY_TEACHER_URL` | none, required (an Anthropic Messages endpoint) |
+| `SKY_TEACHER_KEY` | none, required |
 | `SKY_TEACHER_MODEL` | `auto` (overridden by `--model`) |
 
 The key is a private field of `TeacherConfig`, and the struct's `Debug` implementation prints `<redacted>` in its place. A unit test (`debug_redacts_key`) checks this. The key is only ever sent as the `x-api-key` header and is never logged or written to disk.

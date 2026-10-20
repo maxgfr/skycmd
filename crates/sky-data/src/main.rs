@@ -219,7 +219,7 @@ enum Cmd {
     },
     /// GLM teacher tasks (Anthropic Messages protocol).
     Teacher {
-        /// Model id; "auto" picks from the endpoint's model list. Default: SKY_TEACHER_MODEL or ccs.
+        /// Model id; "auto" picks from the endpoint's model list. Default: SKY_TEACHER_MODEL, else "auto".
         #[arg(long, global = true)]
         model: Option<String>,
         /// Hard cap on HTTP calls.
