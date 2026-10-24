@@ -1013,7 +1013,7 @@ pub fn exit_kd_loss(logits: &Array, kd: ExitKd) -> R<Array> {
     }
     let z = to_f32(logits.clone())?.divide(Array::from_f32(kd.temp))?;
     let logq = z.subtract(z.logsumexp_axis(-1, true)?)?;
-    let teacher = stop_gradient(&logq.index(e - 1))?; // [B, K]
+    let teacher = stop_gradient(logq.index(e - 1))?; // [B, K]
     let p = ops::exp(&teacher)?;
     let kl = p
         .multiply(teacher.subtract(logq.index(..e - 1))?)?
