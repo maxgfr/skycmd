@@ -183,9 +183,9 @@ pub fn stage() -> Stage {
 pub fn final_val(log: &str) -> Result<[f64; 4]> {
     let entry: Value = log
         .lines()
+        .rev()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter(|v| v["mode"] == "ternary" && v.get("val").is_some())
-        .last()
+        .find(|v| v["mode"] == "ternary" && v.get("val").is_some())
         .context("no ternary validation in log.jsonl")?;
     let val = entry["val"].as_object().context("val")?;
     let last = (0..val.len())
