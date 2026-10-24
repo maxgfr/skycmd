@@ -977,6 +977,62 @@ pub fn decision_loss_dis(
     ce.multiply(wts)?.sum(None)
 }
 
+/// Self-distillation of the early exits toward the deepest one (s6, after CalexNet
+/// and SAFE-KD): each exit `e < E − 1` also learns `T² · KL(p_T(last) ‖ p_T(e))`, with
+/// `p_T = softmax(logits / T)` and the deepest exit detached, so an early exit learns
+/// where the full-depth answer is uncertain instead of only the hard label.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExitKd {
+    /// Weight of the mean KL over the early exits.
+    pub weight: f32,
+    /// Distillation temperature `T`.
+    pub temp: f32,
+}
+
+/// The [`ExitKd`] term of masked logits `[E, B, K]` (0 with a single exit).
+pub fn exit_kd_loss(logits: &Array, kd: ExitKd) -> R<Array> {
+    let e = logits.dim(0);
+    if e < 2 {
+        return Ok(Array::from_f32(0.0));
+    }
+    let z = to_f32(logits.clone())?.divide(Array::from_f32(kd.temp))?;
+    let logq = z.subtract(z.logsumexp_axis(-1, true)?)?;
+    let teacher = stop_gradient(&logq.index(e - 1))?; // [B, K]
+    let p = ops::exp(&teacher)?;
+    let kl = p
+        .multiply(teacher.subtract(logq.index(..e - 1))?)?
+        .sum_axis(-1, None)?
+        .mean_axis(-1, None)?; // [E - 1]
+    kl.mean(None)?
+        .multiply(Array::from_f32(kd.weight * kd.temp * kd.temp))
+}
+
+/// Deep supervision with explicit exit weights `wts` `[E]`, optional [`exit_targets`]
+/// exponents `beta` `[E]`, plus the [`ExitKd`] term: [`decision_loss_weighted`] or
+/// [`decision_loss_dis`] with self-distillation, from one forward pass.
+pub fn decision_loss_kd(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    qat: bool,
+    wts: &Array,
+    beta: Option<&Array>,
+    kd: ExitKd,
+) -> R<Array> {
+    let logits = masked(&forward(p, cfg, b, qat)?, &b.marker_mask)?;
+    let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+    let target = match beta {
+        Some(beta) => exit_targets(&b.target, beta)?,
+        None => b.target.clone(),
+    };
+    let ce = target
+        .multiply(&logp)?
+        .sum_axis(-1, None)?
+        .mean_axis(-1, None)?
+        .negative()?;
+    ce.multiply(wts)?.sum(None)?.add(exit_kd_loss(&logits, kd)?)
+}
+
 /// [`decision_loss`] over the first `n_exits` exits (stochastic depth: the
 /// loops beyond them are skipped), their weights renormalized to sum to 1.
 pub fn decision_loss_exits(
@@ -1646,6 +1702,44 @@ mod tests {
                 }
                 assert!(max_diff <= 1e-5, "qat {qat}: max diff {max_diff}");
             }
+        });
+    }
+
+    #[test]
+    fn exit_kd_matches_its_definition_and_spares_the_deepest_exit() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let kd = ExitKd {
+                weight: 0.5,
+                temp: 2.0,
+            };
+            // Exits that already agree with the deepest one cost nothing.
+            let same = Array::from_slice(&[1.0f32, -2.0, 0.5, 1.0, -2.0, 0.5], &[2, 1, 3]);
+            let z = exit_kd_loss(&same, kd).unwrap().item_exact::<f32>();
+            assert!(z.abs() < 1e-6, "{z}");
+            assert_eq!(
+                exit_kd_loss(&Array::from_slice(&[1.0f32, 2.0], &[1, 1, 2]), kd)
+                    .unwrap()
+                    .item_exact::<f32>(),
+                0.0
+            );
+            // One early exit, one question: weight · T² · KL(p_T(last) ‖ p_T(early)).
+            let early = [2.0f32, 0.0, -1.0];
+            let last = [0.0f32, 1.0, 0.5];
+            let mut both = early.to_vec();
+            both.extend(last);
+            let logits = Array::from_slice(&both, &[2, 1, 3]);
+            let got = exit_kd_loss(&logits, kd).unwrap().item_exact::<f32>();
+            let soft = |z: &[f32]| crate::metrics::softmax_t(z, kd.temp);
+            let (p, q) = (soft(&last), soft(&early));
+            let kl: f64 = p.iter().zip(&q).map(|(a, b)| a * (a / b).ln()).sum();
+            let want = (kd.weight * kd.temp * kd.temp) as f64 * kl;
+            assert!((got as f64 - want).abs() < 1e-5, "{got} vs {want}");
+            // The deepest exit is the teacher: no gradient reaches it through this term.
+            let g = mlx_rs::transforms::grad(|x: &Array| exit_kd_loss(x, kd))(&logits).unwrap();
+            let g = crate::model::host_f32(&g).unwrap();
+            assert!(g[..3].iter().any(|x| x.abs() > 1e-4), "{g:?}");
+            assert!(g[3..].iter().all(|x| *x == 0.0), "{g:?}");
         });
     }
 

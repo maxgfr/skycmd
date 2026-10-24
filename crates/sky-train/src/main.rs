@@ -11,6 +11,7 @@ use sky_train::{
     s2::{
         self,
         gguf::WeightFormat,
+        model::ExitKd,
         train::{S2BenchArgs, S2DecideArgs, S2PretrainArgs},
     },
     session::Progress,
@@ -359,6 +360,12 @@ enum Cmd {
         /// beta rising linearly from this value at the first exit to 1 at the last.
         #[arg(long)]
         dis: Option<f32>,
+        /// s6 self-distillation: weight of `T² · KL(deepest exit ‖ exit e)` on the early exits.
+        #[arg(long)]
+        exit_kd: Option<f32>,
+        /// Temperature of --exit-kd.
+        #[arg(long, default_value_t = 2.0)]
+        exit_kd_temp: f32,
         /// Batches drawn at once and grouped by state length, so that a batch is padded to its
         /// own longest state (1: every batch drawn alone).
         #[arg(long, default_value_t = 1)]
@@ -745,6 +752,8 @@ fn main() -> Result<()> {
             qat_frac,
             loop_dropout,
             dis,
+            exit_kd,
+            exit_kd_temp,
             length_pool,
             pad_to,
             seq_records,
@@ -783,6 +792,10 @@ fn main() -> Result<()> {
             seq_frac,
             carry_drop,
             dis,
+            exit_kd: exit_kd.map(|weight| ExitKd {
+                weight,
+                temp: exit_kd_temp,
+            }),
             length_pool,
         })?,
         Cmd::S2Calibrate {

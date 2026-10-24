@@ -86,6 +86,8 @@ pub struct S2Session {
     /// s4 deep improvement supervision: per-exit sharpening exponents of the targets
     /// (`model::exit_targets`); `None` trains every exit on the target itself.
     pub dis_beta: Option<Vec<f32>>,
+    /// s6 self-distillation of the early exits toward the deepest (`model::ExitKd`).
+    pub exit_kd: Option<model::ExitKd>,
 }
 
 /// Number of arrays [`dec_arrays`] produces per batch.
@@ -200,6 +202,7 @@ impl S2Session {
             dec_fn: BTreeMap::new(),
             seq_fn: BTreeMap::new(),
             dis_beta: None,
+            exit_kd: None,
         }
     }
 
@@ -261,9 +264,13 @@ impl S2Session {
             let names = sorted_names(&self.params);
             let cfg = self.cfg.clone();
             let dis = self.dis_beta.is_some();
+            let kd = self.exit_kd;
             let f = self.dec_fn.entry(qat).or_insert_with(|| {
                 CompiledGrad::new(names, move |p, b| {
-                    if dis {
+                    if let Some(kd) = kd {
+                        let beta = dis.then(|| &b[16]);
+                        model::decision_loss_kd(p, &cfg, &dec_from(b), qat, &b[15], beta, kd)
+                    } else if dis {
                         model::decision_loss_dis(p, &cfg, &dec_from(b), qat, &b[15], &b[16])
                     } else {
                         model::decision_loss_weighted(p, &cfg, &dec_from(b), qat, &b[15])
@@ -277,6 +284,16 @@ impl S2Session {
             }
             let (loss, grads) = f.call(&self.params, inputs)?;
             apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?
+        } else if let Some(kd) = self.exit_kd {
+            let cfg = &self.cfg;
+            let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+            let beta = self
+                .dis_beta
+                .as_ref()
+                .map(|b| Array::from_slice(b, &[b.len() as i32]));
+            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+                model::decision_loss_kd(p, cfg, b, qat, &wts, beta.as_ref(), kd)
+            })?
         } else if let Some(beta) = &self.dis_beta {
             let cfg = &self.cfg;
             let wts = Array::from_slice(&wv, &[wv.len() as i32]);
@@ -395,6 +412,7 @@ impl S2Session {
             dec_fn: BTreeMap::new(),
             seq_fn: BTreeMap::new(),
             dis_beta: None,
+            exit_kd: None,
         })
     }
 }
@@ -1198,6 +1216,8 @@ pub struct S2DecideArgs {
     /// s4 deep improvement supervision: sharpening exponent of the first exit's target
     /// (rising linearly to 1 at the last exit); `None` disables it.
     pub dis: Option<f32>,
+    /// s6 self-distillation of the early exits toward the deepest (`model::ExitKd`).
+    pub exit_kd: Option<model::ExitKd>,
     /// Batches drawn at once and grouped by state length (1: every batch drawn alone).
     pub length_pool: usize,
 }
@@ -1333,6 +1353,13 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     s.dis_beta = a.dis.map(|b0| model::dis_betas(s.cfg.n_exits(), b0));
     if let Some(beta) = &s.dis_beta {
         println!("deep improvement supervision: exit target exponents {beta:?}");
+    }
+    s.exit_kd = a.exit_kd;
+    if let Some(kd) = &s.exit_kd {
+        println!(
+            "exit self-distillation: weight {}, temperature {}",
+            kd.weight, kd.temp
+        );
     }
     println!(
         "{}: {} parameters, batch {}, budget {}, QAT over the last {:.0}%, loop dropout {}",
@@ -1649,6 +1676,27 @@ mod tests {
                 predict(&s.params, &cfg, &data.statics, &data.groups, &val, 4, true).unwrap();
             assert_eq!(preds.len(), val.len());
             assert_eq!(preds[0].logits.len(), 2);
+            // Self-distillation trains through both the compiled and the eager step, with
+            // loop dropout (fewer supervised exits than computed ones).
+            for compile in [true, false] {
+                let mut k = S2Session::new(
+                    cfg.clone(),
+                    model::init(&cfg, S2Parts::DECISION, 4).unwrap(),
+                    OptConfig::default(),
+                    "s2-decide",
+                    6,
+                    60.0,
+                );
+                k.compile = compile;
+                k.exit_kd = Some(model::ExitKd {
+                    weight: 1.0,
+                    temp: 2.0,
+                });
+                for n in [None, Some(1)] {
+                    let st = k.decision_step_exits(&fixed, 1.0, false, n).unwrap();
+                    assert!(st.loss.is_finite(), "compile {compile}, exits {n:?}");
+                }
+            }
         });
     }
 }
