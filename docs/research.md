@@ -50,7 +50,13 @@ According to its model card, `oscar-1-17m` scores **0.6775** on `LocalLLaMA/type
 - **2502.16982 (Muon is Scalable for LLM Training, Kimi)**: Muon needs decoupled weight decay, and an update scale of `0.2·√max(A, B)` that matches AdamW's RMS. → Muon recipe 2 (`docs/SPEC-S6.md` §2).
 - **DeepSeek V4**: a hybrid Muon/AdamW split like ours, and a Newton–Schulz pass in two stages, fast then stabilizing. → `ns_polish` iterations with a polynomial that converges to 1.
 - **2605.29157 (Parallax)**: local linear attention with a learned probe, and its gain over softmax attention depends on Muon. → s6 (`docs/SPEC-S6.md` §1) and the `cargo xtask s6ab` ablation.
-- **Muon-trained features are more robust and transfer better**, through larger logit margins and a higher effective rank of the hidden states. → `Metrics.margin` and the `erank` validation log.
+- **2606.09658 (Muon Learns More Robust and Transferable Features than Adam)**: Muon-trained features are more robust and transfer better, through larger logit margins and a higher effective rank of the hidden states. → `Metrics.margin` and the `erank` validation log.
+- **2602.03043 (SAFE-KD) and CalexNet**: early-exit thresholds by conformal risk control, calibrated on the samples that reach each exit; exits distilled from the deepest one. → `sky-arena --calibrate-crc` and `s2-decide --exit-kd` (`docs/SPEC-S6.md` §9–10).
+- **2607.20519 (Adaptive Depth in Looped Transformers)**: fixed-prior depth supervision and a post-hoc confidence readout match or beat learned halting gates. → s3 keeps its deep supervision and max-probability exits.
+- **2605.11172 (SODA)**: weight decay toward the initialization in 1/(k + 2), with no hyper-parameter. → `--wd-mode soda`.
+- **2606.04058 (Spectral Scaling Laws of Muon)**: 5 Newton–Schulz steps suffice up to mid-late layers. → the `parallax-muon-nopolish` arm.
+- **Exclusive Self-Attention under Muon** (DOI 10.21203/rs.3.rs-10673227/v1): removing each token's own-value component from its attention output is stable and slightly better under Muon. → the `xsa` option.
+- **2605.12913 (Revisiting DAgger in the Era of LLM-Agents)**: DAgger with a per-turn student/teacher interpolation. → `sky-arena --dagger-beta`.
 - **2609.30535**: code-switching curricula help align languages. → We mix FR and EN.
 - **2609.01404 (DroneCATS)**: small models struggle with termination actions. → `end` and `abort` are explicit actions.
 - **2609.23742**: constrained decoding removes structural JSON errors but not semantic ones. → A coded validator always gets the last word.

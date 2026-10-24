@@ -46,7 +46,13 @@ Two results took more than one try, and the tutorial tells both stories:
   The same s1 `.gguf` file runs in our engine, in `llama-server` (max probability difference 4.7e-4) and in wllama 3.8.1 (1.1e-4), measured on the s1-pico checkpoint published before the DAgger rounds. Ollama 0.40.3 loads it but rejects the `laya` decision encoding ([`docs/compat.md`](docs/compat.md)).
 - **s2 format** ([`docs/SPEC-S2.md`](docs/SPEC-S2.md)). Same requests and responses, different model: a static stream (question + options) encoded once and cached, a state stream encoded once per frame, options that never attend to each other (permutation-equivariant by construction), one `[NUM]` token per number with continuous value features, early exits with deep supervision, and ternary weights trained with QAT. s2 files run only in the skycmd engine: browser, Node/Deno/Bun, Python, CLI and server.
 - **s3 format** ([`docs/SPEC-S3.md`](docs/SPEC-S3.md)). s2 with one token per `key value` pair (the value is added to the key's embedding), one weight-shared state block applied 4 times with an exit after each pass, and an exit threshold calibrated by playing the games (`scripts/calibrate-exit.sh`). s3 files keep the `skycmd-s2` architecture tag, so they run in the same places as s2 and nowhere else.
-- **s6 format** ([`docs/SPEC-S6.md`](docs/SPEC-S6.md), code ready, no model trained yet). s3 with Parallax attention: a learned probe corrects softmax attention with the covariance of the values and the keys (arXiv 2605.29157). It is trained with the Muon v2 recipe: Kimi's decoupled decay and AdamW-matched update scale, and a two-stage Newton–Schulz. s6 files keep the `skycmd-s2` tag. `cargo xtask s6ab` runs the {AdamW, Muon v2} × {softmax, Parallax} ablation.
+- **s6 format** ([`docs/SPEC-S6.md`](docs/SPEC-S6.md), code ready, no model trained yet). s3 with Parallax attention: a learned probe corrects softmax attention with the covariance of the values and the keys (arXiv 2605.29157). It is trained with the Muon v2 recipe: Kimi's decoupled decay and AdamW-matched update scale, and a two-stage Newton–Schulz. s6 files keep the `skycmd-s2` tag. Other additions, each optional:
+  - exclusive self-attention (`xsa`);
+  - SODA weight decay;
+  - exit self-distillation;
+  - exit thresholds by conformal risk control (`sky-arena --calibrate-crc`).
+
+  `cargo xtask s6ab` runs the {AdamW, Muon v2} × {softmax, Parallax} ablation, then tests each addition on its own.
 - **Training.** Everything is in Rust with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon:
   - MLM pretraining;
   - decision training with cross-entropy on soft targets;
