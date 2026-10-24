@@ -568,6 +568,7 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         exit_threshold,
         temperature,
         bf16: false,
+        qat_grad_a: 0.0,
     };
     cfg.validate()?;
     Ok(cfg)

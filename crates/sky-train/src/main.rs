@@ -369,6 +369,10 @@ enum Cmd {
         /// Decay of an EMA of the weights, saved as a full run in <out>/last-ema (0: off).
         #[arg(long, default_value_t = 0.0)]
         ema: f32,
+        /// StableQAT: amplitude A of the surrogate gradient of the ternary QAT (0: STE; the
+        /// paper uses 0.21, the admissible range is below 0.225).
+        #[arg(long, default_value_t = 0.0)]
+        qat_grad_a: f32,
         /// Batches drawn at once and grouped by state length, so that a batch is padded to its
         /// own longest state (1: every batch drawn alone).
         #[arg(long, default_value_t = 1)]
@@ -758,6 +762,7 @@ fn main() -> Result<()> {
             exit_kd,
             exit_kd_temp,
             ema,
+            qat_grad_a,
             length_pool,
             pad_to,
             seq_records,
@@ -801,6 +806,7 @@ fn main() -> Result<()> {
                 temp: exit_kd_temp,
             }),
             ema,
+            qat_grad_a,
             length_pool,
         })?,
         Cmd::S2Calibrate {

@@ -1222,6 +1222,9 @@ pub struct S2DecideArgs {
     /// is saved as a complete run in `<out>/last-ema` (calibrate and export it like `last`),
     /// and validated at the end as `ema-f32` / `ema-ternary`.
     pub ema: f32,
+    /// StableQAT amplitude `A` of the ternary QAT gradient (0: straight-through estimator;
+    /// `model::ternarize_stable`).
+    pub qat_grad_a: f32,
     /// Batches drawn at once and grouped by state length (1: every batch drawn alone).
     pub length_pool: usize,
 }
@@ -1353,6 +1356,19 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         a.init_params.as_deref(),
     )?;
     s.cfg.bf16 = a.bf16;
+    if !(0.0..model::STABLE_QAT_A_MAX).contains(&a.qat_grad_a) {
+        bail!(
+            "--qat-grad-a must be in [0, {}) (arXiv 2601.19320, Theorem 4.2)",
+            model::STABLE_QAT_A_MAX
+        );
+    }
+    s.cfg.qat_grad_a = a.qat_grad_a;
+    if a.qat_grad_a > 0.0 {
+        println!(
+            "StableQAT: surrogate QAT gradient, amplitude {}",
+            a.qat_grad_a
+        );
+    }
     s.compile = a.compile;
     s.dis_beta = a.dis.map(|b0| model::dis_betas(s.cfg.n_exits(), b0));
     if let Some(beta) = &s.dis_beta {
