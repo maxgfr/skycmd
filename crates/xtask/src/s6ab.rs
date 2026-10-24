@@ -33,6 +33,8 @@ pub struct Arm {
     pub config: &'static str,
     /// Optimizer flags of both training phases (`--no-muon`, `--wd-mode soda`, ...).
     pub opt: &'static [&'static str],
+    /// Extra flags of the pretraining phase only (`--curriculum 0.1`).
+    pub pretrain: &'static [&'static str],
     /// Extra flags of the decision phase only (`--exit-kd 0.5`).
     pub decide: &'static [&'static str],
 }
@@ -47,6 +49,7 @@ pub fn arms() -> Vec<Arm> {
             about: "s3-pico attention, AdamW everywhere",
             config: "configs/s3-pico.json",
             opt: ADAMW,
+            pretrain: &[],
             decide: &[],
         },
         Arm {
@@ -54,6 +57,7 @@ pub fn arms() -> Vec<Arm> {
             about: "s3-pico attention, Muon v2 on the encoder matrices",
             config: "configs/s3-pico.json",
             opt: &[],
+            pretrain: &[],
             decide: &[],
         },
         Arm {
@@ -61,6 +65,7 @@ pub fn arms() -> Vec<Arm> {
             about: "s6-pico (Parallax), AdamW everywhere",
             config: "configs/s6-pico.json",
             opt: ADAMW,
+            pretrain: &[],
             decide: &[],
         },
         Arm {
@@ -68,6 +73,7 @@ pub fn arms() -> Vec<Arm> {
             about: "s6-pico (Parallax), Muon v2 on the encoder matrices",
             config: "configs/s6-pico.json",
             opt: &[],
+            pretrain: &[],
             decide: &[],
         },
         Arm {
@@ -75,6 +81,7 @@ pub fn arms() -> Vec<Arm> {
             about: "s3-pico with exclusive self-attention (XSA), Muon v2",
             config: "configs/s3-pico-xsa.json",
             opt: &[],
+            pretrain: &[],
             decide: &[],
         },
         Arm {
@@ -82,6 +89,7 @@ pub fn arms() -> Vec<Arm> {
             about: "parallax-muon with SODA weight decay (toward the initialization, 1/(k+2))",
             config: "configs/s6-pico.json",
             opt: &["--wd-mode", "soda"],
+            pretrain: &[],
             decide: &[],
         },
         Arm {
@@ -89,6 +97,7 @@ pub fn arms() -> Vec<Arm> {
             about: "parallax-muon without the Newton–Schulz polish iterations",
             config: "configs/s6-pico.json",
             opt: &["--ns-polish", "0"],
+            pretrain: &[],
             decide: &[],
         },
         Arm {
@@ -96,6 +105,7 @@ pub fn arms() -> Vec<Arm> {
             about: "parallax-muon with exit self-distillation (weight 0.5, T = 2)",
             config: "configs/s6-pico.json",
             opt: &[],
+            pretrain: &[],
             decide: &["--exit-kd", "0.5"],
         },
         Arm {
@@ -103,7 +113,24 @@ pub fn arms() -> Vec<Arm> {
             about: "parallax-muon with a weight EMA (decay 0.999), the EMA exported (issue #38)",
             config: "configs/s6-pico.json",
             opt: &[],
+            pretrain: &[],
             decide: &["--ema", "0.999"],
+        },
+        Arm {
+            name: "parallax-muon-stableqat",
+            about: "parallax-muon with the StableQAT gradient in the ternary QAT (A = 0.21, issue #40)",
+            config: "configs/s6-pico.json",
+            opt: &[],
+            pretrain: &[],
+            decide: &["--qat-grad-a", "0.21"],
+        },
+        Arm {
+            name: "parallax-muon-curriculum",
+            about: "parallax-muon with an easy-first curriculum over the first 10% of pretraining (issue #40)",
+            config: "configs/s6-pico.json",
+            opt: &[],
+            pretrain: &["--curriculum", "0.1"],
+            decide: &[],
         },
     ]
 }
@@ -192,6 +219,7 @@ pub fn stage(arms: &[Arm]) -> Stage {
                 &pre,
             ];
             args.extend(opt.iter().copied());
+            args.extend(a.pretrain.iter().copied());
             steps.push(Step::new(&format!("{id}-pretrain"), "sky-train", &args).gpu());
             let init = format!("{pre}/init");
             let mut args = vec![
@@ -373,7 +401,7 @@ mod tests {
     #[test]
     fn grid_and_single_changes() {
         let a = arms();
-        assert_eq!(a.len(), 9);
+        assert_eq!(a.len(), 11);
         // The 2×2 grid: each attention under AdamW and under Muon v2.
         for config in ["configs/s3-pico.json", "configs/s6-pico.json"] {
             let adamw: Vec<bool> = a
@@ -384,7 +412,7 @@ mod tests {
             assert_eq!(adamw, [true, false], "{config}");
         }
         let s = stage(&a);
-        assert_eq!(s.steps.len(), 9 * SEEDS.len() * 5);
+        assert_eq!(s.steps.len(), 11 * SEEDS.len() * 5);
         // The AdamW arms pass --no-muon to both training steps, the others never; the exit
         // distillation only reaches the decision step.
         for step in &s.steps {
@@ -410,6 +438,21 @@ mod tests {
                 "{}",
                 step.name
             );
+            // The curriculum reaches the pretraining only, StableQAT the decision only.
+            let curriculum = step.args.iter().any(|a| a == "--curriculum");
+            assert_eq!(
+                curriculum,
+                step.name.contains("-curriculum-") && step.name.ends_with("-pretrain"),
+                "{}",
+                step.name
+            );
+            let stable = step.args.iter().any(|a| a == "--qat-grad-a");
+            assert_eq!(
+                stable,
+                step.name.contains("-stableqat-") && step.name.ends_with("-decide"),
+                "{}",
+                step.name
+            );
             // The EMA arm calibrates, exports and plays its EMA weights.
             let ema = step.name.contains("-ema-");
             if step.name.ends_with("-calibrate") || step.name.ends_with("-export") {
@@ -423,7 +466,7 @@ mod tests {
         }
         assert_eq!(selected(Some("xsa-muon, parallax-muon")).unwrap().len(), 2);
         assert!(selected(Some("nope")).is_err());
-        assert_eq!(selected(None).unwrap().len(), 9);
+        assert_eq!(selected(None).unwrap().len(), 11);
         let e = a.iter().find(|a| a.name == "parallax-muon-ema").unwrap();
         assert_eq!((e.checkpoint(), e.val_mode()), ("last-ema", "ema-ternary"));
     }

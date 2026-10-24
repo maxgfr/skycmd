@@ -55,8 +55,10 @@ A 2 × 2 grid on the s3-pico shape, then each change of §8–10 alone against i
 | parallax-muon-nopolish | `configs/s6-pico.json` | Muon v2, `--ns-polish 0` | |
 | parallax-muon-kd | `configs/s6-pico.json` | Muon v2 | `--exit-kd 0.5` |
 | parallax-muon-ema | `configs/s6-pico.json` | Muon v2 | `--ema 0.999` (the EMA weights are calibrated, exported and reported) |
+| parallax-muon-stableqat | `configs/s6-pico.json` | Muon v2 | `--qat-grad-a 0.21` |
+| parallax-muon-curriculum | `configs/s6-pico.json` | Muon v2, `--curriculum 0.1` in pretraining | |
 
-Nine arms × 3 seeds is 27 runs of about 27 minutes on an M5, so about 12 hours. `--arms` runs a subset.
+Eleven arms × 3 seeds is 33 runs of about 27 minutes on an M5, so about 15 hours. `--arms` runs a subset.
 
 - **Each arm and seed** (7, 11, 13):
   - `s2-pretrain` for 4,800 steps and `s2-decide` for 6,400 steps (the step counts of the 8 + 15 minute s3-pico runs, with the same data weights, QAT after 10%, loop dropout 0.25);
@@ -126,3 +128,21 @@ An exponential moving average of the float weights follows every training step, 
 - **Checkpoint**: the average is saved as a complete run in `<out>/last-ema`, next to `last`, so `s2-calibrate` and `s2-export` take it like any run. A resumed run resumes its EMA too.
 - **Validation**: at the end of the run, the EMA is validated as `ema-f32` and `ema-ternary` in `log.jsonl`, after the raw weights.
 - **Verified**: a 40-step run on the new Hugging Face sources (issue #38) trained, saved, calibrated and exported `last-ema` to a ternary GGUF.
+
+## 12. StableQAT gradient (`s2-decide --qat-grad-a A`)
+In the ternary QAT, the straight-through estimator passes a gradient of 1 through the rounding. StableQAT (arXiv 2601.19320, eq. 5, first order) multiplies it instead by
+
+`g = (1 − c·cos π(x + x_q)) / (1 + c·cos π(x + x_q))`, with `c = A·√2·π`,
+
+on the normalized weight `x = w / γ`, where `γ` is the per-row absmean and carries no gradient, and `x_q = round(x)`.
+- **Effect**: the forward pass is unchanged. For ternary weights `g` lies in `[(1 − c)/(1 + c), 1]`, which is small on a grid point and 1 half-way between two points, so the updates that flip a weight back and forth across a threshold are damped.
+- **Range**: `A = 0` is the straight-through estimator. `A` must stay below `1/(√2·π) ≈ 0.225` (Theorem 4.2), and the paper uses 0.21.
+- **Code**: `s2::model::ternarize_stable`. The test checks the gradient against the formula and that `A = 0` gives 1.
+
+## 13. Pretraining curriculum (`s2-pretrain --curriculum W`)
+Pacing-based sampling (arXiv 2506.11300).
+- **Difficulty**: each text row's lexical diversity, distinct tokens over tokens, one of the paper's most effective difficulty signals.
+- **Warm-up**: over the first fraction `W` of training, a row is drawn uniformly from the easiest share of the rows. That share grows linearly from 20% of the corpus to all of it.
+- **After the warm-up**: the usual epoch-shuffled order resumes.
+- **Numeric rows**: the numeric curriculum rows (`--numeric`) are unaffected.
+- **Reproducibility**: the draws use the session's RNG, so a run is reproducible and resumes exactly.

@@ -58,10 +58,11 @@ According to its model card, `oscar-1-17m` scores **0.6775** on `LocalLLaMA/type
 - **Exclusive Self-Attention under Muon** (DOI 10.21203/rs.3.rs-10673227/v1): removing each token's own-value component from its attention output is stable and slightly better under Muon. → the `xsa` option.
 - **2605.12913 (Revisiting DAgger in the Era of LLM-Agents)**: DAgger with a per-turn student/teacher interpolation. → `sky-arena --dagger-beta`.
 - **2311.05109, 2508.00180 (BEMA), Pathwise EMA (ICML 2026)**: an EMA of the weights damps the weight oscillation of low-bit QAT, and stabilizes training at small batch sizes. → `s2-decide --ema` (`docs/SPEC-S6.md` §11).
+- **2601.19320 (StableQAT)**: a Fourier-derived surrogate gradient for rounding that generalizes the straight-through estimator and stabilizes low-bit QAT. → `s2-decide --qat-grad-a` (`docs/SPEC-S6.md` §12).
+- **2506.11300 (curriculum learning in pretraining)**: easy-to-hard pacing speeds up convergence, and lexical diversity is among the best difficulty signals. → `s2-pretrain --curriculum` (§13).
 - **Not adopted yet**:
-  - 2601.19320 (StableQAT): its surrogate gradient for rounding is not in the abstract.
   - 2604.05635 (spline encodings): piecewise-linear number encoding would change the 17-feature `num_proj` format.
-  - 2506.11300 (curriculum) and 2405.20541 (perplexity pruning): candidates for the MLM corpus.
+  - 2405.20541 (perplexity pruning): it needs a trained reference model first; s3-pico can play that role once the corpus is rebuilt.
   - 2605.26246 (hard and soft labels): its gain comes from exposure bias in generation, which a one-pass decision does not have.
 - **2609.30535**: code-switching curricula help align languages. → We mix FR and EN.
 - **2609.01404 (DroneCATS)**: small models struggle with termination actions. → `end` and `abort` are explicit actions.
