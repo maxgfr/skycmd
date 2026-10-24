@@ -1218,6 +1218,10 @@ pub struct S2DecideArgs {
     pub dis: Option<f32>,
     /// s6 self-distillation of the early exits toward the deepest (`model::ExitKd`).
     pub exit_kd: Option<model::ExitKd>,
+    /// Decay of an exponential moving average of the float weights (0 disables). The average
+    /// is saved as a complete run in `<out>/last-ema` (calibrate and export it like `last`),
+    /// and validated at the end as `ema-f32` / `ema-ternary`.
+    pub ema: f32,
     /// Batches drawn at once and grouped by state length (1: every batch drawn alone).
     pub length_pool: usize,
 }
@@ -1354,6 +1358,25 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     if let Some(beta) = &s.dis_beta {
         println!("deep improvement supervision: exit target exponents {beta:?}");
     }
+    // Weight EMA (issue #38): resumed from `last-ema` when the run is, else from the weights.
+    let ema_dir = a.out.join("last-ema");
+    if !(0.0..1.0).contains(&a.ema) {
+        bail!("--ema must be in [0, 1)");
+    }
+    let mut ema = if a.ema == 0.0 {
+        None
+    } else if resumed && ema_dir.join("state.json").exists() {
+        Some(S2Session::load(&ema_dir)?.params)
+    } else {
+        Some(params::deep_clone(&s.params))
+    };
+    if ema.is_some() {
+        println!(
+            "weight EMA: decay {} (saved in {})",
+            a.ema,
+            ema_dir.display()
+        );
+    }
     s.exit_kd = a.exit_kd;
     if let Some(kd) = &s.exit_kd {
         println!(
@@ -1485,6 +1508,9 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             continue;
         }
         consecutive = 0;
+        if let Some(e) = &mut ema {
+            crate::s5::train::ema_update(e, &s.params, a.ema)?;
+        }
         s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
         (wl, wt, ws, wq) = (
             wl + st.loss as f64,
@@ -1528,12 +1554,18 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         }
         if last_ckpt.elapsed().as_secs_f64() >= a.checkpoint_minutes * 60.0 {
             save(&s, &last)?;
+            if let Some(e) = &mut ema {
+                with_params(&mut s, e, |s| save(s, &ema_dir))?;
+            }
             last_ckpt = Instant::now();
         }
     }
     if !a.progress.done(s.state.step, s.state.elapsed_secs) {
         // --stop-after: save and exit without the final validation.
         save(&s, &last)?;
+        if let Some(e) = &mut ema {
+            with_params(&mut s, e, |s| save(s, &ema_dir))?;
+        }
         println!(
             "stopped at step {}: checkpoint {}",
             s.state.step,
@@ -1548,7 +1580,29 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     log.write(&json!({"step": s.state.step, "final": true, "acc_f32": f, "acc_ternary": t}))?;
     save(&s, &last)?;
     println!("checkpoint {}", last.display());
+    if let Some(e) = &mut ema {
+        with_params(&mut s, e, |s| {
+            let f = validate(s, &data, &val, false, "ema-f32", &mut log)?;
+            let t = validate(s, &data, &val, true, "ema-ternary", &mut log)?;
+            println!("final val accuracy of the weight EMA: latent f32 {f:.4}, ternary {t:.4}");
+            log.write(&json!({"step": s.state.step, "final": true, "ema": true, "acc_f32": f, "acc_ternary": t}))?;
+            save(s, &ema_dir)
+        })?;
+        println!("EMA checkpoint {}", ema_dir.display());
+    }
     Ok(())
+}
+
+/// Runs `f` on the session with `params` in place of its weights, then puts them back.
+fn with_params<T>(
+    s: &mut S2Session,
+    params: &mut ParamMap,
+    f: impl FnOnce(&mut S2Session) -> Result<T>,
+) -> Result<T> {
+    std::mem::swap(&mut s.params, params);
+    let r = f(s);
+    std::mem::swap(&mut s.params, params);
+    r
 }
 
 /// Question type name of a prediction (for reports).
@@ -1676,6 +1730,17 @@ mod tests {
                 predict(&s.params, &cfg, &data.statics, &data.groups, &val, 4, true).unwrap();
             assert_eq!(preds.len(), val.len());
             assert_eq!(preds[0].logits.len(), 2);
+            // The EMA weights swap in for a save or a validation and always swap back.
+            let mut other = model::init(&cfg, S2Parts::DECISION, 9).unwrap();
+            let before = s.params["cls.weight"].clone();
+            let seen =
+                with_params(&mut s, &mut other, |s| Ok(s.params["cls.weight"].clone())).unwrap();
+            assert!(!seen.all_close(&before, 0.0, 0.0, None).unwrap());
+            let err = with_params(&mut s, &mut other, |_| -> Result<()> { bail!("boom") });
+            assert!(err.is_err());
+            assert!(s.params["cls.weight"]
+                .all_close(&before, 0.0, 0.0, None)
+                .unwrap());
             // Self-distillation trains through both the compiled and the eager step, with
             // loop dropout (fewer supervised exits than computed ones).
             for compile in [true, false] {
