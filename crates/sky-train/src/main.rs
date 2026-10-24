@@ -308,6 +308,10 @@ enum Cmd {
         /// Fraction of MLM rows drawn from --numeric.
         #[arg(long, default_value_t = 0.1)]
         numeric_weight: f64,
+        /// Curriculum warm-up: over this first fraction of training, text rows come from the
+        /// easiest share of the corpus (lowest lexical diversity, 20% growing to 100%); 0: off.
+        #[arg(long, default_value_t = 0.0)]
+        curriculum: f64,
     },
     /// s2: decision training with deep supervision over the exits and ternary QAT at the end.
     S2Decide {
@@ -717,6 +721,7 @@ fn main() -> Result<()> {
             num_weight,
             numeric,
             numeric_weight,
+            curriculum,
         } => s2::train::pretrain(&S2PretrainArgs {
             config,
             tokenizer,
@@ -740,6 +745,7 @@ fn main() -> Result<()> {
             num_weight,
             numeric,
             numeric_weight,
+            curriculum,
         })?,
         Cmd::S2Decide {
             config,
