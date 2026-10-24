@@ -1555,7 +1555,7 @@ mod tests {
                 p,
                 OptConfig {
                     adam_lr: 3e-3,
-                    muon_lr: 0.02,
+                    muon_lr: 3e-3,
                     ..Default::default()
                 },
                 "s2-decide",

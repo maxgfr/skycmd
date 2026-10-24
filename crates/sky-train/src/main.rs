@@ -34,24 +34,33 @@ struct OptFlags {
     /// Peak AdamW learning rate (embeddings, norms, head, scorer).
     #[arg(long)]
     adam_lr: Option<f32>,
-    /// Peak Muon learning rate (encoder hidden matrices).
+    /// Peak Muon learning rate (encoder hidden matrices); defaults to the AdamW one.
     #[arg(long)]
     muon_lr: Option<f32>,
-    /// Decoupled AdamW weight decay.
+    /// Decoupled weight decay (AdamW and Muon matrices).
     #[arg(long, default_value_t = 0.01)]
     weight_decay: f32,
     /// Global gradient-norm clip (0 disables).
     #[arg(long, default_value_t = 1.0)]
     clip_norm: f32,
+    /// AdamW on the encoder hidden matrices too (no Muon).
+    #[arg(long)]
+    no_muon: bool,
+    /// Newton–Schulz polish iterations after the fast ones.
+    #[arg(long, default_value_t = 2)]
+    ns_polish: usize,
 }
 
 impl OptFlags {
-    fn build(&self, adam_lr: f32, muon_lr: f32) -> OptConfig {
+    fn build(&self, adam_lr: f32) -> OptConfig {
+        let adam_lr = self.adam_lr.unwrap_or(adam_lr);
         OptConfig {
-            adam_lr: self.adam_lr.unwrap_or(adam_lr),
-            muon_lr: self.muon_lr.unwrap_or(muon_lr),
+            adam_lr,
+            muon_lr: self.muon_lr.unwrap_or(adam_lr),
             weight_decay: self.weight_decay,
             clip_norm: self.clip_norm,
+            muon: !self.no_muon,
+            ns_polish: self.ns_polish,
             ..OptConfig::default()
         }
     }
@@ -567,7 +576,7 @@ fn main() -> Result<()> {
             resume,
             batch,
             seq,
-            opt: opt.build(3e-3, 0.02),
+            opt: opt.build(3e-3),
             seed,
             max_tokens,
             log_every,
@@ -603,7 +612,7 @@ fn main() -> Result<()> {
             out,
             resume,
             batch,
-            opt: opt.build(1e-3, 0.01),
+            opt: opt.build(1e-3),
             seed,
             log_every,
             eval_every,
@@ -695,7 +704,7 @@ fn main() -> Result<()> {
             resume,
             batch,
             seq,
-            opt: opt.build(3e-3, 0.02),
+            opt: opt.build(3e-3),
             seed,
             max_tokens,
             log_every,
@@ -749,7 +758,7 @@ fn main() -> Result<()> {
             out,
             resume,
             batch,
-            opt: opt.build(1e-3, 0.01),
+            opt: opt.build(1e-3),
             seed,
             qat_frac,
             loop_dropout,
