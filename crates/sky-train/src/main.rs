@@ -239,6 +239,9 @@ enum Cmd {
         /// Also time the QAT (ternary fake-quant) decision step.
         #[arg(long)]
         qat: bool,
+        /// Newton–Schulz polish iterations of the timed Muon updates.
+        #[arg(long, default_value_t = 2)]
+        ns_polish: usize,
     },
     /// s2: numeric MLM over the state stack (CE + 0.5 MSE on masked numbers), then the decision init.
     S2Pretrain {
@@ -644,8 +647,10 @@ fn main() -> Result<()> {
             precision,
             no_compile,
             qat,
+            ns_polish,
         } => {
             let rows = s2::train::bench(&S2BenchArgs {
+                ns_polish,
                 config,
                 mlm_batch,
                 mlm_seq,

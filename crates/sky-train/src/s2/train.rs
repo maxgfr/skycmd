@@ -574,6 +574,8 @@ pub struct S2BenchArgs {
     pub bf16: bool,
     pub compile: bool,
     pub qat: bool,
+    /// Newton–Schulz polish iterations of the timed Muon updates.
+    pub ns_polish: usize,
 }
 
 /// One benchmark row.
@@ -688,10 +690,14 @@ pub fn bench(a: &S2BenchArgs) -> Result<Vec<S2BenchRow>> {
     let precision = if a.bf16 { "bf16" } else { "f32" };
     let mut rng = Rng::new(99);
     let mut out = Vec::new();
+    let opt = OptConfig {
+        ns_polish: a.ns_polish,
+        ..OptConfig::default()
+    };
 
     let p = model::init(&cfg, S2Parts::PRETRAIN, 1)?;
     let n = params::count(&p);
-    let mut s = S2Session::new(cfg.clone(), p, OptConfig::default(), "bench", 1, 0.0);
+    let mut s = S2Session::new(cfg.clone(), p, opt.clone(), "bench", 1, 0.0);
     s.compile = a.compile;
     let batches: Vec<NumMlmBatch> = (0..4)
         .map(|_| {
@@ -727,7 +733,7 @@ pub fn bench(a: &S2BenchArgs) -> Result<Vec<S2BenchRow>> {
 
     let p = model::init(&cfg, S2Parts::DECISION, 2)?;
     let n = params::count(&p);
-    let mut s = S2Session::new(cfg.clone(), p, OptConfig::default(), "bench", 2, 0.0);
+    let mut s = S2Session::new(cfg.clone(), p, opt.clone(), "bench", 2, 0.0);
     s.compile = a.compile;
     let batches = random_decision_batches(&cfg, a, &mut rng, 4);
     for qat in if a.qat {
