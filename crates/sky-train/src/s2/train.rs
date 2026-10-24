@@ -9,7 +9,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use mlx_rs::Array;
+use mlx_rs::{Array, Dtype};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -481,6 +481,44 @@ pub fn predict(
         .into_iter()
         .map(|p| p.expect("every item predicted"))
         .collect())
+}
+
+/// Effective rank ([`crate::metrics::effective_rank`]) of the raw state latents of every exit,
+/// over the valid state tokens of the first `max_items` items (one batch). The singular values
+/// come from the `d × d` Gram matrix, on the CPU.
+pub fn state_effective_rank(
+    p: &ParamMap,
+    cfg: &S2Config,
+    statics: &[StaticSeq],
+    items: &[&S2Item],
+    max_items: usize,
+    qat: bool,
+) -> Result<Vec<f64>> {
+    let rows: Vec<&S2Item> = items.iter().take(max_items).copied().collect();
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let b = make_batch(statics, &rows, 16);
+    let (_, raw) = model::forward_carry(p, cfg, &b, qat, None)?;
+    let valid = host_f32(&b.valid.as_dtype(Dtype::Float32)?)?;
+    let n = valid.iter().filter(|&&v| v > 0.5).count() as i32;
+    raw.iter()
+        .map(|h| {
+            let d = h.dim(2) as usize;
+            let x = host_f32(&h.as_dtype(Dtype::Float32)?)?;
+            let mut m = Vec::with_capacity(n as usize * d);
+            for (r, _) in valid.iter().enumerate().filter(|(_, &v)| v > 0.5) {
+                m.extend_from_slice(&x[r * d..(r + 1) * d]);
+            }
+            let s2 = mlx_rs::with_device(mlx_rs::Device::cpu(), || -> Result<Vec<f32>> {
+                let a = Array::from_slice(&m, &[n, d as i32]);
+                let gram = mlx_rs::ops::matmul(a.t(), &a)?;
+                Ok(host_f32(&mlx_rs::linalg::svd(&gram)?.1)?)
+            })?;
+            let s: Vec<f32> = s2.iter().map(|v| v.max(0.0).sqrt()).collect();
+            Ok(metrics::effective_rank(&s))
+        })
+        .collect()
 }
 
 /// Metrics of exit `e` per group key plus `all`.
@@ -1196,7 +1234,19 @@ fn validate(
         acc_last = m["all"].accuracy;
         rec.insert(format!("exit{e}"), serde_json::to_value(&m)?);
     }
-    log.write(&json!({"step": s.state.step, "mode": label, "val": rec}))?;
+    let erank = state_effective_rank(&s.params, &s.cfg, &data.statics, val, 128, qat)?;
+    let shown: Vec<String> = erank.iter().map(|r| format!("{r:.1}")).collect();
+    println!(
+        "  val[{label}] effective rank per exit: {} (of {})",
+        shown.join(" "),
+        s.cfg.hidden_size
+    );
+    let erank: serde_json::Map<_, _> = erank
+        .iter()
+        .enumerate()
+        .map(|(e, r)| (format!("exit{e}"), json!(r)))
+        .collect();
+    log.write(&json!({"step": s.state.step, "mode": label, "val": rec, "erank": erank}))?;
     Ok(acc_last)
 }
 
@@ -1574,6 +1624,11 @@ mod tests {
                 .unwrap()
                 .item_exact::<f32>();
             assert!(l1 < l0, "loss {l0} -> {l1}");
+            let val: Vec<&S2Item> = data.val.iter().collect();
+            let erank =
+                state_effective_rank(&s.params, &cfg, &data.statics, &val, 32, false).unwrap();
+            assert_eq!(erank.len(), cfg.n_exits());
+            assert!(erank.iter().all(|&r| r > 1.0 && r <= 64.0), "{erank:?}");
             let tmp = tempfile::tempdir().unwrap();
             let dir = tmp.path().join("last");
             s.save(&dir, &[]).unwrap();
