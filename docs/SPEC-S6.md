@@ -54,8 +54,9 @@ A 2 × 2 grid on the s3-pico shape, then each change of §8–10 alone against i
 | parallax-muon-soda | `configs/s6-pico.json` | Muon v2, `--wd-mode soda` | |
 | parallax-muon-nopolish | `configs/s6-pico.json` | Muon v2, `--ns-polish 0` | |
 | parallax-muon-kd | `configs/s6-pico.json` | Muon v2 | `--exit-kd 0.5` |
+| parallax-muon-ema | `configs/s6-pico.json` | Muon v2 | `--ema 0.999` (the EMA weights are calibrated, exported and reported) |
 
-Eight arms × 3 seeds is 24 runs of about 27 minutes on an M5, so about 11 hours. `--arms` runs a subset.
+Nine arms × 3 seeds is 27 runs of about 27 minutes on an M5, so about 12 hours. `--arms` runs a subset.
 
 - **Each arm and seed** (7, 11, 13):
   - `s2-pretrain` for 4,800 steps and `s2-decide` for 6,400 steps (the step counts of the 8 + 15 minute s3-pico runs, with the same data weights, QAT after 10%, loop dropout 0.25);
@@ -119,3 +120,9 @@ After SAFE-KD (arXiv 2602.03043) and CalexNet: thresholds with a stated guarante
 - **`sky-arena --dagger N --dagger-beta B`**: the oracle takes a share B of the decisions during DAgger collection, the student the rest; this is the mixing policy of DAgger, applied per turn as in arXiv 2605.12913.
   - B was a fixed 0.2, and stays the default.
   - Lowering it round after round moves the data toward the student's own states.
+
+## 11. Weight EMA (`s2-decide --ema DECAY`)
+An exponential moving average of the float weights follows every training step, the ternary QAT phase included. In low-bit QAT under the straight-through estimator, the weights oscillate around the quantization thresholds, and an EMA of the model damps that (arXiv 2311.05109; BEMA, arXiv 2508.00180, and Pathwise EMA, ICML 2026, refine the averaging itself).
+- **Checkpoint**: the average is saved as a complete run in `<out>/last-ema`, next to `last`, so `s2-calibrate` and `s2-export` take it like any run. A resumed run resumes its EMA too.
+- **Validation**: at the end of the run, the EMA is validated as `ema-f32` and `ema-ternary` in `log.jsonl`, after the raw weights.
+- **Verified**: a 40-step run on the new Hugging Face sources (issue #38) trained, saved, calibrated and exported `last-ema` to a ternary GGUF.
