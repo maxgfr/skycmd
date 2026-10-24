@@ -50,6 +50,42 @@ pub struct Metrics {
     pub nll: f64,
     pub brier: f64,
     pub ece: f64,
+    /// Mean logit margin: the gold option's raw logit minus the best other one, over the
+    /// questions with two options or more (0 when there are none). A larger margin leaves more
+    /// room before noise flips the answer.
+    pub margin: f64,
+}
+
+/// Raw logit of the gold option (`argmax(target)`) minus the best other logit; `None` with
+/// fewer than two options.
+pub fn logit_margin(logits: &[f32], target: &[f32]) -> Option<f64> {
+    if logits.len() < 2 {
+        return None;
+    }
+    let gold = argmax(target);
+    let other = logits
+        .iter()
+        .enumerate()
+        .filter(|&(i, _)| i != gold)
+        .map(|(_, &x)| x)
+        .fold(f32::NEG_INFINITY, f32::max);
+    Some((logits[gold] - other) as f64)
+}
+
+/// Effective rank `exp(H)` of a set of singular values, `H` the entropy of their normalized
+/// distribution: 1 for rank one, `n` for `n` equal values (0 for an empty or zero spectrum).
+pub fn effective_rank(singular: &[f32]) -> f64 {
+    let total: f64 = singular.iter().map(|&s| s.abs() as f64).sum();
+    if total <= 0.0 {
+        return 0.0;
+    }
+    let h: f64 = singular
+        .iter()
+        .map(|&s| s.abs() as f64 / total)
+        .filter(|&p| p > 0.0)
+        .map(|p| -p * p.ln())
+        .sum();
+    h.exp()
 }
 
 /// Expected calibration error with `bins` equal-width bins (`rl_common.ece_score`).
@@ -82,7 +118,12 @@ pub fn compute<'a>(
 ) -> Metrics {
     let (mut n, mut acc, mut nll_sum, mut brier) = (0usize, 0.0, 0.0, 0.0);
     let (mut conf, mut correct) = (Vec::new(), Vec::new());
+    let (mut margin, mut n_margin) = (0.0, 0usize);
     for p in preds {
+        if let Some(m) = logit_margin(&p.logits, &p.target) {
+            margin += m;
+            n_margin += 1;
+        }
         let t = temp(p);
         let q = softmax_t(&p.logits, t);
         let hit = (argmax(&q) == argmax(&p.target)) as u8 as f64;
@@ -107,6 +148,11 @@ pub fn compute<'a>(
         nll: nll_sum / d,
         brier: brier / d,
         ece: ece(&conf, &correct, 15),
+        margin: if n_margin > 0 {
+            margin / n_margin as f64
+        } else {
+            0.0
+        },
     }
 }
 
@@ -158,6 +204,25 @@ mod tests {
             src: "x".into(),
             group: "g".into(),
         }
+    }
+
+    #[test]
+    fn margin_and_effective_rank() {
+        // gold 2.0 vs best other 1.5; wrong answer: gold 0.0 vs 3.0; one option: skipped
+        let preds = [
+            pred(&[1.5, 2.0, -1.0], &[0.0, 1.0, 0.0]),
+            pred(&[0.0, 3.0], &[1.0, 0.0]),
+            pred(&[4.0], &[1.0]),
+        ];
+        assert_eq!(logit_margin(&preds[0].logits, &preds[0].target), Some(0.5));
+        assert_eq!(logit_margin(&preds[2].logits, &preds[2].target), None);
+        let m = compute(&preds, |_| 1.0);
+        assert!((m.margin - (0.5 - 3.0) / 2.0).abs() < 1e-12, "{}", m.margin);
+        assert!((effective_rank(&[3.0, 0.0, 0.0]) - 1.0).abs() < 1e-12);
+        assert!((effective_rank(&[2.0; 8]) - 8.0).abs() < 1e-9);
+        let mixed = effective_rank(&[4.0, 1.0, 1.0]);
+        assert!(mixed > 1.0 && mixed < 3.0);
+        assert_eq!(effective_rank(&[]), 0.0);
     }
 
     #[test]

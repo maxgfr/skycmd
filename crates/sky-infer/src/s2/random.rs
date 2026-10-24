@@ -30,9 +30,17 @@ impl WeightFormat {
     }
 }
 
-/// Ladder configurations `s2-pico`, `s2-nano`, `s2-micro` (SPEC-S2 §3) and `s3-pico`, `s3-nano`
-/// (SPEC-S3 §4: value-fused numbers, looped state blocks).
+/// Ladder configurations `s2-pico`, `s2-nano`, `s2-micro` (SPEC-S2 §3), `s3-pico`, `s3-nano`
+/// (SPEC-S3 §4: value-fused numbers, looped state blocks) and `s6-pico` (SPEC-S6: s3-pico with
+/// Parallax attention).
 pub fn ladder_config(name: &str) -> Option<S2Config> {
+    if name == "s6-pico" {
+        return Some(S2Config {
+            name: name.to_string(),
+            parallax: true,
+            ..ladder_config("s3-pico")?
+        });
+    }
     // (d, heads, state blocks, loops, static, fusion, ff, vocab, exits, fuse)
     type Row = (
         usize,
@@ -65,6 +73,7 @@ pub fn ladder_config(name: &str) -> Option<S2Config> {
         state_loops: loops,
         fuse_numbers: fuse,
         temporal_carry: false,
+        parallax: false,
         ffn_es: None,
         static_layers: stat,
         fusion_layers: fusion,
@@ -105,6 +114,9 @@ pub fn write_metadata(w: &mut GgufWriter, cfg: &S2Config, format: &str) {
     }
     if cfg.temporal_carry {
         w.add_kv(k("temporal_carry"), true);
+    }
+    if cfg.parallax {
+        w.add_kv(k("parallax"), true);
     }
     w.add_kv(k("static_block_count"), cfg.static_layers as u32);
     w.add_kv(k("fusion_block_count"), cfg.fusion_layers as u32);
@@ -232,7 +244,8 @@ impl Out<'_> {
         if n > 0 {
             self.norm(&p("attn_norm"), d, false)?;
         }
-        self.lin(&p("attn_qkv"), 3 * d, d, false, true)?;
+        let projections = if cfg.parallax { 4 } else { 3 };
+        self.lin(&p("attn_qkv"), projections * d, d, false, true)?;
         self.lin(&p("attn_output"), d, d, false, true)?;
         self.norm(&p("ffn_norm"), d, false)?;
         self.lin(&p("ffn_up"), 2 * ff, d, false, true)?;
@@ -326,6 +339,15 @@ pub fn random_gguf(
         let gate = o.rng.vec(d, 0.5, 0.0);
         o.float("carry_gate.weight", &[d], &gate)?;
         o.norm("carry_norm", d, false)?;
+    }
+    if cfg.parallax {
+        let hd = cfg.head_dim();
+        for n in 0..cfg.static_layers {
+            o.norm(&format!("static.blk.{n}.attn_px_norm"), hd, false)?;
+        }
+        for n in 0..cfg.state_blocks {
+            o.norm(&format!("blk.{n}.attn_px_norm"), hd, false)?;
+        }
     }
     Ok(w.to_bytes()?)
 }

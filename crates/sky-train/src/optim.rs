@@ -1,5 +1,10 @@
-//! Optimizers: Muon (port of `mlx.optimizers.Muon`) for the encoder hidden
-//! matrices, AdamW for everything else, and the WSD learning-rate schedule.
+//! Optimizers: Muon for the encoder hidden matrices, AdamW for everything else,
+//! and the WSD learning-rate schedule.
+//!
+//! Muon follows recipe 2 ([`OPT_RECIPE`]): decoupled weight decay and the
+//! `0.2·√max(A, B)` update scale of "Muon is Scalable for LLM Training" (Kimi),
+//! and a Newton–Schulz pass in two stages (DeepSeek V4): fast quintic
+//! iterations, then polish iterations that converge to 1.
 
 use std::{collections::HashMap, rc::Rc};
 
@@ -11,29 +16,44 @@ use crate::params::{group_of, Group, ParamMap};
 
 type R<T> = std::result::Result<T, Exception>;
 
-/// Newton–Schulz quintic coefficients of Muon.
+/// Newton–Schulz quintic coefficients of Muon (fast stage).
 pub const NS_COEFFS: (f32, f32, f32) = (3.4445, -4.7750, 2.0315);
+
+/// Polish-stage coefficients: `f(x) = (15x − 10x³ + 3x⁵) / 8` has `f(1) = 1` and
+/// `f'(1) = f''(1) = 0`, so it pulls the singular values the fast stage leaves in
+/// ~[0.7, 1.2] to 1 (two iterations: within 0.5%).
+pub const NS_POLISH: (f32, f32, f32) = (15.0 / 8.0, -10.0 / 8.0, 3.0 / 8.0);
+
+/// Version of the optimizer recipe. Recipe 1 (coupled L2 decay, `√max(1, A/B)`
+/// scale, one Newton–Schulz stage) is gone; its checkpoints cannot be resumed.
+pub const OPT_RECIPE: u32 = 2;
+
+/// Muon update scale: `MUON_RMS·√max(A, B)` gives the orthogonalized update the
+/// RMS of an AdamW update, so Muon shares AdamW's learning rate and decay (Kimi).
+pub const MUON_RMS: f32 = 0.2;
 
 /// Optimizer hyper-parameters.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OptConfig {
     /// Peak AdamW learning rate.
     pub adam_lr: f32,
-    /// Peak Muon learning rate.
+    /// Peak Muon learning rate (on the AdamW scale, see [`MUON_RMS`]).
     pub muon_lr: f32,
     pub beta1: f32,
     pub beta2: f32,
     pub eps: f32,
-    /// Decoupled AdamW weight decay (matrices only).
+    /// Decoupled weight decay of the matrices, AdamW and Muon alike.
     pub weight_decay: f32,
     /// Final Muon momentum.
     pub muon_momentum: f32,
     /// Muon momentum at step 0 (linearly warmed to `muon_momentum`).
     pub muon_momentum_start: f32,
     pub muon_momentum_warmup: u64,
-    /// L2 term added to the Muon gradient (as in `mlx.optimizers.Muon`).
-    pub muon_weight_decay: f32,
+    /// Fast Newton–Schulz iterations ([`NS_COEFFS`]).
     pub ns_steps: usize,
+    /// Polish Newton–Schulz iterations ([`NS_POLISH`]).
+    #[serde(default = "default_polish")]
+    pub ns_polish: usize,
     /// Global gradient-norm clipping (0 disables).
     pub clip_norm: f32,
     /// Muon on the encoder hidden matrices; `false` puts them in AdamW (with weight decay),
@@ -44,6 +64,10 @@ pub struct OptConfig {
     /// initialized head next to a pretrained encoder). 1 for s1 / s2.
     #[serde(default = "default_one")]
     pub head_lr_mult: f32,
+    /// Recipe that wrote this config ([`OPT_RECIPE`]); a config saved before the
+    /// field existed reads as recipe 1.
+    #[serde(default = "legacy_recipe")]
+    pub recipe: u32,
 }
 
 fn default_true() -> bool {
@@ -54,11 +78,19 @@ fn default_one() -> f32 {
     1.0
 }
 
+fn default_polish() -> usize {
+    2
+}
+
+fn legacy_recipe() -> u32 {
+    1
+}
+
 impl Default for OptConfig {
     fn default() -> Self {
         Self {
             adam_lr: 3e-3,
-            muon_lr: 0.02,
+            muon_lr: 3e-3,
             beta1: 0.9,
             beta2: 0.95,
             eps: 1e-8,
@@ -66,11 +98,12 @@ impl Default for OptConfig {
             muon_momentum: 0.95,
             muon_momentum_start: 0.85,
             muon_momentum_warmup: 300,
-            muon_weight_decay: 0.01,
             ns_steps: 5,
+            ns_polish: default_polish(),
             clip_norm: 1.0,
             muon: true,
             head_lr_mult: 1.0,
+            recipe: OPT_RECIPE,
         }
     }
 }
@@ -100,14 +133,15 @@ pub fn warmup_linear(frac: f64, warmup: f64) -> f64 {
     }
 }
 
-/// Orthogonalizes a 2-D matrix with `steps` Newton–Schulz iterations (f32).
-pub fn newton_schulz(g: &Array, steps: usize) -> R<Array> {
-    let (a, b, c) = NS_COEFFS;
+/// Orthogonalizes a 2-D matrix (f32): `fast` Newton–Schulz iterations with
+/// [`NS_COEFFS`], then `polish` iterations with [`NS_POLISH`].
+pub fn newton_schulz(g: &Array, fast: usize, polish: usize) -> R<Array> {
     let transpose = g.dim(0) > g.dim(1);
     let mut x = if transpose { g.t() } else { g.clone() };
     let norm = x.square()?.sum(None)?.sqrt()?;
     x = x.divide(norm.add(Array::from_f32(1e-7))?)?;
-    for _ in 0..steps {
+    let stages = std::iter::repeat_n(NS_COEFFS, fast).chain(std::iter::repeat_n(NS_POLISH, polish));
+    for (a, b, c) in stages {
         let gram = ops::matmul(&x, x.t())?;
         let poly = gram
             .multiply(Array::from_f32(b))?
@@ -189,11 +223,6 @@ impl Optimizer {
             };
             match group {
                 Group::Muon => {
-                    let g = if c.muon_weight_decay != 0.0 {
-                        g.add(p.multiply(Array::from_f32(c.muon_weight_decay))?)?
-                    } else {
-                        g
-                    };
                     let buf = match self.mom.get(name) {
                         Some(b) => b.multiply(Array::from_f32(mu))?,
                         None => ops::zeros_like(&g)?,
@@ -203,9 +232,13 @@ impl Optimizer {
                     let upd = g
                         .multiply(Array::from_f32(1.0 - mu))?
                         .add(buf.multiply(Array::from_f32(mu))?)?;
-                    let o = newton_schulz(&upd, c.ns_steps)?;
-                    let ratio = (p.dim(0) as f32 / p.dim(1) as f32).max(1.0).sqrt();
-                    *p = p.subtract(o.multiply(Array::from_f32(muon_lr * ratio))?)?;
+                    let o = newton_schulz(&upd, c.ns_steps, c.ns_polish)?;
+                    let scale = MUON_RMS * (p.dim(0).max(p.dim(1)) as f32).sqrt();
+                    let mut np = p.clone();
+                    if c.weight_decay != 0.0 {
+                        np = np.multiply(Array::from_f32(1.0 - muon_lr * c.weight_decay))?;
+                    }
+                    *p = np.subtract(o.multiply(Array::from_f32(muon_lr * scale))?)?;
                     self.mom.insert(name.clone(), buf);
                 }
                 group => {
@@ -252,8 +285,16 @@ impl Optimizer {
         out
     }
 
-    /// Restores state saved by [`Optimizer::state_arrays`].
+    /// Restores state saved by [`Optimizer::state_arrays`]; refuses a config
+    /// written by another optimizer recipe.
     pub fn load_state(&mut self, step: u64, arrays: &ParamMap) -> Result<()> {
+        if self.cfg.recipe != OPT_RECIPE {
+            bail!(
+                "checkpoint written by optimizer recipe {} (this build runs recipe {OPT_RECIPE}): \
+                 resume it with the commit that wrote it",
+                self.cfg.recipe
+            );
+        }
         self.step = step;
         self.m.clear();
         self.v.clear();
@@ -312,33 +353,90 @@ mod tests {
         let s: Vec<f32> = (0..64).map(|i| 0.1 + 0.9 * i as f32 / 63.0).collect();
         let square =
             ops::matmul(q1.multiply(Array::from_slice(&s, &[1, 64])).unwrap(), &q2).unwrap();
-        for (rows, cols) in [(64, 64), (192, 64), (64, 256)] {
-            let key = random::key(rows as u64 * 7 + cols as u64).unwrap();
-            let g = if rows == cols {
-                square.clone()
-            } else {
-                random::normal::<f32>(&[rows, cols][..], 0.0, 1.0, &key).unwrap()
-            };
-            let o = newton_schulz(&g, 5).unwrap();
-            assert_eq!(o.shape(), g.shape());
-            let s = mlx_rs::with_device(cpu(), || mlx_rs::linalg::svd(&o).unwrap().1);
-            s.eval().unwrap();
-            let s = s.as_slice::<f32>();
-            let mean = s.iter().sum::<f32>() / s.len() as f32;
-            // The quintic Muon iteration maps singular values into roughly
-            // [0.7, 1.2] (it trades exact convergence for speed): all of them
-            // must be close to 1 and none may collapse.
-            for &x in s {
+        // The fast quintic iteration maps singular values into roughly [0.7, 1.2]
+        // (it trades exact convergence for speed); two polish iterations pull
+        // them to 1. None may collapse.
+        for (polish, band) in [(0, 0.6..=1.3), (2, 0.98..=1.02)] {
+            for (rows, cols) in [(64, 64), (192, 64), (64, 256)] {
+                let key = random::key(rows as u64 * 7 + cols as u64).unwrap();
+                let g = if rows == cols {
+                    square.clone()
+                } else {
+                    random::normal::<f32>(&[rows, cols][..], 0.0, 1.0, &key).unwrap()
+                };
+                let o = newton_schulz(&g, 5, polish).unwrap();
+                assert_eq!(o.shape(), g.shape());
+                let s = mlx_rs::with_device(cpu(), || mlx_rs::linalg::svd(&o).unwrap().1);
+                s.eval().unwrap();
+                let s = s.as_slice::<f32>();
+                let mean = s.iter().sum::<f32>() / s.len() as f32;
+                for &x in s {
+                    assert!(
+                        band.contains(&x),
+                        "{rows}x{cols}, polish {polish}: singular value {x}"
+                    );
+                }
                 assert!(
-                    (0.6..=1.3).contains(&x),
-                    "{rows}x{cols}: singular value {x}"
+                    (mean - 1.0).abs() < 0.2,
+                    "{rows}x{cols}: mean singular value {mean}"
                 );
             }
-            assert!(
-                (mean - 1.0).abs() < 0.2,
-                "{rows}x{cols}: mean singular value {mean}"
-            );
         }
+    }
+
+    #[test]
+    fn muon_update_rms_and_decoupled_decay() {
+        let _g = test_util::lock();
+        // Whatever the shape, one Muon step moves the matrix by an update of RMS
+        // `MUON_RMS · lr` (the orthogonalized update has RMS `1/√max(A, B)`), and the
+        // decay multiplies the weights by `1 − lr·wd`, apart from the gradient.
+        let lr = 0.01;
+        for (rows, cols) in [(64, 64), (192, 64), (64, 256)] {
+            let name = "blk.0.attn_qkv.weight";
+            let key = random::key(rows as u64 + cols as u64).unwrap();
+            let w0 = random::normal::<f32>(&[rows, cols][..], 0.0, 1.0, &key).unwrap();
+            let g0 = random::normal::<f32>(&[rows, cols][..], 0.0, 1.0, &random::key(3).unwrap())
+                .unwrap();
+            for wd in [0.0f32, 0.5] {
+                let mut params = ParamMap::new();
+                params.insert(name.into(), w0.clone());
+                let mut grads = ParamMap::new();
+                grads.insert(name.into(), g0.clone());
+                let mut o = Optimizer::new(OptConfig {
+                    muon_lr: lr,
+                    weight_decay: wd,
+                    clip_norm: 0.0,
+                    ..Default::default()
+                });
+                o.update(&mut params, &grads, 1.0).unwrap();
+                let w0d = w0.multiply(Array::from_f32(1.0 - lr * wd)).unwrap();
+                let d = w0d.subtract(&params[name]).unwrap();
+                let rms = d.square().unwrap().mean(None).unwrap().sqrt().unwrap();
+                let rms = rms.item_exact::<f32>();
+                assert!(
+                    (rms / (MUON_RMS * lr) - 1.0).abs() < 0.03,
+                    "{rows}x{cols}, wd {wd}: update RMS {rms}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn load_state_refuses_another_recipe() {
+        let old: OptConfig = serde_json::from_value({
+            let mut v = serde_json::to_value(OptConfig::default()).unwrap();
+            v.as_object_mut().unwrap().remove("recipe");
+            v
+        })
+        .unwrap();
+        assert_eq!(old.recipe, 1);
+        let err = Optimizer::new(old)
+            .load_state(10, &ParamMap::new())
+            .unwrap_err();
+        assert!(err.to_string().contains("recipe 1"), "{err}");
+        assert!(Optimizer::new(OptConfig::default())
+            .load_state(10, &ParamMap::new())
+            .is_ok());
     }
 
     #[test]

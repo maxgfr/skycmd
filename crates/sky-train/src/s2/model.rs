@@ -92,6 +92,9 @@ pub fn is_hidden_matrix(name: &str) -> bool {
 
 /// Encoder block parameters. With `es_units` (SPEC-S3 §9 expand-and-sparsify FFN) the block has
 /// no `ffn_up` (the up-projection is a fixed seeded matrix) and `ffn_down` reads `es_units` units.
+/// With Parallax (`px_head_dim`, SPEC-S6 §1) `attn_qkv` gains the probe rows `ρ` and the block
+/// an `attn_px_norm` over one head.
+#[allow(clippy::too_many_arguments)]
 fn encoder_specs(
     out: &mut Vec<(String, Vec<i32>, Init)>,
     prefix: &str,
@@ -100,9 +103,11 @@ fn encoder_specs(
     ff: i32,
     depth: usize,
     es_units: Option<i32>,
+    px_head_dim: Option<i32>,
 ) {
     let std = 0.02f32;
     let std_out = std / (2.0 * depth as f32).sqrt();
+    let projections = if px_head_dim.is_some() { 4 } else { 3 };
     for l in 0..n {
         let p = format!("{prefix}{l}");
         if l > 0 {
@@ -110,9 +115,12 @@ fn encoder_specs(
         }
         out.push((
             format!("{p}.attn_qkv.weight"),
-            vec![3 * d, d],
+            vec![projections * d, d],
             Init::TruncNormal(std),
         ));
+        if let Some(hd) = px_head_dim {
+            out.push((format!("{p}.attn_px_norm.weight"), vec![hd], Init::Ones));
+        }
         out.push((
             format!("{p}.attn_output.weight"),
             vec![d, d],
@@ -161,6 +169,7 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
         ("num_proj.bias".to_string(), vec![d], Init::Zeros),
     ];
     let es_units = cfg.ffn_es.map(|es| es.units(cfg.hidden_size) as i32);
+    let px = cfg.parallax.then_some(cfg.head_dim() as i32);
     encoder_specs(
         &mut out,
         "blk.",
@@ -169,6 +178,7 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
         ff,
         cfg.depth(),
         es_units,
+        px,
     );
     if cfg.state_loops > 1 {
         // SPEC-S3 §2: block 0's attention norm from the second loop on, and
@@ -204,6 +214,7 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
             ff,
             cfg.static_layers,
             es_units,
+            px,
         );
         out.push(("static_norm.weight".to_string(), vec![d], Init::Ones));
         for e in 0..cfg.n_exits() {
@@ -311,10 +322,11 @@ pub fn expand_pretrained(dst: &mut ParamMap, src: &ParamMap, cfg: &S2Config) -> 
         }
     };
     for l in 0..cfg.static_layers {
-        for m in BLOCK_MATRICES
-            .iter()
-            .chain(&["attn_norm.weight", "ffn_norm.weight"])
-        {
+        for m in BLOCK_MATRICES.iter().chain(&[
+            "attn_norm.weight",
+            "ffn_norm.weight",
+            "attn_px_norm.weight",
+        ]) {
             copy(format!("static.blk.{l}.{m}"), &format!("blk.{l}.{m}"));
         }
     }
@@ -422,6 +434,24 @@ fn attend(q: &Array, k: &Array, v: &Array, mask: &Array) -> R<Array> {
     fast::scaled_dot_product_attention(q, k, v, 1.0 / (hd as f32).sqrt(), mask, None)
 }
 
+/// Parallax attention (SPEC-S6 §1, arXiv 2605.29157 eq. 14): softmax attention
+/// minus the softmax-weighted covariance of the values with the probe scores
+/// `s_ij = ρ_i · k_j` (unscaled). With `P = softmax(q kᵀ / √hd)`,
+/// `O1 = P v`, `P2 = P ⊙ (ρ kᵀ)`, `O2 = P2 v` and `d2 = rowsum(P2)`:
+/// `out = O1 · (1 + d2) − O2`; `ρ = 0` is softmax attention exactly.
+fn attend_parallax(q: &Array, k: &Array, v: &Array, rho: &Array, mask: &Array) -> R<Array> {
+    let hd = q.dim(3);
+    let kt = k.transpose_axes(&[0, 1, 3, 2])?;
+    let scores = ops::matmul(q, &kt)?.multiply(Array::from_f32(1.0 / (hd as f32).sqrt()))?;
+    let scores = ops::select(mask, to_f32(scores)?, Array::from_f32(f32::NEG_INFINITY))?;
+    let p = cast_like(ops::softmax_axis(&scores, -1, true)?, v)?;
+    let p2 = p.multiply(ops::matmul(rho, &kt)?)?;
+    let o1 = ops::matmul(&p, v)?;
+    let o2 = ops::matmul(&p2, v)?;
+    let d2 = p2.sum_axis(-1, true)?;
+    o1.multiply(d2.add(Array::from_f32(1.0))?)?.subtract(&o2)
+}
+
 /// RoPE flavour of an encoder.
 enum Rope {
     /// Positions `0..T` (fast kernel): `(theta, head_dim)`.
@@ -484,11 +514,19 @@ fn block(
         Some(n) => layer_norm(&x, w(p, &format!("{pre}.{n}.weight"))?, None, eps)?,
     };
     let qkv = linear(&y, w(p, &format!("{pre}.attn_qkv.weight"))?, None)?;
-    let parts = qkv.split_at_indices(&[d, 2 * d], -1)?;
+    let parts = qkv.split_at_indices(&[d, 2 * d, 3 * d], -1)?;
     let q = apply_rope(&heads(&parts[0], h)?, rope)?;
     let k = apply_rope(&heads(&parts[1], h)?, rope)?;
     let v = heads(&parts[2], h)?;
-    let a = merge_heads(&attend(&q, &k, &v, mask)?)?;
+    let a = if cfg.parallax {
+        // SPEC-S6 §1: ρ is RMS-normalized per head, then rotated like q.
+        let norm = w(p, &format!("{pre}.attn_px_norm.weight"))?;
+        let rho = fast::rms_norm(heads(&parts[3], h)?, Some(norm), eps)?;
+        attend_parallax(&q, &k, &v, &apply_rope(&rho, rope)?, mask)?
+    } else {
+        attend(&q, &k, &v, mask)?
+    };
+    let a = merge_heads(&a)?;
     let x = x.add(linear(
         &a,
         w(p, &format!("{pre}.attn_output.weight"))?,
@@ -1598,6 +1636,121 @@ mod tests {
                 let logits = forward(&p, &cfg, &make_batch(&statics, &refs, 1), qat).unwrap();
                 let rows = logits_per_row(&logits, &[5, 5]).unwrap();
                 assert_eq!(rows.len(), 4);
+                let mut max_diff = 0f32;
+                for exit in &rows {
+                    let pa = crate::metrics::softmax_t(&exit[0], 1.0);
+                    let pb = crate::metrics::softmax_t(&exit[1], 1.0);
+                    for (j, &i) in perm.iter().enumerate() {
+                        max_diff = max_diff.max((pb[j] - pa[i]).abs() as f32);
+                    }
+                }
+                assert!(max_diff <= 1e-5, "qat {qat}: max diff {max_diff}");
+            }
+        });
+    }
+
+    #[test]
+    fn s6_parameter_counts() {
+        let _g = test_util::lock();
+        // s3-pico plus, per encoder block (1 state + 1 static), the probe rows
+        // (96 x 96) and `attn_px_norm` (96).
+        let cfg = ladder("s6-pico");
+        assert!(cfg.parallax && cfg.fuse_numbers && cfg.state_loops == 4);
+        assert_eq!(expected_count(&cfg, S2Parts::DECISION), 445_345 + 2 * 9_312);
+        assert_eq!(expected_count(&cfg, S2Parts::PRETRAIN), 203_393 + 9_312);
+        let p = init(&cfg, S2Parts::DECISION, 0).unwrap();
+        assert_eq!(p["blk.0.attn_qkv.weight"].shape(), &[4 * 96, 96]);
+        assert_eq!(p["static.blk.0.attn_px_norm.weight"].shape(), &[96]);
+        assert!(is_hidden_matrix("blk.0.attn_qkv.weight"));
+        assert!(!is_ternary("blk.0.attn_px_norm.weight"));
+    }
+
+    #[test]
+    fn parallax_zero_probe_is_softmax_attention() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let cfg = S2Config::tiny(262);
+            let xcfg = S2Config {
+                parallax: true,
+                ..cfg.clone()
+            };
+            let mut xp = init(&xcfg, S2Parts::DECISION, 7).unwrap();
+            // The same model without the probe rows and norms.
+            let d = cfg.hidden_size as i32;
+            let mut p = ParamMap::new();
+            for (k, v) in &xp {
+                if k.ends_with("attn_px_norm.weight") {
+                    continue;
+                }
+                let v = if k.ends_with("attn_qkv.weight") {
+                    v.index((..3 * d, ..))
+                } else {
+                    v.clone()
+                };
+                p.insert(k.clone(), v);
+            }
+            let opts = ["north 3", "south", "east -2.5", "west 10"];
+            let (s, st) = encode_record(
+                &tok,
+                &rec("choice", "go where?", &opts, "x 4 y -1 wind 12"),
+                40,
+                24,
+            )
+            .unwrap();
+            let statics = vec![s];
+            let items = [item(0, &st, 4, 0)];
+            let refs: Vec<&S2Item> = items.iter().collect();
+            let b = make_batch(&statics, &refs, 1);
+            let host = |a: Array| crate::model::host_f32(&a).unwrap();
+            let base = host(forward(&p, &cfg, &b, false).unwrap());
+            let with_probe = host(forward(&xp, &xcfg, &b, false).unwrap());
+            let diff = |a: &[f32], b: &[f32]| {
+                a.iter()
+                    .zip(b)
+                    .map(|(x, y)| (x - y).abs())
+                    .fold(0f32, f32::max)
+            };
+            assert!(diff(&base, &with_probe) > 1e-4, "the probe changes nothing");
+            for k in xp.keys().cloned().collect::<Vec<_>>() {
+                if k.ends_with("attn_px_norm.weight") {
+                    let z = ops::zeros_like(&xp[&k]).unwrap();
+                    xp.insert(k, z);
+                }
+            }
+            let zero = host(forward(&xp, &xcfg, &b, false).unwrap());
+            assert!(diff(&base, &zero) < 1e-5, "ρ = 0: {}", diff(&base, &zero));
+        });
+    }
+
+    #[test]
+    fn parallax_permutation_equivariance() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let mut cfg = ladder("s6-pico");
+            cfg.vocab_size = 262;
+            let p = crate::s2::golden::golden_params(&cfg, 6).unwrap();
+            let opts = ["north 3", "south", "east -2.5", "west 10", "5"];
+            let perm = [2usize, 4, 0, 3, 1];
+            let permuted: Vec<&str> = perm.iter().map(|&i| opts[i]).collect();
+            let state = "x 4 y -1 wind 12 10-20";
+            let enc = |o: &[&str]| {
+                crate::s2::data::encode_record_cfg(
+                    &tok,
+                    &rec("choice", "go 2 where?", o, state),
+                    &cfg,
+                )
+                .unwrap()
+            };
+            let (s_a, st) = enc(&opts);
+            let (s_b, _) = enc(&permuted);
+            let statics = vec![s_a, s_b];
+            let items = [item(0, &st, 5, 0), item(1, &st, 5, 0)];
+            let refs: Vec<&S2Item> = items.iter().collect();
+            for qat in [false, true] {
+                let logits = forward(&p, &cfg, &make_batch(&statics, &refs, 1), qat).unwrap();
+                let rows = logits_per_row(&logits, &[5, 5]).unwrap();
                 let mut max_diff = 0f32;
                 for exit in &rows {
                     let pa = crate::metrics::softmax_t(&exit[0], 1.0);

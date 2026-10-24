@@ -1917,6 +1917,14 @@ pub fn layer_norm_inplace(x: &mut [f32], d: usize, w: &[f32], b: Option<&[f32]>,
     }
 }
 
+/// RMS norm of one row in place: `x · w / sqrt(mean(x²) + eps)` (the Parallax probe of a head).
+pub fn rms_norm_inplace(x: &mut [f32], w: &[f32], eps: f32) {
+    let rstd = 1.0 / (dot(x, x) / x.len() as f32 + eps).sqrt();
+    for (v, &g) in x.iter_mut().zip(w) {
+        *v *= rstd * g;
+    }
+}
+
 /// Mean and `1 / sqrt(var + eps)` of a row (two passes, 8 SIMD partial sums: a plain `f32` sum
 /// does not vectorize and its 4-cycle add chain dominated the norms of short rows).
 #[inline]
@@ -2071,6 +2079,8 @@ impl Rope {
 pub struct AttnScratch {
     scores: Vec<f32>,
     vt: Vec<f32>,
+    /// Parallax probe scores `ρ · k` (grown on first use).
+    probe: Vec<f32>,
 }
 
 /// Queries per block in [`Attention::run`].
@@ -2081,6 +2091,7 @@ impl AttnScratch {
         AttnScratch {
             scores: vec![0.0; ATTN_QBLOCK * max_kv],
             vt: vec![0.0; head_dim * max_kv],
+            probe: Vec::new(),
         }
     }
 
@@ -2121,8 +2132,28 @@ impl<'a> Attention<'a> {
         out_stride: usize,
         sc: &mut AttnScratch,
     ) {
+        self.run_probe(q, None, q_stride, pos, out, out_stride, sc);
+    }
+
+    /// [`Attention::run`] with Parallax probes (SPEC-S6 §1): `rho[i * q_stride..]` is the probe
+    /// of query `i`, and the softmax weights become [`parallax_weights`] before the product with
+    /// the values. `None` is plain softmax attention.
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_probe(
+        &self,
+        q: &[f32],
+        rho: Option<&[f32]>,
+        q_stride: usize,
+        pos: &[usize],
+        out: &mut [f32],
+        out_stride: usize,
+        sc: &mut AttnScratch,
+    ) {
         let (hd, n_kv) = (self.head_dim, self.n_kv);
         let scale = 1.0 / (hd as f32).sqrt();
+        if rho.is_some() && sc.probe.len() < sc.scores.len() {
+            sc.probe.resize(sc.scores.len(), 0.0);
+        }
         for h in 0..self.n_heads {
             // V of this head, transposed: vt[c][j]
             let vt = &mut sc.vt[..hd * n_kv];
@@ -2167,6 +2198,25 @@ impl<'a> Attention<'a> {
                     }
                     softmax(row);
                 }
+                if let Some(rho) = rho {
+                    let s2 = &mut sc.probe[..nq * len];
+                    matmul_f32_strided(
+                        &rho[i0 * q_stride + h * hd..],
+                        q_stride,
+                        nq,
+                        hd,
+                        &self.k[lo * self.kv_stride + h * hd..],
+                        self.kv_stride,
+                        len,
+                        None,
+                        s2,
+                        len,
+                        false,
+                    );
+                    for (row, r2) in s.chunks_exact_mut(len).zip(s2.chunks_exact(len)) {
+                        parallax_weights(row, r2);
+                    }
+                }
                 matmul_f32_strided(
                     s,
                     len,
@@ -2185,12 +2235,26 @@ impl<'a> Attention<'a> {
     }
 }
 
+/// Parallax (SPEC-S6 §1, arXiv 2605.29157 eq. 14) as a reweighting of one query's softmax
+/// weights `p` given its probe scores `s2_j = ρ · k_j`: with `d2 = Σ_j p_j s2_j`,
+/// `p_j ← p_j (1 + d2 − s2_j)`, so that `Σ_j p_j v_j` becomes `O1 (1 + d2) − O2`, the softmax
+/// output minus the covariance of the values with the probe scores.
+#[inline]
+pub fn parallax_weights(p: &mut [f32], s2: &[f32]) {
+    let d2 = dot(p, s2);
+    for (w, &s) in p.iter_mut().zip(s2) {
+        *w *= 1.0 + d2 - s;
+    }
+}
+
 /// Scratch buffers of [`self_attention`].
 #[derive(Clone, Debug, Default)]
 pub struct SelfAttnScratch {
     kp: Vec<f32>,
     vp: Vec<f32>,
     s: Vec<f32>,
+    /// Parallax probe scores (grown on first use).
+    s2: Vec<f32>,
 }
 
 /// Full bidirectional self-attention of `t` rows of fused `qkv` (`[t][3d]`: queries, keys,
@@ -2207,15 +2271,33 @@ pub fn self_attention(
     ldo: usize,
     sc: &mut SelfAttnScratch,
 ) {
+    let ld = 3 * n_heads * head_dim;
+    self_attention_probe(qkv, ld, false, t, n_heads, head_dim, out, ldo, sc);
+}
+
+/// [`self_attention`] over rows of stride `ld`; with `probe` each row also holds the Parallax
+/// probe `ρ` after the values (`[t][4d]`) and the weights become [`parallax_weights`].
+#[allow(clippy::too_many_arguments)]
+pub fn self_attention_probe(
+    qkv: &[f32],
+    ld: usize,
+    probe: bool,
+    t: usize,
+    n_heads: usize,
+    head_dim: usize,
+    out: &mut [f32],
+    ldo: usize,
+    sc: &mut SelfAttnScratch,
+) {
     let hd = head_dim;
     let d = n_heads * hd;
-    let ld = 3 * d;
     let scale = 1.0 / (hd as f32).sqrt();
     let (npk, npv) = (t.div_ceil(PANEL), hd.div_ceil(PANEL));
     for (v, n) in [
         (&mut sc.kp, npk * hd * PANEL),
         (&mut sc.vp, npv * t * PANEL),
         (&mut sc.s, t * t),
+        (&mut sc.s2, if probe { t * t } else { 0 }),
     ] {
         if v.len() < n {
             v.resize(n, 0.0);
@@ -2230,6 +2312,13 @@ pub fn self_attention(
         for row in s.chunks_exact_mut(t) {
             row.iter_mut().for_each(|v| *v *= scale);
             softmax(row);
+        }
+        if probe {
+            let s2 = &mut sc.s2[..t * t];
+            panel_matmul(kp, t, hd, &qkv[3 * d + h * hd..], ld, t, None, s2, t, false);
+            for (row, r2) in s.chunks_exact_mut(t).zip(s2.chunks_exact(t)) {
+                parallax_weights(row, r2);
+            }
         }
         pack_inputs(&qkv[2 * d + h * hd..], ld, t, hd, vp);
         panel_matmul(vp, hd, t, s, t, t, None, &mut out[h * hd..], ldo, false);
@@ -2935,6 +3024,59 @@ mod tests {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn parallax_matches_naive_in_both_kernels() {
+        // Rows `[q | k | v | ρ]`; reference: `O1 (1 + d2) − O2` with `O1 = Σ p v`,
+        // `O2 = Σ p (ρ·k) v`, `d2 = Σ p (ρ·k)` (arXiv 2605.29157 eq. 14).
+        let mut seed = 47;
+        for &(t, nh, hd) in &[(9, 1, 96), (5, 2, 12), (40, 3, 20), (1, 1, 8)] {
+            let d = nh * hd;
+            let w = 4 * d;
+            let qkv = rnd(t * w, &mut seed);
+            let mut want = vec![0.0; t * d];
+            for i in 0..t {
+                for h in 0..nh {
+                    let at = |r: usize, part: usize, c: usize| qkv[r * w + part * d + h * hd + c];
+                    let dotp = |a: usize, pa: usize, b: usize, pb: usize| {
+                        (0..hd).map(|c| at(a, pa, c) * at(b, pb, c)).sum::<f32>()
+                    };
+                    let mut p: Vec<f32> = (0..t)
+                        .map(|j| dotp(i, 0, j, 1) / (hd as f32).sqrt())
+                        .collect();
+                    softmax(&mut p);
+                    let s2: Vec<f32> = (0..t).map(|j| dotp(i, 3, j, 1)).collect();
+                    let d2: f32 = p.iter().zip(&s2).map(|(a, b)| a * b).sum();
+                    for c in 0..hd {
+                        let o1: f32 = (0..t).map(|j| p[j] * at(j, 2, c)).sum();
+                        let o2: f32 = (0..t).map(|j| p[j] * s2[j] * at(j, 2, c)).sum();
+                        want[i * d + h * hd + c] = o1 * (1.0 + d2) - o2;
+                    }
+                }
+            }
+            let a = Attention {
+                k: &qkv[d..],
+                v: &qkv[2 * d..],
+                kv_stride: w,
+                n_kv: t,
+                n_heads: nh,
+                head_dim: hd,
+                window: None,
+            };
+            let pos: Vec<usize> = (0..t).collect();
+            let mut tiled = vec![0.0; t * d];
+            let mut sc = AttnScratch::new(t, hd);
+            a.run_probe(&qkv, Some(&qkv[3 * d..]), w, &pos, &mut tiled, d, &mut sc);
+            let mut small = vec![0.0; t * d];
+            let mut ssc = SelfAttnScratch::default();
+            self_attention_probe(&qkv, w, true, t, nh, hd, &mut small, d, &mut ssc);
+            for (k, &x) in want.iter().enumerate() {
+                let tol = 1e-4 * (1.0 + x.abs());
+                assert!((tiled[k] - x).abs() < tol, "tiled {t} {nh} {hd} [{k}]");
+                assert!((small[k] - x).abs() < tol, "small {t} {nh} {hd} [{k}]");
             }
         }
     }
