@@ -98,7 +98,39 @@ pub fn arms() -> Vec<Arm> {
             opt: &[],
             decide: &["--exit-kd", "0.5"],
         },
+        Arm {
+            name: "parallax-muon-ema",
+            about: "parallax-muon with a weight EMA (decay 0.999), the EMA exported (issue #38)",
+            config: "configs/s6-pico.json",
+            opt: &[],
+            decide: &["--ema", "0.999"],
+        },
     ]
+}
+
+impl Arm {
+    /// An arm with a weight EMA calibrates, exports and is judged on the EMA weights.
+    fn ema(&self) -> bool {
+        self.decide.contains(&"--ema")
+    }
+
+    /// The checkpoint of the decision run that is calibrated and exported.
+    pub fn checkpoint(&self) -> &'static str {
+        if self.ema() {
+            "last-ema"
+        } else {
+            "last"
+        }
+    }
+
+    /// The `mode` of the final validation that is reported.
+    pub fn val_mode(&self) -> &'static str {
+        if self.ema() {
+            "ema-ternary"
+        } else {
+            "ternary"
+        }
+    }
 }
 
 /// The arms named in `only` (comma-separated), or all of them.
@@ -190,7 +222,7 @@ pub fn stage(arms: &[Arm]) -> Stage {
             args.extend(opt.iter().copied());
             args.extend(a.decide.iter().copied());
             steps.push(Step::new(&format!("{id}-decide"), "sky-train", &args).gpu());
-            let last = format!("{dec}/last");
+            let last = format!("{dec}/{}", a.checkpoint());
             steps.push(
                 Step::new(
                     &format!("{id}-calibrate"),
@@ -243,18 +275,20 @@ pub fn stage(arms: &[Arm]) -> Stage {
 
 /// The last ternary validation of a decide `log.jsonl`: accuracy, ECE and margin over every
 /// group at the last exit, and the effective rank of the last exit.
-pub fn final_val(log: &str) -> Result<[f64; 4]> {
+pub fn final_val(log: &str, mode: &str) -> Result<[f64; 4]> {
     let entry: Value = log
         .lines()
         .rev()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .find(|v| v["mode"] == "ternary" && v.get("val").is_some())
-        .context("no ternary validation in log.jsonl")?;
+        .find(|v| v["mode"] == mode && v.get("val").is_some())
+        .with_context(|| format!("no {mode} validation in log.jsonl"))?;
     let val = entry["val"].as_object().context("val")?;
-    let last = (0..val.len())
-        .rev()
-        .map(|e| format!("exit{e}"))
-        .find(|k| val.contains_key(k))
+    // The deepest exit present, by its index (not by how many exits the entry holds).
+    let last = val
+        .keys()
+        .filter_map(|k| Some((k.strip_prefix("exit")?.parse::<usize>().ok()?, k.clone())))
+        .max()
+        .map(|(_, k)| k)
         .context("no exit in val")?;
     let all = &val[&last]["all"];
     let get = |v: &Value, k: &str| v[k].as_f64().with_context(|| format!("{last}: no {k}"));
@@ -283,7 +317,7 @@ pub fn summarize(store: &Path, arms: &[Arm]) -> Result<()> {
             let dir = store.join(run_dir(a, seed));
             let p = dir.join("decide/log.jsonl");
             let log = std::fs::read_to_string(&p).with_context(|| p.display().to_string())?;
-            for (col, x) in val.iter_mut().zip(final_val(&log)?) {
+            for (col, x) in val.iter_mut().zip(final_val(&log, a.val_mode())?) {
                 col.push(x);
             }
             let p = dir.join("arena.json");
@@ -339,7 +373,7 @@ mod tests {
     #[test]
     fn grid_and_single_changes() {
         let a = arms();
-        assert_eq!(a.len(), 8);
+        assert_eq!(a.len(), 9);
         // The 2×2 grid: each attention under AdamW and under Muon v2.
         for config in ["configs/s3-pico.json", "configs/s6-pico.json"] {
             let adamw: Vec<bool> = a
@@ -350,7 +384,7 @@ mod tests {
             assert_eq!(adamw, [true, false], "{config}");
         }
         let s = stage(&a);
-        assert_eq!(s.steps.len(), 8 * SEEDS.len() * 5);
+        assert_eq!(s.steps.len(), 9 * SEEDS.len() * 5);
         // The AdamW arms pass --no-muon to both training steps, the others never; the exit
         // distillation only reaches the decision step.
         for step in &s.steps {
@@ -376,10 +410,22 @@ mod tests {
                 "{}",
                 step.name
             );
+            // The EMA arm calibrates, exports and plays its EMA weights.
+            let ema = step.name.contains("-ema-");
+            if step.name.ends_with("-calibrate") || step.name.ends_with("-export") {
+                assert_eq!(
+                    step.args.iter().any(|a| a.ends_with("/decide/last-ema")),
+                    ema,
+                    "{}",
+                    step.name
+                );
+            }
         }
         assert_eq!(selected(Some("xsa-muon, parallax-muon")).unwrap().len(), 2);
         assert!(selected(Some("nope")).is_err());
-        assert_eq!(selected(None).unwrap().len(), 8);
+        assert_eq!(selected(None).unwrap().len(), 9);
+        let e = a.iter().find(|a| a.name == "parallax-muon-ema").unwrap();
+        assert_eq!((e.checkpoint(), e.val_mode()), ("last-ema", "ema-ternary"));
     }
 
     #[test]
@@ -391,7 +437,16 @@ mod tests {
             r#"{"step": 30, "mode": "ternary", "val": {"exit0": {"all": {"accuracy": 0.4, "ece": 0.1, "margin": 0.5}}, "exit1": {"all": {"accuracy": 0.6, "ece": 0.05, "margin": 1.5}}}, "erank": {"exit0": 20.0, "exit1": 30.5}}"#,
         ]
         .join("\n");
-        assert_eq!(final_val(&log).unwrap(), [0.6, 0.05, 1.5, 30.5]);
-        assert!(final_val("{}").is_err());
+        assert_eq!(final_val(&log, "ternary").unwrap(), [0.6, 0.05, 1.5, 30.5]);
+        assert!(final_val("{}", "ternary").is_err());
+        let ema = format!(
+            "{log}\n{}",
+            r#"{"step": 30, "mode": "ema-ternary", "val": {"exit1": {"all": {"accuracy": 0.7, "ece": 0.04, "margin": 2.0}}}, "erank": {"exit1": 31.0}}"#
+        );
+        assert_eq!(
+            final_val(&ema, "ema-ternary").unwrap(),
+            [0.7, 0.04, 2.0, 31.0]
+        );
+        assert_eq!(final_val(&ema, "ternary").unwrap(), [0.6, 0.05, 1.5, 30.5]);
     }
 }

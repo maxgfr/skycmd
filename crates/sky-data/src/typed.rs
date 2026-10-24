@@ -426,6 +426,86 @@ pub fn load_tasksource_synth(cx: &Ctx) -> Result<Vec<Item>> {
     )
 }
 
+/// EEG cognitive-workload decisions (CC-BY-4.0, derived from STEW: Lim, Sourina & Wang 2018).
+pub fn load_neuro_laya(cx: &Ctx) -> Result<Vec<Item>> {
+    let out = laya_rows(
+        cx.hf,
+        "Aditharavind/laya-neuro-decisions",
+        "default",
+        &["train", "validation", "test"],
+        "neuro_laya",
+        None,
+        &["gold"],
+    )?;
+    let mut rng = Rng::derived(cx.seed, "neuro_laya");
+    Ok(cap_by_key(out, cx.cap, |i| i.rec.src.clone(), &mut rng))
+}
+
+/// Synthetic trading decisions (Apache-2.0): action, regime and confidence questions.
+pub fn load_trading_laya(cx: &Ctx) -> Result<Vec<Item>> {
+    laya_rows(
+        cx.hf,
+        "Anay2010/laya-trading-decisions",
+        "default",
+        &["train", "validation"],
+        "trading_laya",
+        None,
+        &["gold"],
+    )
+}
+
+pub const TETRIS_INS: &str = "Where should the current Tetris piece be placed?";
+
+/// A nested value as the Hub's Parquet conversion stores it: a `Json` feature inside a struct
+/// arrives as a JSON string, an ordinary one as the value itself.
+fn nested_json(v: &Value) -> Value {
+    match v {
+        Value::String(s) => serde_json::from_str(s).unwrap_or_else(|_| v.clone()),
+        _ => v.clone(),
+    }
+}
+
+/// One `aaung/laya-tetris-decisions` row: the board summary becomes the state, each candidate
+/// placement line (`A: clears 0, holes 0, …`) an option, and the heuristic teacher's preference
+/// the soft target.
+pub fn tetris_item(state: &str, answers: &Value) -> Option<Item> {
+    let (board, options) = state.split_once("Options:")?;
+    let crit: Vec<(String, String)> = options
+        .lines()
+        .filter_map(|l| l.split_once(':'))
+        .map(|(k, d)| (k.trim().to_string(), d.trim().to_string()))
+        .filter(|(k, _)| k.len() == 1)
+        .collect();
+    if crit.len() < 2 {
+        return None;
+    }
+    let q = Question::choice(TETRIS_INS, crit);
+    let placement = nested_json(answers.get("placement")?);
+    let target = q.target_from(&serde_json::json!({ "probabilities": placement }))?;
+    let board = board.trim();
+    Some(Item {
+        group: state_group(board),
+        rec: q.record("tetris_laya", board, target),
+    })
+}
+
+pub fn load_tetris_laya(cx: &Ctx) -> Result<Vec<Item>> {
+    let mut out = Vec::new();
+    for split in ["train", "validation", "test"] {
+        for p in cx
+            .hf
+            .parquet_split("aaung/laya-tetris-decisions", "default", split, SMALL)?
+        {
+            for_each_parquet_row(&p, &["state", "answers"], |row| {
+                let answers = parse_json_field(&row, "answers")?;
+                out.extend(tetris_item(str_field(&row, "state")?, &answers));
+                Ok(())
+            })?;
+        }
+    }
+    Ok(out)
+}
+
 // ----------------------------------------------------------------------------- calibrated typed decisions
 
 /// Whether a per-row license string allows commercial use without share-alike restrictions
@@ -577,6 +657,31 @@ mod tests {
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn tetris_rows_become_placement_choices() {
+        let state = "Tetris. Piece L, next OJS, hold none. Stack height 0, holes 0, bumpiness 0. Options:\n\
+                     A: clears 0, holes 0, bumpiness 4, height 2\n\
+                     B: clears 1, holes 0, bumpiness 3, height 2\n\
+                     C: clears 0, holes 2, bumpiness 3, height 3";
+        let it = tetris_item(state, &json!({"placement": {"A": 0.2, "B": 0.7, "C": 0.1}})).unwrap();
+        let r = &it.rec;
+        assert_eq!(r.t, "choice");
+        assert_eq!(r.ins, TETRIS_INS);
+        assert!(r.state.ends_with("bumpiness 0.") && !r.state.contains("Options"));
+        assert_eq!(r.opts.len(), 3);
+        assert!(r.opts[1].starts_with("B") && r.opts[1].contains("clears 1"));
+        assert!((r.target[1] - 0.7).abs() < 1e-6);
+        validate_record(r).unwrap();
+        assert!(tetris_item("no options here", &json!({})).is_none());
+        // As the Hub's Parquet stores a `Json` feature: a JSON string inside the struct.
+        let s = tetris_item(
+            state,
+            &json!({"placement": "{\"A\": 0.2, \"B\": 0.7, \"C\": 0.1}"}),
+        )
+        .unwrap();
+        assert_eq!(s.rec.target, it.rec.target);
     }
 
     #[test]

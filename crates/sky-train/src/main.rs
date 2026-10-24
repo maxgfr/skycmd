@@ -366,6 +366,9 @@ enum Cmd {
         /// Temperature of --exit-kd.
         #[arg(long, default_value_t = 2.0)]
         exit_kd_temp: f32,
+        /// Decay of an EMA of the weights, saved as a full run in <out>/last-ema (0: off).
+        #[arg(long, default_value_t = 0.0)]
+        ema: f32,
         /// Batches drawn at once and grouped by state length, so that a batch is padded to its
         /// own longest state (1: every batch drawn alone).
         #[arg(long, default_value_t = 1)]
@@ -754,6 +757,7 @@ fn main() -> Result<()> {
             dis,
             exit_kd,
             exit_kd_temp,
+            ema,
             length_pool,
             pad_to,
             seq_records,
@@ -796,6 +800,7 @@ fn main() -> Result<()> {
                 weight,
                 temp: exit_kd_temp,
             }),
+            ema,
             length_pool,
         })?,
         Cmd::S2Calibrate {
