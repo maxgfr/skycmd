@@ -74,6 +74,7 @@ pub fn ladder_config(name: &str) -> Option<S2Config> {
         fuse_numbers: fuse,
         temporal_carry: false,
         parallax: false,
+        xsa: false,
         ffn_es: None,
         static_layers: stat,
         fusion_layers: fusion,
@@ -117,6 +118,9 @@ pub fn write_metadata(w: &mut GgufWriter, cfg: &S2Config, format: &str) {
     }
     if cfg.parallax {
         w.add_kv(k("parallax"), true);
+    }
+    if cfg.xsa {
+        w.add_kv(k("xsa"), true);
     }
     w.add_kv(k("static_block_count"), cfg.static_layers as u32);
     w.add_kv(k("fusion_block_count"), cfg.fusion_layers as u32);

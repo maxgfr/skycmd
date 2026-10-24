@@ -1917,6 +1917,13 @@ pub fn layer_norm_inplace(x: &mut [f32], d: usize, w: &[f32], b: Option<&[f32]>,
     }
 }
 
+/// Exclusive self-attention (SPEC-S6 §8) of one head in place: the attention output `o` loses
+/// its component along the token's own value `v`, `o − (o·v / (‖v‖² + ε)) v`.
+pub fn exclusive_inplace(o: &mut [f32], v: &[f32], eps: f32) {
+    let c = dot(o, v) / (dot(v, v) + eps);
+    axpy(-c, v, o);
+}
+
 /// RMS norm of one row in place: `x · w / sqrt(mean(x²) + eps)` (the Parallax probe of a head).
 pub fn rms_norm_inplace(x: &mut [f32], w: &[f32], eps: f32) {
     let rstd = 1.0 / (dot(x, x) / x.len() as f32 + eps).sqrt();

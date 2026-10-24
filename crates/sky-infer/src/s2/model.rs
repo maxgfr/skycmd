@@ -420,6 +420,9 @@ pub struct S2Workspace {
 /// Longest stream attended with [`kernels::attend`] (plain loops) instead of the tiled kernel.
 const SMALL_ATTN: usize = 32;
 
+/// Numerical floor of `‖v‖²` in exclusive self-attention (sky-train `s2::model::XSA_EPS`).
+const XSA_EPS: f32 = 1e-6;
+
 /// `v[..n]`, growing `v` if needed.
 #[inline]
 fn grow<T: Clone + Default>(v: &mut Vec<T>, n: usize) -> &mut [T] {
@@ -1056,6 +1059,19 @@ impl S2Model {
                         &mut att[s * d..],
                         d,
                         attn,
+                    );
+                }
+            }
+        }
+        if c.xsa {
+            for r in 0..t {
+                let v = &qkv[r * w + 2 * d..r * w + 3 * d];
+                let o = &mut att[r * d..(r + 1) * d];
+                for h in 0..nh {
+                    kernels::exclusive_inplace(
+                        &mut o[h * hd..(h + 1) * hd],
+                        &v[h * hd..(h + 1) * hd],
+                        XSA_EPS,
                     );
                 }
             }

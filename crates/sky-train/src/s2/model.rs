@@ -452,6 +452,21 @@ fn attend_parallax(q: &Array, k: &Array, v: &Array, rho: &Array, mask: &Array) -
     o1.multiply(d2.add(Array::from_f32(1.0))?)?.subtract(&o2)
 }
 
+/// Numerical floor of `‖v‖²` in [`exclusive`] (and in sky-infer's `kernels::exclusive`).
+pub const XSA_EPS: f32 = 1e-6;
+
+/// Exclusive self-attention (SPEC-S6 §8): each token's attention output `o` `[B, H, T, hd]`
+/// loses its component along the token's own value `v`, `o − (o·v / (‖v‖² + ε)) v`, so the
+/// block carries what the OTHER tokens say.
+fn exclusive(o: &Array, v: &Array) -> R<Array> {
+    let dot = o.multiply(v)?.sum_axis(-1, true)?;
+    let vv = v
+        .square()?
+        .sum_axis(-1, true)?
+        .add(Array::from_f32(XSA_EPS))?;
+    o.subtract(dot.divide(&vv)?.multiply(v)?)
+}
+
 /// RoPE flavour of an encoder.
 enum Rope {
     /// Positions `0..T` (fast kernel): `(theta, head_dim)`.
@@ -526,6 +541,7 @@ fn block(
     } else {
         attend(&q, &k, &v, mask)?
     };
+    let a = if cfg.xsa { exclusive(&a, &v)? } else { a };
     let a = merge_heads(&a)?;
     let x = x.add(linear(
         &a,
@@ -1701,6 +1717,57 @@ mod tests {
                     }
                 }
                 assert!(max_diff <= 1e-5, "qat {qat}: max diff {max_diff}");
+            }
+        });
+    }
+
+    #[test]
+    fn xsa_removes_the_own_value_component_and_keeps_equivariance() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let o = random::normal::<f32>(&[2, 2, 5, 8][..], 0.0, 1.0, &random::key(1).unwrap())
+                .unwrap();
+            let v = random::normal::<f32>(&[2, 2, 5, 8][..], 0.0, 1.0, &random::key(2).unwrap())
+                .unwrap();
+            let x = exclusive(&o, &v).unwrap();
+            // Orthogonal to the token's own value, and the rest of o is untouched.
+            let dots = crate::model::host_f32(&x.multiply(&v).unwrap().sum_axis(-1, None).unwrap())
+                .unwrap();
+            assert!(dots.iter().all(|d| d.abs() < 1e-4), "{dots:?}");
+            let twice = exclusive(&x, &v).unwrap();
+            assert!(twice.all_close(&x, 1e-5, 1e-5, None).unwrap());
+        });
+        // The static stream's option isolation survives XSA (it is per token).
+        let mut cfg = ladder("s6-pico");
+        cfg.xsa = true;
+        cfg.vocab_size = 262;
+        let p = crate::s2::golden::golden_params(&cfg, 6).unwrap();
+        let (_d, tok) = s2_tok();
+        let opts = ["north 3", "south", "east -2.5"];
+        let perm = [2usize, 0, 1];
+        let permuted: Vec<&str> = perm.iter().map(|&i| opts[i]).collect();
+        let enc = |o: &[&str]| {
+            crate::s2::data::encode_record_cfg(
+                &tok,
+                &rec("choice", "go where?", o, "x 4 y -1"),
+                &cfg,
+            )
+            .unwrap()
+        };
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (s_a, st) = enc(&opts);
+            let (s_b, _) = enc(&permuted);
+            let statics = vec![s_a, s_b];
+            let items = [item(0, &st, 3, 0), item(1, &st, 3, 0)];
+            let refs: Vec<&S2Item> = items.iter().collect();
+            let logits = forward(&p, &cfg, &make_batch(&statics, &refs, 1), false).unwrap();
+            let rows = logits_per_row(&logits, &[3, 3]).unwrap();
+            for exit in &rows {
+                let pa = crate::metrics::softmax_t(&exit[0], 1.0);
+                let pb = crate::metrics::softmax_t(&exit[1], 1.0);
+                for (j, &i) in perm.iter().enumerate() {
+                    assert!((pb[j] - pa[i]).abs() < 1e-5);
+                }
             }
         });
     }
