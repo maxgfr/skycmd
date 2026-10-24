@@ -1,5 +1,6 @@
-//! `cargo xtask s6ab`: the s6 ablation (issue #34, docs/SPEC-S6.md §4), a 2×2 grid
-//! {AdamW, Muon v2} × {softmax, Parallax} on the s3-pico shape.
+//! `cargo xtask s6ab [--arms a,b]`: the s6 ablation (docs/SPEC-S6.md §4) on the s3-pico shape: a
+//! 2×2 grid {AdamW, Muon v2} × {softmax, Parallax} (issue #34), then single changes against it
+//! (issue #36): XSA, SODA weight decay, no Newton–Schulz polish, exit self-distillation.
 //!
 //! Parallax's gain depends on the optimizer (arXiv 2605.29157 §4.3): the grid checks whether that
 //! holds at our scale. Every arm and seed runs the same step budgets (`--steps`, so the schedule
@@ -30,36 +31,97 @@ pub struct Arm {
     pub about: &'static str,
     /// Config file in the checkout.
     pub config: &'static str,
-    pub muon: bool,
+    /// Optimizer flags of both training phases (`--no-muon`, `--wd-mode soda`, ...).
+    pub opt: &'static [&'static str],
+    /// Extra flags of the decision phase only (`--exit-kd 0.5`).
+    pub decide: &'static [&'static str],
 }
 
+/// The 2×2 grid, then the single changes of issue #36, each against `parallax-muon`
+/// (or, for XSA, against `softmax-muon`).
 pub fn arms() -> Vec<Arm> {
+    const ADAMW: &[&str] = &["--no-muon"];
     vec![
         Arm {
             name: "softmax-adamw",
             about: "s3-pico attention, AdamW everywhere",
             config: "configs/s3-pico.json",
-            muon: false,
+            opt: ADAMW,
+            decide: &[],
         },
         Arm {
             name: "softmax-muon",
             about: "s3-pico attention, Muon v2 on the encoder matrices",
             config: "configs/s3-pico.json",
-            muon: true,
+            opt: &[],
+            decide: &[],
         },
         Arm {
             name: "parallax-adamw",
             about: "s6-pico (Parallax), AdamW everywhere",
             config: "configs/s6-pico.json",
-            muon: false,
+            opt: ADAMW,
+            decide: &[],
         },
         Arm {
             name: "parallax-muon",
             about: "s6-pico (Parallax), Muon v2 on the encoder matrices",
             config: "configs/s6-pico.json",
-            muon: true,
+            opt: &[],
+            decide: &[],
+        },
+        Arm {
+            name: "xsa-muon",
+            about: "s3-pico with exclusive self-attention (XSA), Muon v2",
+            config: "configs/s3-pico-xsa.json",
+            opt: &[],
+            decide: &[],
+        },
+        Arm {
+            name: "parallax-muon-soda",
+            about: "parallax-muon with SODA weight decay (toward the initialization, 1/(k+2))",
+            config: "configs/s6-pico.json",
+            opt: &["--wd-mode", "soda"],
+            decide: &[],
+        },
+        Arm {
+            name: "parallax-muon-nopolish",
+            about: "parallax-muon without the Newton–Schulz polish iterations",
+            config: "configs/s6-pico.json",
+            opt: &["--ns-polish", "0"],
+            decide: &[],
+        },
+        Arm {
+            name: "parallax-muon-kd",
+            about: "parallax-muon with exit self-distillation (weight 0.5, T = 2)",
+            config: "configs/s6-pico.json",
+            opt: &[],
+            decide: &["--exit-kd", "0.5"],
         },
     ]
+}
+
+/// The arms named in `only` (comma-separated), or all of them.
+pub fn selected(only: Option<&str>) -> Result<Vec<Arm>> {
+    let all = arms();
+    let Some(only) = only else { return Ok(all) };
+    let names: Vec<&str> = only
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    for n in &names {
+        if !all.iter().any(|a| a.name == *n) {
+            bail!(
+                "unknown arm {n:?} (arms: {})",
+                all.iter().map(|a| a.name).collect::<Vec<_>>().join(", ")
+            );
+        }
+    }
+    Ok(all
+        .into_iter()
+        .filter(|a| names.contains(&a.name))
+        .collect())
 }
 
 fn run_dir(a: &Arm, seed: u64) -> String {
@@ -67,13 +129,13 @@ fn run_dir(a: &Arm, seed: u64) -> String {
 }
 
 /// Every arm and seed, steps in order (one GPU job at a time; the arena runs on the CPU).
-pub fn stage() -> Stage {
+pub fn stage(arms: &[Arm]) -> Stage {
     let mut steps = Vec::new();
-    for a in arms() {
+    for a in arms {
         for seed in SEEDS {
-            let (dir, s) = (run_dir(&a, seed), seed.to_string());
+            let (dir, s) = (run_dir(a, seed), seed.to_string());
             let config = format!("{{checkout}}/{}", a.config);
-            let opt: &[&str] = if a.muon { &[] } else { &["--no-muon"] };
+            let opt = a.opt;
             let id = format!("{}-s{seed}", a.name);
             let (pre, dec) = (format!("{dir}/pretrain"), format!("{dir}/decide"));
             let mut args = vec![
@@ -126,6 +188,7 @@ pub fn stage() -> Stage {
                 &dec,
             ];
             args.extend(opt.iter().copied());
+            args.extend(a.decide.iter().copied());
             steps.push(Step::new(&format!("{id}-decide"), "sky-train", &args).gpu());
             let last = format!("{dec}/last");
             steps.push(
@@ -173,7 +236,7 @@ pub fn stage() -> Stage {
     }
     Stage {
         name: "s6ab",
-        about: "s6 ablation: {AdamW, Muon v2} x {softmax, Parallax}",
+        about: "s6 ablation: {AdamW, Muon v2} x {softmax, Parallax}, plus XSA, SODA, no polish, exit KD",
         steps,
     }
 }
@@ -210,14 +273,14 @@ fn stat(xs: &[f64]) -> Value {
     json!({"mean": mean, "std": std, "n": xs.len()})
 }
 
-/// Reads every run and writes `runs/s6ab/summary.json`.
-pub fn summarize(store: &Path) -> Result<()> {
+/// Reads every run of `arms` and writes `runs/s6ab/summary.json`.
+pub fn summarize(store: &Path, arms: &[Arm]) -> Result<()> {
     let mut out = Vec::new();
-    for a in arms() {
+    for a in arms {
         let mut val = vec![Vec::new(); VAL.len()];
         let mut games: Vec<(String, Vec<f64>)> = Vec::new();
         for seed in SEEDS {
-            let dir = store.join(run_dir(&a, seed));
+            let dir = store.join(run_dir(a, seed));
             let p = dir.join("decide/log.jsonl");
             let log = std::fs::read_to_string(&p).with_context(|| p.display().to_string())?;
             for (col, x) in val.iter_mut().zip(final_val(&log)?) {
@@ -250,12 +313,13 @@ pub fn summarize(store: &Path) -> Result<()> {
             .collect();
         let games: Map<String, Value> = games.iter().map(|(g, xs)| (g.clone(), stat(xs))).collect();
         out.push(json!({
-            "name": a.name, "about": a.about, "config": a.config, "muon": a.muon,
+            "name": a.name, "about": a.about, "config": a.config,
+            "opt": a.opt, "decide": a.decide,
             "val": val, "arena_score": games,
         }));
     }
     let summary = json!({
-        "about": "s6 ablation: {AdamW, Muon v2} x {softmax, Parallax} on s3-pico (issue #34)",
+        "about": "s6 ablation on s3-pico: {AdamW, Muon v2} x {softmax, Parallax} (issue #34), XSA, SODA, no polish, exit KD (issue #36)",
         "seeds": SEEDS,
         "steps": {"pretrain": PRETRAIN_STEPS.parse::<u64>()?, "decide": DECIDE_STEPS.parse::<u64>()?},
         "arena": {"games": GAMES, "episodes": EPISODES.parse::<u64>()?, "exit_threshold": 1.0},
@@ -273,26 +337,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn grid_is_two_by_two() {
+    fn grid_and_single_changes() {
         let a = arms();
-        assert_eq!(a.len(), 4);
+        assert_eq!(a.len(), 8);
+        // The 2×2 grid: each attention under AdamW and under Muon v2.
         for config in ["configs/s3-pico.json", "configs/s6-pico.json"] {
-            let muon: Vec<bool> = a
+            let adamw: Vec<bool> = a
                 .iter()
-                .filter(|a| a.config == config)
-                .map(|a| a.muon)
+                .filter(|a| a.config == config && !a.name.contains("-muon-"))
+                .map(|a| a.opt.contains(&"--no-muon"))
                 .collect();
-            assert_eq!(muon, [false, true], "{config}");
+            assert_eq!(adamw, [true, false], "{config}");
         }
-        let s = stage();
-        assert_eq!(s.steps.len(), 4 * SEEDS.len() * 5);
-        // the AdamW arms pass --no-muon to both training steps, the Muon arms never
+        let s = stage(&a);
+        assert_eq!(s.steps.len(), 8 * SEEDS.len() * 5);
+        // The AdamW arms pass --no-muon to both training steps, the others never; the exit
+        // distillation only reaches the decision step.
         for step in &s.steps {
-            let adamw = step.name.contains("-adamw-");
             let trains = step.name.ends_with("-pretrain") || step.name.ends_with("-decide");
-            let flag = step.args.iter().any(|a| a == "--no-muon");
-            assert_eq!(flag, adamw && trains, "{}", step.name);
+            let no_muon = step.args.iter().any(|a| a == "--no-muon");
+            assert_eq!(
+                no_muon,
+                step.name.contains("-adamw-") && trains,
+                "{}",
+                step.name
+            );
+            let soda = step.args.windows(2).any(|w| w == ["--wd-mode", "soda"]);
+            assert_eq!(
+                soda,
+                step.name.contains("-soda-") && trains,
+                "{}",
+                step.name
+            );
+            let kd = step.args.iter().any(|a| a == "--exit-kd");
+            assert_eq!(
+                kd,
+                step.name.contains("-kd-") && step.name.ends_with("-decide"),
+                "{}",
+                step.name
+            );
         }
+        assert_eq!(selected(Some("xsa-muon, parallax-muon")).unwrap().len(), 2);
+        assert!(selected(Some("nope")).is_err());
+        assert_eq!(selected(None).unwrap().len(), 8);
     }
 
     #[test]
