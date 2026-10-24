@@ -215,6 +215,19 @@ Reading: s3-pico plays the three games as well as s2-nano (and better than s1-pi
 
 The carry does not reduce depth: warm frames use as many layers as cold ones, within noise (exits stay bimodal, exit 0 or the last loop), and vetoes are slightly higher. Not shipped; `skycmd-s2.temporal_carry` stays off by default.
 
+## skycmd-s6 (s6-pico): Parallax attention and Muon v2, code only
+
+`docs/SPEC-S6.md`. No s6 model is trained yet. These are costs on random data, Apple M5, two runs each (the range shown):
+
+| | s3-pico | s6-pico |
+|---|---:|---:|
+| params (decision / pretraining stack) | 445,345 / 203,393 | 463,969 / 212,705 |
+| `sky-train s2-bench`: numeric MLM step, batch 128 × 128, f32 | 55.7–55.9 ms | 62.3–63.7 ms |
+| `sky-train s2-bench`: decision step, batch 64, f32 | 17.5–17.8 ms | 17.9–18.1 ms |
+| `sky-bench --random`: ternary, τ = 1, per decision | 68.2 µs | 74.1 µs |
+
+The Muon v2 Newton–Schulz polish (`s2-bench --config configs/s3-pico.json --ns-polish 0` vs `2`) changes nothing measurable on the MLM step (57.8–58.5 ms both ways). On the decision step it goes from 17.3 ms to 17.5–18.8 ms, within the machine's noise.
+
 ## skycmd-s4 (s4-micro): generic decisions distilled from Qwen3.5, experimental
 
 `configs/s4-micro.json`: s3 at language scale, 5,587,201 params, ternary GGUF 2.4 MB (f32 22 MB), d / ff / vocab 256 / 768 / 4096, 2 state blocks x 3 loops, exits [2, 4, 6], 4 heads, state / head budget 384 / 128 tokens. One night on an Apple M5 (16 GB), `scripts/night-s4.sh`, chapter 22.

@@ -47,6 +47,10 @@ According to its model card, `oscar-1-17m` scores **0.6775** on `LocalLLaMA/type
 - **2610.06744**: scoring each option independently of the others reduces flips when options are shuffled.
 - **2609.33209**: checking that p(X) + p(¬X) ≈ 1 is a coherence test that needs no labels. → We use it in eval.
 - **2608.07436**: Muon can collapse at the representation/readout interface. → Muon is used only on encoder hidden matrices, and AdamW on embeddings and the head.
+- **2502.16982 (Muon is Scalable for LLM Training, Kimi)**: Muon needs decoupled weight decay, and an update scale of `0.2·√max(A, B)` that matches AdamW's RMS. → Muon recipe 2 (`docs/SPEC-S6.md` §2).
+- **DeepSeek V4**: a hybrid Muon/AdamW split like ours, and a Newton–Schulz pass in two stages, fast then stabilizing. → `ns_polish` iterations with a polynomial that converges to 1.
+- **2605.29157 (Parallax)**: local linear attention with a learned probe, and its gain over softmax attention depends on Muon. → s6 (`docs/SPEC-S6.md` §1) and the `cargo xtask s6ab` ablation.
+- **Muon-trained features are more robust and transfer better**, through larger logit margins and a higher effective rank of the hidden states. → `Metrics.margin` and the `erank` validation log.
 - **2609.30535**: code-switching curricula help align languages. → We mix FR and EN.
 - **2609.01404 (DroneCATS)**: small models struggle with termination actions. → `end` and `abort` are explicit actions.
 - **2609.23742**: constrained decoding removes structural JSON errors but not semantic ones. → A coded validator always gets the last word.
