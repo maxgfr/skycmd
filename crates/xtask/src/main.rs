@@ -21,6 +21,7 @@
 mod exp;
 mod loopcal;
 mod regress;
+mod s6ab;
 mod stages;
 
 use std::fs::{self, File, OpenOptions};
@@ -40,7 +41,8 @@ const XCODE: &str = "/Applications/Xcode.app/Contents/Developer";
 fn usage() -> ! {
     eprintln!(
         "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run] [--jobs N] [--runs a,b]\n  cargo xtask store\n  \
-         cargo xtask regress [--update]\n  cargo xtask loopcal [--force] [--jobs N]\n\n\
+         cargo xtask regress [--update]\n  cargo xtask loopcal [--force] [--jobs N]\n  \
+         cargo xtask s6ab [--force] [--dry-run]\n\n\
          SKYCMD_STORE must point at the main checkout of this repository."
     );
     std::process::exit(2)
@@ -84,6 +86,23 @@ fn main() -> Result<()> {
             run_stage(&loopcal::prepare(&checkout())?, force, false, 1)?;
             run_stage(&loopcal::arena(), force, false, jobs)?;
             loopcal::summarize(&store, &checkout())
+        }
+        Some("s6ab") => {
+            let (mut force, mut dry) = (false, false);
+            for a in &args[1..] {
+                match a.as_str() {
+                    "--force" => force = true,
+                    "--dry-run" => dry = true,
+                    bad => bail!("unknown argument {bad:?}"),
+                }
+            }
+            let store = store()?;
+            fs::create_dir_all(store.join("runs/s6ab"))?;
+            run_stage(&s6ab::stage(), force, dry, 1)?;
+            if dry {
+                return Ok(());
+            }
+            s6ab::summarize(&store)
         }
         Some("s5") => {
             let Some(name) = args.get(1) else { usage() };
