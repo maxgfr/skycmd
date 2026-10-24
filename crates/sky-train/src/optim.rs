@@ -32,6 +32,19 @@ pub const OPT_RECIPE: u32 = 2;
 /// RMS of an AdamW update, so Muon shares AdamW's learning rate and decay (Kimi).
 pub const MUON_RMS: f32 = 0.2;
 
+/// How the decayed matrices (AdamW and Muon) are pulled back.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum WdMode {
+    /// `W ← W · (1 − lr · weight_decay)` toward 0 (Kimi, AdamW).
+    #[default]
+    Decoupled,
+    /// SODA (arXiv 2605.11172): `W ← W + (W₀ − W) / (k + 2)` toward the initialization
+    /// `W₀`, not scaled by the learning rate and with no hyper-parameter
+    /// (`weight_decay` is ignored).
+    Soda,
+}
+
 /// Optimizer hyper-parameters.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OptConfig {
@@ -44,6 +57,9 @@ pub struct OptConfig {
     pub eps: f32,
     /// Decoupled weight decay of the matrices, AdamW and Muon alike.
     pub weight_decay: f32,
+    /// How that decay is applied ([`WdMode`]).
+    #[serde(default)]
+    pub wd_mode: WdMode,
     /// Final Muon momentum.
     pub muon_momentum: f32,
     /// Muon momentum at step 0 (linearly warmed to `muon_momentum`).
@@ -95,6 +111,7 @@ impl Default for OptConfig {
             beta2: 0.95,
             eps: 1e-8,
             weight_decay: 0.01,
+            wd_mode: WdMode::Decoupled,
             muon_momentum: 0.95,
             muon_momentum_start: 0.85,
             muon_momentum_warmup: 300,
@@ -162,6 +179,8 @@ pub struct Optimizer {
     m: HashMap<Rc<str>, Array>,
     v: HashMap<Rc<str>, Array>,
     mom: HashMap<Rc<str>, Array>,
+    /// [`WdMode::Soda`]: each decayed matrix at its first update (its initialization).
+    anchor: HashMap<Rc<str>, Array>,
 }
 
 impl Optimizer {
@@ -172,6 +191,25 @@ impl Optimizer {
             m: HashMap::new(),
             v: HashMap::new(),
             mom: HashMap::new(),
+            anchor: HashMap::new(),
+        }
+    }
+
+    /// The weight decay of one matrix before its update, at learning rate `lr`
+    /// ([`WdMode`]). `self.step` already counts this update, so SODA's `k` is
+    /// `step − 1`.
+    fn decay(&mut self, name: &Rc<str>, p: &Array, lr: f32) -> R<Array> {
+        let c = &self.cfg;
+        match c.wd_mode {
+            WdMode::Decoupled if c.weight_decay != 0.0 => {
+                p.multiply(Array::from_f32(1.0 - lr * c.weight_decay))
+            }
+            WdMode::Decoupled => Ok(p.clone()),
+            WdMode::Soda => {
+                let z0 = self.anchor.entry(name.clone()).or_insert_with(|| p.clone());
+                let k = self.step.saturating_sub(1) as f32;
+                p.add(z0.subtract(p)?.multiply(Array::from_f32(1.0 / (k + 2.0)))?)
+            }
         }
     }
 
@@ -234,10 +272,7 @@ impl Optimizer {
                         .add(buf.multiply(Array::from_f32(mu))?)?;
                     let o = newton_schulz(&upd, c.ns_steps, c.ns_polish)?;
                     let scale = MUON_RMS * (p.dim(0).max(p.dim(1)) as f32).sqrt();
-                    let mut np = p.clone();
-                    if c.weight_decay != 0.0 {
-                        np = np.multiply(Array::from_f32(1.0 - muon_lr * c.weight_decay))?;
-                    }
+                    let np = self.decay(name, p, muon_lr)?;
                     *p = np.subtract(o.multiply(Array::from_f32(muon_lr * scale))?)?;
                     self.mom.insert(name.clone(), buf);
                 }
@@ -257,10 +292,11 @@ impl Optimizer {
                         .sqrt()?
                         .add(Array::from_f32(c.eps))?;
                     let step = m.divide(Array::from_f32(bc1))?.divide(&denom)?;
-                    let mut np = p.clone();
-                    if group == Group::AdamDecay && c.weight_decay != 0.0 {
-                        np = np.multiply(Array::from_f32(1.0 - adam_lr * c.weight_decay))?;
-                    }
+                    let np = if group == Group::AdamDecay {
+                        self.decay(name, p, adam_lr)?
+                    } else {
+                        p.clone()
+                    };
                     *p = np.subtract(step.multiply(Array::from_f32(adam_lr))?)?;
                     self.m.insert(name.clone(), m);
                     self.v.insert(name.clone(), v);
@@ -270,13 +306,15 @@ impl Optimizer {
         Ok(gnorm)
     }
 
-    /// All state arrays (for evaluation and checkpoints), keyed `adam.m.*`, `adam.v.*`, `muon.v.*`.
+    /// All state arrays (for evaluation and checkpoints), keyed `adam.m.*`, `adam.v.*`,
+    /// `muon.v.*` and, with SODA, `soda.z0.*`.
     pub fn state_arrays(&self) -> ParamMap {
         let mut out = ParamMap::new();
         for (prefix, map) in [
             ("adam.m.", &self.m),
             ("adam.v.", &self.v),
             ("muon.v.", &self.mom),
+            ("soda.z0.", &self.anchor),
         ] {
             for (k, v) in map {
                 out.insert(format!("{prefix}{k}").into(), v.clone());
@@ -299,6 +337,7 @@ impl Optimizer {
         self.m.clear();
         self.v.clear();
         self.mom.clear();
+        self.anchor.clear();
         for (k, v) in arrays {
             let (map, name) = if let Some(n) = k.strip_prefix("adam.m.") {
                 (&mut self.m, n)
@@ -306,6 +345,8 @@ impl Optimizer {
                 (&mut self.v, n)
             } else if let Some(n) = k.strip_prefix("muon.v.") {
                 (&mut self.mom, n)
+            } else if let Some(n) = k.strip_prefix("soda.z0.") {
+                (&mut self.anchor, n)
             } else {
                 bail!("unexpected optimizer state key {k}");
             };
@@ -419,6 +460,59 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn soda_pulls_toward_the_initialization_by_one_over_k_plus_two() {
+        let _g = test_util::lock();
+        // No momentum, so a zero gradient is no Muon update at all: what moves the
+        // weights after step 1 is SODA alone, `W − W₀` shrinking by `(k + 1)/(k + 2)`.
+        let name = "blk.0.attn_qkv.weight";
+        let w0 = random::normal::<f32>(&[64, 32][..], 0.0, 1.0, &random::key(5).unwrap()).unwrap();
+        let g1 = random::normal::<f32>(&[64, 32][..], 0.0, 1.0, &random::key(6).unwrap()).unwrap();
+        let mut params = ParamMap::new();
+        params.insert(name.into(), w0.clone());
+        let mut o = Optimizer::new(OptConfig {
+            muon_lr: 0.05,
+            wd_mode: WdMode::Soda,
+            weight_decay: 123.0, // ignored by SODA
+            muon_momentum: 0.0,
+            muon_momentum_start: 0.0,
+            clip_norm: 0.0,
+            ..Default::default()
+        });
+        let grads = |g: Array| {
+            let mut m = ParamMap::new();
+            m.insert(name.into(), g);
+            m
+        };
+        let dist = |p: &ParamMap| {
+            let d = p[name]
+                .subtract(&w0)
+                .unwrap()
+                .square()
+                .unwrap()
+                .sum(None)
+                .unwrap();
+            d.sqrt().unwrap().item_exact::<f32>()
+        };
+        o.update(&mut params, &grads(g1), 1.0).unwrap(); // k = 0: anchor = W₀, no pull
+        let mut d = dist(&params);
+        assert!(d > 0.1, "{d}");
+        for k in 1..4 {
+            o.update(&mut params, &grads(ops::zeros_like(&w0).unwrap()), 1.0)
+                .unwrap();
+            let next = dist(&params);
+            let want = d * (k as f32 + 1.0) / (k as f32 + 2.0);
+            assert!((next - want).abs() < 1e-4 * d, "k {k}: {next} vs {want}");
+            d = next;
+        }
+        // The anchor is optimizer state: a resumed run keeps pulling toward W₀.
+        assert!(o
+            .state_arrays()
+            .contains_key("soda.z0.blk.0.attn_qkv.weight"));
+        let cfg: OptConfig = serde_json::from_value(serde_json::to_value(&o.cfg).unwrap()).unwrap();
+        assert_eq!(cfg.wd_mode, WdMode::Soda);
     }
 
     #[test]

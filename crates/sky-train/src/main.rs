@@ -7,7 +7,7 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use sky_train::{
     export,
-    optim::OptConfig,
+    optim::{OptConfig, WdMode},
     s2::{
         self,
         gguf::WeightFormat,
@@ -49,6 +49,10 @@ struct OptFlags {
     /// Newton–Schulz polish iterations after the fast ones.
     #[arg(long, default_value_t = 2)]
     ns_polish: usize,
+    /// How the matrices decay: `decoupled` (toward 0, `--weight-decay`) or `soda`
+    /// (toward the initialization in 1/(k+2), no hyper-parameter).
+    #[arg(long, value_enum, default_value_t = WdMode::Decoupled)]
+    wd_mode: WdMode,
 }
 
 impl OptFlags {
@@ -58,6 +62,7 @@ impl OptFlags {
             adam_lr,
             muon_lr: self.muon_lr.unwrap_or(adam_lr),
             weight_decay: self.weight_decay,
+            wd_mode: self.wd_mode,
             clip_norm: self.clip_norm,
             muon: !self.no_muon,
             ns_polish: self.ns_polish,
