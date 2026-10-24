@@ -127,6 +127,12 @@ pub fn sources() -> Vec<Source> {
         src("when2call", load_when2call),
         capped("snli", 40_000, load_snli),
         capped("hellaswag", 30_000, load_hellaswag),
+        src("qasc", load_qasc),
+        capped("refusal", 30_000, load_refusal),
+        // Laya-format corpora of September–October 2026 (issue #38).
+        capped("neuro_laya", 20_000, load_neuro_laya),
+        src("trading_laya", load_trading_laya),
+        src("tetris_laya", load_tetris_laya),
         // GLM teacher data (local, no download).
         capped("glm_orders", usize::MAX, crate::augment::load_glm_orders),
     ]

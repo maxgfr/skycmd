@@ -33,6 +33,13 @@ split 95/5 into train/val by state, so all questions about one state land in the
 | Rowan/hellaswag | MIT | https://huggingface.co/datasets/Rowan/hellaswag | train + validation (test has no labels); choice A..D over the endings, state = activity + context; cap 30k | 30,000 |
 | LocalLLaMA/typed-decisions (config `all`) | Apache-2.0 | https://huggingface.co/datasets/LocalLLaMA/typed-decisions | **test split only**, kept as an external benchmark (`split = "test"`), never trained on | 2,000 |
 | AirsideLabs/notam-typed-decisions (configs `notam_multi` + `deel_subject`) | CC-BY-4.0 | https://huggingface.co/datasets/AirsideLabs/notam-typed-decisions | **evaluation only** (`split = "test"`); rows without a label (3,118) are skipped; `src = notam:<config>` | 9,051 |
+| allenai/qasc | CC-BY-4.0 | https://huggingface.co/datasets/allenai/qasc | train + validation (the test split has no answer key); choice A..H, state = the two supporting facts then the question | 9,060 |
+| agentlans/refusal-classifier-data (config `english_only`) | CC-BY-4.0 | https://huggingface.co/datasets/agentlans/refusal-classifier-data | train; noul "Does the assistant refuse or decline the user's request?", state = the last user turn and the assistant reply (600 characters each); cap 30k | 30,000 |
+| Aditharavind/laya-neuro-decisions | CC-BY-4.0, derived from STEW (Lim, W.L., Sourina, O., Wang, L.P. (2018), "STEW: Simultaneous Task EEG Workload Dataset", IEEE TNSRE) via its CC-BY-4.0 Hub mirror | https://huggingface.co/datasets/Aditharavind/laya-neuro-decisions | all splits; Laya rows as they are (one noul on EEG-derived workload features, soft gold); cap 20k | 20,000 |
+| Anay2010/laya-trading-decisions | Apache-2.0 | https://huggingface.co/datasets/Anay2010/laya-trading-decisions | train + validation; Laya rows as they are (synthetic trading states: action, regime, confidence) | 15,792 |
+| aaung/laya-tetris-decisions | Apache-2.0 | https://huggingface.co/datasets/aaung/laya-tetris-decisions | all splits; choice over the candidate placements A..H listed in the state (moved to the options), the heuristic teacher's preference as soft target | 8,000 |
+
+Not used: allenai/sciq (CC-BY-NC-3.0), allenai/cosmos_qa (CC-BY-4.0 but script-only, no Parquet conversion), ChaosNLI (non-commercial), devinblaze/laya-multidomain-decisions (Apache-2.0, but 801 of its 849 rows are duplicates).
 
 Auxiliary: the GPT-2 `tokenizer.json` from https://huggingface.co/openai-community/gpt2 (MIT)
 is downloaded only to decode the `pngwn/typed-decisions` prompts.

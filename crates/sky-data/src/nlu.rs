@@ -187,6 +187,102 @@ pub fn load_allocine(cx: &Ctx) -> Result<Vec<Item>> {
     Ok(out)
 }
 
+// ----------------------------------------------------------------------------- QASC
+
+pub const QASC_INS: &str = "Which option correctly answers the question, given the two facts?";
+
+/// QASC (CC-BY-4.0): eight options, the two supporting facts before the question in the state.
+pub fn qasc_item(
+    id: &str,
+    fact1: &str,
+    fact2: &str,
+    question: &str,
+    choices: &Value,
+    answer_key: &str,
+) -> Option<Item> {
+    let state = format!("{} {}\n{}", fact1.trim(), fact2.trim(), question.trim());
+    let mut it = mc_item("qasc", QASC_INS, id, &state, choices, answer_key)?;
+    it.group = id.to_string();
+    Some(it)
+}
+
+pub fn load_qasc(cx: &Ctx) -> Result<Vec<Item>> {
+    let mut out = Vec::new();
+    // The test split has no answer key: train + validation only.
+    for split in ["train", "validation"] {
+        for p in cx
+            .hf
+            .parquet_split("allenai/qasc", "default", split, SMALL)?
+        {
+            for_each_parquet_row(
+                &p,
+                &["id", "question", "choices", "answerKey", "fact1", "fact2"],
+                |row| {
+                    out.extend(qasc_item(
+                        str_field(&row, "id")?,
+                        str_field(&row, "fact1")?,
+                        str_field(&row, "fact2")?,
+                        str_field(&row, "question")?,
+                        &row["choices"],
+                        str_field(&row, "answerKey")?,
+                    ));
+                    Ok(())
+                },
+            )?;
+        }
+    }
+    Ok(out)
+}
+
+// ----------------------------------------------------------------------------- refusals
+
+pub const REFUSAL_INS: &str = "Does the assistant refuse or decline the user's request?";
+
+/// Characters kept of the user turn and of the assistant reply.
+const REFUSAL_TURN_CHARS: usize = 600;
+
+/// One `agentlans/refusal-classifier-data` row (CC-BY-4.0): the conversation
+/// (`<|system|>…<|user|>…<|assistant|>…`) reduced to the last user turn and the reply, so that
+/// clipping never cuts the reply the question is about; `Refusal` / `Non-refusal` as the label.
+pub fn refusal_item(input: &str, output: &str) -> Option<Item> {
+    let (before, reply) = input.rsplit_once("<|assistant|>")?;
+    let user = before.rsplit_once("<|user|>").map_or(before, |(_, u)| u);
+    let clean = |s: &str| clip(&s.replace("<|...|>", " … "), REFUSAL_TURN_CHARS);
+    let (user, reply) = (clean(user), clean(reply));
+    if reply.is_empty() {
+        return None;
+    }
+    let refusal = match output.trim() {
+        "Refusal" => 1,
+        "Non-refusal" => 0,
+        _ => return None,
+    };
+    let state = format!("User: {user}\nAssistant: {reply}");
+    Some(Item {
+        group: state_group(&state),
+        rec: Question::noul(REFUSAL_INS).record("refusal", state, one_hot(2, refusal)),
+    })
+}
+
+pub fn load_refusal(cx: &Ctx) -> Result<Vec<Item>> {
+    let mut out = Vec::new();
+    for p in cx.hf.parquet_split(
+        "agentlans/refusal-classifier-data",
+        "english_only",
+        "train",
+        SMALL,
+    )? {
+        for_each_parquet_row(&p, &["input", "output"], |row| {
+            out.extend(refusal_item(
+                str_field(&row, "input")?,
+                str_field(&row, "output")?,
+            ));
+            Ok(())
+        })?;
+    }
+    Ok(out)
+}
+
 // ----------------------------------------------------------------------------- When2Call
 
 pub const WHEN2CALL_INS: &str =
@@ -505,6 +601,44 @@ mod tests {
     use super::*;
     use crate::record::{argmax, validate_record};
     use serde_json::json;
+
+    #[test]
+    fn qasc_puts_the_facts_before_the_question() {
+        let choices = json!({"text": ["pearls", "streams", "beads"], "label": ["A", "B", "C"]});
+        let it = qasc_item(
+            "q1",
+            "beads of water are formed by water vapor condensing",
+            "Clouds are made of water vapor.",
+            "What type of water formation is formed by clouds?",
+            &choices,
+            "C",
+        )
+        .unwrap();
+        assert_eq!(it.rec.ins, QASC_INS);
+        assert!(it.rec.state.starts_with("beads of water") && it.rec.state.ends_with("clouds?"));
+        assert_eq!(argmax(&it.rec.target), 2);
+        validate_record(&it.rec).unwrap();
+        // The test split has no answer key.
+        assert!(qasc_item("q2", "a", "b", "c?", &choices, "").is_none());
+    }
+
+    #[test]
+    fn refusal_keeps_the_last_turn_and_the_reply() {
+        let long = "x".repeat(5000);
+        let input = format!(
+            "<|system|>You are a recipe bot.<|user|>{long}<|assistant|>Earlier reply.<|user|>How do I join the group?<|assistant|>I'm sorry, but I can only provide cooking recipes."
+        );
+        let it = refusal_item(&input, "Refusal").unwrap();
+        assert_eq!(it.rec.t, "noul");
+        assert!(it.rec.state.starts_with("User: How do I join the group?"));
+        assert!(it.rec.state.ends_with("only provide cooking recipes."));
+        assert_eq!(argmax(&it.rec.target), 1);
+        validate_record(&it.rec).unwrap();
+        let no = refusal_item("<|user|>2+2?<|assistant|>4", "Non-refusal").unwrap();
+        assert_eq!(argmax(&no.rec.target), 0);
+        assert!(refusal_item("<|user|>hi", "Refusal").is_none());
+        assert!(refusal_item("<|user|>hi<|assistant|>ok", "maybe").is_none());
+    }
 
     #[test]
     fn helpsteer_one_question_per_attribute() {
