@@ -40,6 +40,10 @@ pub struct S2Config {
     /// frame's final latent through `carry_gate ⊙ LN(carry_norm)`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub temporal_carry: bool,
+    /// SPEC-S6 §1: Parallax attention in the encoder blocks. `attn_qkv` holds a fourth
+    /// projection, the probe `ρ`, normalized per head by `attn_px_norm`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub parallax: bool,
     /// SPEC-S3 §9 ablation: expand-and-sparsify FFN in the encoder blocks (see `s2::es`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ffn_es: Option<EsFfn>,
@@ -280,6 +284,7 @@ impl S2Config {
             fuse_numbers: false,
             state_loops: 1,
             temporal_carry: false,
+            parallax: false,
             ffn_es: None,
             max_state_tokens: 24,
             max_head_tokens: 40,

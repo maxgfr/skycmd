@@ -412,7 +412,7 @@ mod tests {
                 let w0d = w0.multiply(Array::from_f32(1.0 - lr * wd)).unwrap();
                 let d = w0d.subtract(&params[name]).unwrap();
                 let rms = d.square().unwrap().mean(None).unwrap().sqrt().unwrap();
-                let rms = rms.item::<f32>();
+                let rms = rms.item_exact::<f32>();
                 assert!(
                     (rms / (MUON_RMS * lr) - 1.0).abs() < 0.03,
                     "{rows}x{cols}, wd {wd}: update RMS {rms}"

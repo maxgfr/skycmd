@@ -369,6 +369,9 @@ pub fn to_gguf(
     if cfg.temporal_carry {
         w.add_kv(k("temporal_carry"), true);
     }
+    if cfg.parallax {
+        w.add_kv(k("parallax"), true);
+    }
     // SPEC-S3 §9: the fixed up-projection is the seed alone (no tensor).
     if let Some(es) = &cfg.ffn_es {
         w.add_kv(k("ffn_es_seed"), OwnedValue::U64(es.seed));
@@ -509,6 +512,12 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
             .as_bool()
             .ok_or_else(|| anyhow!("{ARCH}.temporal_carry is not a bool"))?,
     };
+    let parallax = match g.get(&format!("{ARCH}.parallax")) {
+        None => false,
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| anyhow!("{ARCH}.parallax is not a bool"))?,
+    };
     let state_loops = g
         .get_u64(&format!("{ARCH}.state_loops"))
         .map_or(1, |v| v as usize);
@@ -534,6 +543,7 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         fuse_numbers,
         state_loops,
         temporal_carry,
+        parallax,
         vocab_size: u32_key(g, "vocab_size")?,
         hidden_size,
         intermediate_size: u32_key(g, "feed_forward_length")?,
@@ -693,6 +703,27 @@ mod tests {
         let tback = config_from_gguf(&tg).unwrap();
         assert!(tback.temporal_carry);
         assert_eq!(params_from_gguf(&tg, &tback).unwrap().len(), tp.len());
+        // s6: Parallax key, 4d-row attn_qkv and one attn_px_norm per block.
+        assert!(!back.parallax && g2.get("skycmd-s2.parallax").is_none());
+        let xcfg = S2Config {
+            parallax: true,
+            ..S2Config::tiny(262)
+        };
+        let xp = init(&xcfg, S2Parts::DECISION, 5).unwrap();
+        let xb = to_gguf(&xp, &xcfg, &tok, WeightFormat::Ternary, "x").unwrap();
+        let xg = Gguf::parse(&xb).unwrap();
+        assert_eq!(xg.get_bool("skycmd-s2.parallax"), Some(true));
+        assert_eq!(
+            xg.tensor("static.blk.0.attn_px_norm.weight")
+                .unwrap()
+                .shape(),
+            vec![64]
+        );
+        let xback = config_from_gguf(&xg).unwrap();
+        assert!(xback.parallax);
+        let xq = params_from_gguf(&xg, &xback).unwrap();
+        assert_eq!(xq.len(), xp.len());
+        assert_eq!(xq["blk.1.attn_qkv.weight"].shape(), &[512, 128]);
         // s3: fused, 1 block x 4 loops, one 96-wide head.
         let path =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../configs/s3-pico.json");
