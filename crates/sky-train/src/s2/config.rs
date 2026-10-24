@@ -44,6 +44,10 @@ pub struct S2Config {
     /// projection, the probe `ρ`, normalized per head by `attn_px_norm`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub parallax: bool,
+    /// SPEC-S6 §8: exclusive self-attention in the encoder blocks — each token's attention
+    /// output loses its component along the token's own value.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub xsa: bool,
     /// SPEC-S3 §9 ablation: expand-and-sparsify FFN in the encoder blocks (see `s2::es`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ffn_es: Option<EsFfn>,
@@ -285,6 +289,7 @@ impl S2Config {
             state_loops: 1,
             temporal_carry: false,
             parallax: false,
+            xsa: false,
             ffn_es: None,
             max_state_tokens: 24,
             max_head_tokens: 40,

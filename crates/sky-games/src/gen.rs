@@ -193,9 +193,10 @@ fn balance_keep(seen: &[f32], label: usize) -> f32 {
 /// Picks the `(choice, abort)` played at a decision point while collecting data.
 pub type Actor<'a> = dyn FnMut(&dyn DecisionGame, &mut SmallRng) -> (usize, bool) + 'a;
 
-/// Share of decisions an [`Actor`] hands back to the oracle during DAgger collection, so the
-/// episodes still reach the later parts of each course.
-const DAGGER_ORACLE_SHARE: f32 = 0.2;
+/// Default share β of decisions an [`Actor`] hands back to the oracle during DAgger collection,
+/// so the episodes still reach the later parts of each course (the mixing policy
+/// `β·oracle + (1 − β)·student` of DAgger; arXiv 2605.12913 interpolates the same way per turn).
+pub const DAGGER_ORACLE_SHARE: f32 = 0.2;
 
 /// Generates `n` records for `game`, calling `emit` for each one. Returns the statistics.
 pub fn generate_with(
@@ -204,16 +205,18 @@ pub fn generate_with(
     seed: u64,
     emit: impl FnMut(DecisionRecord),
 ) -> Result<GenStats, String> {
-    generate_with_actor(game, n, seed, None, emit)
+    generate_with_actor(game, n, seed, None, DAGGER_ORACLE_SHARE, emit)
 }
 
 /// Like [`generate_with`], but when `actor` is set it drives the episodes (DAgger): the states
-/// come from the actor's own play and the targets still come from the oracle.
+/// come from the actor's own play, except for a share `oracle_share` (β) of decisions the oracle
+/// takes, and the targets still come from the oracle.
 pub fn generate_with_actor(
     game: &str,
     n: usize,
     seed: u64,
     mut actor: Option<&mut Actor<'_>>,
+    oracle_share: f32,
     mut emit: impl FnMut(DecisionRecord),
 ) -> Result<GenStats, String> {
     let probe = make_game(game, 0).ok_or_else(|| format!("unknown game {game:?}"))?;
@@ -254,6 +257,7 @@ pub fn generate_with_actor(
             &mut *g,
             eps,
             actor.as_deref_mut(),
+            oracle_share,
             &mut rng,
             |g, targets, rng| {
                 if stats.records >= n {
@@ -310,6 +314,7 @@ fn play_episode(
     g: &mut dyn DecisionGame,
     eps: f32,
     mut actor: Option<&mut Actor<'_>>,
+    oracle_share: f32,
     rng: &mut SmallRng,
     mut visit: impl FnMut(&dyn DecisionGame, &[Vec<f32>], &mut SmallRng),
 ) {
@@ -323,7 +328,7 @@ fn play_episode(
         }
         let t = g.oracle();
         visit(&*g, &t, rng);
-        let use_actor = actor.is_some() && rng.gen::<f32>() >= DAGGER_ORACLE_SHARE;
+        let use_actor = actor.is_some() && rng.gen::<f32>() >= oracle_share;
         let (choice, abort) = if use_actor {
             let act = actor.as_deref_mut().expect("actor checked above");
             act(&*g, rng)

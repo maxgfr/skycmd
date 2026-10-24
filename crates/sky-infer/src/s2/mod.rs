@@ -55,6 +55,9 @@ pub struct S2Config {
     /// Parallax attention in the encoder blocks: `attn_qkv` holds a fourth projection, the probe
     /// `ρ`, normalized per head by `attn_px_norm` (GGUF `parallax`, default false; SPEC-S6 §1).
     pub parallax: bool,
+    /// Exclusive self-attention in the encoder blocks: each token's attention output loses its
+    /// component along its own value (GGUF `xsa`, default false; SPEC-S6 §8).
+    pub xsa: bool,
     /// Expand-and-sparsify FFN in the encoder blocks (GGUF `ffn_es_*`, absent by default;
     /// SPEC-S3 §9 ablation, see [`es`]).
     pub ffn_es: Option<es::EsSpec>,
@@ -193,6 +196,7 @@ impl S2Config {
         let fuse_numbers = flag("fuse_numbers");
         let temporal_carry = flag("temporal_carry");
         let parallax = flag("parallax");
+        let xsa = flag("xsa");
         let ffn_es = match g.get(&key("ffn_es_seed")).and_then(|v| v.as_u64()) {
             None => None,
             Some(seed) => Some(es::EsSpec {
@@ -232,6 +236,7 @@ impl S2Config {
             fuse_numbers,
             temporal_carry,
             parallax,
+            xsa,
             ffn_es,
             static_layers: req("static_block_count")?,
             fusion_layers: req("fusion_block_count")?,

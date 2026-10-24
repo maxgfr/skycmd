@@ -372,6 +372,9 @@ pub fn to_gguf(
     if cfg.parallax {
         w.add_kv(k("parallax"), true);
     }
+    if cfg.xsa {
+        w.add_kv(k("xsa"), true);
+    }
     // SPEC-S3 §9: the fixed up-projection is the seed alone (no tensor).
     if let Some(es) = &cfg.ffn_es {
         w.add_kv(k("ffn_es_seed"), OwnedValue::U64(es.seed));
@@ -518,6 +521,12 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
             .as_bool()
             .ok_or_else(|| anyhow!("{ARCH}.parallax is not a bool"))?,
     };
+    let xsa = match g.get(&format!("{ARCH}.xsa")) {
+        None => false,
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| anyhow!("{ARCH}.xsa is not a bool"))?,
+    };
     let state_loops = g
         .get_u64(&format!("{ARCH}.state_loops"))
         .map_or(1, |v| v as usize);
@@ -544,6 +553,7 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         state_loops,
         temporal_carry,
         parallax,
+        xsa,
         vocab_size: u32_key(g, "vocab_size")?,
         hidden_size,
         intermediate_size: u32_key(g, "feed_forward_length")?,
@@ -703,16 +713,21 @@ mod tests {
         let tback = config_from_gguf(&tg).unwrap();
         assert!(tback.temporal_carry);
         assert_eq!(params_from_gguf(&tg, &tback).unwrap().len(), tp.len());
-        // s6: Parallax key, 4d-row attn_qkv and one attn_px_norm per block.
+        // s6: Parallax key, 4d-row attn_qkv and one attn_px_norm per block; the XSA key
+        // (no tensor).
         assert!(!back.parallax && g2.get("skycmd-s2.parallax").is_none());
+        assert!(!back.xsa && g2.get("skycmd-s2.xsa").is_none());
         let xcfg = S2Config {
             parallax: true,
+            xsa: true,
             ..S2Config::tiny(262)
         };
         let xp = init(&xcfg, S2Parts::DECISION, 5).unwrap();
         let xb = to_gguf(&xp, &xcfg, &tok, WeightFormat::Ternary, "x").unwrap();
         let xg = Gguf::parse(&xb).unwrap();
         assert_eq!(xg.get_bool("skycmd-s2.parallax"), Some(true));
+        assert_eq!(xg.get_bool("skycmd-s2.xsa"), Some(true));
+        assert!(config_from_gguf(&xg).unwrap().xsa);
         assert_eq!(
             xg.tensor("static.blk.0.attn_px_norm.weight")
                 .unwrap()

@@ -452,6 +452,21 @@ fn attend_parallax(q: &Array, k: &Array, v: &Array, rho: &Array, mask: &Array) -
     o1.multiply(d2.add(Array::from_f32(1.0))?)?.subtract(&o2)
 }
 
+/// Numerical floor of `‖v‖²` in [`exclusive`] (and in sky-infer's `kernels::exclusive`).
+pub const XSA_EPS: f32 = 1e-6;
+
+/// Exclusive self-attention (SPEC-S6 §8): each token's attention output `o` `[B, H, T, hd]`
+/// loses its component along the token's own value `v`, `o − (o·v / (‖v‖² + ε)) v`, so the
+/// block carries what the OTHER tokens say.
+fn exclusive(o: &Array, v: &Array) -> R<Array> {
+    let dot = o.multiply(v)?.sum_axis(-1, true)?;
+    let vv = v
+        .square()?
+        .sum_axis(-1, true)?
+        .add(Array::from_f32(XSA_EPS))?;
+    o.subtract(dot.divide(&vv)?.multiply(v)?)
+}
+
 /// RoPE flavour of an encoder.
 enum Rope {
     /// Positions `0..T` (fast kernel): `(theta, head_dim)`.
@@ -526,6 +541,7 @@ fn block(
     } else {
         attend(&q, &k, &v, mask)?
     };
+    let a = if cfg.xsa { exclusive(&a, &v)? } else { a };
     let a = merge_heads(&a)?;
     let x = x.add(linear(
         &a,
@@ -975,6 +991,62 @@ pub fn decision_loss_dis(
         .mean_axis(-1, None)?
         .negative()?;
     ce.multiply(wts)?.sum(None)
+}
+
+/// Self-distillation of the early exits toward the deepest one (s6, after CalexNet
+/// and SAFE-KD): each exit `e < E − 1` also learns `T² · KL(p_T(last) ‖ p_T(e))`, with
+/// `p_T = softmax(logits / T)` and the deepest exit detached, so an early exit learns
+/// where the full-depth answer is uncertain instead of only the hard label.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExitKd {
+    /// Weight of the mean KL over the early exits.
+    pub weight: f32,
+    /// Distillation temperature `T`.
+    pub temp: f32,
+}
+
+/// The [`ExitKd`] term of masked logits `[E, B, K]` (0 with a single exit).
+pub fn exit_kd_loss(logits: &Array, kd: ExitKd) -> R<Array> {
+    let e = logits.dim(0);
+    if e < 2 {
+        return Ok(Array::from_f32(0.0));
+    }
+    let z = to_f32(logits.clone())?.divide(Array::from_f32(kd.temp))?;
+    let logq = z.subtract(z.logsumexp_axis(-1, true)?)?;
+    let teacher = stop_gradient(logq.index(e - 1))?; // [B, K]
+    let p = ops::exp(&teacher)?;
+    let kl = p
+        .multiply(teacher.subtract(logq.index(..e - 1))?)?
+        .sum_axis(-1, None)?
+        .mean_axis(-1, None)?; // [E - 1]
+    kl.mean(None)?
+        .multiply(Array::from_f32(kd.weight * kd.temp * kd.temp))
+}
+
+/// Deep supervision with explicit exit weights `wts` `[E]`, optional [`exit_targets`]
+/// exponents `beta` `[E]`, plus the [`ExitKd`] term: [`decision_loss_weighted`] or
+/// [`decision_loss_dis`] with self-distillation, from one forward pass.
+pub fn decision_loss_kd(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    qat: bool,
+    wts: &Array,
+    beta: Option<&Array>,
+    kd: ExitKd,
+) -> R<Array> {
+    let logits = masked(&forward(p, cfg, b, qat)?, &b.marker_mask)?;
+    let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+    let target = match beta {
+        Some(beta) => exit_targets(&b.target, beta)?,
+        None => b.target.clone(),
+    };
+    let ce = target
+        .multiply(&logp)?
+        .sum_axis(-1, None)?
+        .mean_axis(-1, None)?
+        .negative()?;
+    ce.multiply(wts)?.sum(None)?.add(exit_kd_loss(&logits, kd)?)
 }
 
 /// [`decision_loss`] over the first `n_exits` exits (stochastic depth: the
@@ -1646,6 +1718,95 @@ mod tests {
                 }
                 assert!(max_diff <= 1e-5, "qat {qat}: max diff {max_diff}");
             }
+        });
+    }
+
+    #[test]
+    fn xsa_removes_the_own_value_component_and_keeps_equivariance() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let o = random::normal::<f32>(&[2, 2, 5, 8][..], 0.0, 1.0, &random::key(1).unwrap())
+                .unwrap();
+            let v = random::normal::<f32>(&[2, 2, 5, 8][..], 0.0, 1.0, &random::key(2).unwrap())
+                .unwrap();
+            let x = exclusive(&o, &v).unwrap();
+            // Orthogonal to the token's own value, and the rest of o is untouched.
+            let dots = crate::model::host_f32(&x.multiply(&v).unwrap().sum_axis(-1, None).unwrap())
+                .unwrap();
+            assert!(dots.iter().all(|d| d.abs() < 1e-4), "{dots:?}");
+            let twice = exclusive(&x, &v).unwrap();
+            assert!(twice.all_close(&x, 1e-5, 1e-5, None).unwrap());
+        });
+        // The static stream's option isolation survives XSA (it is per token).
+        let mut cfg = ladder("s6-pico");
+        cfg.xsa = true;
+        cfg.vocab_size = 262;
+        let p = crate::s2::golden::golden_params(&cfg, 6).unwrap();
+        let (_d, tok) = s2_tok();
+        let opts = ["north 3", "south", "east -2.5"];
+        let perm = [2usize, 0, 1];
+        let permuted: Vec<&str> = perm.iter().map(|&i| opts[i]).collect();
+        let enc = |o: &[&str]| {
+            crate::s2::data::encode_record_cfg(
+                &tok,
+                &rec("choice", "go where?", o, "x 4 y -1"),
+                &cfg,
+            )
+            .unwrap()
+        };
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (s_a, st) = enc(&opts);
+            let (s_b, _) = enc(&permuted);
+            let statics = vec![s_a, s_b];
+            let items = [item(0, &st, 3, 0), item(1, &st, 3, 0)];
+            let refs: Vec<&S2Item> = items.iter().collect();
+            let logits = forward(&p, &cfg, &make_batch(&statics, &refs, 1), false).unwrap();
+            let rows = logits_per_row(&logits, &[3, 3]).unwrap();
+            for exit in &rows {
+                let pa = crate::metrics::softmax_t(&exit[0], 1.0);
+                let pb = crate::metrics::softmax_t(&exit[1], 1.0);
+                for (j, &i) in perm.iter().enumerate() {
+                    assert!((pb[j] - pa[i]).abs() < 1e-5);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn exit_kd_matches_its_definition_and_spares_the_deepest_exit() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let kd = ExitKd {
+                weight: 0.5,
+                temp: 2.0,
+            };
+            // Exits that already agree with the deepest one cost nothing.
+            let same = Array::from_slice(&[1.0f32, -2.0, 0.5, 1.0, -2.0, 0.5], &[2, 1, 3]);
+            let z = exit_kd_loss(&same, kd).unwrap().item_exact::<f32>();
+            assert!(z.abs() < 1e-6, "{z}");
+            assert_eq!(
+                exit_kd_loss(&Array::from_slice(&[1.0f32, 2.0], &[1, 1, 2]), kd)
+                    .unwrap()
+                    .item_exact::<f32>(),
+                0.0
+            );
+            // One early exit, one question: weight · T² · KL(p_T(last) ‖ p_T(early)).
+            let early = [2.0f32, 0.0, -1.0];
+            let last = [0.0f32, 1.0, 0.5];
+            let mut both = early.to_vec();
+            both.extend(last);
+            let logits = Array::from_slice(&both, &[2, 1, 3]);
+            let got = exit_kd_loss(&logits, kd).unwrap().item_exact::<f32>();
+            let soft = |z: &[f32]| crate::metrics::softmax_t(z, kd.temp);
+            let (p, q) = (soft(&last), soft(&early));
+            let kl: f64 = p.iter().zip(&q).map(|(a, b)| a * (a / b).ln()).sum();
+            let want = (kd.weight * kd.temp * kd.temp) as f64 * kl;
+            assert!((got as f64 - want).abs() < 1e-5, "{got} vs {want}");
+            // The deepest exit is the teacher: no gradient reaches it through this term.
+            let g = mlx_rs::transforms::grad(|x: &Array| exit_kd_loss(x, kd))(&logits).unwrap();
+            let g = crate::model::host_f32(&g).unwrap();
+            assert!(g[..3].iter().any(|x| x.abs() > 1e-4), "{g:?}");
+            assert!(g[3..].iter().all(|x| *x == 0.0), "{g:?}");
         });
     }
 

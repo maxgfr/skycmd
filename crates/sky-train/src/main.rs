@@ -7,10 +7,11 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use sky_train::{
     export,
-    optim::OptConfig,
+    optim::{OptConfig, WdMode},
     s2::{
         self,
         gguf::WeightFormat,
+        model::ExitKd,
         train::{S2BenchArgs, S2DecideArgs, S2PretrainArgs},
     },
     session::Progress,
@@ -49,6 +50,10 @@ struct OptFlags {
     /// Newton–Schulz polish iterations after the fast ones.
     #[arg(long, default_value_t = 2)]
     ns_polish: usize,
+    /// How the matrices decay: `decoupled` (toward 0, `--weight-decay`) or `soda`
+    /// (toward the initialization in 1/(k+2), no hyper-parameter).
+    #[arg(long, value_enum, default_value_t = WdMode::Decoupled)]
+    wd_mode: WdMode,
 }
 
 impl OptFlags {
@@ -58,6 +63,7 @@ impl OptFlags {
             adam_lr,
             muon_lr: self.muon_lr.unwrap_or(adam_lr),
             weight_decay: self.weight_decay,
+            wd_mode: self.wd_mode,
             clip_norm: self.clip_norm,
             muon: !self.no_muon,
             ns_polish: self.ns_polish,
@@ -354,6 +360,12 @@ enum Cmd {
         /// beta rising linearly from this value at the first exit to 1 at the last.
         #[arg(long)]
         dis: Option<f32>,
+        /// s6 self-distillation: weight of `T² · KL(deepest exit ‖ exit e)` on the early exits.
+        #[arg(long)]
+        exit_kd: Option<f32>,
+        /// Temperature of --exit-kd.
+        #[arg(long, default_value_t = 2.0)]
+        exit_kd_temp: f32,
         /// Batches drawn at once and grouped by state length, so that a batch is padded to its
         /// own longest state (1: every batch drawn alone).
         #[arg(long, default_value_t = 1)]
@@ -740,6 +752,8 @@ fn main() -> Result<()> {
             qat_frac,
             loop_dropout,
             dis,
+            exit_kd,
+            exit_kd_temp,
             length_pool,
             pad_to,
             seq_records,
@@ -778,6 +792,10 @@ fn main() -> Result<()> {
             seq_frac,
             carry_drop,
             dis,
+            exit_kd: exit_kd.map(|weight| ExitKd {
+                weight,
+                temp: exit_kd_temp,
+            }),
             length_pool,
         })?,
         Cmd::S2Calibrate {

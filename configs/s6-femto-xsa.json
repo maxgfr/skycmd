@@ -1,0 +1,30 @@
+{
+  "name": "s6-femto-xsa",
+  "vocab_size": 1024,
+  "hidden_size": 64,
+  "intermediate_size": 128,
+  "state_layers": 1,
+  "state_loops": 4,
+  "static_layers": 1,
+  "fusion_layers": 2,
+  "head_count": 1,
+  "fuse_numbers": true,
+  "parallax": true,
+  "xsa": true,
+  "exits": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "max_state_tokens": 64,
+  "max_head_tokens": 96,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "exit_threshold": [
+    0.9,
+    0.9,
+    0.9
+  ],
+  "temperature": {}
+}

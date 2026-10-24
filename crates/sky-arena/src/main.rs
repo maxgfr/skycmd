@@ -3,11 +3,17 @@
 //! ```text
 //! sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game flappy|rescue|dodge|doom|all] [--json out.json]
 //!           [--exit-threshold T]   # s2: override the early-exit threshold (1.0 = full depth)
-//! sky-arena <model> --dagger N --out data/dagger   # N oracle-labelled records per game, from the model's own play
+//! sky-arena <model> --dagger N --out data/dagger [--dagger-beta B]
+//!           # N oracle-labelled records per game, from the model's own play (the oracle acts on a
+//!           # share B of the decisions, default 0.2: lower it round after round)
+//! sky-arena <model> --calibrate-crc ALPHA [--json out.json]
+//!           # s2: exit thresholds by conformal risk control (disagreement with full depth <= ALPHA)
 //! ```
 //!
 //! Works for s1 (`modern-bert`) and s2 (`skycmd-s2`) GGUF files; for s2 the report adds the mean
 //! number of state-encoder blocks used per question and how often each exit answered.
+mod crc;
+
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -26,6 +32,9 @@ struct EnginePolicy {
     exits: Vec<usize>,
     /// Number of decisions still to print to stderr (`SKY_TRACE=N`).
     trace: usize,
+    /// `--calibrate-crc`: every exit of every decision, per question type (choice, score, noul);
+    /// the game is played at full depth.
+    calib: Option<[Vec<crc::Sample>; 3]>,
 }
 
 impl EnginePolicy {
@@ -56,6 +65,7 @@ impl EnginePolicy {
             layers: Vec::new(),
             exits: Vec::new(),
             trace,
+            calib: None,
         }
     }
 }
@@ -69,6 +79,14 @@ impl Policy for EnginePolicy {
         opts: &[String],
     ) -> Vec<f32> {
         let (qtype, ins) = self.questions[&(game.to_string(), question_id.to_string())];
+        if let Some(calib) = &mut self.calib {
+            let per_exit = self
+                .engine
+                .probs_per_exit(qtype, ins, opts, state_text)
+                .expect("decision");
+            calib[qtype.index()].push(crc::Sample::from_probs(&per_exit));
+            return per_exit.last().cloned().unwrap_or_default();
+        }
         let t0 = Instant::now();
         let p = self
             .engine
@@ -101,8 +119,12 @@ fn dagger(
     n: usize,
     seed: u64,
     out: &str,
+    beta: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
+    if !(0.0..=1.0).contains(&beta) {
+        return Err("--dagger-beta must be in [0, 1]".into());
+    }
     std::fs::create_dir_all(out)?;
     for &game in games {
         let probe = make_game(game, 0).expect("known game");
@@ -120,15 +142,93 @@ fn dagger(
             (argmax(&p), abort)
         };
         let mut lines = Vec::new();
-        let stats =
-            sky_games::gen::generate_with_actor(game, n, seed ^ 0xda66e7, Some(&mut actor), |r| {
-                lines.push(r)
-            })?;
+        let stats = sky_games::gen::generate_with_actor(
+            game,
+            n,
+            seed ^ 0xda66e7,
+            Some(&mut actor),
+            beta,
+            |r| lines.push(r),
+        )?;
         for r in &lines {
             serde_json::to_writer(&mut w, r)?;
             w.write_all(b"\n")?;
         }
         eprintln!("{}\n-> {path}", stats.report());
+    }
+    Ok(())
+}
+
+/// `--calibrate-crc ALPHA`: plays the games at full depth, records every exit of every decision,
+/// and picks per question type the lowest exit threshold whose conformal bound on disagreeing
+/// with full depth stays ≤ ALPHA (see [`crc`]). Prints the `gguf-set` command that writes them.
+fn calibrate_crc(
+    policy: &mut EnginePolicy,
+    model: &str,
+    games: &[&str],
+    episodes: usize,
+    seed: u64,
+    alpha: f64,
+    json: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if policy.engine.arch().name() != "skycmd-s2" || policy.engine.model_info().exits.len() < 2 {
+        return Err("--calibrate-crc needs an s2 model with several exits".into());
+    }
+    if !(0.0..1.0).contains(&alpha) || alpha == 0.0 {
+        return Err("--calibrate-crc ALPHA must be in (0, 1)".into());
+    }
+    policy.calib = Some(Default::default());
+    let opts = EvalOptions {
+        flappy_max_pipes: 200,
+        veto: true,
+    };
+    for &game in games {
+        evaluate_with(game, policy, episodes, seed, opts);
+    }
+    let layers = policy.engine.model_info().exits;
+    let calib = policy.calib.take().expect("set above");
+    let mut report = serde_json::Map::new();
+    let mut sets = Vec::new();
+    for (i, samples) in calib.iter().enumerate() {
+        let name = ["choice", "score", "noul"][i];
+        let c = crc::choose(samples, alpha);
+        let depth = if c.n == 0 {
+            0.0
+        } else {
+            samples
+                .iter()
+                .map(|s| layers[s.exit_at(c.tau)] as f64)
+                .sum::<f64>()
+                / c.n as f64
+        };
+        println!(
+            "{name:6} n {:6}  tau {:.2}  disagreement {:.4}  bound {:.4} (alpha {alpha})  mean layers {depth:.2} of {}",
+            c.n,
+            c.tau,
+            c.risk,
+            c.bound,
+            layers.last().copied().unwrap_or(0)
+        );
+        if c.n > 0 {
+            sets.push(format!("skycmd-s2.exit_threshold.{name}={}", c.tau));
+        }
+        report.insert(
+            name.into(),
+            serde_json::json!({"n": c.n, "tau": c.tau, "risk": c.risk, "bound": c.bound, "mean_layers": depth}),
+        );
+    }
+    println!(
+        "write them: gguf-set {model} {} {}",
+        model.replace(".gguf", "-crc.gguf"),
+        sets.join(" ")
+    );
+    println!("then check the play at these thresholds: the guarantee holds for full-depth play, and early exits change the states visited");
+    if let Some(path) = json {
+        report.insert("alpha".into(), alpha.into());
+        report.insert("episodes".into(), episodes.into());
+        report.insert("seed".into(), seed.into());
+        report.insert("games".into(), games.join(",").into());
+        std::fs::write(path, serde_json::to_string_pretty(&report)?)?;
     }
     Ok(())
 }
@@ -164,7 +264,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .cloned()
     };
     let Some(model) = args.first().filter(|a| !a.starts_with("--")) else {
-        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T] [--dagger N --out DIR]");
+        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T] [--dagger N --out DIR [--dagger-beta B]] [--calibrate-crc ALPHA]");
         std::process::exit(2);
     };
     let episodes: usize = flag("--episodes").map_or(Ok(100), |v| v.parse())?;
@@ -188,9 +288,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Engine::from_safetensors_dir_with(model, opts)?
     };
     let mut policy = EnginePolicy::new(engine);
+    if let Some(alpha) = flag("--calibrate-crc") {
+        return calibrate_crc(
+            &mut policy,
+            model,
+            &games,
+            episodes,
+            seed,
+            alpha.parse()?,
+            flag("--json"),
+        );
+    }
     if let Some(n) = flag("--dagger") {
         let out = flag("--out").unwrap_or_else(|| "data/dagger".into());
-        return dagger(&mut policy, &games, n.parse()?, seed, &out);
+        let beta =
+            flag("--dagger-beta").map_or(Ok(sky_games::gen::DAGGER_ORACLE_SHARE), |v| v.parse())?;
+        return dagger(&mut policy, &games, n.parse()?, seed, &out, beta);
     }
     let opts = EvalOptions {
         flappy_max_pipes: max_pipes,

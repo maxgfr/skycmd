@@ -42,7 +42,7 @@ fn usage() -> ! {
     eprintln!(
         "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run] [--jobs N] [--runs a,b]\n  cargo xtask store\n  \
          cargo xtask regress [--update]\n  cargo xtask loopcal [--force] [--jobs N]\n  \
-         cargo xtask s6ab [--force] [--dry-run]\n\n\
+         cargo xtask s6ab [--force] [--dry-run] [--arms a,b]\n\n\
          SKYCMD_STORE must point at the main checkout of this repository."
     );
     std::process::exit(2)
@@ -88,21 +88,24 @@ fn main() -> Result<()> {
             loopcal::summarize(&store, &checkout())
         }
         Some("s6ab") => {
-            let (mut force, mut dry) = (false, false);
-            for a in &args[1..] {
+            let (mut force, mut dry, mut only) = (false, false, None);
+            let mut it = args[1..].iter();
+            while let Some(a) = it.next() {
                 match a.as_str() {
                     "--force" => force = true,
                     "--dry-run" => dry = true,
+                    "--arms" => only = Some(it.next().context("--arms a,b")?.clone()),
                     bad => bail!("unknown argument {bad:?}"),
                 }
             }
+            let arms = s6ab::selected(only.as_deref())?;
             let store = store()?;
             fs::create_dir_all(store.join("runs/s6ab"))?;
-            run_stage(&s6ab::stage(), force, dry, 1)?;
+            run_stage(&s6ab::stage(&arms), force, dry, 1)?;
             if dry {
                 return Ok(());
             }
-            s6ab::summarize(&store)
+            s6ab::summarize(&store, &arms)
         }
         Some("s5") => {
             let Some(name) = args.get(1) else { usage() };
