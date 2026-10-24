@@ -87,7 +87,9 @@ pub fn parse_npy_u16(buf: &[u8]) -> Result<U16Matrix> {
         bail!("npy body too short");
     }
     let data = body[..rows * cols * 2]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| u16::from_le_bytes([c[0], c[1]]))
         .collect();
     Ok(U16Matrix { rows, cols, data })

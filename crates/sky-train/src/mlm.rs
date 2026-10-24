@@ -76,7 +76,9 @@ impl Corpus {
                 let mut raw = Vec::new();
                 std::fs::File::open(&bin)?.read_to_end(&mut raw)?;
                 let tokens = raw
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                     .collect();
                 let n_records = saved["n_records"].as_u64().unwrap_or(0) as usize;

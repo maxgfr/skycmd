@@ -585,7 +585,9 @@ pub fn params_from_gguf(g: &Gguf<'_>, cfg: &S2Config) -> Result<ParamMap> {
             bail!("{name}: expected F16 [{rows}]");
         }
         Ok(g.tensor_bytes(info)
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| f16_to_f32(u16::from_le_bytes([c[0], c[1]])))
             .collect())
     };
