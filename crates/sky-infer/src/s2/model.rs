@@ -219,7 +219,10 @@ pub enum TokEmb {
 pub struct Block {
     /// `None` for block 0 (identity).
     pub attn_norm: Option<Ln>,
+    /// `[3d, d]`, or `[4d, d]` with the Parallax probe `ρ` after the values.
     pub qkv: Lin,
+    /// `attn_px_norm.weight` (`head_dim`): the RMS norm of each head of `ρ` (Parallax only).
+    pub px_norm: Option<Vec<f32>>,
     pub out: Lin,
     pub ffn_norm: Ln,
     /// GeGLU up-projection (`None` with the expand-and-sparsify FFN, whose up-projection is the
@@ -252,7 +255,7 @@ pub struct FusionBlock {
 /// then costs 17 instead of `d` multiply-adds per output of its first projection.
 #[derive(Clone, Debug)]
 pub struct QkvTable {
-    /// `[vocab][3d]`
+    /// `[vocab][3d]` (`[vocab][4d]` with the Parallax probe; same for the widths below)
     pub tok: Vec<f32>,
     /// `W P` as a panel matrix (`3d` outputs, 17 inputs).
     pub num: PanelMatrix,
@@ -526,12 +529,20 @@ impl Src<'_, '_> {
         } else {
             Some(self.ln(&p("attn_norm"), d, false)?)
         };
+        let projections = if cfg.parallax { 4 } else { 3 };
+        let qkv = self.lin(&p("attn_qkv"), projections * d, d, false)?;
+        let px_norm = if cfg.parallax {
+            Some(self.f32(&p("attn_px_norm.weight"), &[cfg.head_dim()])?)
+        } else {
+            None
+        };
         if let Some(spec) = cfg.ffn_es {
             let down = self.lin(&p("ffn_down"), d, spec.units, false)?;
             let es = EsFfn::new(spec, d, &down.weight_f32());
             return Ok(Block {
                 attn_norm,
-                qkv: self.lin(&p("attn_qkv"), 3 * d, d, false)?,
+                qkv,
+                px_norm,
                 out: self.lin(&p("attn_output"), d, d, false)?,
                 ffn_norm: self.ln(&p("ffn_norm"), d, false)?,
                 up: None,
@@ -541,7 +552,8 @@ impl Src<'_, '_> {
         }
         Ok(Block {
             attn_norm,
-            qkv: self.lin(&p("attn_qkv"), 3 * d, d, false)?,
+            qkv,
+            px_norm,
             out: self.lin(&p("attn_output"), d, d, false)?,
             ffn_norm: self.ln(&p("ffn_norm"), d, false)?,
             up: Some(self.lin(&p("ffn_up"), 2 * ff, d, false)?),
@@ -765,7 +777,9 @@ impl S2Model {
         let c = &self.cfg;
         let (v, d, nf) = (c.vocab_size, c.hidden_size, c.num_features);
         let blk = self.state_blocks.first()?;
-        if blk.attn_norm.is_some() || v * 3 * d > MAX_QKV_TABLE {
+        // 3d outputs, 4d with the Parallax probe (normalized after the table, like a projection)
+        let n = blk.qkv.n_out;
+        if blk.attn_norm.is_some() || v * n > MAX_QKV_TABLE {
             return None;
         }
         let w = &blk.qkv.weight_f32();
@@ -777,8 +791,8 @@ impl S2Model {
                 .map(|(i, &x)| x as f32 * scale[i / d])
                 .collect(),
         };
-        let mut tok = vec![0.0; v * 3 * d];
-        kernels::matmul_f32(&emb, v, d, w, 3 * d, None, &mut tok, false);
+        let mut tok = vec![0.0; v * n];
+        kernels::matmul_f32(&emb, v, d, w, n, None, &mut tok, false);
         // U = W P: column j of P is num_proj.weight[:, j]
         let p = self.num_proj.weight_f32();
         let mut pt = vec![0.0; nf * d];
@@ -787,20 +801,20 @@ impl S2Model {
                 pt[j * d + i] = p[i * nf + j];
             }
         }
-        let mut ut = vec![0.0; nf * 3 * d];
-        kernels::matmul_f32(&pt, nf, d, w, 3 * d, None, &mut ut, false);
-        let mut u = vec![0.0; 3 * d * nf];
+        let mut ut = vec![0.0; nf * n];
+        kernels::matmul_f32(&pt, nf, d, w, n, None, &mut ut, false);
+        let mut u = vec![0.0; n * nf];
         for j in 0..nf {
-            for o in 0..3 * d {
-                u[o * nf + j] = ut[j * 3 * d + o];
+            for o in 0..n {
+                u[o * nf + j] = ut[j * n + o];
             }
         }
         let b = self.num_proj.b.as_deref().expect("num_proj has a bias");
-        let mut num_bias = vec![0.0; 3 * d];
-        kernels::matmul_f32(b, 1, d, w, 3 * d, None, &mut num_bias, false);
+        let mut num_bias = vec![0.0; n];
+        kernels::matmul_f32(b, 1, d, w, n, None, &mut num_bias, false);
         Some(QkvTable {
             tok,
-            num: PanelMatrix::from_rows(&u, 3 * d, nf),
+            num: PanelMatrix::from_rows(&u, n, nf),
             num_bias,
         })
     }
@@ -811,6 +825,7 @@ impl S2Model {
         let block = |b: &Block| {
             b.attn_norm.as_ref().map_or(0, Ln::n_params)
                 + b.qkv.n_params()
+                + b.px_norm.as_ref().map_or(0, Vec::len)
                 + b.out.n_params()
                 + b.ffn_norm.n_params()
                 + b.up.as_ref().map_or(0, Lin::n_params)
@@ -934,7 +949,9 @@ impl S2Model {
         } = ws;
         let x = &mut x[..t * d];
         let hn = grow(hn, t * d);
-        let qkv = grow(qkv, t * 3 * d);
+        // row width: q, k, v, and the Parallax probe ρ when the block has one
+        let w = blk.qkv.n_out;
+        let qkv = grow(qkv, t * w);
         // fused QKV + RoPE: each row is rotated right after its projection, while in cache
         match (table, attn_norm) {
             (
@@ -946,9 +963,9 @@ impl S2Model {
                 }),
                 _,
             ) => {
-                for (r, row) in qkv.chunks_exact_mut(3 * d).enumerate() {
+                for (r, row) in qkv.chunks_exact_mut(w).enumerate() {
                     let id = ids[r] as usize;
-                    row.copy_from_slice(&tb.tok[id * 3 * d..(id + 1) * 3 * d]);
+                    row.copy_from_slice(&tb.tok[id * w..(id + 1) * w]);
                     if has_value[r] {
                         tb.num.matmul(
                             &phi[r * NUM_FEATURES..(r + 1) * NUM_FEATURES],
@@ -956,7 +973,7 @@ impl S2Model {
                             1,
                             Some(&tb.num_bias),
                             row,
-                            3 * d,
+                            w,
                             true,
                         );
                     }
@@ -969,29 +986,39 @@ impl S2Model {
             (None, None) => blk.qkv.forward(x, t, qkv, false),
         }
         for (r, &p) in pos.iter().enumerate().take(t) {
-            let row = &mut qkv[r * 3 * d..r * 3 * d + 2 * d];
+            let row = &mut qkv[r * w..(r + 1) * w];
             for h in 0..nh {
                 self.rope.apply(&mut row[h * hd..(h + 1) * hd], p);
                 self.rope.apply(&mut row[d + h * hd..d + (h + 1) * hd], p);
             }
+            // SPEC-S6 §1: ρ is RMS-normalized per head, then rotated like q
+            if let Some(g) = &blk.px_norm {
+                for h in 0..nh {
+                    let rho = &mut row[3 * d + h * hd..3 * d + (h + 1) * hd];
+                    kernels::rms_norm_inplace(rho, g, eps);
+                    self.rope.apply(rho, p);
+                }
+            }
         }
+        let probe = blk.px_norm.is_some();
         let att = grow(att, t * d);
         match mode {
             AttnMode::Full if t <= SMALL_ATTN => {
-                kernels::self_attention(qkv, t, nh, hd, att, d, self_attn);
+                kernels::self_attention_probe(qkv, w, probe, t, nh, hd, att, d, self_attn);
             }
             AttnMode::Full => {
                 attn.ensure(t, hd);
                 let a = Attention {
                     k: &qkv[d..],
                     v: &qkv[2 * d..],
-                    kv_stride: 3 * d,
+                    kv_stride: w,
                     n_kv: t,
                     n_heads: nh,
                     head_dim: hd,
                     window: None,
                 };
-                a.run(qkv, 3 * d, &iota[..t], att, d, attn);
+                let rho = probe.then(|| &qkv[3 * d..]);
+                a.run_probe(qkv, rho, w, &iota[..t], att, d, attn);
             }
             AttnMode::Static { q_len, options } => {
                 let longest = options.iter().map(|o| o.1).max().unwrap_or(0);
@@ -999,29 +1026,32 @@ impl S2Model {
                 let a = Attention {
                     k: &qkv[d..],
                     v: &qkv[2 * d..],
-                    kv_stride: 3 * d,
+                    kv_stride: w,
                     n_kv: q_len,
                     n_heads: nh,
                     head_dim: hd,
                     window: None,
                 };
-                a.run(qkv, 3 * d, &iota[..q_len], att, d, attn);
+                let rho = probe.then(|| &qkv[3 * d..]);
+                a.run_probe(qkv, rho, w, &iota[..q_len], att, d, attn);
                 for &(s, l) in options {
-                    let kv = grow(kvtmp, (q_len + l) * 3 * d);
-                    kv[..q_len * 3 * d].copy_from_slice(&qkv[..q_len * 3 * d]);
-                    kv[q_len * 3 * d..].copy_from_slice(&qkv[s * 3 * d..(s + l) * 3 * d]);
+                    let kv = grow(kvtmp, (q_len + l) * w);
+                    kv[..q_len * w].copy_from_slice(&qkv[..q_len * w]);
+                    kv[q_len * w..].copy_from_slice(&qkv[s * w..(s + l) * w]);
                     let a = Attention {
                         k: &kv[d..],
                         v: &kv[2 * d..],
-                        kv_stride: 3 * d,
+                        kv_stride: w,
                         n_kv: q_len + l,
                         n_heads: nh,
                         head_dim: hd,
                         window: None,
                     };
-                    a.run(
-                        &qkv[s * 3 * d..],
-                        3 * d,
+                    let rho = probe.then(|| &qkv[s * w + 3 * d..]);
+                    a.run_probe(
+                        &qkv[s * w..],
+                        rho,
+                        w,
                         &iota[..l],
                         &mut att[s * d..],
                         d,

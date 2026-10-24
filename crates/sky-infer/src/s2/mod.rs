@@ -52,6 +52,9 @@ pub struct S2Config {
     /// Carry the final state latent of a stream's previous frame into the next one (GGUF
     /// `temporal_carry`, default false; SPEC-S3 §7).
     pub temporal_carry: bool,
+    /// Parallax attention in the encoder blocks: `attn_qkv` holds a fourth projection, the probe
+    /// `ρ`, normalized per head by `attn_px_norm` (GGUF `parallax`, default false; SPEC-S6 §1).
+    pub parallax: bool,
     /// Expand-and-sparsify FFN in the encoder blocks (GGUF `ffn_es_*`, absent by default;
     /// SPEC-S3 §9 ablation, see [`es`]).
     pub ffn_es: Option<es::EsSpec>,
@@ -189,6 +192,7 @@ impl S2Config {
         };
         let fuse_numbers = flag("fuse_numbers");
         let temporal_carry = flag("temporal_carry");
+        let parallax = flag("parallax");
         let ffn_es = match g.get(&key("ffn_es_seed")).and_then(|v| v.as_u64()) {
             None => None,
             Some(seed) => Some(es::EsSpec {
@@ -227,6 +231,7 @@ impl S2Config {
             state_loops,
             fuse_numbers,
             temporal_carry,
+            parallax,
             ffn_es,
             static_layers: req("static_block_count")?,
             fusion_layers: req("fusion_block_count")?,

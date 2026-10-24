@@ -362,6 +362,7 @@ fn s2_files_keep_their_meaning() {
     .unwrap();
     let g = sky_gguf::Gguf::parse(&bytes).unwrap();
     assert!(g.get("skycmd-s2.state_loops").is_none() && g.get("skycmd-s2.fuse_numbers").is_none());
+    assert!(g.get("skycmd-s2.parallax").is_none());
     assert!(g.tensor("loop_embd.weight").is_none());
     let mut e = engine(&bytes, EngineOptions::default());
     let cfg = e.s2_model().unwrap().cfg.clone();
