@@ -954,7 +954,14 @@ pub struct S2PretrainArgs {
     pub numeric: Option<PathBuf>,
     /// Fraction of the MLM rows drawn from `numeric`.
     pub numeric_weight: f64,
+    /// Curriculum warm-up (arXiv 2506.11300): over this first fraction of training, text rows
+    /// are drawn from the easiest share of the corpus (`mlm::curriculum_share`, from 20% to all
+    /// of it); 0 disables it.
+    pub curriculum: f64,
 }
+
+/// Share of the easiest rows the curriculum starts from.
+pub const CURRICULUM_START: f64 = 0.2;
 
 /// Mean validation (CE, MSE) of the numeric MLM.
 fn mlm_val(s: &S2Session, val: &[NumMlmBatch]) -> Result<(f64, f64)> {
@@ -1020,6 +1027,17 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
     if rows.train.is_empty() {
         bail!("corpus too small");
     }
+    if !(0.0..1.0).contains(&a.curriculum) {
+        bail!("--curriculum must be in [0, 1)");
+    }
+    let easy_first = (a.curriculum > 0.0).then(|| {
+        println!(
+            "curriculum: easiest rows first (lexical diversity), from {:.0}% of the corpus to all of it over the first {:.0}% of training",
+            CURRICULUM_START * 100.0,
+            a.curriculum * 100.0
+        );
+        crate::mlm::difficulty_order(&rows, &corpus.corpus)
+    });
     let last = a.out.join("last");
     let resumed = a.resume && last.join("state.json").exists();
     let mut s = if resumed {
@@ -1088,7 +1106,18 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
                 .count(),
             None => 0,
         };
-        let starts = s.state.cursor.next(&rows, seed, a.batch - n_num);
+        let share = easy_first
+            .as_ref()
+            .and_then(|_| crate::mlm::curriculum_share(frac, a.curriculum, CURRICULUM_START));
+        let starts = match (&easy_first, share) {
+            (Some(order), Some(share)) => {
+                let pool = ((share * order.len() as f64).ceil() as usize).clamp(1, order.len());
+                (0..a.batch - n_num)
+                    .map(|_| rows.train[order[s.state.rng.below(pool)]])
+                    .collect()
+            }
+            _ => s.state.cursor.next(&rows, seed, a.batch - n_num),
+        };
         let mut rs: Vec<Stream> = starts
             .iter()
             .map(|&st| data::maybe_fuse(corpus.row(a.seq, st), fuse))
@@ -1222,6 +1251,9 @@ pub struct S2DecideArgs {
     /// is saved as a complete run in `<out>/last-ema` (calibrate and export it like `last`),
     /// and validated at the end as `ema-f32` / `ema-ternary`.
     pub ema: f32,
+    /// StableQAT amplitude `A` of the ternary QAT gradient (0: straight-through estimator;
+    /// `model::ternarize_stable`).
+    pub qat_grad_a: f32,
     /// Batches drawn at once and grouped by state length (1: every batch drawn alone).
     pub length_pool: usize,
 }
@@ -1353,6 +1385,19 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         a.init_params.as_deref(),
     )?;
     s.cfg.bf16 = a.bf16;
+    if !(0.0..model::STABLE_QAT_A_MAX).contains(&a.qat_grad_a) {
+        bail!(
+            "--qat-grad-a must be in [0, {}) (arXiv 2601.19320, Theorem 4.2)",
+            model::STABLE_QAT_A_MAX
+        );
+    }
+    s.cfg.qat_grad_a = a.qat_grad_a;
+    if a.qat_grad_a > 0.0 {
+        println!(
+            "StableQAT: surrogate QAT gradient, amplitude {}",
+            a.qat_grad_a
+        );
+    }
     s.compile = a.compile;
     s.dis_beta = a.dis.map(|b0| model::dis_betas(s.cfg.n_exits(), b0));
     if let Some(beta) = &s.dis_beta {

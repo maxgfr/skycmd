@@ -69,6 +69,10 @@ pub struct S2Config {
     /// Run matmuls and activations in bfloat16 (runtime only).
     #[serde(skip)]
     pub bf16: bool,
+    /// Amplitude `A` of the StableQAT surrogate gradient of the ternary fake quantization
+    /// (runtime only; 0 = straight-through estimator). See `s2::model::ternarize_stable`.
+    #[serde(skip)]
+    pub qat_grad_a: f32,
 }
 
 /// Expand-and-sparsify FFN (SPEC-S3 §9): a fixed seeded sparse ±1 up-projection to
@@ -298,6 +302,7 @@ impl S2Config {
             exit_threshold: [0.9; 3],
             temperature: BTreeMap::new(),
             bf16: false,
+            qat_grad_a: 0.0,
         }
     }
 }

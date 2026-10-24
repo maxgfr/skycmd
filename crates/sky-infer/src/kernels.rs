@@ -27,7 +27,7 @@ pub struct BlockQ8 {
 /// `quantize_row_q8_0_ref` (scale rounded through f16 so it matches GGUF weights bit for bit).
 pub fn quantize_q8(x: &[f32], out: &mut [BlockQ8]) {
     debug_assert_eq!(x.len(), out.len() * QK);
-    for (blk, dst) in x.chunks_exact(QK).zip(out.iter_mut()) {
+    for (blk, dst) in x.as_chunks::<QK>().0.iter().zip(out.iter_mut()) {
         let amax = blk.iter().fold(0.0f32, |m, v| m.max(v.abs()));
         let d = amax / 127.0;
         let id = if d != 0.0 { 1.0 / d } else { 0.0 };
@@ -106,7 +106,9 @@ fn quantize_act(x: &[f32], k: usize, mask: &[u32], out: &mut [ActBlock], double:
 /// Parse ggml Q8_0 bytes (f16 scale + 32 x i8 per block).
 pub fn blocks_from_ggml(bytes: &[u8]) -> Vec<BlockQ8> {
     bytes
-        .chunks_exact(sky_gguf::Q8_0_BLOCK_BYTES)
+        .as_chunks::<{ sky_gguf::Q8_0_BLOCK_BYTES }>()
+        .0
+        .iter()
         .map(|b| {
             let mut qs = [0i8; QK];
             for (q, &v) in qs.iter_mut().zip(&b[2..]) {
@@ -132,7 +134,7 @@ pub fn blocks_to_ggml(blocks: &[BlockQ8]) -> Vec<u8> {
 
 /// Dequantize blocks to f32.
 pub fn dequantize_q8(blocks: &[BlockQ8], out: &mut [f32]) {
-    for (b, dst) in blocks.iter().zip(out.chunks_exact_mut(QK)) {
+    for (b, dst) in blocks.iter().zip(out.as_chunks_mut::<QK>().0.iter_mut()) {
         for (o, &q) in dst.iter_mut().zip(&b.qs) {
             *o = q as f32 * b.d;
         }
@@ -175,7 +177,7 @@ impl BlockQ4 {
 /// Quantize f32 to Q4_0 blocks like ggml `quantize_row_q4_0_ref` (scale rounded through f16).
 pub fn quantize_q4(x: &[f32], out: &mut [BlockQ4]) {
     debug_assert_eq!(x.len(), out.len() * QK);
-    for (blk, dst) in x.chunks_exact(QK).zip(out.iter_mut()) {
+    for (blk, dst) in x.as_chunks::<QK>().0.iter().zip(out.iter_mut()) {
         let (d, qs) = sky_gguf::q4_0_block(blk);
         dst.d = sky_gguf::f16_to_f32(sky_gguf::f32_to_f16(d));
         dst.qs = qs;
@@ -185,7 +187,9 @@ pub fn quantize_q4(x: &[f32], out: &mut [BlockQ4]) {
 /// Parse ggml Q4_0 bytes (f16 scale + 16 bytes per block).
 pub fn blocks_q4_from_ggml(bytes: &[u8]) -> Vec<BlockQ4> {
     bytes
-        .chunks_exact(sky_gguf::Q4_0_BLOCK_BYTES)
+        .as_chunks::<{ sky_gguf::Q4_0_BLOCK_BYTES }>()
+        .0
+        .iter()
         .map(|b| {
             let mut qs = [0u8; QK / 2];
             qs.copy_from_slice(&b[2..]);
@@ -209,7 +213,7 @@ pub fn blocks_q4_to_ggml(blocks: &[BlockQ4]) -> Vec<u8> {
 
 /// Dequantize Q4_0 blocks to f32.
 pub fn dequantize_q4(blocks: &[BlockQ4], out: &mut [f32]) {
-    for (b, dst) in blocks.iter().zip(out.chunks_exact_mut(QK)) {
+    for (b, dst) in blocks.iter().zip(out.as_chunks_mut::<QK>().0.iter_mut()) {
         for (o, q) in dst.iter_mut().zip(b.unpack()) {
             *o = q as f32 * b.d;
         }

@@ -213,8 +213,10 @@ pub fn quantize_q8_0_into(x: &[f32], out: &mut [u8]) {
     assert!(x.len().is_multiple_of(QK8_0));
     assert_eq!(out.len(), x.len() / QK8_0 * Q8_0_BLOCK_BYTES);
     for (blk, dst) in x
-        .chunks_exact(QK8_0)
-        .zip(out.chunks_exact_mut(Q8_0_BLOCK_BYTES))
+        .as_chunks::<QK8_0>()
+        .0
+        .iter()
+        .zip(out.as_chunks_mut::<Q8_0_BLOCK_BYTES>().0)
     {
         let amax = blk.iter().fold(0.0f32, |m, v| m.max(v.abs()));
         let d = amax / 127.0;
@@ -246,8 +248,10 @@ pub fn quantize_q4_0_into(x: &[f32], out: &mut [u8]) {
     assert!(x.len().is_multiple_of(QK4_0));
     assert_eq!(out.len(), x.len() / QK4_0 * Q4_0_BLOCK_BYTES);
     for (blk, dst) in x
-        .chunks_exact(QK4_0)
-        .zip(out.chunks_exact_mut(Q4_0_BLOCK_BYTES))
+        .as_chunks::<QK4_0>()
+        .0
+        .iter()
+        .zip(out.as_chunks_mut::<Q4_0_BLOCK_BYTES>().0)
     {
         let (d, qs) = q4_0_block(blk);
         dst[..2].copy_from_slice(&f32_to_f16(d).to_le_bytes());
@@ -294,29 +298,35 @@ pub fn dequantize_into(ty: GgmlType, bytes: &[u8], out: &mut Vec<f32>) -> Result
     match ty {
         GgmlType::F32 => out.extend(
             bytes
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])),
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| f32::from_le_bytes(*c)),
         ),
         GgmlType::F16 => out.extend(
             bytes
-                .chunks_exact(2)
-                .map(|c| f16_to_f32(u16::from_le_bytes([c[0], c[1]]))),
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| f16_to_f32(u16::from_le_bytes(*c))),
         ),
         GgmlType::BF16 => out.extend(
             bytes
-                .chunks_exact(2)
-                .map(|c| bf16_to_f32(u16::from_le_bytes([c[0], c[1]]))),
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| bf16_to_f32(u16::from_le_bytes(*c))),
         ),
         GgmlType::Q8_0 => {
             out.reserve(bytes.len() / Q8_0_BLOCK_BYTES * QK8_0);
-            for blk in bytes.chunks_exact(Q8_0_BLOCK_BYTES) {
+            for blk in bytes.as_chunks::<Q8_0_BLOCK_BYTES>().0 {
                 let d = f16_to_f32(u16::from_le_bytes([blk[0], blk[1]]));
                 out.extend(blk[2..].iter().map(|&q| q as i8 as f32 * d));
             }
         }
         GgmlType::Q4_0 => {
             out.reserve(bytes.len() / Q4_0_BLOCK_BYTES * QK4_0);
-            for blk in bytes.chunks_exact(Q4_0_BLOCK_BYTES) {
+            for blk in bytes.as_chunks::<Q4_0_BLOCK_BYTES>().0 {
                 let d = f16_to_f32(u16::from_le_bytes([blk[0], blk[1]]));
                 let qs = &blk[2..];
                 out.extend(qs.iter().map(|&b| ((b & 0x0f) as i32 - 8) as f32 * d));

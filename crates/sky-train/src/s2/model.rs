@@ -351,6 +351,36 @@ pub fn ternarize_ste(w: &Array) -> R<Array> {
     w.add(stop_gradient(ternarize(w)?.subtract(w)?)?)
 }
 
+/// Largest admissible StableQAT amplitude: `1 / (√2·π)` (arXiv 2601.19320, Theorem 4.2).
+pub const STABLE_QAT_A_MAX: f32 = 0.225_079_08;
+
+/// `ternarize` with the StableQAT surrogate gradient (arXiv 2601.19320, eq. 5, first order):
+/// with `x = w / γ` and `x_q = round(x)`, the gradient is multiplied by
+/// `g = (1 − c·cos π(x + x_q)) / (1 + c·cos π(x + x_q))`, `c = A·√2·π`, instead of 1. Near a
+/// grid point `g` is small (`(1 − c)/(1 + c)`), half-way between two points it is 1, so the
+/// updates that flip a weight back and forth across a threshold are damped. `A = 0` is the
+/// straight-through estimator. As for it, `γ` carries no gradient.
+pub fn ternarize_stable(w: &Array, a: f32) -> R<Array> {
+    let gamma = ops::maximum(ops::abs(w)?.mean_axis(-1, true)?, Array::from_f32(1e-8))?;
+    let x = stop_gradient(&w.divide(&gamma)?)?;
+    let xq = ops::round(&x, None)?;
+    let c = Array::from_f32(a * std::f32::consts::SQRT_2 * std::f32::consts::PI);
+    let cosv = ops::cos(
+        &x.add(&xq)?
+            .multiply(Array::from_f32(std::f32::consts::PI))?,
+    )?
+    .multiply(&c)?;
+    let g = stop_gradient(
+        &Array::from_f32(1.0)
+            .subtract(&cosv)?
+            .divide(Array::from_f32(1.0).add(&cosv)?)?,
+    )?;
+    // Forward: the ternary weights. Backward: g, elementwise.
+    stop_gradient(&ternarize(w)?)?
+        .add(w.multiply(&g)?)?
+        .subtract(stop_gradient(&w.multiply(&g)?)?)
+}
+
 /// Host ternarization of a row-major `[rows, cols]` matrix: codes in {-1, 0, 1}
 /// and the per-row scale.
 pub fn ternary_codes(w: &[f32], rows: usize, cols: usize) -> (Vec<i8>, Vec<f32>) {
@@ -374,7 +404,11 @@ fn prepare<'a>(p: &'a ParamMap, cfg: &S2Config, qat: bool) -> R<Cow<'a, ParamMap
     let mut out = ParamMap::with_capacity(p.len());
     for (k, v) in p {
         let mut v = if qat && is_ternary(k) {
-            ternarize_ste(v)?
+            if cfg.qat_grad_a > 0.0 {
+                ternarize_stable(v, cfg.qat_grad_a)?
+            } else {
+                ternarize_ste(v)?
+            }
         } else {
             v.clone()
         };
@@ -1947,6 +1981,51 @@ mod tests {
             is_hidden_matrix("static.blk.0.ffn_up.weight")
                 && !is_hidden_matrix("fusion.0.ffn_up.weight")
         );
+    }
+
+    #[test]
+    fn stable_qat_keeps_the_forward_and_reshapes_the_gradient() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            // One row, γ = mean|w| = 1: x = w.
+            let w = Array::from_slice(&[0.0f32, 0.25, 0.5, 1.0, -1.25, 1.0, -1.0, 3.0], &[1, 8]);
+            let a = 0.21;
+            let fwd = crate::model::host_f32(&ternarize_stable(&w, a).unwrap()).unwrap();
+            let want = crate::model::host_f32(&ternarize(&w).unwrap()).unwrap();
+            // Equal up to the rounding of `q + w·g − w·g`, as for the straight-through form.
+            assert!(
+                fwd.iter().zip(&want).all(|(a, b)| (a - b).abs() < 1e-6),
+                "{fwd:?} vs {want:?}"
+            );
+            let g = mlx_rs::transforms::grad(|w: &Array| ternarize_stable(w, a)?.sum(None))(&w)
+                .unwrap();
+            let g = crate::model::host_f32(&g).unwrap();
+            let c = a * std::f32::consts::SQRT_2 * std::f32::consts::PI;
+            let surrogate = |x: f32| {
+                let k = (std::f32::consts::PI * (x + x.round())).cos();
+                (1.0 - c * k) / (1.0 + c * k)
+            };
+            for (x, got) in [0.0f32, 0.25, 0.5, 1.0, -1.25, 1.0, -1.0, 3.0]
+                .iter()
+                .zip(&g)
+            {
+                assert!(
+                    (got - surrogate(*x)).abs() < 1e-4,
+                    "x {x}: {got} vs {}",
+                    surrogate(*x)
+                );
+            }
+            // On a grid point the gradient is damped, half-way it passes whole.
+            assert!((g[0] - (1.0 - c) / (1.0 + c)).abs() < 1e-4);
+            assert!((g[2] - 1.0).abs() < 1e-4);
+            // A = 0 is the straight-through estimator.
+            let ste = mlx_rs::transforms::grad(|w: &Array| ternarize_stable(w, 0.0)?.sum(None))(&w)
+                .unwrap();
+            assert!(crate::model::host_f32(&ste)
+                .unwrap()
+                .iter()
+                .all(|v| (v - 1.0).abs() < 1e-6));
+        });
     }
 
     #[test]

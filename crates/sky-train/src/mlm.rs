@@ -76,7 +76,9 @@ impl Corpus {
                 let mut raw = Vec::new();
                 std::fs::File::open(&bin)?.read_to_end(&mut raw)?;
                 let tokens = raw
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                     .collect();
                 let n_records = saved["n_records"].as_u64().unwrap_or(0) as usize;
@@ -173,6 +175,37 @@ impl Rows {
         r.push(SEP_ID);
         r
     }
+}
+
+/// Difficulty of a row for the curriculum: its lexical diversity, distinct tokens over tokens
+/// (arXiv 2506.11300 names lexical diversity among the most effective difficulty signals).
+/// Repetitive text is easy (low), varied text hard (high).
+pub fn lexical_diversity(tokens: &[u32]) -> f64 {
+    if tokens.is_empty() {
+        return 0.0;
+    }
+    let distinct: std::collections::HashSet<u32> = tokens.iter().copied().collect();
+    distinct.len() as f64 / tokens.len() as f64
+}
+
+/// Indices into `rows.train`, from the easiest row to the hardest ([`lexical_diversity`]).
+pub fn difficulty_order(rows: &Rows, corpus: &Corpus) -> Vec<usize> {
+    let body = rows.seq_len - 2;
+    let score: Vec<f64> = rows
+        .train
+        .iter()
+        .map(|&st| lexical_diversity(&corpus.tokens[st..(st + body).min(corpus.tokens.len())]))
+        .collect();
+    let mut order: Vec<usize> = (0..rows.train.len()).collect();
+    order.sort_by(|&a, &b| score[a].total_cmp(&score[b]).then(a.cmp(&b)));
+    order
+}
+
+/// Share of the easiest rows a batch is drawn from at training progress `frac`
+/// (pacing-based sampling, arXiv 2506.11300): it grows linearly from `start` to 1 over the first
+/// `warmup` fraction of training, after which there is no curriculum (`None`).
+pub fn curriculum_share(frac: f64, warmup: f64, start: f64) -> Option<f64> {
+    (warmup > 0.0 && frac < warmup).then(|| start + (1.0 - start) * frac / warmup)
 }
 
 /// Position of the training data stream (epoch-shuffled chunk order).
@@ -305,6 +338,28 @@ pub fn mask_batch_with(
 mod tests {
     use super::*;
     use crate::config::MASK_ID;
+
+    #[test]
+    fn curriculum_orders_rows_and_paces_the_share() {
+        assert_eq!(lexical_diversity(&[7, 7, 7, 7]), 0.25);
+        assert_eq!(lexical_diversity(&[1, 2, 3, 4]), 1.0);
+        assert_eq!(lexical_diversity(&[]), 0.0);
+        // Three rows of 4 body tokens: repetitive, varied, half and half.
+        let corpus = Corpus {
+            tokens: vec![9, 9, 9, 9, 1, 2, 3, 4, 5, 5, 6, 6],
+            n_records: 1,
+        };
+        let rows = Rows {
+            seq_len: 6,
+            train: vec![0, 4, 8],
+            val: vec![],
+        };
+        assert_eq!(difficulty_order(&rows, &corpus), vec![0, 2, 1]);
+        assert_eq!(curriculum_share(0.0, 0.1, 0.2), Some(0.2));
+        assert!((curriculum_share(0.05, 0.1, 0.2).unwrap() - 0.6).abs() < 1e-12);
+        assert_eq!(curriculum_share(0.1, 0.1, 0.2), None);
+        assert_eq!(curriculum_share(0.0, 0.0, 0.2), None);
+    }
 
     #[test]
     fn masking_statistics() {

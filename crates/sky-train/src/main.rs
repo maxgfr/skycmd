@@ -308,6 +308,10 @@ enum Cmd {
         /// Fraction of MLM rows drawn from --numeric.
         #[arg(long, default_value_t = 0.1)]
         numeric_weight: f64,
+        /// Curriculum warm-up: over this first fraction of training, text rows come from the
+        /// easiest share of the corpus (lowest lexical diversity, 20% growing to 100%); 0: off.
+        #[arg(long, default_value_t = 0.0)]
+        curriculum: f64,
     },
     /// s2: decision training with deep supervision over the exits and ternary QAT at the end.
     S2Decide {
@@ -369,6 +373,10 @@ enum Cmd {
         /// Decay of an EMA of the weights, saved as a full run in <out>/last-ema (0: off).
         #[arg(long, default_value_t = 0.0)]
         ema: f32,
+        /// StableQAT: amplitude A of the surrogate gradient of the ternary QAT (0: STE; the
+        /// paper uses 0.21, the admissible range is below 0.225).
+        #[arg(long, default_value_t = 0.0)]
+        qat_grad_a: f32,
         /// Batches drawn at once and grouped by state length, so that a batch is padded to its
         /// own longest state (1: every batch drawn alone).
         #[arg(long, default_value_t = 1)]
@@ -713,6 +721,7 @@ fn main() -> Result<()> {
             num_weight,
             numeric,
             numeric_weight,
+            curriculum,
         } => s2::train::pretrain(&S2PretrainArgs {
             config,
             tokenizer,
@@ -736,6 +745,7 @@ fn main() -> Result<()> {
             num_weight,
             numeric,
             numeric_weight,
+            curriculum,
         })?,
         Cmd::S2Decide {
             config,
@@ -758,6 +768,7 @@ fn main() -> Result<()> {
             exit_kd,
             exit_kd_temp,
             ema,
+            qat_grad_a,
             length_pool,
             pad_to,
             seq_records,
@@ -801,6 +812,7 @@ fn main() -> Result<()> {
                 temp: exit_kd_temp,
             }),
             ema,
+            qat_grad_a,
             length_pool,
         })?,
         Cmd::S2Calibrate {
