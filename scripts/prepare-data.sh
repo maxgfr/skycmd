@@ -42,10 +42,11 @@ if [ "$teacher" = 1 ]; then
 fi
 step data/decisions/.done "decisions (Hugging Face)" sh -c "'$D' fetch-decisions && touch data/decisions/.done"
 step data/text/.done "MLM text (Hugging Face)" sh -c "'$D' fetch-text && touch data/text/.done"
-step data/games/.done "game oracle data" sh -c \
-  "'$B/sky-games-gen' --game all --n 60000 --seed 1 && touch data/games/.done"
-step data/games/doom.jsonl "doom oracle data" \
-  "$B/sky-games-gen" --game doom --n 100000 --seed 1 --out data/games/doom.jsonl
+# `--game all` writes doom too (60k): the 100k doom run comes after it, in the same step.
+step data/games/.done "game oracle data (doom 100k)" sh -c \
+  "'$B/sky-games-gen' --game all --n 60000 --seed 1 \
+   && '$B/sky-games-gen' --game doom --n 100000 --seed 1 --out data/games/doom.jsonl \
+   && touch data/games/.done"
 if [ "$teacher" = 1 ]; then
   step data/teacher/questions.json "questions to paraphrase" "$D" teacher export-questions
   step data/teacher/paraphrases.jsonl "GLM teacher: EN/FR question paraphrases" \
