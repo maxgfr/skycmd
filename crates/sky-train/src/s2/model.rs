@@ -1858,6 +1858,13 @@ mod tests {
         assert_eq!(p["static.blk.0.attn_px_norm.weight"].shape(), &[96]);
         assert!(is_hidden_matrix("blk.0.attn_qkv.weight"));
         assert!(!is_ternary("blk.0.attn_px_norm.weight"));
+        // s6-pico-xsa (the two attention changes together, if both are adopted): XSA adds no tensor.
+        let xsa = ladder("s6-pico-xsa");
+        assert!(xsa.parallax && xsa.xsa);
+        assert_eq!(
+            expected_count(&xsa, S2Parts::DECISION),
+            expected_count(&cfg, S2Parts::DECISION)
+        );
     }
 
     #[test]

@@ -16,8 +16,15 @@ use crate::teacher::Paraphrase;
 
 /// `data/teacher/orders_decisions.jsonl` (already SPEC records, written by
 /// `sky-data teacher drone-orders`) → `glm_orders` records grouped by order text.
+/// The file is local teacher output, not a download: without it the source is empty.
 pub fn load_glm_orders(cx: &Ctx) -> Result<Vec<Item>> {
     let path = cx.teacher.join("orders_decisions.jsonl");
+    if !path.exists() {
+        eprintln!(
+            "[decisions] glm_orders: no {path:?}, skipped (`sky-data teacher drone-orders` writes it)"
+        );
+        return Ok(Vec::new());
+    }
     let recs: Vec<DecisionRecord> =
         read_jsonl(&path).with_context(|| format!("GLM orders: {path:?}"))?;
     Ok(recs
@@ -168,6 +175,21 @@ pub fn augment_paraphrases(opts: &AugmentOptions) -> Result<AugmentReport> {
 mod tests {
     use super::*;
     use crate::record::Question;
+
+    #[test]
+    fn glm_orders_without_teacher_data_is_empty() {
+        let dir = std::env::temp_dir().join(format!("sky-data-glm-{}", std::process::id()));
+        let hf = crate::hf::Hf::new(dir.join("hf")).unwrap();
+        let teacher = dir.join("teacher");
+        let cx = Ctx {
+            hf: &hf,
+            seed: 1,
+            cap: 10,
+            teacher: &teacher,
+        };
+        assert!(load_glm_orders(&cx).unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn paraphrase_augmentation() {

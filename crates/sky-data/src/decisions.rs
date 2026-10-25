@@ -166,6 +166,10 @@ pub fn fetch_decisions(hf: &Hf, opts: &DecisionOptions) -> Result<Vec<SourceRepo
             teacher: &opts.teacher,
         };
         let items = (s.load)(&cx).with_context(|| format!("source {}", s.name))?;
+        if items.is_empty() && s.name == "glm_orders" {
+            // Local teacher data that is not there: no file, so no empty source either.
+            continue;
+        }
         let mut report = finalize(
             s.name,
             items,

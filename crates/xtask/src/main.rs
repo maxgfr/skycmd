@@ -42,7 +42,8 @@ fn usage() -> ! {
     eprintln!(
         "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run] [--jobs N] [--runs a,b]\n  cargo xtask store\n  \
          cargo xtask regress [--update]\n  cargo xtask loopcal [--force] [--jobs N]\n  \
-         cargo xtask s6ab [--force] [--dry-run] [--arms a,b]\n\n\
+         cargo xtask s6lr [--force] [--dry-run]\n  \
+         cargo xtask s6ab [--force] [--dry-run] [--arms a,b] [--adamw-lr-scale x] [--muon-lr-scale y]\n\n\
          SKYCMD_STORE must point at the main checkout of this repository."
     );
     std::process::exit(2)
@@ -89,23 +90,51 @@ fn main() -> Result<()> {
         }
         Some("s6ab") => {
             let (mut force, mut dry, mut only) = (false, false, None);
+            let mut scale = s6ab::LrScale::default();
             let mut it = args[1..].iter();
+            let num = |flag: &str, v: Option<&String>| -> Result<f64> {
+                let v = v.with_context(|| format!("{flag} x"))?;
+                let x: f64 = v.parse().with_context(|| format!("{flag} {v}"))?;
+                if x.is_nan() || x <= 0.0 {
+                    bail!("{flag} must be positive");
+                }
+                Ok(x)
+            };
             while let Some(a) = it.next() {
                 match a.as_str() {
                     "--force" => force = true,
                     "--dry-run" => dry = true,
                     "--arms" => only = Some(it.next().context("--arms a,b")?.clone()),
+                    "--adamw-lr-scale" => scale.adamw = num(a, it.next())?,
+                    "--muon-lr-scale" => scale.muon = num(a, it.next())?,
                     bad => bail!("unknown argument {bad:?}"),
                 }
             }
             let arms = s6ab::selected(only.as_deref())?;
             let store = store()?;
             fs::create_dir_all(store.join("runs/s6ab"))?;
-            run_stage(&s6ab::stage(&arms), force, dry, 1)?;
+            run_stage(&s6ab::stage(&arms, scale), force, dry, 1)?;
             if dry {
                 return Ok(());
             }
-            s6ab::summarize(&store, &arms)
+            s6ab::summarize(&store, &arms, scale)
+        }
+        Some("s6lr") => {
+            let (mut force, mut dry) = (false, false);
+            for a in &args[1..] {
+                match a.as_str() {
+                    "--force" => force = true,
+                    "--dry-run" => dry = true,
+                    bad => bail!("unknown argument {bad:?}"),
+                }
+            }
+            let store = store()?;
+            fs::create_dir_all(store.join("runs/s6lr"))?;
+            run_stage(&s6ab::pilot_stage(), force, dry, 1)?;
+            if dry {
+                return Ok(());
+            }
+            s6ab::pilot_summarize(&store).map(|_| ())
         }
         Some("s5") => {
             let Some(name) = args.get(1) else { usage() };
