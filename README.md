@@ -96,6 +96,7 @@ Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](doc
 ```sh
 xcodebuild -downloadComponent MetalToolchain            # MLX needs the Metal compiler
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+scripts/prepare-data.sh                                   # every dataset below, from scratch (FORCE=1, REFRESH=1)
 cargo run --release -p sky-data -- fetch-decisions        # Hugging Face → data/decisions
 cargo run --release -p sky-data -- fetch-text
 cargo run --release -p sky-games --bin sky-games-gen -- --game all --n 60000 --seed 1
@@ -111,6 +112,8 @@ cargo run --release -p sky-games --bin sky-games-gen -- --game doom --n 100000 -
 CARGO_TARGET_DIR=$PWD/target/s3-arena cargo build --release -p sky-arena
 scripts/train-s3.sh numeric pico && scripts/specialize-s3.sh pico 3 8   # the s3 model (chapter 21)
 scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf s3-pico.gguf   # closed-loop τ
+cargo xtask s6lr && cargo xtask s6ab --adamw-lr-scale 1 --muon-lr-scale 1   # s6: learning-rate pilot, then the ablation
+scripts/train-s6.sh                                        # s6-pico with the adopted changes (docs/s6-prereg.md)
 ```
 To use a published model without training anything, see the [Install](https://maxgfr.github.io/skycmd/install/) page.
 The step-by-step guide is the [tutorial](https://maxgfr.github.io/skycmd/tutorial/).

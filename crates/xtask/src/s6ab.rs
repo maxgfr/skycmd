@@ -8,7 +8,15 @@
 //! calibration, a ternary export and `sky-arena` at full depth (τ = 1). Steps are resumed through
 //! the `.done` markers of the s5 stages. The aggregate (mean and sample std over seeds) of the
 //! final ternary validation (accuracy, ECE, logit margin and effective rank of the last exit)
-//! and of the arena scores goes to `runs/s6ab/summary.json`.
+//! and of the arena scores goes to `runs/s6ab/summary.json`, with the training wall time: our
+//! real runs have a time budget, and at equal time AdamW can beat Muon on language at small scale
+//! (arXiv 2610.21555).
+//!
+//! `cargo xtask s6lr` is the learning-rate pilot run before it (docs/s6-prereg.md): AdamW and
+//! Muon v2 at ×0.5, ×1 and ×2 of their default peak learning rate, on the same step budgets.
+//! Both optimizers are tuned, since an untuned AdamW baseline inflates the gain of the other
+//! optimizer (arXiv 2509.02046). Its choice goes to `runs/s6lr/summary.json` and to the
+//! `--adamw-lr-scale` / `--muon-lr-scale` flags of `s6ab`.
 
 use std::path::Path;
 
@@ -25,6 +33,33 @@ pub const DECIDE_STEPS: &str = "6400";
 const EPISODES: &str = "30";
 const GAMES: &str = "flappy,rescue,dodge,doom";
 const RECORDS: &str = "data/decisions,data/games,data/numeric";
+/// Default peak learning rates of `s2-pretrain` and `s2-decide` (`opt.build` in sky-train).
+pub const PRETRAIN_LR: f64 = 3e-3;
+pub const DECIDE_LR: f64 = 1e-3;
+/// The pilot's multipliers of the default peak learning rate, log-spaced around it.
+pub const PILOT_SCALES: [f64; 3] = [0.5, 1.0, 2.0];
+/// The pilot runs one seed: it only makes a coarse choice, the ablation then runs three.
+pub const PILOT_SEED: u64 = 7;
+/// Below this gain in final ternary accuracy over ×1, the pilot keeps the default rate.
+pub const PILOT_MIN_GAIN: f64 = 0.01;
+
+/// Multipliers of the default peak learning rates (the pilot's choice).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LrScale {
+    /// `--adam-lr` of the AdamW arms.
+    pub adamw: f64,
+    /// `--muon-lr` of the Muon arms (their AdamW parameters keep the default rate).
+    pub muon: f64,
+}
+
+impl Default for LrScale {
+    fn default() -> Self {
+        Self {
+            adamw: 1.0,
+            muon: 1.0,
+        }
+    }
+}
 
 pub struct Arm {
     pub name: &'static str,
@@ -136,6 +171,23 @@ pub fn arms() -> Vec<Arm> {
 }
 
 impl Arm {
+    fn adamw(&self) -> bool {
+        self.opt.contains(&"--no-muon")
+    }
+
+    /// The learning-rate flag of a phase whose default peak rate is `base`, if `scale` moves it.
+    fn lr_flags(&self, scale: LrScale, base: f64) -> Vec<String> {
+        let (flag, m) = if self.adamw() {
+            ("--adam-lr", scale.adamw)
+        } else {
+            ("--muon-lr", scale.muon)
+        };
+        if m == 1.0 {
+            return Vec::new();
+        }
+        vec![flag.to_string(), format!("{}", base * m)]
+    }
+
     /// An arm with a weight EMA calibrates, exports and is judged on the EMA weights.
     fn ema(&self) -> bool {
         self.decide.contains(&"--ema")
@@ -187,69 +239,80 @@ fn run_dir(a: &Arm, seed: u64) -> String {
     format!("runs/s6ab/{}-s{seed}", a.name)
 }
 
+/// The two training steps of a run: numeric MLM pretraining, then decision training with QAT.
+fn train_steps(a: &Arm, id: &str, dir: &str, seed: u64, scale: LrScale) -> Vec<Step> {
+    let s = seed.to_string();
+    let config = format!("{{checkout}}/{}", a.config);
+    let opt = a.opt;
+    let (pre, dec) = (format!("{dir}/pretrain"), format!("{dir}/decide"));
+    let (lr_pre, lr_dec) = (a.lr_flags(scale, PRETRAIN_LR), a.lr_flags(scale, DECIDE_LR));
+    let mut args = vec![
+        "s2-pretrain",
+        "--config",
+        &config,
+        "--tokenizer",
+        "data/tok/tok-s2-1024.json",
+        "--text",
+        "data/text",
+        "--steps",
+        PRETRAIN_STEPS,
+        "--num-weight",
+        "0.05",
+        "--numeric",
+        "data/numeric",
+        "--numeric-weight",
+        "0.1",
+        "--seed",
+        &s,
+        "--out",
+        &pre,
+    ];
+    args.extend(opt.iter().copied());
+    args.extend(lr_pre.iter().map(String::as_str));
+    args.extend(a.pretrain.iter().copied());
+    let mut steps = vec![Step::new(&format!("{id}-pretrain"), "sky-train", &args).gpu()];
+    let init = format!("{pre}/init");
+    let mut args = vec![
+        "s2-decide",
+        "--config",
+        &config,
+        "--init",
+        &init,
+        "--records",
+        RECORDS,
+        "--weights",
+        "games=0.6,numeric=0.1,decisions=0.3",
+        "--batch",
+        "128",
+        "--steps",
+        DECIDE_STEPS,
+        "--qat-frac",
+        "0.9",
+        "--loop-dropout",
+        "0.25",
+        "--pad-to",
+        "32",
+        "--seed",
+        &s,
+        "--out",
+        &dec,
+    ];
+    args.extend(opt.iter().copied());
+    args.extend(lr_dec.iter().map(String::as_str));
+    args.extend(a.decide.iter().copied());
+    steps.push(Step::new(&format!("{id}-decide"), "sky-train", &args).gpu());
+    steps
+}
+
 /// Every arm and seed, steps in order (one GPU job at a time; the arena runs on the CPU).
-pub fn stage(arms: &[Arm]) -> Stage {
+pub fn stage(arms: &[Arm], scale: LrScale) -> Stage {
     let mut steps = Vec::new();
     for a in arms {
         for seed in SEEDS {
-            let (dir, s) = (run_dir(a, seed), seed.to_string());
-            let config = format!("{{checkout}}/{}", a.config);
-            let opt = a.opt;
+            let dir = run_dir(a, seed);
             let id = format!("{}-s{seed}", a.name);
-            let (pre, dec) = (format!("{dir}/pretrain"), format!("{dir}/decide"));
-            let mut args = vec![
-                "s2-pretrain",
-                "--config",
-                &config,
-                "--tokenizer",
-                "data/tok/tok-s2-1024.json",
-                "--text",
-                "data/text",
-                "--steps",
-                PRETRAIN_STEPS,
-                "--num-weight",
-                "0.05",
-                "--numeric",
-                "data/numeric",
-                "--numeric-weight",
-                "0.1",
-                "--seed",
-                &s,
-                "--out",
-                &pre,
-            ];
-            args.extend(opt.iter().copied());
-            args.extend(a.pretrain.iter().copied());
-            steps.push(Step::new(&format!("{id}-pretrain"), "sky-train", &args).gpu());
-            let init = format!("{pre}/init");
-            let mut args = vec![
-                "s2-decide",
-                "--config",
-                &config,
-                "--init",
-                &init,
-                "--records",
-                RECORDS,
-                "--weights",
-                "games=0.6,numeric=0.1,decisions=0.3",
-                "--batch",
-                "128",
-                "--steps",
-                DECIDE_STEPS,
-                "--qat-frac",
-                "0.9",
-                "--loop-dropout",
-                "0.25",
-                "--pad-to",
-                "32",
-                "--seed",
-                &s,
-                "--out",
-                &dec,
-            ];
-            args.extend(opt.iter().copied());
-            args.extend(a.decide.iter().copied());
-            steps.push(Step::new(&format!("{id}-decide"), "sky-train", &args).gpu());
+            steps.extend(train_steps(a, &id, &dir, seed, scale));
+            let dec = format!("{dir}/decide");
             let last = format!("{dec}/{}", a.checkpoint());
             steps.push(
                 Step::new(
@@ -330,16 +393,32 @@ pub fn final_val(log: &str, mode: &str) -> Result<[f64; 4]> {
 
 const VAL: [&str; 4] = ["accuracy", "ece", "margin", "erank"];
 
+/// Wall time of a run's two training phases, in minutes (`elapsed_secs` of their last checkpoint).
+pub fn train_minutes(dir: &Path) -> Result<f64> {
+    let mut secs = 0.0;
+    for phase in ["pretrain", "decide"] {
+        let p = dir.join(phase).join("last/state.json");
+        let state: Value = serde_json::from_str(
+            &std::fs::read_to_string(&p).with_context(|| p.display().to_string())?,
+        )?;
+        secs += state["elapsed_secs"]
+            .as_f64()
+            .with_context(|| format!("{}: no elapsed_secs", p.display()))?;
+    }
+    Ok(secs / 60.0)
+}
+
 fn stat(xs: &[f64]) -> Value {
     let (mean, std) = mean_std(xs);
     json!({"mean": mean, "std": std, "n": xs.len()})
 }
 
 /// Reads every run of `arms` and writes `runs/s6ab/summary.json`.
-pub fn summarize(store: &Path, arms: &[Arm]) -> Result<()> {
+pub fn summarize(store: &Path, arms: &[Arm], scale: LrScale) -> Result<()> {
     let mut out = Vec::new();
     for a in arms {
         let mut val = vec![Vec::new(); VAL.len()];
+        let mut minutes = Vec::new();
         let mut games: Vec<(String, Vec<f64>)> = Vec::new();
         for seed in SEEDS {
             let dir = store.join(run_dir(a, seed));
@@ -348,6 +427,7 @@ pub fn summarize(store: &Path, arms: &[Arm]) -> Result<()> {
             for (col, x) in val.iter_mut().zip(final_val(&log, a.val_mode())?) {
                 col.push(x);
             }
+            minutes.push(train_minutes(&dir)?);
             let p = dir.join("arena.json");
             let arena: Value = serde_json::from_str(
                 &std::fs::read_to_string(&p).with_context(|| p.display().to_string())?,
@@ -377,12 +457,13 @@ pub fn summarize(store: &Path, arms: &[Arm]) -> Result<()> {
         out.push(json!({
             "name": a.name, "about": a.about, "config": a.config,
             "opt": a.opt, "decide": a.decide,
-            "val": val, "arena_score": games,
+            "val": val, "arena_score": games, "train_minutes": stat(&minutes),
         }));
     }
     let summary = json!({
         "about": "s6 ablation on s3-pico: {AdamW, Muon v2} x {softmax, Parallax} (issue #34), XSA, SODA, no polish, exit KD (issue #36)",
         "seeds": SEEDS,
+        "lr_scale": {"adamw": scale.adamw, "muon": scale.muon},
         "steps": {"pretrain": PRETRAIN_STEPS.parse::<u64>()?, "decide": DECIDE_STEPS.parse::<u64>()?},
         "arena": {"games": GAMES, "episodes": EPISODES.parse::<u64>()?, "exit_threshold": 1.0},
         "std": "sample standard deviation over seeds",
@@ -392,6 +473,120 @@ pub fn summarize(store: &Path, arms: &[Arm]) -> Result<()> {
     std::fs::write(&p, serde_json::to_string_pretty(&summary)? + "\n")?;
     println!("[s6ab] wrote {}", p.display());
     Ok(())
+}
+
+/// The pilot's two arms. AdamW is tuned as well as Muon v2: an untuned baseline inflates the
+/// other optimizer's gain (arXiv 2509.02046).
+pub fn pilot_arms() -> Vec<Arm> {
+    arms()
+        .into_iter()
+        .filter(|a| matches!(a.name, "softmax-adamw" | "parallax-muon"))
+        .collect()
+}
+
+fn pilot_scale(a: &Arm, m: f64) -> LrScale {
+    if a.adamw() {
+        LrScale {
+            adamw: m,
+            ..LrScale::default()
+        }
+    } else {
+        LrScale {
+            muon: m,
+            ..LrScale::default()
+        }
+    }
+}
+
+fn pilot_dir(a: &Arm, m: f64) -> String {
+    format!("runs/s6lr/{}-x{m}", a.name)
+}
+
+/// The learning-rate pilot: both training phases of each pilot arm at every scale, one seed.
+/// Validation is enough to choose, so there is no calibration, export or arena.
+pub fn pilot_stage() -> Stage {
+    let mut steps = Vec::new();
+    for a in pilot_arms() {
+        for m in PILOT_SCALES {
+            let id = format!("{}-x{m}", a.name);
+            steps.extend(train_steps(
+                &a,
+                &id,
+                &pilot_dir(&a, m),
+                PILOT_SEED,
+                pilot_scale(&a, m),
+            ));
+        }
+    }
+    Stage {
+        name: "s6lr",
+        about:
+            "s6 learning-rate pilot: AdamW and Muon v2 at x0.5, x1 and x2 of the default peak rate",
+        steps,
+    }
+}
+
+/// The pilot's choice for one optimizer from `(scale, final ternary accuracy)`: the best scale,
+/// unless it beats ×1 by less than `PILOT_MIN_GAIN` (one seed cannot resolve less).
+pub fn pilot_choice(acc: &[(f64, f64)]) -> f64 {
+    let base = acc.iter().find(|(m, _)| *m == 1.0).map(|&(_, x)| x);
+    let best = acc
+        .iter()
+        .copied()
+        .reduce(|b, x| if x.1 > b.1 { x } else { b });
+    match (base, best) {
+        (Some(b), Some((m, x))) if x - b >= PILOT_MIN_GAIN => m,
+        _ => 1.0,
+    }
+}
+
+/// Reads the pilot runs, writes `runs/s6lr/summary.json` and returns the chosen scales.
+pub fn pilot_summarize(store: &Path) -> Result<LrScale> {
+    let mut out = Vec::new();
+    let mut scale = LrScale::default();
+    for a in pilot_arms() {
+        let mut acc = Vec::new();
+        let mut runs = Vec::new();
+        for m in PILOT_SCALES {
+            let dir = store.join(pilot_dir(&a, m));
+            let p = dir.join("decide/log.jsonl");
+            let log = std::fs::read_to_string(&p).with_context(|| p.display().to_string())?;
+            let v = final_val(&log, a.val_mode())?;
+            acc.push((m, v[0]));
+            let mut run: Map<String, Value> = VAL
+                .iter()
+                .zip(v)
+                .map(|(k, x)| (k.to_string(), json!(x)))
+                .collect();
+            run.insert("scale".into(), json!(m));
+            run.insert("train_minutes".into(), json!(train_minutes(&dir)?));
+            runs.push(Value::Object(run));
+        }
+        let choice = pilot_choice(&acc);
+        if a.adamw() {
+            scale.adamw = choice;
+        } else {
+            scale.muon = choice;
+        }
+        out.push(json!({"name": a.name, "runs": runs, "choice": choice}));
+    }
+    let summary = json!({
+        "about": "s6 learning-rate pilot (docs/s6-prereg.md): final ternary validation at each multiplier of the default peak rate",
+        "seed": PILOT_SEED,
+        "scales": PILOT_SCALES,
+        "min_gain": PILOT_MIN_GAIN,
+        "base_lr": {"pretrain": PRETRAIN_LR, "decide": DECIDE_LR},
+        "arms": out,
+        "lr_scale": {"adamw": scale.adamw, "muon": scale.muon},
+    });
+    let p = store.join("runs/s6lr/summary.json");
+    std::fs::write(&p, serde_json::to_string_pretty(&summary)? + "\n")?;
+    println!("[s6lr] wrote {}", p.display());
+    println!(
+        "[s6lr] next: cargo xtask s6ab --adamw-lr-scale {} --muon-lr-scale {}",
+        scale.adamw, scale.muon
+    );
+    Ok(scale)
 }
 
 #[cfg(test)]
@@ -411,8 +606,13 @@ mod tests {
                 .collect();
             assert_eq!(adamw, [true, false], "{config}");
         }
-        let s = stage(&a);
+        let s = stage(&a, LrScale::default());
         assert_eq!(s.steps.len(), 11 * SEEDS.len() * 5);
+        // At the default scale, no learning-rate flag.
+        assert!(s
+            .steps
+            .iter()
+            .all(|t| !t.args.iter().any(|x| x.ends_with("-lr"))));
         // The AdamW arms pass --no-muon to both training steps, the others never; the exit
         // distillation only reaches the decision step.
         for step in &s.steps {
@@ -469,6 +669,66 @@ mod tests {
         assert_eq!(selected(None).unwrap().len(), 11);
         let e = a.iter().find(|a| a.name == "parallax-muon-ema").unwrap();
         assert_eq!((e.checkpoint(), e.val_mode()), ("last-ema", "ema-ternary"));
+    }
+
+    #[test]
+    fn learning_rate_scales() {
+        let scale = LrScale {
+            adamw: 0.5,
+            muon: 2.0,
+        };
+        let s = stage(
+            &selected(Some("softmax-adamw,parallax-muon")).unwrap(),
+            scale,
+        );
+        let lr = |name: &str| -> Vec<String> {
+            let step = s.steps.iter().find(|t| t.name == name).unwrap();
+            let i = step.args.iter().position(|x| x.ends_with("-lr")).unwrap();
+            step.args[i..i + 2].to_vec()
+        };
+        assert_eq!(lr("softmax-adamw-s7-pretrain"), ["--adam-lr", "0.0015"]);
+        assert_eq!(lr("softmax-adamw-s7-decide"), ["--adam-lr", "0.0005"]);
+        assert_eq!(lr("parallax-muon-s7-pretrain"), ["--muon-lr", "0.006"]);
+        assert_eq!(lr("parallax-muon-s7-decide"), ["--muon-lr", "0.002"]);
+
+        // The pilot: 2 arms x 3 scales x 2 training steps, ×1 with no flag.
+        let p = pilot_stage();
+        assert_eq!(p.steps.len(), 2 * PILOT_SCALES.len() * 2);
+        let flagged: Vec<&str> = p
+            .steps
+            .iter()
+            .filter(|t| t.args.iter().any(|x| x.ends_with("-lr")))
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(flagged.len(), 2 * 2 * 2);
+        assert!(flagged.iter().all(|n| !n.contains("-x1-")));
+        assert!(p.steps[0]
+            .args
+            .iter()
+            .any(|x| x == "runs/s6lr/softmax-adamw-x0.5/pretrain"));
+
+        // The choice keeps ×1 unless another scale wins by at least PILOT_MIN_GAIN.
+        assert_eq!(pilot_choice(&[(0.5, 0.60), (1.0, 0.61), (2.0, 0.615)]), 1.0);
+        assert_eq!(pilot_choice(&[(0.5, 0.63), (1.0, 0.61), (2.0, 0.62)]), 0.5);
+        assert_eq!(pilot_choice(&[(0.5, 0.60), (1.0, 0.61), (2.0, 0.64)]), 2.0);
+        assert_eq!(pilot_choice(&[(0.5, 0.60), (2.0, 0.64)]), 1.0);
+    }
+
+    #[test]
+    fn train_minutes_sums_both_phases() {
+        let dir = std::env::temp_dir().join(format!("s6ab-minutes-{}", std::process::id()));
+        for (phase, secs) in [("pretrain", 480.0), ("decide", 900.0)] {
+            let d = dir.join(phase).join("last");
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(
+                d.join("state.json"),
+                json!({"elapsed_secs": secs}).to_string(),
+            )
+            .unwrap();
+        }
+        assert_eq!(train_minutes(&dir).unwrap(), 23.0);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(train_minutes(&dir).is_err());
     }
 
     #[test]

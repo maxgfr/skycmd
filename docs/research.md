@@ -60,6 +60,9 @@ According to its model card, `oscar-1-17m` scores **0.6775** on `LocalLLaMA/type
 - **2311.05109, 2508.00180 (BEMA), Pathwise EMA (ICML 2026)**: an EMA of the weights damps the weight oscillation of low-bit QAT, and stabilizes training at small batch sizes. → `s2-decide --ema` (`docs/SPEC-S6.md` §11).
 - **2601.19320 (StableQAT)**: a Fourier-derived surrogate gradient for rounding that generalizes the straight-through estimator and stabilizes low-bit QAT. → `s2-decide --qat-grad-a` (`docs/SPEC-S6.md` §12).
 - **2506.11300 (curriculum learning in pretraining)**: easy-to-hard pacing speeds up convergence, and lexical diversity is among the best difficulty signals. → `s2-pretrain --curriculum` (§13).
+- **2509.02046 (Fantastic Pretraining Optimizers)**: speedups over AdamW shrink once AdamW is tuned as carefully, and rankings can flip before the end of the learning-rate decay. → `cargo xtask s6lr` tunes AdamW and Muon v2 alike, and judges only final checkpoints (`docs/s6-prereg.md`).
+- **2512.22768 (fast hyperparameter transfer)**: Muon's best learning rate moves more with width than Adam's, though the curves are flat. → a three-point pilot (×0.5, ×1, ×2) at the s6-pico width, not a value from a larger model.
+- **2610.21555 (When Does Muon Actually Win?)**: on 17.7M and 33.6M language models, Muon wins at equal data but AdamW wins by 3.4–7% at equal time, since the Muon step takes 56–70% of training time there. → `s6ab` reports `train_minutes`, and the adoption rule asks more of Muon if it costs over 15% (`docs/s6-prereg.md` §4).
 - **Not adopted yet**:
   - 2604.05635 (spline encodings): piecewise-linear number encoding would change the 17-feature `num_proj` format.
   - 2405.20541 (perplexity pruning): it needs a trained reference model first; s3-pico can play that role once the corpus is rebuilt.

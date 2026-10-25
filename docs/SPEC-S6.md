@@ -64,9 +64,10 @@ Eleven arms × 3 seeds is 33 runs of about 27 minutes on an M5, so about 15 hour
   - `s2-pretrain` for 4,800 steps and `s2-decide` for 6,400 steps (the step counts of the 8 + 15 minute s3-pico runs, with the same data weights, QAT after 10%, loop dropout 0.25);
   - calibration and a ternary export;
   - `sky-arena` at full depth (τ = 1) on the four games, 30 episodes each.
-- **Output**: `runs/s6ab/summary.json` gives the mean and sample std over seeds of the last exit's ternary validation (accuracy, ECE, margin, effective rank) and of each game's arena score.
+- **Learning rates**: `cargo xtask s6lr` runs first. It trains `softmax-adamw` and `parallax-muon` at ×0.5, ×1 and ×2 of the default peak rate (seed 7, same step budgets) and writes its choice to `runs/s6lr/summary.json`. `s6ab --adamw-lr-scale a --muon-lr-scale m` then applies it: `--adam-lr` for the AdamW arms, `--muon-lr` for the Muon arms.
+- **Output**: `runs/s6ab/summary.json` gives the mean and sample std over seeds of the last exit's ternary validation (accuracy, ECE, margin, effective rank), of each game's arena score and of the wall time of both training phases (`train_minutes`).
 - **Question**: does Parallax beat softmax attention under Muon v2, and does that gain disappear under AdamW, as in the paper?
-- **Proposed rule**: s6 ships only if parallax-muon beats softmax-muon on validation accuracy without losing arena score. Fix the rule before reading the results.
+- **Rules**: fixed in `docs/s6-prereg.md` before any run: thresholds for each arm, the combination of the adopted changes (`scripts/train-s6.sh`, with `configs/s6-pico-xsa.json` if Parallax and XSA both win) and the final gate against s3-pico-g3.
 
 ## 5. Ladder (configs/s6-*.json)
 | name | as | params (decision / pretraining stack) |
