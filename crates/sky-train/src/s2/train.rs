@@ -1483,8 +1483,12 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         }
         let lr_scale = wsd(frac) as f32;
         let qat = s.state.qat;
+        // A sequence step and a decision step share the EMA, the evaluation and the checkpoints
+        // below; only their loss logging differs.
+        let mut seq_step = false;
         if let Some(sd) = &seqs {
             if s.state.rng.f64() < a.seq_frac {
+                seq_step = true;
                 let n = (a.batch / sd.k).max(1);
                 let ne = s.cfg.n_exits();
                 let b = crate::s2::seq::sample(sd, ne, n, a.carry_drop, &mut s.state.rng, a.pad_to);
@@ -1503,91 +1507,96 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                     log.write(&json!({"step": s.state.step, "seq_loss": l}))?;
                     seq_loss_sum = (0.0, 0);
                 }
-                continue;
             }
         }
-        let batch = if a.length_pool > 1 {
-            if pending.is_empty() {
-                pending = data::sample_batches_by_length(
-                    &data,
-                    &weights,
-                    a.batch,
-                    a.length_pool,
-                    &mut s.state.rng,
-                    a.pad_to,
-                )
-                .into();
-            }
-            pending.pop_front().expect("a pooled batch")
-        } else {
-            data::sample_batch(&data, &weights, a.batch, &mut s.state.rng, a.pad_to)
-        };
-        let n_exits = s.cfg.n_exits();
-        let used = if n_exits > 1 && a.loop_dropout > 0.0 && s.state.rng.f64() < a.loop_dropout {
-            Some(1 + s.state.rng.below(n_exits - 1))
-        } else {
-            None
-        };
-        let st = s.decision_step_exits(&batch, lr_scale, qat, used)?;
-        if !st.loss.is_finite() {
-            // The update was not applied (`apply_update`): skip the batch, unless the
-            // training itself has diverged.
-            skipped += 1;
-            consecutive += 1;
-            println!(
+        if !seq_step {
+            let batch = if a.length_pool > 1 {
+                if pending.is_empty() {
+                    pending = data::sample_batches_by_length(
+                        &data,
+                        &weights,
+                        a.batch,
+                        a.length_pool,
+                        &mut s.state.rng,
+                        a.pad_to,
+                    )
+                    .into();
+                }
+                pending.pop_front().expect("a pooled batch")
+            } else {
+                data::sample_batch(&data, &weights, a.batch, &mut s.state.rng, a.pad_to)
+            };
+            let n_exits = s.cfg.n_exits();
+            let used = if n_exits > 1 && a.loop_dropout > 0.0 && s.state.rng.f64() < a.loop_dropout
+            {
+                Some(1 + s.state.rng.below(n_exits - 1))
+            } else {
+                None
+            };
+            let st = s.decision_step_exits(&batch, lr_scale, qat, used)?;
+            if !st.loss.is_finite() {
+                // The update was not applied (`apply_update`): skip the batch, unless the
+                // training itself has diverged.
+                skipped += 1;
+                consecutive += 1;
+                println!(
                 "step {}: non-finite loss, batch skipped ({} rows, state shape {:?}, static shape {:?})",
                 s.state.step,
                 batch.n_rows,
                 batch.ids.shape(),
                 batch.st_ids.shape()
             );
-            log.write(
-                &json!({"step": s.state.step, "skipped_batch": true, "skipped_total": skipped}),
-            )?;
-            if consecutive >= 20 {
-                bail!(
-                    "non-finite loss on 20 consecutive batches at step {}",
-                    s.state.step
-                );
+                log.write(
+                    &json!({"step": s.state.step, "skipped_batch": true, "skipped_total": skipped}),
+                )?;
+                if consecutive >= 20 {
+                    bail!(
+                        "non-finite loss on 20 consecutive batches at step {}",
+                        s.state.step
+                    );
+                }
+                // The step still counts (its data was drawn), so the clock must move with it.
+                s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
+                continue;
             }
-            continue;
+            consecutive = 0;
+            (wl, wt, ws, wq) = (
+                wl + st.loss as f64,
+                wt + st.tokens,
+                ws + 1,
+                wq + batch.n_rows,
+            );
+            let step = s.state.step;
+            if step % a.log_every == 0 {
+                let dt = wtime.elapsed().as_secs_f64();
+                let mb = |r: std::result::Result<usize, _>| {
+                    r.map(|b| b as f64 / 1e6).unwrap_or(f64::NAN)
+                };
+                let mut rec = json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale, "qat": qat,
+                "tok_s": wt as f64 / dt, "q_s": wq as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0,
+                "mlx_active_mb": mb(mlx_rs::memory::active_memory()),
+                "mlx_cache_mb": mb(mlx_rs::memory::cache_memory())});
+                if let Some(n) = s.state.steps {
+                    rec["steps"] = n.into();
+                    rec["frac"] = frac.into();
+                }
+                log.write(&rec)?;
+                println!(
+                    "step {step:>6} loss {:.4} lr x{lr_scale:.3}{} {:.0} tok/s {:.0} q/s ({})",
+                    wl / ws as f64,
+                    if qat { " qat" } else { "" },
+                    wt as f64 / dt,
+                    wq as f64 / dt,
+                    progress_label(&a.progress, &s.state)
+                );
+                (wl, wt, ws, wq, wtime) = (0.0, 0, 0, 0, Instant::now());
+            }
         }
-        consecutive = 0;
         if let Some(e) = &mut ema {
             crate::s5::train::ema_update(e, &s.params, a.ema)?;
         }
         s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
-        (wl, wt, ws, wq) = (
-            wl + st.loss as f64,
-            wt + st.tokens,
-            ws + 1,
-            wq + batch.n_rows,
-        );
-        let step = s.state.step;
-        if step % a.log_every == 0 {
-            let dt = wtime.elapsed().as_secs_f64();
-            let mb =
-                |r: std::result::Result<usize, _>| r.map(|b| b as f64 / 1e6).unwrap_or(f64::NAN);
-            let mut rec = json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale, "qat": qat,
-                "tok_s": wt as f64 / dt, "q_s": wq as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0,
-                "mlx_active_mb": mb(mlx_rs::memory::active_memory()),
-                "mlx_cache_mb": mb(mlx_rs::memory::cache_memory())});
-            if let Some(n) = s.state.steps {
-                rec["steps"] = n.into();
-                rec["frac"] = frac.into();
-            }
-            log.write(&rec)?;
-            println!(
-                "step {step:>6} loss {:.4} lr x{lr_scale:.3}{} {:.0} tok/s {:.0} q/s ({})",
-                wl / ws as f64,
-                if qat { " qat" } else { "" },
-                wt as f64 / dt,
-                wq as f64 / dt,
-                progress_label(&a.progress, &s.state)
-            );
-            (wl, wt, ws, wq, wtime) = (0.0, 0, 0, 0, Instant::now());
-        }
-        if step % a.eval_every == 0 {
+        if s.state.step % a.eval_every == 0 {
             validate(
                 &s,
                 &data,

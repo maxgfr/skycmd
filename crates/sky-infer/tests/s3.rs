@@ -651,3 +651,18 @@ fn temporal_carry_streams() {
     assert_eq!(a, b);
     assert_eq!(a, e.decide_raw(c.qtype, c.ins, &c.opts, s).unwrap());
 }
+
+/// `random_gguf` only writes dense feed-forward blocks: an ES config is refused, not silently
+/// turned into a different model.
+#[test]
+fn random_gguf_refuses_an_es_config() {
+    let mut cfg = ladder_config("s3-pico").unwrap();
+    cfg.ffn_es = Some(sky_infer::s2::es::EsSpec {
+        seed: 1,
+        units: 384,
+        k: 32,
+        fan_in: 8,
+    });
+    let err = random_gguf(&cfg, &test_tokenizer(), 1, WeightFormat::F32).unwrap_err();
+    assert!(err.to_string().contains("ES"), "{err}");
+}

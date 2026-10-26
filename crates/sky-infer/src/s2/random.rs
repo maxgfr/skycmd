@@ -268,6 +268,13 @@ pub fn random_gguf(
     format: WeightFormat,
 ) -> Result<Vec<u8>> {
     cfg.validate()?;
+    if cfg.ffn_es.is_some() {
+        // The writer only emits dense GeGLU feed-forward blocks: an ES config would come out
+        // as a different, dense model.
+        return Err(Error::Format(
+            "random_gguf writes dense feed-forward blocks only, not an ES config".into(),
+        ));
+    }
     if tok.id_to_token(cfg.num_token_id) != Some(crate::num::NUM_TOKEN) {
         return Err(Error::Format(
             "the tokenizer has no [NUM] token at num_token_id".into(),

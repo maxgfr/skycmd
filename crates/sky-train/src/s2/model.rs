@@ -756,7 +756,7 @@ fn fusion(
             x,
             w(p, &format!("{name}.weight"))?,
             Some(w(p, &format!("{name}.bias"))?),
-            1e-5,
+            cfg.norm_eps,
         )
     };
     let lin = |x: &Array, name: &str| -> R<Array> {

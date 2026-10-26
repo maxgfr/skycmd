@@ -63,7 +63,7 @@ pub enum Group {
 ///
 /// s1 names (`encoder.layers.*`) and s2 names (`blk.*`, `static.blk.*`) are
 /// both recognized: the encoder hidden matrices go to Muon; the s2 embeddings
-/// (`token_embd`, `num_proj`, `type_embd`) are never decayed.
+/// (`token_embd`, `num_proj`, `type_embd`, and the per-loop `loop_embd`) are never decayed.
 pub fn group_of(name: &str, ndim: usize) -> Group {
     let hidden = name.starts_with("encoder.layers.")
         && (name.ends_with(".attn.Wqkv.weight")
@@ -72,7 +72,7 @@ pub fn group_of(name: &str, ndim: usize) -> Group {
             || name.ends_with(".mlp.Wo.weight"));
     let s2_embedding = matches!(
         name,
-        "token_embd.weight" | "type_embd.weight" | "num_proj.weight"
+        "token_embd.weight" | "type_embd.weight" | "num_proj.weight" | "loop_embd.weight"
     );
     if hidden || crate::s2::model::is_hidden_matrix(name) {
         Group::Muon
@@ -382,6 +382,8 @@ mod tests {
         assert_eq!(group_of("token_embd.weight", 2), Group::AdamNoDecay);
         assert_eq!(group_of("num_proj.weight", 2), Group::AdamNoDecay);
         assert_eq!(group_of("type_embd.weight", 2), Group::AdamNoDecay);
+        // The per-loop embeddings are embeddings too, not matrices to decay.
+        assert_eq!(group_of("loop_embd.weight", 2), Group::AdamNoDecay);
         assert_eq!(group_of("blk.1.attn_norm.weight", 1), Group::AdamNoDecay);
     }
 }
