@@ -210,3 +210,13 @@ fn q4_0_matches_f32_on_the_same_weights() {
     }
     assert!(worst > 0.0, "the Q4_0 products did not run");
 }
+
+/// The family is reported as `iso` everywhere: by the engine, in a decision's info and in
+/// the browser bench (they said `s1` for anything that was not s2).
+#[test]
+fn family_is_iso() {
+    let mut m = Model::load(SHARED).unwrap();
+    let b = sky_web::session::bench(&mut m, 4).unwrap();
+    assert_eq!(b["family"], "iso");
+    assert_eq!(sky_web::session::family(m.arch()), "iso");
+}

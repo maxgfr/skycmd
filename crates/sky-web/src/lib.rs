@@ -88,11 +88,7 @@ impl Engine {
     /// Model family: `s1` (ModernBERT + decision head), `s2` (static cache, early exits) or
     /// `iso` (s5: options isolated by construction, definitions only).
     pub fn family(&self) -> String {
-        match self.inner.arch() {
-            sky_infer::Arch::S1 => "s1".into(),
-            sky_infer::Arch::S2 => "s2".into(),
-            sky_infer::Arch::Iso => "iso".into(),
-        }
+        session::family(self.inner.arch()).into()
     }
 
     /// iso: language of the generic `noul` definitions (`en` or `fr`). No effect on s1 / s2.

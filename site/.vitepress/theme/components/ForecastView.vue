@@ -359,7 +359,13 @@ function latency(us: number): string {
     />
     <div class="models" role="group" aria-label="Models">
       <label v-for="k in MODEL_KEYS" :key="k" class="model" :class="{ off: !available(k) }">
-        <input v-model="enabled[k]" type="checkbox" :disabled="!available(k)" />
+        <!-- an untrained model stays enabled (it runs as soon as it ships) but shows unchecked -->
+        <input
+          type="checkbox"
+          :checked="enabled[k] && available(k)"
+          :disabled="!available(k)"
+          @change="enabled[k] = ($event.target as HTMLInputElement).checked"
+        />
         <span class="key" :class="`s${SLOT[k]}`" aria-hidden="true" />
         <span>{{ k }}</span>
         <span v-if="!available(k)" class="badge">not trained yet</span>

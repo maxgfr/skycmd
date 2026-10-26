@@ -14,6 +14,16 @@ use crate::model::Model;
 /// Number of recent decision timings kept for the rolling statistics.
 const TIMING_WINDOW: usize = 120;
 
+/// Model family of an architecture: `s1` (ModernBERT + decision head), `s2` (static cache,
+/// early exits) or `iso` (s5: options isolated by construction).
+pub fn family(arch: Arch) -> &'static str {
+    match arch {
+        Arch::S1 => "s1",
+        Arch::S2 => "s2",
+        Arch::Iso => "iso",
+    }
+}
+
 /// One System One question of a game, in its canonical (variant 0) phrasing.
 #[derive(Debug, Clone)]
 pub struct Question {
@@ -78,7 +88,7 @@ pub struct Secondary {
 /// How the model answered the questions of a decision frame.
 #[derive(Debug, Clone, Serialize)]
 pub struct DecisionInfo {
-    /// Model family: `s1` or `s2`.
+    /// Model family: `s1`, `s2` or `iso`.
     pub family: &'static str,
     /// s2: exit that answered the primary question.
     pub exit: Option<usize>,
@@ -105,7 +115,7 @@ impl DecisionInfo {
             .map(|l| l as f32)
             .collect();
         DecisionInfo {
-            family: if s2 { "s2" } else { "s1" },
+            family: family(model.arch()),
             exit: stats.first().and_then(|s| s.exit),
             n_exits: stats.first().map_or(0, |s| s.n_exits),
             layers_used: stats.first().and_then(|s| s.layers_used),
@@ -545,7 +555,7 @@ pub fn bench_game(model: &mut Model, game: &str, n: usize) -> Result<Value, Stri
     Ok(json!({
         "game": s.kind(),
         "name": model.name(),
-        "family": if s2 { "s2" } else { "s1" },
+        "family": family(model.arch()),
         "params": model.n_params(),
         "file_bytes": model.file_bytes(),
         "n": n,

@@ -14,8 +14,10 @@ A decision model does not generate text. It receives a **state** and **typed que
 | s1-pico | s1, f16 | 202,305 | 545 KB | Flappy 200/200 pipes, 0 crashes; Rescue 100%; Dodge 83% (oracle 87%), 1,026 reflex vetoes | 137.6 µs native, 588.6 µs WASM |
 | s2-nano | s2, ternary | 1,532,033 | 702 KB | Flappy 200/200, 0 crashes; Rescue 100%; Dodge 87% (= oracle), 25 reflex vetoes | 273.0 µs native, 409.1 µs WASM |
 | s2-nano-doom | s2, ternary | 1,532,033 | 702 KB | Doom-like: completion 100%, kill rate 0.75 (= oracle), 0 deaths; Flappy 197.6 pipes (2 crashes in 50); Dodge 72% (oracle 78%) | 740 µs native, 1,282 µs WASM (one Doom question) |
+| s5-lite | iso: Ettin-17M fine-tuned, options read in isolation, q8_0 | 17,060,097 | 20.7 MB | not a game model: questions you write, 0.696 on `typed_decisions_test` (oscar-1-17m 0.682) | ~20 ms WASM per 6-option question, state reused across questions |
+| s4-micro (experimental) | s4 = s3 at language scale, 2 blocks × 3 loops, ternary | 5,587,201 | 2.4 MB | not a game model: 0.343 on `typed_decisions_bench`, gate failed | 4,533 µs native, 6.9 ms WASM per uncached decision |
 
-Sources: s3-pico, s1-pico and s2-nano play 30 episodes per game with the default seed 7 (`runs/ship-s3-pico.arena.json`, `runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`); s2-nano-doom plays 50 episodes per game with seed 7 ([`BENCH.md`](BENCH.md), Doom section). Latencies are medians on an Apple M5: native is `sky-bench` per question on a Flappy frame ([`BENCH.md`](BENCH.md), s3 section; Doom: "Inference"), WASM is one Flappy frame, both questions plus the physics step, in the browser module under Node ([`site/public/bench.json`](site/public/bench.json)). s3-pico stops at τ = 0.6, calibrated in closed loop; both s2 files stop at τ = 0.95 (early exit, see below). `runs/` is gitignored: the arena files are written by `sky-arena --json` on your machine.
+Sources: s3-pico, s1-pico and s2-nano play 30 episodes per game with the default seed 7 (`runs/ship-s3-pico.arena.json`, `runs/ship-s1-pico.arena.json`, `runs/ship-s2-nano.arena.json`); s2-nano-doom plays 50 episodes per game with seed 7 ([`BENCH.md`](BENCH.md), Doom section). Latencies are medians on an Apple M5: native is `sky-bench` per question on a Flappy frame ([`BENCH.md`](BENCH.md), s3 section; Doom: "Inference"), WASM is one Flappy frame, both questions plus the physics step, in the browser module under Node ([`site/public/bench.json`](site/public/bench.json)). s3-pico stops at τ = 0.6, calibrated in closed loop; both s2 files stop at τ = 0.95 (early exit, see below). `runs/` is gitignored: the arena files are written by `sky-arena --json` on your machine. s4-micro and s5-lite are measured on held-out decision sets ([`BENCH.md`](BENCH.md), s4 and s5 sections).
 
 For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M parameters, and the others range from 144M to 27B.
 
@@ -46,6 +48,18 @@ Two results took more than one try, and the tutorial tells both stories:
   The same s1 `.gguf` file runs in our engine, in `llama-server` (max probability difference 4.7e-4) and in wllama 3.8.1 (1.1e-4), measured on the s1-pico checkpoint published before the DAgger rounds. Ollama 0.40.3 loads it but rejects the `laya` decision encoding ([`docs/compat.md`](docs/compat.md)).
 - **s2 format** ([`docs/SPEC-S2.md`](docs/SPEC-S2.md)). Same requests and responses, different model: a static stream (question + options) encoded once and cached, a state stream encoded once per frame, options that never attend to each other (permutation-equivariant by construction), one `[NUM]` token per number with continuous value features, early exits with deep supervision, and ternary weights trained with QAT. s2 files run only in the skycmd engine: browser, Node/Deno/Bun, Python, CLI and server.
 - **s3 format** ([`docs/SPEC-S3.md`](docs/SPEC-S3.md)). s2 with one token per `key value` pair (the value is added to the key's embedding), one weight-shared state block applied 4 times with an exit after each pass, and an exit threshold calibrated by playing the games (`scripts/calibrate-exit.sh`). s3 files keep the `skycmd-s2` architecture tag, so they run in the same places as s2 and nowhere else.
+- **s4** ([`BENCH.md`](BENCH.md), s4 section; [chapter 22](https://maxgfr.github.io/skycmd/tutorial/22-s4-generic-decisions)). s3 at language scale, for questions written in free text:
+  - 2 state blocks × 3 loops with exits at 2, 4 and 6, and 4 heads;
+  - d 256, vocabulary 4,096;
+  - state and head budgets of 384 and 128 tokens;
+  - distilled from Qwen3.5-4B in one night (`scripts/night-s4.sh`).
+
+  s4 files keep the `skycmd-s2` tag.
+- **iso format, s5** ([`docs/s5-prereg.md`](docs/s5-prereg.md), [results](https://maxgfr.github.io/skycmd/results/), [chapter 23](https://maxgfr.github.io/skycmd/tutorial/23-s5-lite)). The `skycmd-iso` GGUF on a pretrained encoder (Ettin-17M):
+  - the state is encoded once and reused across questions;
+  - each option is read through its definition only, in isolation and at shared positions.
+
+  Reordering the options or renaming their keys cannot change an answer, by construction, and exact tests check it natively and in WASM. It is fine-tuned in Rust from the laya-typed-decisions teacher's soft labels, and ships in q8_0.
 - **s6 format** ([`docs/SPEC-S6.md`](docs/SPEC-S6.md), code ready, no model trained yet). s3 with Parallax attention: a learned probe corrects softmax attention with the covariance of the values and the keys (arXiv 2605.29157). It is trained with the Muon v2 recipe: Kimi's decoupled decay and AdamW-matched update scale, and a two-stage Newton–Schulz. s6 files keep the `skycmd-s2` tag. Other additions, each optional:
   - exclusive self-attention (`xsa`);
   - SODA weight decay;
@@ -62,7 +76,10 @@ Two results took more than one try, and the tutorial tells both stories:
   - per-type temperature calibration;
   - DAgger rounds on the games;
   - for s2: numeric MLM, deep supervision over the exits and ternary QAT;
-  - for s3: a numeric curriculum, loop dropout and closed-loop exit calibration.
+  - for s3: a numeric curriculum, loop dropout and closed-loop exit calibration;
+  - for s4: distillation of a teacher's soft labels with deep improvement supervision (`--dis`);
+  - for s5: iso fine-tuning of a pretrained encoder (`sky-train s5-train`), with optional coherence losses;
+  - for s6: Muon v2, exit self-distillation, weight EMA and exit thresholds by conformal risk control.
 - **Data.** Most of it comes from Hugging Face:
   - typed-decision sets plus BoolQ, MNLI, ARC, CommonsenseQA and Banking77;
   - SimpleStories, TinyStories and FineWeb for pretraining;
@@ -114,9 +131,13 @@ cargo run --release -p sky-games --bin sky-games-gen -- --game doom --n 100000 -
 CARGO_TARGET_DIR=$PWD/target/s3-arena cargo build --release -p sky-arena
 scripts/train-s3.sh numeric pico && scripts/specialize-s3.sh pico 3 8   # the s3 model (chapter 21)
 scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf s3-pico.gguf   # closed-loop τ
+scripts/night-s4.sh                                        # s4-micro: Qwen3.5-4B teacher, distillation, gate (chapter 22)
+export SKYCMD_STORE=$PWD && cargo xtask s5 list             # s5-lite: every stage of the pre-registered run (chapter 24)
 cargo xtask s6lr && cargo xtask s6ab --adamw-lr-scale 1 --muon-lr-scale 1   # s6: learning-rate pilot, then the ablation
 scripts/train-s6.sh                                        # s6-pico with the adopted changes (docs/s6-prereg.md)
-scripts/train-cast.sh                                      # s6-cast: data, training, export, GIFT-Eval (docs/s6-cast-prereg.md)
+scripts/train-cast.sh data pilot                           # s6-cast: data, then the pre-registered pilots
+scripts/train-cast.sh train export eval                    # s6-cast: training, export, GIFT-Eval (docs/s6-cast-prereg.md)
+scripts/train-secrets.sh data train eval                   # s6-secrets-pico: jev, training, bench vs the rule scanner
 ```
 To use a published model without training anything, see the [Install](https://maxgfr.github.io/skycmd/install/) page.
 The step-by-step guide is the [tutorial](https://maxgfr.github.io/skycmd/tutorial/).
