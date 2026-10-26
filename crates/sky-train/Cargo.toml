@@ -21,6 +21,9 @@ serde_json = "1.0.140"
 anyhow = "1.0.98"
 clap = { version = "4.5.40", features = ["derive"] }
 sky-gguf = { path = "../sky-gguf" }
+# s6-cast: the synthetic generators, normalization, metrics and the CPU forward shared with
+# inference (pure Rust, no MLX).
+sky-infer = { path = "../sky-infer" }
 # SPEC-S3 §7 sequence data and the closed-loop player (public DecisionGame API only).
 sky-games = { path = "../sky-games" }
 rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }

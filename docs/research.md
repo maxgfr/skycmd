@@ -71,6 +71,22 @@ According to its model card, `oscar-1-17m` scores **0.6775** on `LocalLLaMA/type
 - **2609.01404 (DroneCATS)**: small models struggle with termination actions. → `end` and `abort` are explicit actions.
 - **2609.23742**: constrained decoding removes structural JSON errors but not semantic ones. → A coded validator always gets the last word.
 
+## Forecasting (s6-cast, checked 2026-10)
+Zero-shot GIFT-Eval scores are ratios to seasonal naive (nGMASE / nWQL, lower is better), as reported by each paper.
+
+| model | params | nGMASE | nWQL | design |
+|---|---:|---:|---:|---|
+| TinyCast (arXiv 2608.15767, Apache-2.0) | 146K | 0.774 | 0.545 | dilated causal convolutions, FFT period detector, 9 deciles |
+| Reverso-Nano / Reverso (arXiv 2602.17634) | 200K / 2.6M | 0.760 / 0.711 | point only | long convolution + DeltaNet, 4-scale input, attention decoder |
+| TTM-R3 | 1.4M | 0.724 | 0.520 | mixer |
+| FLAIR (training-free) | 0 | 0.838 | 0.587 | — |
+| Timestral-5M (Mistral, modified MIT) | 5.2M | leaderboard | leaderboard | causal patch transformer, decoupled horizon tokens, 21 quantiles, 32K context |
+
+- **Synthetic pretraining is enough for a decent zero-shot forecaster.** Simulation Alone (arXiv 2601.00970) trains on a SARIMA simulator only and beats Chronos-Small on GIFT-Eval's multivariate split. TempoPFN (arXiv 2510.25502) trains on GPs, SDEs and audio synthesis only. → `sky_infer::cast::synth`, with Reverso's generator families (its appendix B) plus SARIMA.
+- **Min-max normalization beats z-score**, and flip averaging `(f(x) − f(−x)) / 2` lowers the error (Reverso, TinyCast). → `prep::Norm`, `ForecastOptions::flip`.
+- **Learned horizon queries over the context**, not masked patches (Timestral's decoupled horizon, Reverso's attention decoder). → `cast_query` + `dec.*`.
+- **Weak baselines inflate claims**: a tuned linear regression beats many deep models (NeurIPS 2025 workshop, "Linear Regression as a Litmus Test"), and benchmark overlap with pretraining corpora inflates zero-shot numbers (TempusBench). → s6-cast reports ratios to seasonal naive on GIFT-Eval and keeps its real data out of the test sets.
+
 ## Datasets used
 Licenses and row counts are in [`DATA_LICENSES.md`](../DATA_LICENSES.md).
 - Typed decisions (Jev / System One format, soft targets kept):

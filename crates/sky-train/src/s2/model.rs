@@ -46,7 +46,7 @@ impl S2Parts {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Init {
+pub(crate) enum Init {
     TruncNormal(f32),
     Uniform(f32),
     Ones,
@@ -95,7 +95,7 @@ pub fn is_hidden_matrix(name: &str) -> bool {
 /// With Parallax (`px_head_dim`, SPEC-S6 §1) `attn_qkv` gains the probe rows `ρ` and the block
 /// an `attn_px_norm` over one head.
 #[allow(clippy::too_many_arguments)]
-fn encoder_specs(
+pub(crate) fn encoder_specs(
     out: &mut Vec<(String, Vec<i32>, Init)>,
     prefix: &str,
     n: usize,
@@ -422,12 +422,12 @@ fn prepare<'a>(p: &'a ParamMap, cfg: &S2Config, qat: bool) -> R<Cow<'a, ParamMap
 
 // ----------------------------------------------------------------------------- forward
 
-fn w<'a>(p: &'a ParamMap, name: &str) -> R<&'a Array> {
+pub(crate) fn w<'a>(p: &'a ParamMap, name: &str) -> R<&'a Array> {
     p.get(name)
         .ok_or_else(|| Exception::custom(format!("missing parameter {name}")))
 }
 
-fn cast_like(a: Array, like: &Array) -> R<Array> {
+pub(crate) fn cast_like(a: Array, like: &Array) -> R<Array> {
     if a.dtype() == like.dtype() {
         Ok(a)
     } else {
@@ -435,7 +435,7 @@ fn cast_like(a: Array, like: &Array) -> R<Array> {
     }
 }
 
-fn linear(x: &Array, weight: &Array, bias: Option<&Array>) -> R<Array> {
+pub(crate) fn linear(x: &Array, weight: &Array, bias: Option<&Array>) -> R<Array> {
     let y = ops::matmul(x, weight.t())?;
     match bias {
         Some(b) => y.add(b),
@@ -452,18 +452,18 @@ fn to_f32(x: Array) -> R<Array> {
 }
 
 /// `[B, T, H * hd]` -> `[B, H, T, hd]`.
-fn heads(x: &Array, h: i32) -> R<Array> {
+pub(crate) fn heads(x: &Array, h: i32) -> R<Array> {
     let (b, t) = (x.dim(0), x.dim(1));
     let hd = x.dim(2) / h;
     x.reshape(&[b, t, h, hd])?.transpose_axes(&[0, 2, 1, 3])
 }
 
-fn merge_heads(x: &Array) -> R<Array> {
+pub(crate) fn merge_heads(x: &Array) -> R<Array> {
     let (b, h, t, hd) = (x.dim(0), x.dim(1), x.dim(2), x.dim(3));
     x.transpose_axes(&[0, 2, 1, 3])?.reshape(&[b, t, h * hd])
 }
 
-fn attend(q: &Array, k: &Array, v: &Array, mask: &Array) -> R<Array> {
+pub(crate) fn attend(q: &Array, k: &Array, v: &Array, mask: &Array) -> R<Array> {
     let hd = q.dim(3);
     fast::scaled_dot_product_attention(q, k, v, 1.0 / (hd as f32).sqrt(), mask, None)
 }
@@ -689,7 +689,7 @@ fn state_exits(
 
 /// [`state_exits`] that also returns, per exit, the raw hidden states after
 /// its block application (before the exit norm): the temporal carry source.
-fn state_run(
+pub(crate) fn state_run(
     p: &ParamMap,
     cfg: &S2Config,
     mut x: Array,

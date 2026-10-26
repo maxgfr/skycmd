@@ -4,6 +4,7 @@
 //! encoder, fusion head, native numbers, ternary weights; see [`s2`]).
 
 pub mod api;
+pub mod cast;
 pub mod convert;
 pub mod engine;
 pub mod iso;
