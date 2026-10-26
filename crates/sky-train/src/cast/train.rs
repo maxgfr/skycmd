@@ -375,22 +375,46 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     } else {
         std::thread::available_parallelism().map_or(4, |n| n.get().saturating_sub(1).max(1))
     };
+    // The teacher's forecasts are cached at fixed cuts of every series (see `data::Cut`): a
+    // function of the series alone, so a resumed run rebuilds the same cache.
+    let cache = match &teacher {
+        Some(t) => {
+            let t0 = Instant::now();
+            let c = data::TeacherCache::build(&cfg, t, &pool, &real, threads)?;
+            println!(
+                "teacher cache: {} cuts ({:.1}s)",
+                c.pool.iter().chain(&c.real).map(Vec::len).sum::<usize>(),
+                t0.elapsed().as_secs_f64()
+            );
+            Some(c)
+        }
+        None => None,
+    };
     // The batches are prepared one or two steps ahead by a producer thread (sampling, and the
-    // teacher's forecasts on the CPU), deterministically in the step.
+    // pool refreshes with their teacher cuts), deterministically in the step.
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<Vec<Window>>>(2);
     // The schedule position, for the producer: past TEACHER_OFF the teacher's weight is under a
-    // tenth of its start and its forecasts are no longer worth their CPU time.
+    // tenth of its start and its windows are no longer worth a share of the batch.
     let progress_now = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0f64.to_bits()));
     let producer = {
         let (cfg, seed, batch, frac, start) =
             (cfg.clone(), a.seed, a.batch, a.teacher_frac, s.state.step);
         let progress_now = progress_now.clone();
+        let mut cache = cache;
         std::thread::spawn(move || {
             let mut step = start;
             loop {
-                pool.advance(step);
+                // the cuts follow the pool even past TEACHER_OFF, so the cache never goes stale
+                if let (Some(slots), Some(t), Some(c)) =
+                    (pool.advance(step), teacher.as_ref(), cache.as_mut())
+                {
+                    if let Err(e) = c.refresh(&cfg, t, &pool, slots, threads) {
+                        let _ = tx.send(Err(e));
+                        break;
+                    }
+                }
                 let at = f64::from_bits(progress_now.load(std::sync::atomic::Ordering::Relaxed));
-                let teach = teacher.as_ref().filter(|_| at < TEACHER_OFF);
+                let teach = cache.as_ref().filter(|_| at < TEACHER_OFF);
                 let w = data::sample_step(
                     &cfg,
                     &pool,
@@ -399,7 +423,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
                     seed,
                     step,
                     batch,
-                    teach.map(|t| (t, frac, threads)),
+                    teach.map(|c| (c, frac)),
                 );
                 if tx.send(w).is_err() {
                     break;
