@@ -17,6 +17,7 @@ pub mod record;
 pub mod rng;
 pub mod s4;
 pub mod s5;
+pub mod series;
 pub mod stats;
 pub mod teacher;
 pub mod text;

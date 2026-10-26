@@ -193,6 +193,10 @@ pub struct CastBatch {
     /// `[B, horizon]` normalized targets (0 where missing) and their mask.
     pub y: Array,
     pub ymask: Array,
+    /// `[B, horizon, Q]` distillation targets (the teacher's normalized quantiles) and their
+    /// `[B, horizon]` step mask (0 without a teacher).
+    pub tq: Array,
+    pub tmask: Array,
     pub rows: usize,
 }
 
@@ -321,10 +325,41 @@ pub fn exit_losses(q: &Array, cfg: &CastConfig, b: &CastBatch) -> R<Array> {
     total.divide(&count)
 }
 
-/// Deep supervision: `Σ_e w_e · pinball(exit e)` with the exit weights `wts` `[E]`.
-pub fn loss(p: &ParamMap, cfg: &CastConfig, b: &CastBatch, qat: bool, wts: &Array) -> R<Array> {
+/// Mean absolute gap to the teacher's quantiles per exit, `[E]`: over the levels and the steps
+/// the teacher covers.
+pub fn distill_losses(q: &Array, cfg: &CastConfig, b: &CastBatch) -> R<Array> {
+    let nq = cfg.quantiles.len() as i32;
+    let t = b.tq.reshape(&[1, b.rows as i32, -1, nq])?;
+    let m = b.tmask.reshape(&[1, b.rows as i32, -1, 1])?;
+    let total = ops::abs(&q.subtract(&t)?)?
+        .multiply(&m)?
+        .sum_axes(&[1, 2, 3], None)?;
+    let count = b
+        .tmask
+        .sum(None)?
+        .multiply(Array::from_f32(nq as f32))?
+        .add(Array::from_f32(1e-6))?;
+    total.divide(&count)
+}
+
+/// Deep supervision: `Σ_e w_e · (pinball(exit e) + distill_w · distill(exit e))` with the exit
+/// weights `wts` `[E]`. The ground truth always stays in the loss (a student fitting the labels
+/// and the teacher can surpass the teacher: arXiv 1805.04770, 2206.08491).
+pub fn loss(
+    p: &ParamMap,
+    cfg: &CastConfig,
+    b: &CastBatch,
+    qat: bool,
+    wts: &Array,
+    distill_w: f32,
+) -> R<Array> {
     let q = forward(p, cfg, b, qat)?;
-    exit_losses(&q, cfg, b)?.multiply(wts)?.sum(None)
+    let mut per_exit = exit_losses(&q, cfg, b)?;
+    if distill_w > 0.0 {
+        per_exit =
+            per_exit.add(distill_losses(&q, cfg, b)?.multiply(Array::from_f32(distill_w))?)?;
+    }
+    per_exit.multiply(wts)?.sum(None)
 }
 
 #[cfg(test)]
@@ -385,6 +420,8 @@ mod tests {
                 valid: Array::from_slice(&[true], &[1, 1]),
                 y: Array::from_slice(&[1.0f32, -1.0], &[1, 2]),
                 ymask: Array::from_slice(&[1.0f32, 1.0], &[1, 2]),
+                tq: Array::from_slice(&[0.5f32, 0.5, 0.5, 0.0, 0.0, 0.0], &[1, 2, 3]),
+                tmask: Array::from_slice(&[1.0f32, 0.0], &[1, 2]),
                 rows: 1,
             };
             let q = ops::zeros::<f32>(&[1, 1, 2, 3]).unwrap();
@@ -399,6 +436,9 @@ mod tests {
             };
             let got = exit_losses(&q, &c, &b2).unwrap().as_slice::<f32>()[0];
             assert!((got - 1.5 / 3.0).abs() < 1e-5, "{got}");
+            // distillation: |0 − 0.5| on the 3 levels of the one step the teacher covers
+            let d = distill_losses(&q, &c, &b2).unwrap().as_slice::<f32>()[0];
+            assert!((d - 0.5).abs() < 1e-5, "{d}");
         });
     }
 }

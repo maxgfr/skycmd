@@ -108,6 +108,19 @@ pub struct TrainArgs {
     pub ns_polish: usize,
     #[arg(long, value_enum, default_value_t = WdMode::Decoupled)]
     pub wd_mode: WdMode,
+    /// Distillation teacher (a TinyCast or s6-cast GGUF): its quantiles become a second target.
+    #[arg(long)]
+    pub teacher: Option<PathBuf>,
+    /// Weight of the distillation term at the start; it decays linearly to 0 over the budget
+    /// (teacher annealing), so the end of training follows the ground truth only.
+    #[arg(long, default_value_t = 0.5)]
+    pub teacher_weight: f32,
+    /// Share of the windows that get the teacher's targets.
+    #[arg(long, default_value_t = 0.5)]
+    pub teacher_frac: f64,
+    /// CPU threads of the teacher (0: all but one).
+    #[arg(long, default_value_t = 0)]
+    pub teacher_threads: usize,
 }
 
 impl TrainArgs {
@@ -340,6 +353,52 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     );
     let val = data::validation(&cfg, a.val_synth, &real_val);
     let opts = a.sample_options();
+    let teacher = match &a.teacher {
+        Some(p) => {
+            let t = data::Teacher::load(p, &cfg)?;
+            println!(
+                "teacher {}: {:.0}% of the windows, weight {} annealed to 0",
+                t.name(),
+                a.teacher_frac * 100.0,
+                a.teacher_weight
+            );
+            Some(t)
+        }
+        None => None,
+    };
+    let threads = if a.teacher_threads > 0 {
+        a.teacher_threads
+    } else {
+        std::thread::available_parallelism().map_or(4, |n| n.get().saturating_sub(1).max(1))
+    };
+    // The batches are prepared one or two steps ahead by a producer thread (sampling, and the
+    // teacher's forecasts on the CPU), deterministically in the step.
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Result<Vec<Window>>>(2);
+    let producer = {
+        let (cfg, seed, batch, frac, start) =
+            (cfg.clone(), a.seed, a.batch, a.teacher_frac, s.state.step);
+        std::thread::spawn(move || {
+            let mut step = start;
+            loop {
+                pool.advance(step);
+                let w = data::sample_step(
+                    &cfg,
+                    &pool,
+                    &real,
+                    &opts,
+                    seed,
+                    step,
+                    batch,
+                    teacher.as_ref().map(|t| (t, frac, threads)),
+                );
+                if tx.send(w).is_err() {
+                    break;
+                }
+                step += 1;
+            }
+        })
+    };
+    let distilling = a.teacher.is_some();
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
     let wts = Array::from_slice(&cfg.exit_weights(), &[cfg.n_exits() as i32]);
     let mut ema: Option<ParamMap> = (a.ema > 0.0).then(|| params::deep_clone(&s.params));
@@ -364,13 +423,17 @@ pub fn train(a: &TrainArgs) -> Result<()> {
             s.save(&a.out.join("pre-qat"))?;
             s.state.qat = true;
         }
-        pool.advance(s.state.step);
-        let windows = data::sample(&cfg, &pool, &real, &opts, &mut s.state.rng, a.batch);
+        let windows = rx.recv().context("the batch producer stopped")??;
         let b = data::batch(&cfg, &windows);
         let lr_scale = wsd(frac) as f32;
         let qat = s.state.qat;
+        let dw = if distilling {
+            a.teacher_weight * (1.0 - frac.clamp(0.0, 1.0) as f32)
+        } else {
+            0.0
+        };
         let (loss, gnorm) = train_step(&mut s.params, &mut s.opt, &b, lr_scale, |p, b| {
-            model::loss(p, &cfg, b, qat, &wts)
+            model::loss(p, &cfg, b, qat, &wts, dw)
         })?;
         s.state.step += 1;
         s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
@@ -419,6 +482,8 @@ pub fn train(a: &TrainArgs) -> Result<()> {
             last_ckpt = Instant::now();
         }
     }
+    drop(rx);
+    producer.join().expect("batch producer");
     s.save(&last)?;
     if let Some(e) = &ema {
         save_ema(&s, e, &ema_dir)?;
@@ -501,6 +566,10 @@ mod tests {
             no_muon: false,
             ns_polish: 2,
             wd_mode: WdMode::Decoupled,
+            teacher: None,
+            teacher_weight: 0.5,
+            teacher_frac: 0.5,
+            teacher_threads: 2,
         };
         train(&args).unwrap();
         let st: CastState = serde_json::from_str(
@@ -526,5 +595,21 @@ mod tests {
         assert!(log.contains("\"final\":true") && log.contains("ema-ternary"));
         assert!(args.out.join("pre-qat/model.safetensors").exists());
         assert!(args.out.join("last-ema/model.safetensors").exists());
+
+        // with TinyCast as the teacher: the producer computes its targets, the run finishes
+        let teacher =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sky-infer/tests/golden/tinycast.gguf");
+        let out = dir.path().join("distill");
+        train(&TrainArgs {
+            out: out.clone(),
+            steps: Some(20),
+            stop_after: None,
+            batch: 8,
+            teacher: Some(teacher),
+            ..args.clone()
+        })
+        .unwrap();
+        let log = std::fs::read_to_string(out.join("log.jsonl")).unwrap();
+        assert!(log.contains("\"final\":true"));
     }
 }

@@ -9,18 +9,22 @@
 //! mapped back with the window's normalization.
 //!
 //! [`synth`] holds the synthetic generators of pretraining and [`prep`] the shared normalization,
-//! patching, seasonal-naive reference and GIFT-Eval metrics.
+//! patching, seasonal-naive reference and GIFT-Eval metrics. [`tinycast`] is a port of TinyCast
+//! (RAWS Labs, Apache-2.0), the reference s6-cast is measured against; [`Forecaster`] loads
+//! either family from a GGUF file behind one API.
 
 pub mod model;
 pub mod prep;
 pub mod synth;
+pub mod tinycast;
 
 use sky_gguf::Gguf;
 
 use crate::s2::S2Config;
 use crate::{Error, Result};
 
-pub use model::{CastModel, Forecast};
+pub use model::{CastModel, Forecast, ForecastOptions};
+pub use tinycast::TinyCastModel;
 
 /// GGUF architecture name of s6-cast files.
 pub const ARCH: &str = "skycmd-cast";
@@ -223,5 +227,78 @@ impl CastConfig {
         };
         cfg.validate()?;
         Ok(cfg)
+    }
+}
+
+/// A forecaster of either family, chosen by the GGUF file's `general.architecture`.
+pub enum Forecaster {
+    Cast(CastModel),
+    TinyCast(TinyCastModel),
+}
+
+impl Forecaster {
+    /// Load an `skycmd-cast` or `skycmd-tinycast` GGUF file.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let g = Gguf::parse(bytes)?;
+        match g.architecture() {
+            Some(ARCH) => Ok(Forecaster::Cast(CastModel::from_gguf(&g)?)),
+            Some(tinycast::ARCH) => Ok(Forecaster::TinyCast(TinyCastModel::from_gguf(&g)?)),
+            other => Err(Error::Format(format!(
+                "not a forecaster file (architecture {other:?})"
+            ))),
+        }
+    }
+
+    /// Quantile forecast of `horizon` steps after `history` (NaN = missing).
+    pub fn forecast(
+        &self,
+        history: &[f32],
+        horizon: usize,
+        opts: ForecastOptions,
+    ) -> Result<Forecast> {
+        match self {
+            Forecaster::Cast(m) => m.forecast(history, horizon, opts),
+            Forecaster::TinyCast(m) => m.forecast(history, horizon, opts),
+        }
+    }
+
+    /// The model's `general.name`.
+    pub fn name(&self) -> &str {
+        match self {
+            Forecaster::Cast(m) => &m.cfg.name,
+            Forecaster::TinyCast(m) => &m.cfg.name,
+        }
+    }
+
+    /// Number of scalars (TinyCast's tied FFNs counted once).
+    pub fn n_params(&mut self) -> usize {
+        match self {
+            Forecaster::Cast(m) => m.n_params(),
+            Forecaster::TinyCast(m) => m.n_params(),
+        }
+    }
+
+    /// Steps forecast by one pass (longer horizons are rolled out).
+    pub fn pass_horizon(&self) -> usize {
+        match self {
+            Forecaster::Cast(m) => m.cfg.horizon(),
+            Forecaster::TinyCast(m) => m.cfg.output_token_len,
+        }
+    }
+
+    /// Quantile levels of the forecasts.
+    pub fn levels(&self) -> &[f32] {
+        match self {
+            Forecaster::Cast(m) => &m.cfg.quantiles,
+            Forecaster::TinyCast(m) => &m.cfg.quantiles,
+        }
+    }
+
+    /// Set up the compute of s6-cast's matrices (see [`crate::TernaryCompute`]); TinyCast is
+    /// f32 only and ignores it.
+    pub fn prepare_compute(&mut self, mode: crate::TernaryCompute) {
+        if let Forecaster::Cast(m) = self {
+            m.prepare_compute(mode);
+        }
     }
 }
