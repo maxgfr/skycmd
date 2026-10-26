@@ -46,7 +46,9 @@ Why this design (`docs/research.md`, forecasting):
 
 - **Data** (`cast::data`). Windows come from a pool of synthetic series (4,096 series of `context + horizon + 1,024` points). Every 50 steps a block of 256 is regenerated in place. The pool at a given step depends only on that step, so a resumed run rebuilds it exactly.
   - Real series can be mixed in (`--series` directories of JSONL `{"id", "values"}`; one in ten held out by id; `--real-frac 0.3`).
-  - Context length is the full context half of the time, otherwise uniform from 4 patches up.
+  - Context length: the full context half of the time, a whole number of patches from 4 up 30 % of the time, and 8–256 points (log-uniform, a partly filled first patch) the other 20 %: GIFT-Eval's short configurations give 13 to 300 points.
+  - Normalization and patching read only the last `context()` points, at training and at inference alike (`prep::prepare`).
+  - Normalized targets (and teacher quantiles) are clamped to [−5, 6]: a nearly flat context followed by a jump would otherwise dominate its batch's gradient.
 - **Generators** (`sky_infer::cast::synth`, deterministic per seed, mixed 0.3 / 0.15 / 0.3 / 0.25):
   - **`gp`**: KernelSynth with Reverso's kernel bank (constant, linear, RBF, rational quadratic, Matérn ν ∈ {0.5, 1.5, 2.5}, and periodic with a period from Reverso's set of 19), length scales 0.1, 1 and 10 of the series.
     - Stationary kernels are sampled with 48 random Fourier features instead of a Cholesky factor (O(n·M), not O(n³)).
@@ -54,15 +56,15 @@ Why this design (`docs/research.md`, forecasting):
   - **`pulse`**: trapezoid trains (spikes or dips) over a baseline, with noise.
   - **`tsi`**: a trend (linear, exponential, polynomial or piecewise), up to three seasonal waves (sine, sawtooth or square), noise (Gaussian, Laplace or Student-t), outliers and level shifts.
   - **`sarima`**: seasonal ARIMA, with stationary AR parts drawn through their partial autocorrelations (Durbin–Levinson), seasonal AR and MA terms, optional differencing and seasonal differencing, and Gaussian or Student-t noise. This is Simulation Alone's simulator family.
-- **Augmentations** (Reverso), each with probability 0.3:
-  - stride-2 or stride-4 downsampling when the segment is long enough;
+- **Augmentations** (Reverso), each with probability 0.3, missing values left missing:
+  - stride-2 or stride-4 downsampling, cut from a segment 2 or 4 times as long when the series has it;
   - amplitude modulation;
   - sign flip and time reversal;
   - censoring at a quantile;
   - mixup with a second series (probability 0.1);
   - 1–5 % missing values in the context (probability 0.1).
 - **Loss.** Pinball over the deciles and the observed target steps, at every exit (deep supervision with s2's `linspace(0.5, 1)` weights).
-- **Distillation** (`--teacher tinycast.gguf`). A share of the windows (`--teacher-frac 0.5`) get the teacher's deciles, computed on the CPU by the batch producer thread. The loss adds `w·L1(student, teacher)` per exit, with `w` decaying linearly from `--teacher-weight 0.5` to 0 over the budget, so the end of training follows the ground truth only. Students that fit both the labels and a teacher can surpass it (arXiv 1805.04770, 2206.08491). The batches depend only on `(seed, step)`, so prefetching and resuming draw the same data.
+- **Distillation** (`--teacher tinycast.gguf`). A share of the windows (`--teacher-frac 0.5`) get the teacher's deciles, computed on the CPU by the batch producer thread. The loss adds `w·L1(student, teacher)` per exit, with `w` decaying linearly from `--teacher-weight 0.5` to 0 over the budget, so the end of training follows the ground truth only. Past 90 % of the budget the producer stops computing teacher targets (the weight is then under a tenth of its start). Students that fit both the labels and a teacher can surpass it (arXiv 1805.04770, 2206.08491). The batches depend only on `(seed, step)`, so prefetching and resuming draw the same data.
 - **Optimizer.** Muon v2 on `blk.*`, and AdamW elsewhere. `patch_proj`, `cast_query`, `loop_embd` and the norms get no weight decay. WSD schedule.
 - **QAT and checkpoints.** Ternary QAT covers the last 20 % (`--qat-frac`), with the encoder blocks, the decoder matrices and `quant_head` ternary, and optional StableQAT. The weight EMA is optional (`--ema`). Checkpoints go to `last/`, `pre-qat/` and `last-ema/`.
 - **Speed.** About 2,000 windows per second for s6-cast-pico at batch 256 on an M5.
@@ -102,12 +104,12 @@ Why this design (`docs/research.md`, forecasting):
 GIFT-Eval with its official protocol, so the numbers are comparable to the leaderboard and to TinyCast's:
 
 1. `scripts/gift-eval.py download` / `export` (uv, Python 3.12): the 97 configurations' test windows, exported locally as f32 contexts (last 16,384 points) with their prediction length and season (371,330 windows, 7 GB; GIFT-Eval is for research use and is never redistributed).
-2. `sky-cast-eval run --model m.gguf --windows data/gift-eval --out <dir> [--flip]`: the nine deciles of every window, on every core. `sky-cast-eval naive` writes the seasonal-naive forecasts.
+2. `sky-cast-eval run --model m.gguf --windows data/gift-eval --out <dir> [--flip]`: the nine deciles of every window, on every core. A window the model cannot read (no observation in its last `context()` points) gets the seasonal naive on every level, and is counted. `sky-cast-eval naive` writes the seasonal-naive forecasts.
 3. `scripts/gift-eval.py score`: the forecasts replayed through gluonts' `evaluate_model` exactly as TinyCast's driver does (`axis=None`, masked invalid labels, the dataset's seasonality), the leaderboard-format CSV, then nGMASE, nWQL and nMSIS: geometric means of each configuration's ratio to the seasonal-naive reference (`eval/gift-eval/seasonal_naive.csv`).
 
 The harness is checked before any s6-cast number is read (`docs/s6-cast-prereg.md` §5): our seasonal naive scores nGMASE 0.99986 over the 97 configurations (the same windows and scale as the leaderboard; its nWQL is 0.888, not 1, because it repeats the point forecast on every decile while the reference is probabilistic), and our TinyCast port must reproduce its published 0.774 / 0.545.
 
-**Exit calibration** (`sky-cast-eval calibrate --model m.gguf --out m-cal.gguf`). On 2,000 synthetic windows unseen in training, it picks the largest `exit_tolerance` whose early-exit median stays within δ = 0.02 (normalized units) of the full-depth median, with the conformal bound `(n·R̂ + 1)/(n + 1) ≤ α` (α = 0.05) on the share of windows that do not. The tolerance is written into the GGUF.
+**Exit calibration** (`sky-cast-eval calibrate --model m.gguf --out m-cal.gguf`). On 2,000 synthetic windows unseen in training, it picks the largest `exit_tolerance` whose early-exit median stays within δ = 0.02 (normalized units) of the full-depth median, with the conformal bound `(n·R̂ + 1)/(n + 1) ≤ α` (α = 0.05) on the share of windows that do not. Tolerances are tested from the smallest and the search stops at the first that fails (fixed-sequence testing: the risk is not monotone in the tolerance). The tolerance is written into the GGUF.
 
 ## 7. Training plan
 `scripts/train-cast.sh [data] [pilot] [train] [export] [eval]` follows `docs/s6-cast-prereg.md`:

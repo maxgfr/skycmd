@@ -147,6 +147,10 @@ impl TrainArgs {
     }
 }
 
+/// Schedule position from which the producer stops computing teacher targets (the annealed
+/// distillation weight is then under a tenth of its start).
+pub const TEACHER_OFF: f64 = 0.9;
+
 /// Progress saved with a checkpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CastState {
@@ -374,13 +378,19 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     // The batches are prepared one or two steps ahead by a producer thread (sampling, and the
     // teacher's forecasts on the CPU), deterministically in the step.
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<Vec<Window>>>(2);
+    // The schedule position, for the producer: past TEACHER_OFF the teacher's weight is under a
+    // tenth of its start and its forecasts are no longer worth their CPU time.
+    let progress_now = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0f64.to_bits()));
     let producer = {
         let (cfg, seed, batch, frac, start) =
             (cfg.clone(), a.seed, a.batch, a.teacher_frac, s.state.step);
+        let progress_now = progress_now.clone();
         std::thread::spawn(move || {
             let mut step = start;
             loop {
                 pool.advance(step);
+                let at = f64::from_bits(progress_now.load(std::sync::atomic::Ordering::Relaxed));
+                let teach = teacher.as_ref().filter(|_| at < TEACHER_OFF);
                 let w = data::sample_step(
                     &cfg,
                     &pool,
@@ -389,7 +399,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
                     seed,
                     step,
                     batch,
-                    teacher.as_ref().map(|t| (t, frac, threads)),
+                    teach.map(|t| (t, frac, threads)),
                 );
                 if tx.send(w).is_err() {
                     break;
@@ -414,6 +424,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     let mut consecutive = 0;
     while keep_going(&progress, stop_at, s.state.step, s.state.elapsed_secs) {
         let frac = progress.frac(s.state.step, s.state.elapsed_secs);
+        progress_now.store(frac.to_bits(), std::sync::atomic::Ordering::Relaxed);
         if !s.state.qat && qat_due(frac, a.qat_frac) {
             println!("step {}: starting ternary QAT", s.state.step);
             let f = validate(&s.params, &cfg, &val, false)?;

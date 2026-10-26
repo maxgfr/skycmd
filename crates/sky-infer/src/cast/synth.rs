@@ -550,27 +550,26 @@ fn std(v: &[f64]) -> f64 {
 
 // ----------------------------------------------------------------------------- augmentations
 
-/// Reverso's augmentations of one series, each with probability `p`: downsampling (stride 2 or
-/// 4, if the series stays at least `min_len` long), amplitude modulation, sign flip, time
-/// reversal and censoring (clipping at a quantile). Mixup needs two series: see [`mixup`].
-pub fn augment(rng: &mut SynthRng, mut y: Vec<f32>, p: f64, min_len: usize) -> Vec<f32> {
-    if rng.coin(p) {
-        let k = if rng.coin(0.5) { 2 } else { 4 };
-        if y.len() / k >= min_len {
-            y = y.iter().step_by(k).copied().collect();
-        }
-    }
-    if rng.coin(p) {
+/// Reverso's augmentations of one series, each with probability `p`: amplitude modulation, sign
+/// flip, time reversal and censoring (clipping at a quantile). Missing values (NaN) stay missing:
+/// the modulation's mean and the censoring's quantile are taken over the observed values, and a
+/// NaN is never clipped into a fake observation. Downsampling changes the length, so the window
+/// cutter applies it ([`downsample`]); mixup needs two series ([`mixup`]).
+pub fn augment(rng: &mut SynthRng, mut y: Vec<f32>, p: f64) -> Vec<f32> {
+    let finite: Vec<f32> = y.iter().copied().filter(|v| v.is_finite()).collect();
+    if rng.coin(p) && !finite.is_empty() {
         let n = y.len().max(1) as f64;
         let (a, f, ph) = (
             rng.range(0.1, 0.5),
             rng.range(0.5, 3.0),
             rng.range(0.0, 2.0 * PI),
         );
-        let mean = y.iter().map(|&v| v as f64).sum::<f64>() / n;
+        let mean = finite.iter().map(|&v| v as f64).sum::<f64>() / finite.len() as f64;
         y.iter_mut().enumerate().for_each(|(t, v)| {
-            let m = 1.0 + a * (2.0 * PI * f * t as f64 / n + ph).sin();
-            *v = (mean + (*v as f64 - mean) * m) as f32;
+            if v.is_finite() {
+                let m = 1.0 + a * (2.0 * PI * f * t as f64 / n + ph).sin();
+                *v = (mean + (*v as f64 - mean) * m) as f32;
+            }
         });
     }
     if rng.coin(p) {
@@ -579,19 +578,29 @@ pub fn augment(rng: &mut SynthRng, mut y: Vec<f32>, p: f64, min_len: usize) -> V
     if rng.coin(p) {
         y.reverse();
     }
-    if rng.coin(p) && y.len() > 4 {
-        let mut s = y.clone();
+    if rng.coin(p) && finite.len() > 4 {
+        let mut s: Vec<f32> = y.iter().copied().filter(|v| v.is_finite()).collect();
         s.sort_by(f32::total_cmp);
         let q = rng.range(0.85, 0.99);
         if rng.coin(0.5) {
             let hi = s[((s.len() - 1) as f64 * q) as usize];
-            y.iter_mut().for_each(|v| *v = v.min(hi));
+            y.iter_mut()
+                .filter(|v| v.is_finite())
+                .for_each(|v| *v = v.min(hi));
         } else {
             let lo = s[((s.len() - 1) as f64 * (1.0 - q)) as usize];
-            y.iter_mut().for_each(|v| *v = v.max(lo));
+            y.iter_mut()
+                .filter(|v| v.is_finite())
+                .for_each(|v| *v = v.max(lo));
         }
     }
     y
+}
+
+/// Every `k`-th point (Reverso's downsampling augmentation: a coarser sampling of the same
+/// process).
+pub fn downsample(y: &[f32], k: usize) -> Vec<f32> {
+    y.iter().step_by(k.max(1)).copied().collect()
 }
 
 /// Convex combination `λ a + (1 − λ) b` of two series scaled to unit range (`λ ~ U(0.2, 0.8)`),
@@ -685,14 +694,24 @@ mod tests {
     }
 
     #[test]
-    fn augmentations_keep_finite_values() {
+    fn augmentations_keep_finite_values_and_missing_ones() {
         let mut rng = SynthRng::new(3);
         for seed in 0..30 {
             let y = series(Kind::Tsi, seed, 512);
-            let a = augment(&mut rng, y.clone(), 1.0, 64);
-            assert!(!a.is_empty() && a.iter().all(|x| x.is_finite()));
+            let a = augment(&mut rng, y.clone(), 1.0);
+            assert!(a.len() == 512 && a.iter().all(|x| x.is_finite()));
             let m = mixup(&mut rng, &y, &a);
             assert!(m.iter().all(|x| (-1e-6..=1.0 + 1e-6).contains(x)));
+            // gaps stay gaps, the observed values stay finite
+            let mut g = y.clone();
+            for i in (0..512).step_by(7) {
+                g[i] = f32::NAN;
+            }
+            let ag = augment(&mut rng, g.clone(), 1.0);
+            let missing_before = g.iter().filter(|v| v.is_nan()).count();
+            assert_eq!(ag.iter().filter(|v| v.is_nan()).count(), missing_before);
+            assert!(ag.iter().filter(|v| !v.is_nan()).all(|v| v.is_finite()));
         }
+        assert_eq!(downsample(&[1.0, 2.0, 3.0, 4.0, 5.0], 2), [1.0, 3.0, 5.0]);
     }
 }

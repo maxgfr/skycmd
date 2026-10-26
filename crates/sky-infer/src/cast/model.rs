@@ -6,7 +6,7 @@
 
 use sky_gguf::Gguf;
 
-use super::prep::{self, Norm};
+use super::prep;
 use super::CastConfig;
 use crate::kernels::{self, Attention, AttnScratch, Rope, SelfAttnScratch};
 use crate::s2::model::{Block, Lin, Ln, Src};
@@ -485,8 +485,7 @@ impl CastModel {
     /// exit run, in the context's units, and the number of exits run.
     fn pass(&self, context: &[f32], full: bool) -> Result<(Vec<f32>, usize)> {
         let c = &self.cfg;
-        let norm = Norm::fit(context);
-        let (vals, mask) = prep::patches(context, norm, c.patch, c.context_patches);
+        let (norm, vals, mask) = prep::prepare(context, c.patch, c.context_patches);
         let outs = self.forward_window(&vals, &mask, full)?;
         let used = outs.len();
         let q = outs.into_iter().last().expect("at least one exit");

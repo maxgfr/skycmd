@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-use sky_infer::cast::prep::{patches, Norm};
+use sky_infer::cast::prep::prepare;
 use sky_infer::cast::{CastModel, Forecast};
 use sky_infer::TernaryCompute;
 
@@ -59,8 +59,7 @@ fn cast_golden() {
             for c in cases {
                 let name = c["name"].as_str().unwrap();
                 let ctx = floats(&c["context"]);
-                let norm = Norm::fit(&ctx);
-                let (vals, mask) = patches(&ctx, norm, m.cfg.patch, m.cfg.context_patches);
+                let (_, vals, mask) = prepare(&ctx, m.cfg.patch, m.cfg.context_patches);
                 let got = m.forward_window(&vals, &mask, true).unwrap();
                 let want = c["quantiles"][format].as_array().unwrap();
                 assert_eq!(got.len(), want.len(), "{format} {name}: exits");
@@ -102,8 +101,7 @@ fn forecast_api() {
         assert!(row.iter().all(|v| v.is_finite()));
     }
     // the first pass equals one window pass, denormalized
-    let norm = Norm::fit(&hist);
-    let (vals, mask) = patches(&hist, norm, m.cfg.patch, m.cfg.context_patches);
+    let (norm, vals, mask) = prepare(&hist, m.cfg.patch, m.cfg.context_patches);
     let last = m.forward_window(&vals, &mask, true).unwrap().pop().unwrap();
     for (a, b) in f.quantiles[..step * 9].iter().zip(&last) {
         assert!((a - norm.invert(*b)).abs() < 1e-3 * norm.scale.max(1.0));

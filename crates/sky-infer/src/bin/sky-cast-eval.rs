@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use sky_gguf::{Gguf, GgufWriter, OwnedValue};
 use sky_infer::cast::model::ForecastOptions;
-use sky_infer::cast::prep::{self, Norm};
+use sky_infer::cast::prep;
 use sky_infer::cast::{synth, CastModel, Forecaster, ARCH, DECILES};
 use sky_infer::TernaryCompute;
 
@@ -137,10 +137,29 @@ fn cmd_run(
     }
     for c in load_configs(windows, only)? {
         let t = std::time::Instant::now();
+        // A window the model cannot read (no observation in the points it reads) gets the
+        // seasonal-naive forecast on every level instead of stopping the run; they are counted.
+        let fallbacks = std::sync::atomic::AtomicUsize::new(0);
         let rows = parallel(c.windows.len(), threads, |i| {
-            let f = m.forecast(&c.windows[i], c.horizon, opts)?;
-            Ok(f.quantiles)
+            match m.forecast(&c.windows[i], c.horizon, opts) {
+                Ok(f) => Ok(f.quantiles),
+                Err(_) => {
+                    fallbacks.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let sn = prep::seasonal_naive(&c.windows[i], c.season, c.horizon);
+                    Ok(sn
+                        .iter()
+                        .flat_map(|&v| std::iter::repeat_n(v, levels))
+                        .collect())
+                }
+            }
         })?;
+        let fallbacks = fallbacks.into_inner();
+        if fallbacks > 0 {
+            println!(
+                "{}: {fallbacks} window(s) forecast by the seasonal naive (unreadable context)",
+                c.stem
+            );
+        }
         let flat: Vec<f32> = rows.concat();
         debug_assert_eq!(flat.len(), c.windows.len() * c.horizon * levels);
         write_quantiles(&out.join(format!("{}.q.bin", c.stem)), &flat)?;
@@ -200,8 +219,7 @@ fn cmd_calibrate(model: &Path, out: &Path, alpha: f64, delta: f32, n: usize) -> 
         let (_, y) = synth::mixed(seed, len);
         let ctx_patches = 4 + (i * 7919) % (c.context_patches.saturating_sub(4) + 1);
         let ctx = &y[len - c.horizon() - ctx_patches * c.patch..len - c.horizon()];
-        let norm = Norm::fit(ctx);
-        let (vals, mask) = prep::patches(ctx, norm, c.patch, c.context_patches);
+        let (_, vals, mask) = prep::prepare(ctx, c.patch, c.context_patches);
         let outs = m.forward_window(&vals, &mask, true)?;
         runs.push(
             outs.iter()
@@ -233,9 +251,13 @@ fn cmd_calibrate(model: &Path, out: &Path, alpha: f64, delta: f32, n: usize) -> 
             "{tau:9.4}  {:10.2}  {risk:.4}  {bound:.4}",
             depth as f64 / n as f64
         );
-        if bound <= alpha {
-            best = tau;
+        // Fixed-sequence testing: tolerances are tried from the smallest; the first one whose
+        // bound exceeds alpha stops the search (risk is not monotone in tau, so keeping a larger
+        // passing tau after a failure would void the guarantee).
+        if bound > alpha {
+            break;
         }
+        best = tau;
     }
     println!("exit_tolerance = {best} ({} exits)", ne);
     let g = Gguf::parse(&bytes)?;
