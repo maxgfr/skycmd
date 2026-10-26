@@ -44,7 +44,7 @@ export interface SkyWeb {
   version(): string
 }
 
-export type Family = 's1' | 's2'
+export type Family = 's1' | 's2' | 'iso'
 
 export interface ModelEntry {
   name: string
@@ -73,13 +73,16 @@ export function gameModels(list: ModelEntry[]): ModelEntry[] {
 
 /** Model family of a manifest entry (from `arch`, else from the name). */
 export function familyOf(entry: Pick<ModelEntry, 'name' | 'arch'>): Family {
-  if (entry.arch) return entry.arch === 'skycmd-s2' ? 's2' : 's1'
+  if (entry.arch === 'skycmd-s2') return 's2'
+  if (entry.arch === 'skycmd-iso') return 'iso'
+  if (entry.arch) return 's1'
   return entry.name.startsWith('s2') ? 's2' : 's1'
 }
 
 export const FAMILY_LABEL: Record<Family, string> = {
   s1: 's1 · ModernBERT encoder + decision head',
   s2: 's2 · cached question, early exit, native numbers',
+  iso: 'iso · options read by definition, state encoded once',
 }
 
 /** How the model answered a decision frame (see `sky_web::session::DecisionInfo`). */
