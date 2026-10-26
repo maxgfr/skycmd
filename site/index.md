@@ -15,6 +15,9 @@ hero:
       text: Live
       link: /live/
     - theme: alt
+      text: Forecast
+      link: /forecast/
+    - theme: alt
       text: Results
       link: /results/
     - theme: alt
@@ -43,6 +46,7 @@ hero:
   <a href="./play/?game=dodge">Obstacle Dodge</a>
   <a href="./play/?game=doom">Doom-like</a>
   <a href="./live/">Live: ask s5-lite anything</a>
+  <a href="./forecast/">Forecast: TinyCast and Timestral-5M in the browser</a>
   <a href="./results/">s5 results, failures included</a>
   <a href="https://huggingface.co/maxgfr">Models on Hugging Face</a>
   <a href="./install/">Install</a>

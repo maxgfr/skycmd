@@ -42,6 +42,13 @@ Every model is also on Hugging Face with its model card and a demo Space that ru
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
+The [Forecast](/forecast/) page runs two reference forecasters, which are not ours and keep their own licenses:
+
+| model | runs in | file | license |
+|---|---|---|---|
+| TinyCast (146K params, ported to Rust) | skycmd engine (`Forecaster`) | [tinycast.gguf](https://maxgfr.github.io/skycmd/models/ref/tinycast.gguf) (582 KB) | Apache-2.0 ([notice](https://maxgfr.github.io/skycmd/models/ref/TINYCAST-NOTICE.txt)) |
+| Timestral-5M (Mistral AI, exported to ONNX) | onnxruntime-web | [timestral-5m.onnx](https://maxgfr.github.io/skycmd/models/ref/timestral-5m.onnx) (22.4 MB) | Modified MIT ([license](https://maxgfr.github.io/skycmd/models/ref/TIMESTRAL-LICENSE.txt)) |
+
 s3-pico plays the four games of the [Play](/play/) page at the oracle's level
 ([chapter 21](/tutorial/21-s3-recursive-tiny)).
 
