@@ -65,6 +65,17 @@ pub fn patches(
     (vals, mask)
 }
 
+/// The model input of a context and its normalization, both taken from the last
+/// `patch · n_patches` points only: the points the model reads. Normalizing on a longer history
+/// would map them to a narrower range than training ever shows (a trending series whose last
+/// 2048 points lie in [80, 100] of a [0, 100] history becomes [0.8, 1] instead of [0, 1]).
+pub fn prepare(context: &[f32], patch: usize, n_patches: usize) -> (Norm, Vec<f32>, Vec<f32>) {
+    let tail = &context[context.len().saturating_sub(patch * n_patches)..];
+    let norm = Norm::fit(tail);
+    let (vals, mask) = patches(tail, norm, patch, n_patches);
+    (norm, vals, mask)
+}
+
 /// Per patch: whether it holds at least one observation (attention keys of empty patches are
 /// masked).
 pub fn patch_valid(mask: &[f32], patch: usize) -> Vec<bool> {
@@ -262,6 +273,22 @@ mod tests {
             2,
         );
         assert_eq!((v, m), (vec![6., 7., 8., 9.], vec![1.; 4]));
+    }
+
+    #[test]
+    fn prepare_normalizes_on_the_points_read() {
+        // [0, 99] history, the model reads the last 8 points: [92, 99] maps to [0, 1]
+        let h: Vec<f32> = (0..100).map(|t| t as f32).collect();
+        let (n, v, m) = prepare(&h, 4, 2);
+        assert_eq!(
+            n,
+            Norm {
+                lo: 92.0,
+                scale: 7.0
+            }
+        );
+        assert_eq!((v[0], v[7]), (0.0, 1.0));
+        assert_eq!(m, vec![1.0; 8]);
     }
 
     #[test]

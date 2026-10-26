@@ -33,11 +33,16 @@ pub struct Window {
     pub tmask: Vec<f32>,
 }
 
+/// Bounds of the normalized targets. A context with almost no range (a flat start followed by a
+/// jump) would put targets at 1e3 or more and one window would dominate the clipped gradient of
+/// its batch; TinyCast clamps its outputs the same way.
+pub const TARGET_MIN: f32 = -5.0;
+pub const TARGET_MAX: f32 = 6.0;
+
 /// Prepares `context` (its last `context()` points) and `target` (its first `horizon()`). `None`
 /// when the context has no observation.
 pub fn window(cfg: &CastConfig, context: &[f32], target: &[f32]) -> Option<Window> {
-    let norm = Norm::fit(context);
-    let (vals, mask) = prep::patches(context, norm, cfg.patch, cfg.context_patches);
+    let (norm, vals, mask) = prep::prepare(context, cfg.patch, cfg.context_patches);
     let observed = prep::patch_valid(&mask, cfg.patch);
     let j0 = observed.iter().position(|&v| v)?;
     let valid = (0..cfg.context_patches).map(|j| j >= j0).collect();
@@ -46,7 +51,7 @@ pub fn window(cfg: &CastConfig, context: &[f32], target: &[f32]) -> Option<Windo
     let mut ymask = vec![0.0; h];
     for (i, &v) in target.iter().take(h).enumerate() {
         if v.is_finite() {
-            y[i] = norm.apply(v);
+            y[i] = norm.apply(v).clamp(TARGET_MIN, TARGET_MAX);
             ymask[i] = 1.0;
         }
     }
@@ -127,7 +132,10 @@ impl Teacher {
         let q = cfg.quantiles.len();
         for t in 0..h {
             for k in 0..q {
-                w.tq[t * q + k] = w.norm.apply(f.quantiles[t * q + k]);
+                w.tq[t * q + k] = w
+                    .norm
+                    .apply(f.quantiles[t * q + k])
+                    .clamp(TARGET_MIN, TARGET_MAX);
             }
             w.tmask[t] = 1.0;
         }
@@ -229,7 +237,23 @@ pub fn load_series(dirs: &[PathBuf]) -> Result<Vec<Series>> {
 
 /// Held-out real series: one in ten, by id.
 pub fn is_val(id: &str) -> bool {
-    hash_str(id).is_multiple_of(10)
+    hash_str(&val_group(id)).is_multiple_of(10)
+}
+
+/// The group a series is held out with: its source (without the sampling rate) and its first
+/// id, so the hourly and daily series of one wind farm, the variables of one weather station or
+/// of one game episode, stay on the same side of the split.
+pub fn val_group(id: &str) -> String {
+    let mut parts = id.split(':');
+    let source = parts.next().unwrap_or_default();
+    let source = ["_hourly", "_daily", "_weekly", "_monthly"]
+        .iter()
+        .find_map(|s| source.strip_suffix(s))
+        .unwrap_or(source);
+    match parts.next() {
+        Some(first) => format!("{source}:{first}"),
+        None => source.to_string(),
+    }
 }
 
 /// `n` synthetic series of `len` points from `seeds`, generated on every core.
@@ -357,15 +381,26 @@ impl Default for SampleOptions {
 
 /// Context length of a window, in points: a whole number of patches from 4 to the maximum, more
 /// often long than short.
+/// Context lengths, in points: the full context half of the time, a whole number of patches
+/// from 4 up 30 % of the time, and 8–256 points (log-uniform, any length, so a partly filled
+/// first patch) the other 20 % — GIFT-Eval's short configurations (yearly or quarterly M4, car
+/// parts, hospital) give the model 13 to 300 points.
+const SHORT_SHARE: f64 = 0.2;
+const SHORT_MIN: usize = 8;
+const SHORT_MAX: usize = 256;
+
 fn context_len(cfg: &CastConfig, rng: &mut Rng) -> usize {
     let c = cfg.context_patches;
-    let lo = 4.min(c);
-    let k = if rng.f64() < 0.5 {
-        c
-    } else {
-        lo + rng.below(c - lo + 1)
-    };
-    k * cfg.patch
+    let r = rng.f64();
+    if r < SHORT_SHARE {
+        let (lo, hi) = (SHORT_MIN as f64, SHORT_MAX.min(cfg.context()) as f64);
+        return (lo * (hi / lo).powf(rng.f64())).round() as usize;
+    }
+    if r < 0.5 {
+        let lo = 4.min(c);
+        return (lo + rng.below(c - lo + 1)) * cfg.patch;
+    }
+    cfg.context()
 }
 
 /// A window from `series` (`need` points or more), with the augmentations.
@@ -379,13 +414,25 @@ fn cut(
 ) -> Option<Window> {
     let h = cfg.horizon();
     let ctx = ctx.min(series.len().checked_sub(h)?);
-    if ctx < 2 * cfg.patch {
+    if ctx < SHORT_MIN {
         return None;
     }
     let need = ctx + h;
-    let start = srng.below(series.len() - need + 1);
-    let mut seg = series[start..start + need].to_vec();
-    seg = synth::augment(srng, seg, o.augment, need);
+    // downsampling: cut k times as many points and keep every k-th, when the series has them
+    let k = if srng.coin(o.augment) {
+        [2, 4]
+            .into_iter()
+            .rev()
+            .find(|&k| series.len() >= need * k && srng.coin(0.5))
+            .unwrap_or(1)
+    } else {
+        1
+    };
+    let span = need * k;
+    let start = srng.below(series.len() - span + 1);
+    let mut seg = synth::downsample(&series[start..start + span], k);
+    seg.truncate(need);
+    seg = synth::augment(srng, seg, o.augment);
     if let Some(m) = mix {
         if m.len() >= need && srng.coin(o.mixup) {
             let s = srng.below(m.len() - need + 1);
@@ -465,14 +512,19 @@ pub fn validation(cfg: &CastConfig, n_synth: usize, real_val: &[Series]) -> Vec<
     let len = cfg.context() + cfg.horizon();
     for i in 0..n_synth {
         let (_, y) = synth::mixed(hash_str(&format!("val:{i}")), len);
-        let ctx_patches = 4 + (i * 7919) % (cfg.context_patches.saturating_sub(4) + 1);
-        let ctx = (ctx_patches * cfg.patch).min(cfg.context());
+        // one in five short (8–256 points, any length), as in training
+        let ctx = if i % 5 == 0 {
+            SHORT_MIN + (i * 7919) % (SHORT_MAX.min(cfg.context()) - SHORT_MIN + 1)
+        } else {
+            let ctx_patches = 4 + (i * 7919) % (cfg.context_patches.saturating_sub(4) + 1);
+            (ctx_patches * cfg.patch).min(cfg.context())
+        };
         let (c, t) = y[len - cfg.horizon() - ctx..].split_at(ctx);
         out.extend(window(cfg, c, t));
     }
     for s in real_val {
         let n = s.values.len();
-        if n < cfg.horizon() + 2 * cfg.patch {
+        if n < cfg.horizon() + SHORT_MIN {
             continue;
         }
         let (c, t) = s.values.split_at(n - cfg.horizon());
@@ -673,6 +725,49 @@ mod tests {
         let mut fresh = vec![window(&c, &ctx, &[]).unwrap()];
         distill(&c, &t, &mut fresh, &[false], 2).unwrap();
         assert!(fresh[0].tmask.iter().all(|&m| m == 0.0));
+    }
+
+    #[test]
+    fn validation_groups_and_bounded_targets() {
+        // the hourly and daily series of one farm, the variables of one station, one episode
+        assert_eq!(
+            val_group("wind_farms_hourly:T1"),
+            val_group("wind_farms_daily:T1")
+        );
+        assert_eq!(
+            val_group("ushcn_daily:T9:TMAX"),
+            val_group("ushcn_daily:T9:PRCP")
+        );
+        assert_eq!(val_group("flappy:3:vy"), val_group("flappy:3:alt"));
+        assert_ne!(val_group("flappy:3:vy"), val_group("flappy:4:vy"));
+        assert_eq!(
+            is_val("wind_farms_hourly:T1"),
+            is_val("wind_farms_daily:T1")
+        );
+        // a flat context then a jump: the targets are clamped, not 1e6
+        let c = cfg();
+        let w = window(&c, &[1.0; 40], &[1e6; 16]).unwrap();
+        assert!(w.y.iter().all(|&v| v == TARGET_MAX));
+    }
+
+    #[test]
+    fn short_contexts_are_sampled() {
+        let c = cfg();
+        let pool = Pool::new(2, 16, c.context() + c.horizon() + 64, 4, 50);
+        let ws = sample(
+            &c,
+            &pool,
+            &[],
+            &SampleOptions::default(),
+            &mut Rng::new(5),
+            400,
+        );
+        let observed = |w: &Window| w.mask.iter().filter(|&&m| m > 0.0).count();
+        // some windows read fewer than 4 patches (8–31 points), so their first patch is partial
+        let short = ws.iter().filter(|w| observed(w) < 4 * c.patch).count();
+        assert!(short > 20, "{short} short windows of 400");
+        // and every window still holds at least SHORT_MIN observed points
+        assert!(ws.iter().all(|w| observed(w) >= SHORT_MIN.min(8) / 2));
     }
 
     #[test]

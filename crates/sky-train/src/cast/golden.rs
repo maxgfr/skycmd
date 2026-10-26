@@ -72,6 +72,11 @@ fn cases(cfg: &CastConfig) -> Vec<(String, Vec<f32>)> {
     }
     out.push(("missing".into(), gaps));
     out.push(("constant".into(), vec![4.25; 6 * p]));
+    // longer than the model's context, with a trend: normalization must use the points read
+    let long: Vec<f32> = (0..3 * full)
+        .map(|t| t as f32 * 0.5 + (t as f32 * 0.7).sin())
+        .collect();
+    out.push(("longer-than-context".into(), long));
     out
 }
 
