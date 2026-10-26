@@ -44,12 +44,20 @@
 - **Validation du banc, avant toute lecture de s6-cast.**
   - Notre seasonal naive (prévision ponctuelle recopiée sur tous les déciles) doit donner nGMASE à 1,00 ± 0,02. Son nWQL n'est pas 1 : la référence du leaderboard est probabiliste. Le WQL est donc validé par TinyCast, ci-dessous.
   - Notre TinyCast porté (avec retournement, comme leur soumission) doit retrouver 0,774 et 0,545 à ± 0,02 près.
+  - **Résultat (26/10/2026) : banc validé.** Seasonal naive : nGMASE 0,99986. TinyCast porté : nGMASE 0,786, nWQL 0,557 (nMSIS 0,578), sur les 97 configurations.
+    - 95 configurations retrouvent le MASE publié à 1 % près (rapport géométrique 1,015 sur les 97).
+    - L'écart vient de `bizitobs_l2c/5T` medium et long (MASE 0,85 et 1,25 contre 0,49 et 0,48). Pour ce seul jeu, le pilote de TinyCast (`tinycast/eval.py`) active deux réglages qui ne sont pas dans son prédicteur générique :
+      - `no_daily`, choisi d'après le nom du jeu ;
+      - un sous-échantillonnage d'alignement de période (k = 7), qui ne se déclenche que là.
+    - Notre portage est le prédicteur générique. Le banc applique le même protocole à tous les modèles, sans réglage par jeu.
   - Si l'une de ces vérifications échoue, s6-cast n'est pas lu : on corrige d'abord le banc.
 - **Modèle rapporté.** s6-cast avec et sans retournement. Le modèle rapporté est **sans** retournement : c'est le mode de la page web, et le retournement double le coût.
 
 ## 6. Objectif et porte de publication
 
 **Objectif : battre TinyCast sur les deux métriques**, sans retournement : **nGMASE < 0,774 et nWQL < 0,545**. Le rapport dit, sans ambiguïté, si l'objectif est atteint.
+
+La barre reste celle publiée, réglages par jeu compris : c'est la plus exigeante. Le rapport donne aussi l'écart au TinyCast générique de notre banc (0,786 / 0,557, avec retournement).
 
 s6-cast est publié (site, manifeste, Hugging Face) si, sans retournement, il bat la référence sans entraînement FLAIR sur les deux métriques :
 
@@ -65,5 +73,12 @@ Si la porte n'est pas franchie, le modèle n'est pas publié, et le rapport le d
 1. **26/10/2026**, avant tout entraînement :
    - ajout de l'objectif « battre TinyCast » et de la distillation par TinyCast (§2, §3, §6), à la demande du propriétaire du projet ;
    - le contrôle du seasonal naive porte sur nGMASE seul (§5).
+
+   Aucun score de s6-cast n'existait.
+
+2. **26/10/2026**, avant tout entraînement :
+   - résultat de la validation du banc et origine de l'écart sur `bizitobs_l2c` (§5) ;
+   - la barre de l'objectif reste 0,774 / 0,545 (§6) ;
+   - les cibles du professeur sont calculées sur des points de coupe fixes de chaque série (deux par série), et non plus à chaque lot. C'est un changement de débit : 730 fenêtres/s sinon, contre environ 2 000. La part distillée (50 %) et le poids (0,5 → 0) ne changent pas.
 
    Aucun score de s6-cast n'existait.

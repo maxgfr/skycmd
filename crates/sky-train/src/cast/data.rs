@@ -115,75 +115,156 @@ impl Teacher {
         self.model.name()
     }
 
-    /// Fills `w.tq` / `w.tmask` with the teacher's forecast of the window's context (its raw
-    /// values, from the first observation on), normalized like the window, over the teacher's
-    /// one-pass horizon at most.
-    pub fn fill(&self, cfg: &CastConfig, w: &mut Window) -> Result<()> {
-        let Some(first) = w.mask.iter().position(|&m| m > 0.0) else {
-            return Ok(());
+    /// The teacher's raw-unit quantiles of the `h` steps after `context`.
+    fn raw(&self, context: &[f32], h: usize) -> Result<Vec<f32>> {
+        Ok(self
+            .model
+            .forecast(context, h, Default::default())?
+            .quantiles)
+    }
+
+    /// The cached cuts of series `y` (see [`Cut`]), deterministic in `y`'s content and `index`.
+    pub fn cuts(&self, cfg: &CastConfig, y: &[f32], index: usize) -> Result<Vec<Cut>> {
+        let h = cfg.horizon();
+        let Some(room) = y.len().checked_sub(h) else {
+            return Ok(Vec::new());
         };
-        let raw: Vec<f32> = w.vals[first..]
-            .iter()
-            .zip(&w.mask[first..])
-            .map(|(&v, &m)| if m > 0.0 { w.norm.invert(v) } else { f32::NAN })
-            .collect();
-        let h = cfg.horizon().min(self.model.pass_horizon());
-        let f = self.model.forecast(&raw, h, Default::default())?;
-        let q = cfg.quantiles.len();
-        for t in 0..h {
-            for k in 0..q {
-                w.tq[t * q + k] = w
-                    .norm
-                    .apply(f.quantiles[t * q + k])
-                    .clamp(TARGET_MIN, TARGET_MAX);
-            }
-            w.tmask[t] = 1.0;
+        let ctx = cfg.context().min(room);
+        if ctx < SHORT_MIN {
+            return Ok(Vec::new());
         }
-        Ok(())
+        let steps = h.min(self.model.pass_horizon());
+        let mut rng = Rng::new(hash_str(&format!(
+            "cut:{index}:{}:{:x}",
+            y.len(),
+            y.first().map_or(0, |v| v.to_bits())
+        )));
+        let mut out = Vec::with_capacity(CUTS_PER_SERIES);
+        for _ in 0..CUTS_PER_SERIES {
+            let at = ctx + rng.below(room - ctx + 1);
+            let context = &y[at - ctx..at];
+            if !context.iter().any(|v| v.is_finite()) {
+                continue;
+            }
+            out.push(Cut {
+                at,
+                ctx,
+                steps,
+                q: self.raw(context, steps)?,
+            });
+        }
+        Ok(out)
     }
 }
 
-/// Teacher targets for the windows `chosen[i]` marks, computed on `threads` cores.
-pub fn distill(
+/// Teacher cuts per series: a window can only be distilled where the teacher was asked, so the
+/// teacher forecasts each series at [`CUTS_PER_SERIES`] fixed points once (when the series enters
+/// the pool) instead of on every batch. Computing TinyCast on 128 windows a step held the
+/// producer at ~730 windows/s on an M5 instead of ~2,100; cached, a pool refresh costs the
+/// teacher 512 forecasts every 50 steps.
+pub const CUTS_PER_SERIES: usize = 2;
+
+/// A cached teacher forecast: the window `y[at - ctx .. at]` -> `y[at ..]`, and the teacher's
+/// raw quantiles of its first `steps` steps (`[steps][levels]`).
+#[derive(Clone, Debug)]
+pub struct Cut {
+    pub at: usize,
+    pub ctx: usize,
+    pub steps: usize,
+    pub q: Vec<f32>,
+}
+
+/// The teacher cuts of the synthetic pool and of the training real series.
+pub struct TeacherCache {
+    pub pool: Vec<Vec<Cut>>,
+    pub real: Vec<Vec<Cut>>,
+}
+
+/// `cuts` of every series in `series` (indices `first..`), on `threads` cores.
+fn cuts_of(
     cfg: &CastConfig,
     teacher: &Teacher,
-    windows: &mut [Window],
-    chosen: &[bool],
+    series: &[&[f32]],
+    first: usize,
     threads: usize,
-) -> Result<()> {
-    let idx: Vec<usize> = (0..windows.len()).filter(|&i| chosen[i]).collect();
-    if idx.is_empty() {
-        return Ok(());
-    }
-    let per = idx.len().div_ceil(threads.max(1)).max(1);
-    // each worker takes disjoint windows: split the slice by index ownership
-    let mut slots: Vec<Option<&mut Window>> = windows.iter_mut().map(Some).collect();
-    let mut jobs: Vec<Vec<&mut Window>> = Vec::new();
-    for chunk in idx.chunks(per) {
-        jobs.push(
-            chunk
-                .iter()
-                .map(|&i| slots[i].take().expect("unique index"))
-                .collect(),
-        );
-    }
-    std::thread::scope(|s| -> Result<()> {
-        let handles: Vec<_> = jobs
-            .into_iter()
-            .map(|job| {
-                s.spawn(move || -> Result<()> {
-                    for w in job {
-                        teacher.fill(cfg, w)?;
-                    }
-                    Ok(())
+) -> Result<Vec<Vec<Cut>>> {
+    let per = series.len().div_ceil(threads.max(1)).max(1);
+    std::thread::scope(|s| -> Result<Vec<Vec<Cut>>> {
+        let handles: Vec<_> = series
+            .chunks(per)
+            .enumerate()
+            .map(|(c, chunk)| {
+                s.spawn(move || -> Result<Vec<Vec<Cut>>> {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .map(|(j, y)| teacher.cuts(cfg, y, first + c * per + j))
+                        .collect()
                 })
             })
             .collect();
+        let mut out = Vec::with_capacity(series.len());
         for h in handles {
-            h.join().expect("teacher worker")?;
+            out.extend(h.join().expect("teacher worker")?);
+        }
+        Ok(out)
+    })
+}
+
+impl TeacherCache {
+    pub fn build(
+        cfg: &CastConfig,
+        teacher: &Teacher,
+        pool: &Pool,
+        real: &[Series],
+        threads: usize,
+    ) -> Result<Self> {
+        let p: Vec<&[f32]> = pool.series.iter().map(Vec::as_slice).collect();
+        let r: Vec<&[f32]> = real.iter().map(|s| s.values.as_slice()).collect();
+        Ok(TeacherCache {
+            pool: cuts_of(cfg, teacher, &p, 0, threads)?,
+            real: cuts_of(cfg, teacher, &r, p.len(), threads)?,
+        })
+    }
+
+    /// Recomputes the cuts of the pool slots `slots` (after a refresh).
+    pub fn refresh(
+        &mut self,
+        cfg: &CastConfig,
+        teacher: &Teacher,
+        pool: &Pool,
+        slots: std::ops::Range<usize>,
+        threads: usize,
+    ) -> Result<()> {
+        let p: Vec<&[f32]> = pool.series[slots.clone()]
+            .iter()
+            .map(Vec::as_slice)
+            .collect();
+        let fresh = cuts_of(cfg, teacher, &p, slots.start, threads)?;
+        for (i, c) in slots.zip(fresh) {
+            self.pool[i] = c;
         }
         Ok(())
-    })
+    }
+
+    /// The distilled window of a cut of `y`: the full cut context, no augmentation (the teacher
+    /// read the series as it is), the teacher's quantiles normalized like the window.
+    pub fn window(cfg: &CastConfig, y: &[f32], c: &Cut) -> Option<Window> {
+        let h = cfg.horizon();
+        let mut w = window(
+            cfg,
+            &y[c.at - c.ctx..c.at],
+            &y[c.at..(c.at + h).min(y.len())],
+        )?;
+        let q = cfg.quantiles.len();
+        for t in 0..c.steps {
+            for k in 0..q {
+                w.tq[t * q + k] = w.norm.apply(c.q[t * q + k]).clamp(TARGET_MIN, TARGET_MAX);
+            }
+            w.tmask[t] = 1.0;
+        }
+        Some(w)
+    }
 }
 
 /// A real series (`{"id": ..., "values": [number | null, ...]}` per JSONL line; `null` is
@@ -336,10 +417,10 @@ impl Pool {
         self.series = generate(&self.seeds_at(step), self.len);
     }
 
-    /// Regenerates the block due at `step`, if any. Returns whether it did.
-    pub fn advance(&mut self, step: u64) -> bool {
+    /// Regenerates the block due at `step`, if any, and returns its slots.
+    pub fn advance(&mut self, step: u64) -> Option<std::ops::Range<usize>> {
         if step == 0 || !step.is_multiple_of(self.refresh_every) {
-            return false;
+            return None;
         }
         let blocks = (self.size / self.refresh) as u64;
         let g = step / self.refresh_every;
@@ -351,7 +432,7 @@ impl Pool {
         for (k, s) in fresh.into_iter().enumerate() {
             self.series[o * self.refresh + k] = s;
         }
-        true
+        Some(o * self.refresh..(o + 1) * self.refresh)
     }
 }
 
@@ -464,13 +545,31 @@ pub fn sample_step(
     seed: u64,
     step: u64,
     n: usize,
-    teacher: Option<(&Teacher, f64, usize)>,
+    teacher: Option<(&TeacherCache, f64)>,
 ) -> Result<Vec<Window>> {
     let mut rng = Rng::new(hash_str(&format!("cast-step:{seed}:{step}")));
     let mut windows = sample(cfg, pool, real, o, &mut rng, n);
-    if let Some((t, frac, threads)) = teacher {
-        let chosen: Vec<bool> = (0..windows.len()).map(|_| rng.f64() < frac).collect();
-        distill(cfg, t, &mut windows, &chosen, threads)?;
+    if let Some((cache, frac)) = teacher {
+        // a share `frac` of the windows is replaced by distilled windows from the teacher cuts
+        for w in windows.iter_mut() {
+            if rng.f64() >= frac {
+                continue;
+            }
+            let from_real = !cache.real.is_empty() && rng.f64() < o.real_frac;
+            let (cuts, y): (&[Cut], &[f32]) = if from_real {
+                let i = rng.below(cache.real.len());
+                (&cache.real[i], &real[i].values)
+            } else {
+                let i = rng.below(cache.pool.len());
+                (&cache.pool[i], &pool.series[i])
+            };
+            if cuts.is_empty() {
+                continue;
+            }
+            if let Some(d) = TeacherCache::window(cfg, y, &cuts[rng.below(cuts.len())]) {
+                *w = d;
+            }
+        }
     }
     Ok(windows)
 }
@@ -697,14 +796,17 @@ mod tests {
     }
 
     #[test]
-    fn teacher_targets_from_tinycast() {
+    fn teacher_cuts_from_tinycast() {
         let c = cfg();
         let path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../sky-infer/tests/golden/tinycast.gguf");
         let t = Teacher::load(&path, &c).unwrap();
-        let ctx: Vec<f32> = (0..300).map(|i| 10.0 + (i as f32 * 0.3).sin()).collect();
-        let mut w = window(&c, &ctx, &[]).unwrap();
-        t.fill(&c, &mut w).unwrap();
+        let y: Vec<f32> = (0..600).map(|i| 10.0 + (i as f32 * 0.3).sin()).collect();
+        let cuts = t.cuts(&c, &y, 0).unwrap();
+        assert_eq!(cuts.len(), CUTS_PER_SERIES);
+        // deterministic in the content
+        assert_eq!(t.cuts(&c, &y, 0).unwrap()[0].at, cuts[0].at);
+        let w = TeacherCache::window(&c, &y, &cuts[0]).unwrap();
         // femto forecasts 16 steps, within TinyCast's 48-step pass: every step is covered
         assert!(w.tmask.iter().all(|&m| m == 1.0));
         let q = c.quantiles.len();
@@ -718,13 +820,24 @@ mod tests {
             .skip(q / 2)
             .step_by(q)
             .all(|&v| (-0.5..1.5).contains(&v)));
-        // targets are computed for the chosen windows only
-        let mut ws = vec![w.clone(), window(&c, &ctx, &[]).unwrap()];
-        distill(&c, &t, &mut ws, &[false, true], 2).unwrap();
-        assert!(ws[0].tmask.iter().all(|&m| m == 1.0) && ws[1].tmask[0] == 1.0);
-        let mut fresh = vec![window(&c, &ctx, &[]).unwrap()];
-        distill(&c, &t, &mut fresh, &[false], 2).unwrap();
-        assert!(fresh[0].tmask.iter().all(|&m| m == 0.0));
+        // too short a series has no cut
+        assert!(t.cuts(&c, &y[..10], 1).unwrap().is_empty());
+        // a distilled share of the step's windows comes from the cache
+        let pool = Pool::new(3, 8, c.context() + c.horizon() + 64, 2, 50);
+        let cache = TeacherCache::build(&c, &t, &pool, &[], 2).unwrap();
+        let ws = sample_step(
+            &c,
+            &pool,
+            &[],
+            &SampleOptions::default(),
+            1,
+            0,
+            40,
+            Some((&cache, 0.5)),
+        )
+        .unwrap();
+        let distilled = ws.iter().filter(|w| w.tmask[0] == 1.0).count();
+        assert!((5..=35).contains(&distilled), "{distilled} of 40");
     }
 
     #[test]
@@ -796,9 +909,9 @@ mod tests {
     fn pool_refresh_is_a_function_of_the_step() {
         let mut a = Pool::new(5, 8, 64, 2, 10);
         let start = a.series.clone();
-        for step in 1..=70 {
-            a.advance(step);
-        }
+        // the refreshed slots, for the teacher cache: block g % 4 at generation g
+        let slots: Vec<_> = (1..=70).filter_map(|step| a.advance(step)).collect();
+        assert_eq!(slots, [0..2, 2..4, 4..6, 6..8, 0..2, 2..4, 4..6]);
         assert_ne!(a.series, start);
         let mut b = Pool::new(5, 8, 64, 2, 10);
         b.rebuild(70);
