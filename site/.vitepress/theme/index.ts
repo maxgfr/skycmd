@@ -10,6 +10,7 @@ import LiveDecide from './components/LiveDecide.vue'
 import LiveProof from './components/LiveProof.vue'
 import LiveCascade from './components/LiveCascade.vue'
 import S5Results from './components/S5Results.vue'
+import ForecastView from './components/ForecastView.vue'
 import './custom.css'
 
 export default {
@@ -28,5 +29,6 @@ export default {
     app.component('LiveProof', LiveProof)
     app.component('LiveCascade', LiveCascade)
     app.component('S5Results', S5Results)
+    app.component('ForecastView', ForecastView)
   },
 } satisfies Theme

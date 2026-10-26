@@ -1,0 +1,29 @@
+{
+  "about": "Forecasters of the /forecast/ page. s6-cast appears here once trained and past its gate (docs/s6-cast-prereg.md).",
+  "models": [
+    {
+      "name": "TinyCast",
+      "kind": "gguf",
+      "file": "ref/tinycast.gguf",
+      "params": 146505,
+      "bytes": 595840,
+      "license": "Apache-2.0",
+      "notice": "ref/TINYCAST-NOTICE.txt",
+      "url": "https://github.com/raws-labs/tinycast",
+      "credit": "RAWS Labs, arXiv 2608.15767 (ported to Rust)",
+      "gift_eval": { "nGMASE": 0.774, "nWQL": 0.545, "source": "published" }
+    },
+    {
+      "name": "Timestral-5M",
+      "kind": "onnx",
+      "file": "ref/timestral-5m.onnx",
+      "spec": "ref/timestral-5m.json",
+      "params": 5210000,
+      "bytes": 22969292,
+      "license": "Modified MIT (Mistral AI)",
+      "notice": "ref/TIMESTRAL-LICENSE.txt",
+      "url": "https://huggingface.co/mistralai/Timestral-5M",
+      "credit": "Mistral AI (exported to ONNX, fp32)"
+    }
+  ]
+}
