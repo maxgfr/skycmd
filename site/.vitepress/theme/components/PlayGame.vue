@@ -11,6 +11,7 @@ import {
   loadEngine,
   loadManifest,
   loadWasm,
+  playsGame,
   type Family,
   type ModelEntry,
   type Question,
@@ -122,11 +123,14 @@ let runner: GameRunner | null = null
 const game = computed(() => GAMES.find((g) => g.kind === kind.value)!)
 const selectedEntry = computed(() => models.value.find((m) => m.file === selected.value) ?? null)
 const selectedFamily = computed<Family | null>(() => (selectedEntry.value ? familyOf(selectedEntry.value) : null))
+/** The models trained on the current game: the others would play it at random. */
+const playable = computed(() => models.value.filter((m) => playsGame(m, kind.value)))
 const groups = computed(() =>
   (['s1', 's2'] as Family[])
-    .map((f) => ({ family: f, label: FAMILY_LABEL[f], items: models.value.filter((m) => familyOf(m) === f) }))
+    .map((f) => ({ family: f, label: FAMILY_LABEL[f], items: playable.value.filter((m) => familyOf(m) === f) }))
     .filter((g) => g.items.length),
 )
+const oracleOn = computed(() => mode.value === 'ai' && !engine.value)
 const info = computed(() => (mode.value === 'ai' && engine.value ? hud.value.info : null))
 const layerCells = computed(() => {
   const i = info.value
@@ -218,11 +222,14 @@ function release(key: string) {
   if (kind.value === 'doom') runner?.hold(key, false)
 }
 
-/** Doom: s3-pico plays all four games; fall back to a Doom fine-tune when it is absent. */
+/** Keeps the selected model if it knows the game `k`; otherwise s3-pico (it plays all four
+ * games), else the first model trained on `k`, else the oracle. An explicit oracle choice stays. */
 function preferModelFor(k: GameKind) {
-  if (k !== 'doom') return
-  const m = models.value.find((e) => e.name.startsWith('s3')) ?? models.value.find((e) => e.name.includes('doom'))
-  if (m) selected.value = m.file
+  if (selected.value === ORACLE) return
+  const ok = models.value.filter((e) => playsGame(e, k))
+  if (ok.some((e) => e.file === selected.value)) return
+  const m = ok.find((e) => e.name.startsWith('s3')) ?? ok[0]
+  selected.value = m ? m.file : ORACLE
 }
 
 watch(kind, (k) => {
@@ -337,7 +344,8 @@ onMounted(async () => {
   models.value = gameModels(await loadManifest())
   status.value = ''
   makeRunner()
-  if (models.value.length) selected.value = models.value[0].file
+  const first = models.value.find((e) => playsGame(e, kind.value))
+  if (first) selected.value = first.file
   preferModelFor(kind.value)
 })
 
@@ -384,7 +392,7 @@ function pct(p: number) {
               {{ m.name }} · {{ formatInt(m.params) }} params · {{ formatKB(m.bytes) }}{{ m.weight_format ? ` · ${m.weight_format}` : '' }}
             </option>
           </optgroup>
-          <option :value="ORACLE">oracle (no model loaded)</option>
+          <option :value="ORACLE">oracle · coded rules, no model</option>
         </select>
       </label>
       <label v-if="selectedFamily === 's2' && mode === 'ai'" class="field" title="Early exit: stop at the first exit whose top probability reaches τ">
@@ -404,6 +412,7 @@ function pct(p: number) {
       <button type="button" class="ghost" @click="runner?.reset()">Restart</button>
     </div>
     <p v-if="status" class="status">{{ status }}</p>
+    <p v-else-if="oracleOn && !error" class="status">No model loaded: the game's coded oracle is playing (it reads the full simulator).</p>
     <p v-if="error" class="error">{{ error }}</p>
 
     <div class="layout">
@@ -429,11 +438,11 @@ function pct(p: number) {
 
         <div class="metrics">
           <div>
-            <div class="mv">{{ mode === 'ai' && hud.medianUs > 0 ? formatInt(hud.medianUs) : '—' }}</div>
+            <div class="mv">{{ mode === 'ai' && engine && hud.medianUs > 0 ? formatInt(hud.medianUs) : '—' }}</div>
             <div class="ml">µs / decision (median)</div>
           </div>
           <div>
-            <div class="mv">{{ mode === 'ai' ? formatInt(hud.decisionsPerS) : '—' }}</div>
+            <div class="mv">{{ mode === 'ai' && engine ? formatInt(hud.decisionsPerS) : '—' }}</div>
             <div class="ml">decisions / s</div>
           </div>
           <div>

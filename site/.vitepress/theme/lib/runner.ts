@@ -141,7 +141,7 @@ export class GameRunner {
     this.mode = opts.mode ?? 'ai'
     this.session = new mod.GameSession(opts.kind, opts.seed ?? Math.floor(Math.random() * 1e9))
     this.hud.best = opts.bestKey ? readNumber(opts.bestKey) : 0
-    this.hud.policy = 'oracle (no model loaded)'
+    this.hud.policy = 'oracle · coded rules, no model'
     if (this.kind === 'doom') {
       doomAssets ??= loadDoomAssets()
       doomAssets.then((a) => (this.doomTex = a)).catch(() => {})
@@ -189,7 +189,7 @@ export class GameRunner {
     this.hud.info = null
     this.hud.meanLayers = 0
     this.hud.staticHitRate = 0
-    this.hud.policy = engine ? label ?? engine.name() : 'oracle (no model loaded)'
+    this.hud.policy = engine ? label ?? engine.name() : 'oracle · coded rules, no model'
   }
 
   setMode(mode: Mode) {
