@@ -169,6 +169,12 @@ Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` 
 | TinyCast (https://github.com/raws-labs/tinycast, https://huggingface.co/raws-labs/tinycast) | Apache-2.0 (code and weights) | ported to Rust (`sky_infer::cast::tinycast`) as a reference forecaster; its pinned GIFT-Eval results are in `eval/gift-eval/gift_eval_tinycast.csv` |
 | Timestral-5M (https://huggingface.co/mistralai/Timestral-5M) | Modified MIT (attribution required; not for companies above $20M monthly revenue without a commercial license) | exported to ONNX (`scripts/timestral-onnx.py`) and shipped with its license (`site/public/models/ref/TIMESTRAL-LICENSE.txt`) as a browser reference |
 
+## s6-secrets API-key jev (`data/secrets/`, `sky-data secret-jev`)
+
+| source | license | how it is used |
+|---|---|---|
+| `secret_synth`, `secret_bench` | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | generated locally from the seed. Keys follow each provider's public format with random bodies, so none is a real key. 50,000 training texts (95/5 train/val by text) and 2,000 bench texts in contexts the training never shows. Never committed. |
+
 ## Rejected
 
 | dataset | reason |

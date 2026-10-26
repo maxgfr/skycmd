@@ -76,6 +76,7 @@ Eleven arms × 3 seeds is 33 runs of about 27 minutes on an M5, so about 15 hour
 | s6-femto | s3-femto + `parallax` | golden only |
 | s6-femto-xsa | s6-femto + `xsa` | golden only |
 | s3-pico-xsa | s3-pico + `xsa` | 445,345 / 203,393 (no new tensor) |
+| s6-secrets-pico | s6-pico with a 320-token state and a 192-token head (§14) | 463,969 / 212,705 (RoPE: no new tensor) |
 
 Each encoder block gains `d²` probe weights and `head_dim` norm weights: 9,312 per block for s6-pico (one state block, one static block).
 
@@ -147,3 +148,18 @@ Pacing-based sampling (arXiv 2506.11300).
 - **After the warm-up**: the usual epoch-shuffled order resumes.
 - **Numeric rows**: the numeric curriculum rows (`--numeric`) are unaffected.
 - **Reproducibility**: the draws use the session's RNG, so a run is reproducible and resumes exactly.
+
+## 14. s6-secrets: API-key and secret detection (`configs/s6-secrets-pico.json`, not trained yet)
+
+A model of its own, with the s6-pico architecture, specialized in one task: telling whether a short text (an `.env` file, code, a config, a `curl` command, a log, a diff) exposes a usable secret. The protocol and the publication gate are in `docs/s6-secrets-prereg.md`.
+
+- **The jev** (`sky-data secret-jev`, `crates/sky-data/src/secrets.rs`). It has four questions per text, each its own source in `s2-eval` (`secret_bench:secret`, `:service`, `:kind`, `:line`):
+  - **secret** (noul): is a usable secret exposed?
+  - **service** (choice): which of 14 services issued it, or `none`?
+  - **kind** (choice): a secret, a test key, a publishable key, a placeholder (or an example, a redacted value, a reference), or no credential at all?
+  - **line** (choice): which line exposes the secret?
+- **Generated, never real.** Keys follow each provider's public format with random bodies. Half the texts expose a secret; the rest are the negatives a scanner has to tell apart, often under a secret-sounding name.
+- **A bench of unseen contexts.** `secret_synth` (50,000 texts) draws from 9 contexts; `secret_bench` (2,000 texts) from 4 others (docker-compose, toml, go, ini).
+- **Wider windows, same weights.** With the s6 tokenizer a random key costs about one token per character: states run to 93 tokens (median) and 312 (max), and the service question with its options to 179. The config widens the state window to 320 tokens and the head to 192. RoPE has no position table, so the parameter count is s6-pico's. The jev stays out of `data/decisions`: the general s6, with 64 state tokens, would read it cut off before the key.
+- **The bar: a rule scanner** (`sky-data secret-baseline`). It combines gitleaks-style prefixes for 20 formats, connection strings with an inline password, and an entropy rule on secret-sounding names, with allowlists for documentation, test and publishable keys. On `secret_bench` it scores 0.977 on the secret question (precision 0.966, recall 0.989) and 0.787 on the service question. All 35 of its false positives are random non-credentials under names like `CACHE_KEY`.
+- **Training** (`scripts/train-secrets.sh data train eval`, prepared and not run): numeric MLM pretraining in 256-token sequences, decision training with QAT on `data/secrets` alone, then calibration, ternary export and `s2-eval`.

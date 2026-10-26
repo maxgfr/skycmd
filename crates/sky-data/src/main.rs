@@ -141,6 +141,21 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         columns: Vec<String>,
     },
+    /// The rule scanner (gitleaks-style prefixes + an entropy rule) on the API-key jev: the
+    /// score a trained model has to beat.
+    SecretBaseline {
+        #[arg(long, default_value = "data/secrets/secret_bench.jsonl")]
+        data: PathBuf,
+    },
+    /// The API-key jev of s6-secrets (local generator, no download): secret_synth (train / val)
+    /// and secret_bench (test, contexts never trained on).
+    SecretJev {
+        #[arg(long, default_value = "data/secrets")]
+        out: PathBuf,
+        /// Validation fraction (by text).
+        #[arg(long, default_value_t = 0.05)]
+        val_frac: f64,
+    },
     /// Download NL → command data (function calling + MASSIVE intents) into JSONL.
     FetchCommands {
         #[arg(long, default_value = "data/commands")]
@@ -483,6 +498,18 @@ fn main() -> Result<()> {
             let cols: Vec<&str> = columns.iter().map(String::as_str).collect();
             for row in sky_data::hf::read_parquet_any(&file, &cols, n)? {
                 println!("{row}");
+            }
+        }
+        Cmd::SecretBaseline { data } => {
+            let recs: Vec<sky_data::record::DecisionRecord> = sky_data::record::read_jsonl(&data)?;
+            println!("{}", sky_data::secrets::baseline_report(&recs));
+        }
+        Cmd::SecretJev { out, val_frac } => {
+            for r in sky_data::secrets::write_jev(&out, cli.seed, val_frac)? {
+                println!(
+                    "{}: raw {} dup {} -> train {} val {} test {}",
+                    r.src, r.raw, r.duplicates, r.train, r.val, r.test
+                );
             }
         }
         Cmd::FetchCommands {
