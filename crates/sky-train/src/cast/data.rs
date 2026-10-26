@@ -27,6 +27,10 @@ pub struct Window {
     pub y: Vec<f32>,
     pub ymask: Vec<f32>,
     pub norm: Norm,
+    /// Distillation targets: the teacher's normalized quantiles `[horizon][levels]` and their
+    /// step mask (all 0 without a teacher, or past the teacher's horizon).
+    pub tq: Vec<f32>,
+    pub tmask: Vec<f32>,
 }
 
 /// Prepares `context` (its last `context()` points) and `target` (its first `horizon()`). `None`
@@ -53,6 +57,8 @@ pub fn window(cfg: &CastConfig, context: &[f32], target: &[f32]) -> Option<Windo
         y,
         ymask,
         norm,
+        tq: vec![0.0; h * cfg.quantiles.len()],
+        tmask: vec![0.0; h],
     })
 }
 
@@ -73,8 +79,103 @@ pub fn batch(cfg: &CastConfig, windows: &[Window]) -> CastBatch {
         valid: Array::from_slice(&valid, &[b as i32, c as i32]),
         y: Array::from_slice(&cat(&|w| &w.y), &[b as i32, h as i32]),
         ymask: Array::from_slice(&cat(&|w| &w.ymask), &[b as i32, h as i32]),
+        tq: Array::from_slice(
+            &cat(&|w| &w.tq),
+            &[b as i32, h as i32, cfg.quantiles.len() as i32],
+        ),
+        tmask: Array::from_slice(&cat(&|w| &w.tmask), &[b as i32, h as i32]),
         rows: b,
     }
+}
+
+/// A distillation teacher: any `sky_infer::cast::Forecaster` (TinyCast, or an s6-cast file).
+pub struct Teacher {
+    model: sky_infer::cast::Forecaster,
+}
+
+impl Teacher {
+    /// Loads a teacher; its quantile levels must be the student's.
+    pub fn load(path: &Path, cfg: &CastConfig) -> Result<Self> {
+        let mut model = sky_infer::cast::Forecaster::from_bytes(
+            &std::fs::read(path).with_context(|| format!("reading {path:?}"))?,
+        )?;
+        model.prepare_compute(sky_infer::TernaryCompute::Auto);
+        if model.levels() != cfg.quantiles.as_slice() {
+            anyhow::bail!("the teacher's quantile levels differ from the student's");
+        }
+        Ok(Teacher { model })
+    }
+
+    pub fn name(&self) -> &str {
+        self.model.name()
+    }
+
+    /// Fills `w.tq` / `w.tmask` with the teacher's forecast of the window's context (its raw
+    /// values, from the first observation on), normalized like the window, over the teacher's
+    /// one-pass horizon at most.
+    pub fn fill(&self, cfg: &CastConfig, w: &mut Window) -> Result<()> {
+        let Some(first) = w.mask.iter().position(|&m| m > 0.0) else {
+            return Ok(());
+        };
+        let raw: Vec<f32> = w.vals[first..]
+            .iter()
+            .zip(&w.mask[first..])
+            .map(|(&v, &m)| if m > 0.0 { w.norm.invert(v) } else { f32::NAN })
+            .collect();
+        let h = cfg.horizon().min(self.model.pass_horizon());
+        let f = self.model.forecast(&raw, h, Default::default())?;
+        let q = cfg.quantiles.len();
+        for t in 0..h {
+            for k in 0..q {
+                w.tq[t * q + k] = w.norm.apply(f.quantiles[t * q + k]);
+            }
+            w.tmask[t] = 1.0;
+        }
+        Ok(())
+    }
+}
+
+/// Teacher targets for the windows `chosen[i]` marks, computed on `threads` cores.
+pub fn distill(
+    cfg: &CastConfig,
+    teacher: &Teacher,
+    windows: &mut [Window],
+    chosen: &[bool],
+    threads: usize,
+) -> Result<()> {
+    let idx: Vec<usize> = (0..windows.len()).filter(|&i| chosen[i]).collect();
+    if idx.is_empty() {
+        return Ok(());
+    }
+    let per = idx.len().div_ceil(threads.max(1)).max(1);
+    // each worker takes disjoint windows: split the slice by index ownership
+    let mut slots: Vec<Option<&mut Window>> = windows.iter_mut().map(Some).collect();
+    let mut jobs: Vec<Vec<&mut Window>> = Vec::new();
+    for chunk in idx.chunks(per) {
+        jobs.push(
+            chunk
+                .iter()
+                .map(|&i| slots[i].take().expect("unique index"))
+                .collect(),
+        );
+    }
+    std::thread::scope(|s| -> Result<()> {
+        let handles: Vec<_> = jobs
+            .into_iter()
+            .map(|job| {
+                s.spawn(move || -> Result<()> {
+                    for w in job {
+                        teacher.fill(cfg, w)?;
+                    }
+                    Ok(())
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("teacher worker")?;
+        }
+        Ok(())
+    })
 }
 
 /// A real series (`{"id": ..., "values": [number | null, ...]}` per JSONL line; `null` is
@@ -304,6 +405,29 @@ fn cut(
 }
 
 /// Samples `n` training windows.
+/// The windows of training step `step`: sampled with a generator seeded from `(seed, step)`
+/// only, so a resumed run (or a prefetching thread) draws exactly the same batches. A share
+/// `teacher_frac` of them gets the teacher's targets.
+#[allow(clippy::too_many_arguments)]
+pub fn sample_step(
+    cfg: &CastConfig,
+    pool: &Pool,
+    real: &[Series],
+    o: &SampleOptions,
+    seed: u64,
+    step: u64,
+    n: usize,
+    teacher: Option<(&Teacher, f64, usize)>,
+) -> Result<Vec<Window>> {
+    let mut rng = Rng::new(hash_str(&format!("cast-step:{seed}:{step}")));
+    let mut windows = sample(cfg, pool, real, o, &mut rng, n);
+    if let Some((t, frac, threads)) = teacher {
+        let chosen: Vec<bool> = (0..windows.len()).map(|_| rng.f64() < frac).collect();
+        distill(cfg, t, &mut windows, &chosen, threads)?;
+    }
+    Ok(windows)
+}
+
 pub fn sample(
     cfg: &CastConfig,
     pool: &Pool,
@@ -518,6 +642,37 @@ mod tests {
             .iter()
             .all(|x| x.id.starts_with("flappy:") && x.values.len() >= 64));
         assert!(game_series("nope", 1, 1, 10).is_err());
+    }
+
+    #[test]
+    fn teacher_targets_from_tinycast() {
+        let c = cfg();
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../sky-infer/tests/golden/tinycast.gguf");
+        let t = Teacher::load(&path, &c).unwrap();
+        let ctx: Vec<f32> = (0..300).map(|i| 10.0 + (i as f32 * 0.3).sin()).collect();
+        let mut w = window(&c, &ctx, &[]).unwrap();
+        t.fill(&c, &mut w).unwrap();
+        // femto forecasts 16 steps, within TinyCast's 48-step pass: every step is covered
+        assert!(w.tmask.iter().all(|&m| m == 1.0));
+        let q = c.quantiles.len();
+        for row in w.tq.chunks(q) {
+            assert!(row.windows(2).all(|x| x[0] <= x[1]) && row.iter().all(|v| v.is_finite()));
+        }
+        // a sine in [9, 11] normalizes to [0, 1]: the median stays in range
+        assert!(w
+            .tq
+            .iter()
+            .skip(q / 2)
+            .step_by(q)
+            .all(|&v| (-0.5..1.5).contains(&v)));
+        // targets are computed for the chosen windows only
+        let mut ws = vec![w.clone(), window(&c, &ctx, &[]).unwrap()];
+        distill(&c, &t, &mut ws, &[false, true], 2).unwrap();
+        assert!(ws[0].tmask.iter().all(|&m| m == 1.0) && ws[1].tmask[0] == 1.0);
+        let mut fresh = vec![window(&c, &ctx, &[]).unwrap()];
+        distill(&c, &t, &mut fresh, &[false], 2).unwrap();
+        assert!(fresh[0].tmask.iter().all(|&m| m == 0.0));
     }
 
     #[test]

@@ -62,6 +62,7 @@ Why this design (`docs/research.md`, forecasting):
   - mixup with a second series (probability 0.1);
   - 1–5 % missing values in the context (probability 0.1).
 - **Loss.** Pinball over the deciles and the observed target steps, at every exit (deep supervision with s2's `linspace(0.5, 1)` weights).
+- **Distillation** (`--teacher tinycast.gguf`). A share of the windows (`--teacher-frac 0.5`) get the teacher's deciles, computed on the CPU by the batch producer thread. The loss adds `w·L1(student, teacher)` per exit, with `w` decaying linearly from `--teacher-weight 0.5` to 0 over the budget, so the end of training follows the ground truth only. Students that fit both the labels and a teacher can surpass it (arXiv 1805.04770, 2206.08491). The batches depend only on `(seed, step)`, so prefetching and resuming draw the same data.
 - **Optimizer.** Muon v2 on `blk.*`, and AdamW elsewhere. `patch_proj`, `cast_query`, `loop_embd` and the norms get no weight decay. WSD schedule.
 - **QAT and checkpoints.** Ternary QAT covers the last 20 % (`--qat-frac`), with the encoder blocks, the decoder matrices and `quant_head` ternary, and optional StableQAT. The weight EMA is optional (`--ema`). Checkpoints go to `last/`, `pre-qat/` and `last-ema/`.
 - **Speed.** About 2,000 windows per second for s6-cast-pico at batch 256 on an M5.

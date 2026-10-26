@@ -21,12 +21,14 @@
 
 - 3 000 pas à 1e-3, 3e-3 et 1e-2 (AdamW ; Muon v2 au même taux), batch 256, sans QAT.
 - **Choix.** La pinball de validation finale en f32 (dernière sortie). On garde 3e-3 sauf si un autre taux la baisse d'au moins 2 %.
+- **Distillation.** Même pilote au taux retenu, avec TinyCast comme professeur (poids 0,5, 50 % des fenêtres). On distille, sauf si la pinball est pire de plus de 1 % : la pinball de validation se mesure contre la vérité, et un professeur peut la dégrader sans dégrader GIFT-Eval. Le seuil est donc volontairement lâche.
 
 ## 3. Le run (`scripts/train-cast.sh train`)
 
 - `configs/s6-cast-pico.json` : 388 320 paramètres.
 - 480 minutes (budget en temps), batch 256, WSD.
 - QAT ternaire sur les 20 % finaux, EMA 0,999.
+- **Professeur** (sauf si le pilote l'écarte) : TinyCast, dont les déciles servent de seconde cible sur 50 % des fenêtres. La perte est `pinball(vérité) + w·L1(déciles du professeur)`, avec w qui passe linéairement de 0,5 à 0 sur le budget. C'est le teacher annealing de BAM : la fin de l'entraînement suit la vérité seule. Un élève qui apprend à la fois la vérité et le professeur peut dépasser ce dernier (Born-Again Networks, arXiv 1805.04770 ; Revisiting Self-Distillation, arXiv 2206.08491). TinyCast exclut de son entraînement les jeux qui recoupent les tests GIFT-Eval et Chronos-ZS : il ne fait pas fuir le test.
 - Graine 1, une seule fois. Seul un échec technique justifie de relancer, et il est noté dans le rapport.
 
 ## 4. Checkpoint exporté (`export`)
@@ -45,7 +47,9 @@
   - Si l'une de ces vérifications échoue, s6-cast n'est pas lu : on corrige d'abord le banc.
 - **Modèle rapporté.** s6-cast avec et sans retournement. Le modèle rapporté est **sans** retournement : c'est le mode de la page web, et le retournement double le coût.
 
-## 6. Porte de publication
+## 6. Objectif et porte de publication
+
+**Objectif : battre TinyCast sur les deux métriques**, sans retournement : **nGMASE < 0,774 et nWQL < 0,545**. Le rapport dit, sans ambiguïté, si l'objectif est atteint.
 
 s6-cast est publié (site, manifeste, Hugging Face) si, sans retournement, il bat la référence sans entraînement FLAIR sur les deux métriques :
 
@@ -58,4 +62,8 @@ Si la porte n'est pas franchie, le modèle n'est pas publié, et le rapport le d
 
 ## 7. Amendements
 
-Aucun.
+1. **26/10/2026**, avant tout entraînement :
+   - ajout de l'objectif « battre TinyCast » et de la distillation par TinyCast (§2, §3, §6), à la demande du propriétaire du projet ;
+   - le contrôle du seasonal naive porte sur nGMASE seul (§5).
+
+   Aucun score de s6-cast n'existait.
