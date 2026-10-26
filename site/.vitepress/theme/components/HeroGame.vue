@@ -86,7 +86,7 @@ onBeforeUnmount(() => {
     <div class="hero-badge">
       <span class="dot" :class="live.status" />
       <span v-if="live.status === 'model'">{{ live.model }} playing live</span>
-      <span v-else-if="live.status === 'oracle'">oracle (no model loaded)</span>
+      <span v-else-if="live.status === 'oracle'">oracle · coded rules, no model</span>
       <span v-else-if="live.status === 'error'">offline</span>
       <span v-else>loading…</span>
       <button class="hero-pause" type="button" :aria-label="paused ? 'Play' : 'Pause'" @click="toggle">

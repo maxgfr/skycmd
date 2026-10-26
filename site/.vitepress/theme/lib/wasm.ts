@@ -57,6 +57,13 @@ export interface ModelEntry {
   weight_format?: string
   /** `generic`: a decision model for free-text questions (s4, the Live page), not for the games. */
   task?: string
+  /** The games the model was trained and measured on (`sky-arena`); absent = every game. */
+  games?: string[]
+}
+
+/** Whether a game model knows `game` (a model never trained on a game plays it at random). */
+export function playsGame(entry: Pick<ModelEntry, 'games'>, game: string): boolean {
+  return !entry.games || entry.games.includes(game)
 }
 
 /** The models that play the games (every manifest entry but the generic ones). */

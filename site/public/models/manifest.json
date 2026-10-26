@@ -14,7 +14,13 @@
     "weight_format": "ternary",
     "params": 445345,
     "bytes": 251104,
-    "file": "s3-pico.gguf"
+    "file": "s3-pico.gguf",
+    "games": [
+      "flappy",
+      "rescue",
+      "dodge",
+      "doom"
+    ]
   },
   {
     "name": "s4-micro",
@@ -31,7 +37,12 @@
     "weight_format": "f16",
     "params": 202305,
     "bytes": 545280,
-    "file": "s1-pico.gguf"
+    "file": "s1-pico.gguf",
+    "games": [
+      "flappy",
+      "rescue",
+      "dodge"
+    ]
   },
   {
     "name": "s2-nano",
@@ -39,7 +50,12 @@
     "weight_format": "ternary",
     "params": 1532033,
     "bytes": 701568,
-    "file": "s2-nano.gguf"
+    "file": "s2-nano.gguf",
+    "games": [
+      "flappy",
+      "rescue",
+      "dodge"
+    ]
   },
   {
     "name": "s2-nano-doom",
@@ -47,6 +63,11 @@
     "weight_format": "ternary",
     "params": 1532033,
     "bytes": 701568,
-    "file": "s2-nano-doom.gguf"
+    "file": "s2-nano-doom.gguf",
+    "games": [
+      "flappy",
+      "dodge",
+      "doom"
+    ]
   }
 ]
