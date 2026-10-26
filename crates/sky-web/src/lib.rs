@@ -15,6 +15,7 @@
 //! `#[wasm_bindgen]` types below are thin wrappers that turn errors into JS exceptions.
 
 pub mod clock;
+pub mod forecast;
 pub mod model;
 pub mod session;
 
