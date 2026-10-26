@@ -1215,6 +1215,21 @@ mod tests {
     }
 
     #[test]
+    fn s6_secrets_is_s6_pico_with_wider_windows() {
+        // RoPE has no position table: the wider state and head windows add no parameter
+        let (a, b) = (ladder("s6-pico"), ladder("s6-secrets-pico"));
+        assert_eq!(
+            expected_count(&a, S2Parts::DECISION),
+            expected_count(&b, S2Parts::DECISION)
+        );
+        assert_eq!((b.max_state_tokens, b.max_head_tokens), (320, 192));
+        assert_eq!(
+            (b.hidden_size, b.state_loops, b.parallax, &b.exits),
+            (a.hidden_size, a.state_loops, a.parallax, &a.exits)
+        );
+    }
+
+    #[test]
     fn exact_parameter_counts() {
         let _g = test_util::lock();
         // (config, decision model, pretraining model)
