@@ -1,0 +1,278 @@
+{
+  "model": "Timestral-5M",
+  "file": "timestral-5m.onnx",
+  "variant": "fp32",
+  "file_size_bytes": 22969292,
+  "sha256": "24f0a5689f22307b1cf61eb7ec84c8ed604f6f4294aa146371724b827feb05a2",
+  "license": "Modified MIT (Mistral AI), see TIMESTRAL-LICENSE.txt",
+  "hf_repo": "mistralai/Timestral-5M",
+  "hf_revision": "bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f",
+  "timestral_code": "https://github.com/mistralai/timestral@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff",
+  "export": {
+    "exporter": "torch.onnx (dynamo) torch 2.14.1",
+    "onnx_opset": 18,
+    "onnx_ir_version": 10,
+    "onnxruntime_python": "1.31.0",
+    "timestral": "1.0.0"
+  },
+  "input": {
+    "name": "context",
+    "shape": [
+      1,
+      2048
+    ],
+    "dtype": "float32",
+    "semantics": "raw values, oldest first, last element = most recent step; NaN (or +/-inf) = missing; left-pad shorter series with NaN; at least one finite value required"
+  },
+  "output": {
+    "name": "quantiles",
+    "shape": [
+      1,
+      128,
+      21
+    ],
+    "dtype": "float32",
+    "semantics": "quantiles in raw units for the next steps after the context, [0, h, k] = step h+1 at level quantile_levels[k]; sorted along k"
+  },
+  "quantile_levels": [
+    0.01,
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.95,
+    0.99
+  ],
+  "median_index": 10,
+  "context_length": 2048,
+  "horizon": 128,
+  "native_block_horizon": 1024,
+  "patch_size": 32,
+  "in_graph": [
+    "NaN/inf -> observation mask",
+    "causal per-patch float64 mean/std + asinh normalization",
+    "denormalization",
+    "advancing refine frame",
+    "symmetric averaging (context and -context)",
+    "clamp to [min - 1e4*s, max + 1e4*s] of the context",
+    "clip at 0 if the observed context is >= 0"
+  ],
+  "reference": "timestral.TimestralForecaster.forecast(context, prediction_length=128) defaults",
+  "torch_checks": {
+    "metric": "max |a - b| / std(observed context), all quantiles",
+    "cases": {
+      "sine_trend": {
+        "official_H128_vs_first_128_of_H1024": 2.210921761155134e-06,
+        "official_nan_padded_vs_unpadded": 0.0,
+        "torch_wrapper_vs_official": 2.210921761155134e-06
+      },
+      "random_walk": {
+        "official_H128_vs_first_128_of_H1024": 1.4590076880909166e-06,
+        "official_nan_padded_vs_unpadded": 0.0,
+        "torch_wrapper_vs_official": 1.7508092257091e-06
+      },
+      "constant": {
+        "official_H128_vs_first_128_of_H1024": 0.0,
+        "official_nan_padded_vs_unpadded": 0.0,
+        "torch_wrapper_vs_official": 0.0
+      },
+      "nan_gaps": {
+        "official_H128_vs_first_128_of_H1024": 1.5625567685872405e-06,
+        "official_nan_padded_vs_unpadded": 0.0,
+        "torch_wrapper_vs_official": 1.5625567685872405e-06
+      },
+      "nonneg_counts": {
+        "official_H128_vs_first_128_of_H1024": 2.7075117084874412e-06,
+        "official_nan_padded_vs_unpadded": 0.0,
+        "torch_wrapper_vs_official": 1.805007805658294e-06
+      },
+      "large_level": {
+        "official_H128_vs_first_128_of_H1024": 0.0010891421672249723,
+        "official_nan_padded_vs_unpadded": 0.0,
+        "torch_wrapper_vs_official": 0.0
+      },
+      "short_301_padded": {
+        "official_H128_vs_first_128_of_H1024": 2.1477737341736047e-06,
+        "official_nan_padded_vs_unpadded": 2.1477737341736047e-06,
+        "torch_wrapper_vs_official": 2.1477737341736047e-06
+      }
+    }
+  },
+  "parity_vs_official": {
+    "metric": "max |onnx - official| / std(observed context)",
+    "int8_tolerance": 0.02,
+    "candidates": {
+      "fp32": {
+        "size_bytes": 22969292,
+        "worst": 0.0010891421672249723,
+        "cases": {
+          "sine_trend": {
+            "max_abs_err_rel_all_quantiles": 2.210921761155134e-06,
+            "max_abs_err_rel_median": 2.210921761155134e-06,
+            "max_abs_err": 3.0517578125e-05,
+            "series_scale": 13.803101792736241
+          },
+          "random_walk": {
+            "max_abs_err_rel_all_quantiles": 2.62621383856365e-06,
+            "max_abs_err_rel_median": 1.0213053816636416e-06,
+            "max_abs_err": 3.4332275390625e-05,
+            "series_scale": 13.072916944723087
+          },
+          "constant": {
+            "max_abs_err_rel_all_quantiles": 0.0,
+            "max_abs_err_rel_median": 0.0,
+            "max_abs_err": 0.0,
+            "series_scale": 42.0
+          },
+          "nan_gaps": {
+            "max_abs_err_rel_all_quantiles": 2.083409024782987e-06,
+            "max_abs_err_rel_median": 1.5625567685872405e-06,
+            "max_abs_err": 3.0517578125e-05,
+            "series_scale": 14.647905313829954
+          },
+          "nonneg_counts": {
+            "max_abs_err_rel_all_quantiles": 3.158763659902015e-06,
+            "max_abs_err_rel_median": 6.768779271218603e-07,
+            "max_abs_err": 6.67572021484375e-06,
+            "series_scale": 2.113396548018674
+          },
+          "large_level": {
+            "max_abs_err_rel_all_quantiles": 0.0010891421672249723,
+            "max_abs_err_rel_median": 0.0,
+            "max_abs_err": 0.0078125,
+            "series_scale": 7.1730764220666305
+          },
+          "short_301_padded": {
+            "max_abs_err_rel_all_quantiles": 4.027075751575509e-06,
+            "max_abs_err_rel_median": 1.0738868670868024e-06,
+            "max_abs_err": 1.430511474609375e-05,
+            "series_scale": 3.552233836300987
+          }
+        }
+      },
+      "int8": {
+        "size_bytes": 7402715,
+        "worst": 0.2330490703080565,
+        "cases": {
+          "sine_trend": {
+            "max_abs_err_rel_all_quantiles": 0.09246738081679118,
+            "max_abs_err_rel_median": 0.08019731777282048,
+            "max_abs_err": 1.276336669921875,
+            "series_scale": 13.803101792736241
+          },
+          "random_walk": {
+            "max_abs_err_rel_all_quantiles": 0.16650808519722538,
+            "max_abs_err_rel_median": 0.05300720831603109,
+            "max_abs_err": 2.176746368408203,
+            "series_scale": 13.072916944723087
+          },
+          "constant": {
+            "max_abs_err_rel_all_quantiles": 0.0,
+            "max_abs_err_rel_median": 0.0,
+            "max_abs_err": 0.0,
+            "series_scale": 42.0
+          },
+          "nan_gaps": {
+            "max_abs_err_rel_all_quantiles": 0.11931423058804069,
+            "max_abs_err_rel_median": 0.07493918091693166,
+            "max_abs_err": 1.7477035522460938,
+            "series_scale": 14.647905313829954
+          },
+          "nonneg_counts": {
+            "max_abs_err_rel_all_quantiles": 0.2330490703080565,
+            "max_abs_err_rel_median": 0.08918317941781924,
+            "max_abs_err": 0.4925251007080078,
+            "series_scale": 2.113396548018674
+          },
+          "large_level": {
+            "max_abs_err_rel_all_quantiles": 0.15792561424762097,
+            "max_abs_err_rel_median": 0.08713137337799778,
+            "max_abs_err": 1.1328125,
+            "series_scale": 7.1730764220666305
+          },
+          "short_301_padded": {
+            "max_abs_err_rel_all_quantiles": 0.12285319453816373,
+            "max_abs_err_rel_median": 0.08907515702081545,
+            "max_abs_err": 0.4364032745361328,
+            "series_scale": 3.552233836300987
+          }
+        }
+      }
+    }
+  },
+  "benchmark_ort_python_cpu": {
+    "machine": "macOS arm64",
+    "fp32": {
+      "1_thread_median_ms": 4.54,
+      "default_threads_median_ms": 5.45
+    },
+    "int8": {
+      "1_thread_median_ms": 5.33,
+      "default_threads_median_ms": 5.99
+    }
+  },
+  "ops": [
+    "Add",
+    "And",
+    "ArgMax",
+    "Asinh",
+    "Cast",
+    "Clip",
+    "Concat",
+    "ConstantOfShape",
+    "Cos",
+    "CumSum",
+    "Div",
+    "Equal",
+    "Expand",
+    "Gather",
+    "Greater",
+    "GreaterOrEqual",
+    "IsInf",
+    "IsNaN",
+    "Less",
+    "MatMul",
+    "Max",
+    "Min",
+    "Mul",
+    "Neg",
+    "Not",
+    "Or",
+    "Pad",
+    "Pow",
+    "Reciprocal",
+    "ReduceMax",
+    "ReduceMean",
+    "ReduceMin",
+    "ReduceSum",
+    "Reshape",
+    "ScatterND",
+    "Sigmoid",
+    "Sin",
+    "Sinh",
+    "Slice",
+    "Softmax",
+    "Softplus",
+    "Split",
+    "Sqrt",
+    "Squeeze",
+    "Sub",
+    "Transpose",
+    "Unsqueeze",
+    "Where"
+  ]
+}

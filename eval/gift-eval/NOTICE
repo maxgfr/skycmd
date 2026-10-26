@@ -1,0 +1,10 @@
+GIFT-Eval reference tables used by scripts/gift-eval.py
+
+- dataset_properties.json, seasonal_naive.csv: the per-dataset properties and the seasonal-naive
+  baseline (the denominator of the normalized metrics) of Salesforce AI Research's GIFT-Eval
+  benchmark (https://github.com/SalesforceAIResearch/gift-eval), Copyright Salesforce, Inc.,
+  Apache License 2.0.
+- gift_eval_tinycast.csv: TinyCast's pinned per-configuration GIFT-Eval results
+  (https://github.com/raws-labs/tinycast, Copyright 2026 RAWS Labs, Apache License 2.0).
+
+The three files were copied unchanged from TinyCast's tinycast/reference/ directory.

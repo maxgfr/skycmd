@@ -1,25 +1,28 @@
-//! `sky-cast`: forecast with an s6-cast GGUF file (docs/SPEC-S6-CAST.md).
+//! `sky-cast`: forecast with an s6-cast or TinyCast GGUF file (docs/SPEC-S6-CAST.md).
 //!
 //! ```text
 //! sky-cast <model.gguf> --values 1,2,3,...      # history on the command line
 //! sky-cast <model.gguf> --file series.txt       # one number per line (empty or NaN = missing)
 //! sky-cast <model.gguf> --synth tsi --seed 3    # a synthetic series (gp, pulse, tsi, sarima)
 //!     [--horizon H] [--flip] [--full-depth] [--int8] [--bench N]
+//! sky-cast convert-tinycast <model.safetensors> <config.json> <out.gguf>
 //! ```
 //!
 //! Prints the forecast as JSON (`levels`, `quantiles` `[horizon][levels]`, exits used); with
-//! `--bench N`, the median latency of N forecasts instead.
+//! `--bench N`, the median latency of N forecasts instead. `convert-tinycast` turns the Hugging
+//! Face release of TinyCast (raws-labs/tinycast) into a `skycmd-tinycast` GGUF file.
 
 use std::time::Instant;
 
 use sky_infer::cast::model::ForecastOptions;
 use sky_infer::cast::synth::{self, Kind};
-use sky_infer::cast::CastModel;
+use sky_infer::cast::tinycast::tinycast_gguf_from_safetensors;
+use sky_infer::cast::Forecaster;
 use sky_infer::TernaryCompute;
 
 fn usage() -> ! {
     eprintln!(
-        "usage: sky-cast <model.gguf> (--values a,b,c | --file path | --synth gp|pulse|tsi|sarima [--seed S] [--len N]) [--horizon H] [--flip] [--full-depth] [--int8] [--bench N]"
+        "usage: sky-cast <model.gguf> (--values a,b,c | --file path | --synth gp|pulse|tsi|sarima [--seed S] [--len N]) [--horizon H] [--flip] [--full-depth] [--int8] [--bench N]\n       sky-cast convert-tinycast <model.safetensors> <config.json> <out.gguf>"
     );
     std::process::exit(2);
 }
@@ -27,6 +30,20 @@ fn usage() -> ! {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(path) = args.first() else { usage() };
+    if path == "convert-tinycast" {
+        let [st, cfg, out] = &args[1..] else { usage() };
+        let bytes =
+            tinycast_gguf_from_safetensors(&std::fs::read(st)?, &std::fs::read_to_string(cfg)?)?;
+        std::fs::write(out, &bytes)?;
+        let mut m = Forecaster::from_bytes(&bytes)?;
+        let n = m.n_params();
+        eprintln!(
+            "{out}: {} ({n} parameters, {} bytes)",
+            m.name(),
+            bytes.len()
+        );
+        return Ok(());
+    }
     let flag = |name: &str| {
         args.iter()
             .position(|a| a == name)
@@ -47,13 +64,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         usage()
     };
-    let mut m = CastModel::from_bytes(&std::fs::read(path)?)?;
+    let mut m = Forecaster::from_bytes(&std::fs::read(path)?)?;
     m.prepare_compute(if has("--int8") {
         TernaryCompute::Int8
     } else {
         TernaryCompute::Auto
     });
-    let horizon = flag("--horizon").map_or(Ok(m.cfg.horizon()), |s| s.parse())?;
+    let horizon = flag("--horizon").map_or(Ok(m.pass_horizon()), |s| s.parse())?;
     let opts = ForecastOptions {
         flip: has("--flip"),
         full_depth: has("--full-depth"),
@@ -71,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         us.sort_by(f64::total_cmp);
         println!(
             "{}: {} points of history, horizon {horizon}: median {:.0} µs, p90 {:.0} µs ({} runs)",
-            m.cfg.name,
+            m.name(),
             history.len(),
             us[us.len() / 2],
             us[us.len() * 9 / 10],
@@ -95,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "{}",
         serde_json::json!({
-            "model": m.cfg.name,
+            "model": m.name(),
             "levels": levels,
             "horizon": f.horizon,
             "quantiles": rows,

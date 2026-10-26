@@ -397,6 +397,100 @@ pub fn write_synth(
     Ok(())
 }
 
+/// The numbers of a game's state text, by key: `"vy -2 dx 35 t N"` gives `vy` → −2 and
+/// `dx` → 35 (a key followed by a non-number is skipped).
+pub fn state_numbers(text: &str) -> Vec<(String, f32)> {
+    let toks: Vec<&str> = text.split_whitespace().collect();
+    toks.windows(2)
+        .filter_map(|w| {
+            let key_like = w[0].parse::<f32>().is_err();
+            let v = w[1].parse::<f32>().ok()?;
+            (key_like && v.is_finite()).then(|| (w[0].to_string(), v))
+        })
+        .collect()
+}
+
+/// Series of the state variables of `episodes` episodes of `game`, played by the oracle with
+/// 10 % random decisions (so the trajectories are not all the oracle's): one series per state key
+/// and episode, sampled at every decision. Constant or short series are dropped.
+pub fn game_series(
+    game: &str,
+    episodes: usize,
+    seed: u64,
+    max_steps: usize,
+) -> Result<Vec<Series>> {
+    let mut g =
+        sky_games::make_game(game, seed).with_context(|| format!("unknown game {game:?}"))?;
+    let mut rng = Rng::new(seed ^ 0x6a3e);
+    let mut out = Vec::new();
+    for ep in 0..episodes {
+        g.reset();
+        let mut keys: Vec<String> = Vec::new();
+        let mut cols: Vec<Vec<f32>> = Vec::new();
+        let mut frames = 0usize;
+        let mut steps = 0usize;
+        while !g.done() && steps < max_steps {
+            steps += 1;
+            if !g.decision_due() {
+                g.tick();
+                continue;
+            }
+            for (k, v) in state_numbers(&g.state_text()) {
+                let i = match keys.iter().position(|x| *x == k) {
+                    Some(i) => i,
+                    None => {
+                        keys.push(k);
+                        cols.push(vec![f32::NAN; frames]);
+                        keys.len() - 1
+                    }
+                };
+                cols[i].push(v);
+            }
+            frames += 1;
+            for c in cols.iter_mut() {
+                c.resize(frames, f32::NAN);
+            }
+            let oracle = g.oracle();
+            let n = oracle[0].len();
+            let choice = if rng.f64() < 0.1 {
+                rng.below(n)
+            } else {
+                sky_games::common::argmax(&oracle[0])
+            };
+            g.apply(choice, false);
+        }
+        for (k, v) in keys.iter().zip(cols) {
+            let finite: Vec<f32> = v.iter().copied().filter(|x| x.is_finite()).collect();
+            let varies = finite.windows(2).any(|w| w[0] != w[1]);
+            if finite.len() >= 64 && varies {
+                out.push(Series {
+                    id: format!("{game}:{ep}:{k}"),
+                    values: v,
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Writes the game series of `games` to `out` as JSONL.
+pub fn write_games(out: &Path, games: &[String], episodes: usize, seed: u64) -> Result<usize> {
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut text = String::new();
+    let mut n = 0;
+    for game in games {
+        for s in game_series(game, episodes, seed, 20_000)? {
+            text.push_str(&series_line(&s.id, &s.values));
+            text.push('\n');
+            n += 1;
+        }
+    }
+    std::fs::write(out, text)?;
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,6 +500,24 @@ mod tests {
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../configs/s6-cast-femto.json"),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn game_state_texts_become_series() {
+        assert_eq!(
+            state_numbers("vy -2 dx 35 t N alt 32.5"),
+            vec![
+                ("vy".into(), -2.0),
+                ("dx".into(), 35.0),
+                ("alt".into(), 32.5)
+            ]
+        );
+        let s = game_series("flappy", 2, 1, 4000).unwrap();
+        assert!(!s.is_empty());
+        assert!(s
+            .iter()
+            .all(|x| x.id.starts_with("flappy:") && x.values.len() >= 64));
+        assert!(game_series("nope", 1, 1, 10).is_err());
     }
 
     #[test]

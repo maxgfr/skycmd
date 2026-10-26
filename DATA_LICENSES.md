@@ -146,6 +146,29 @@ No id Software asset is used.
 The Doom and ViZDoom datasets on the Hugging Face Hub were checked in October 2026 and none is used.
 They are listed under Rejected below, and [`docs/research.md`](docs/research.md) summarizes why.
 
+## s6-cast time series (`data/series/`, `sky-data fetch-series`, `sky-train cast-synth`)
+Read from the parquet copies of `autogluon/chronos_datasets` (https://huggingface.co/datasets/autogluon/chronos_datasets). That repository is tagged `other`, so the license that applies to each series is its upstream one, listed here. Every source below is absent from the two zero-shot test sets s6-cast is scored on (GIFT-Eval's 97 configurations and Chronos' zero-shot benchmark). One series in ten, by id, is held out for validation.
+
+| source (`data/series/<name>.jsonl`) | config | upstream license | used |
+|---|---|---|---|
+| london_smart_meters | `monash_london_smart_meters` | CC-BY-4.0 (Monash Time Series Forecasting Archive, Godahewa et al. 2021, Zenodo) | first 2,000 series, last 8,192 points |
+| wind_farms_hourly, wind_farms_daily | `wind_farms_hourly`, `wind_farms_daily` | CC-BY-4.0 (Monash archive) | all series (≤ 400), last 8,192 points |
+| pedestrian_counts | `monash_pedestrian_counts` | CC-BY-4.0 (Monash archive) | all series |
+| rideshare | `monash_rideshare` | CC-BY-4.0 (Monash archive) | every numeric column of the first 200 rows |
+| wiki_daily | `wiki_daily_100k` | CC0-1.0 (Wikimedia pageview data) | first 5,000 series |
+| ushcn_daily | `ushcn_daily` | public domain (NOAA NCEI, U.S. Government work) | every numeric column of the first 1,300 rows |
+| games | — | ours (Apache-2.0, `sky-games`) | state variables of 60 oracle episodes per game (`cast-synth --games`) |
+
+Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` config that is in a test set (M1, M3, M4, M5, NN5, tourism, traffic, weather, electricity, solar, hospital, covid deaths, car parts, ETT, exchange rate, FRED-MD, Dominick, ERCOT, CIF 2016, Australian electricity, KDD Cup 2018, temperature–rain, Saugeen, US births).
+
+## s6-cast evaluation and reference models
+| item | license | how it is used |
+|---|---|---|
+| Salesforce/GiftEval (https://huggingface.co/datasets/Salesforce/GiftEval) | Apache-2.0, released for research use | test windows exported locally (`scripts/gift-eval.py`) to score s6-cast and the references; never trained on, never redistributed |
+| `eval/gift-eval/` (dataset properties, seasonal-naive reference) | Apache-2.0 (Salesforce, via TinyCast's `tinycast/reference/`; see `eval/gift-eval/NOTICE`) | denominators of the normalized metrics |
+| TinyCast (https://github.com/raws-labs/tinycast, https://huggingface.co/raws-labs/tinycast) | Apache-2.0 (code and weights) | ported to Rust (`sky_infer::cast::tinycast`) as a reference forecaster; its pinned GIFT-Eval results are in `eval/gift-eval/gift_eval_tinycast.csv` |
+| Timestral-5M (https://huggingface.co/mistralai/Timestral-5M) | Modified MIT (attribution required; not for companies above $20M monthly revenue without a commercial license) | exported to ONNX (`scripts/timestral-onnx.py`) and shipped with its license (`site/public/models/ref/TIMESTRAL-LICENSE.txt`) as a browser reference |
+
 ## Rejected
 
 | dataset | reason |

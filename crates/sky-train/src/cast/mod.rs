@@ -95,9 +95,21 @@ pub struct SynthArgs {
     pub seed: u64,
     #[arg(long)]
     pub out: PathBuf,
+    /// Instead of synthetic series: the state variables of these games (flappy, rescue, dodge,
+    /// doom), played by the oracle.
+    #[arg(long, value_delimiter = ',')]
+    pub games: Vec<String>,
+    /// Episodes per game (with `--games`).
+    #[arg(long, default_value_t = 50)]
+    pub episodes: usize,
 }
 
 pub fn synth(a: &SynthArgs) -> Result<()> {
+    if !a.games.is_empty() {
+        let n = data::write_games(&a.out, &a.games, a.episodes, a.seed)?;
+        println!("wrote {n} game series to {}", a.out.display());
+        return Ok(());
+    }
     let kind = match &a.kind {
         None => None,
         Some(k) => Some(

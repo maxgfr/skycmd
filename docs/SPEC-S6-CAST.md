@@ -97,9 +97,21 @@ Why this design (`docs/research.md`, forecasting):
 
 `crates/sky-infer/tests/golden_cast.rs` recomputes them from the raw contexts in every `TernaryCompute` mode. Tolerances are 1e-4 for f32 and 1e-3 for ternary; int8 and LUT get 2e-3, since their activations are quantized.
 
-## 6. What comes next
+## 6. Evaluation (`scripts/gift-eval.py`, `sky-cast-eval`)
+GIFT-Eval with its official protocol, so the numbers are comparable to the leaderboard and to TinyCast's:
 
-- **Evaluation.** The GIFT-Eval harness: the 97 configurations exported locally, then MASE and WQL normalized by seasonal naive with a geometric mean, checked against TinyCast's published numbers.
-- **Exit calibration** and the reference models (TinyCast ported, Timestral-5M in ONNX).
-- **Data.** Permissive Hugging Face series and series from our games.
-- **Training gate.** Pre-registered in `docs/s6-cast-prereg.md` before the first run.
+1. `scripts/gift-eval.py download` / `export` (uv, Python 3.12): the 97 configurations' test windows, exported locally as f32 contexts (last 16,384 points) with their prediction length and season (371,330 windows, 7 GB; GIFT-Eval is for research use and is never redistributed).
+2. `sky-cast-eval run --model m.gguf --windows data/gift-eval --out <dir> [--flip]`: the nine deciles of every window, on every core. `sky-cast-eval naive` writes the seasonal-naive forecasts.
+3. `scripts/gift-eval.py score`: the forecasts replayed through gluonts' `evaluate_model` exactly as TinyCast's driver does (`axis=None`, masked invalid labels, the dataset's seasonality), the leaderboard-format CSV, then nGMASE, nWQL and nMSIS: geometric means of each configuration's ratio to the seasonal-naive reference (`eval/gift-eval/seasonal_naive.csv`).
+
+The harness is checked before any s6-cast number is read (`docs/s6-cast-prereg.md` §5): our seasonal naive scores nGMASE 0.99986 over the 97 configurations (the same windows and scale as the leaderboard; its nWQL is 0.888, not 1, because it repeats the point forecast on every decile while the reference is probabilistic), and our TinyCast port must reproduce its published 0.774 / 0.545.
+
+**Exit calibration** (`sky-cast-eval calibrate --model m.gguf --out m-cal.gguf`). On 2,000 synthetic windows unseen in training, it picks the largest `exit_tolerance` whose early-exit median stays within δ = 0.02 (normalized units) of the full-depth median, with the conformal bound `(n·R̂ + 1)/(n + 1) ≤ α` (α = 0.05) on the share of windows that do not. The tolerance is written into the GGUF.
+
+## 7. Training plan
+`scripts/train-cast.sh [data] [pilot] [train] [export] [eval]` follows `docs/s6-cast-prereg.md`:
+- **data**: `sky-data fetch-series`, `cast-synth --games` and the GIFT-Eval export;
+- **pilot**: optional learning-rate pilot;
+- **train**: 480 minutes, QAT over the last 20 %, EMA;
+- **export**: the EMA or the last weights, by validation pinball, then exit calibration;
+- **eval**: GIFT-Eval for s6-cast (with and without flip), the seasonal naive and TinyCast.

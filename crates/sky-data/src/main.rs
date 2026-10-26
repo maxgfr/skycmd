@@ -172,6 +172,14 @@ enum Cmd {
         #[arg(long, default_value_t = 8192)]
         per_question: usize,
     },
+    /// s6-cast: real time series with a verified permissive upstream license and no overlap with
+    /// the zero-shot test sets (data/series/<source>.jsonl).
+    FetchSeries {
+        #[arg(long, default_value = "data/series")]
+        out: PathBuf,
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<String>,
+    },
     /// Download MLM text, size-capped, exact + MinHash near-dup deduplicated.
     FetchText {
         #[arg(long, default_value = "data/text")]
@@ -526,6 +534,17 @@ fn main() -> Result<()> {
             );
             for (src, n) in rep.by_src {
                 println!("  {src:<32} {n}");
+            }
+        }
+        Cmd::FetchSeries { out, only } => {
+            let hf = Hf::new(&cli.cache)?;
+            let reports = sky_data::series::fetch_series(&hf, &out, &only)?;
+            println!("{:<22} {:>8} {:>12}  license", "source", "series", "points");
+            for r in &reports {
+                println!(
+                    "{:<22} {:>8} {:>12}  {}",
+                    r.name, r.series, r.points, r.license
+                );
             }
         }
         Cmd::FetchText {

@@ -115,6 +115,7 @@ scripts/train-s3.sh numeric pico && scripts/specialize-s3.sh pico 3 8   # the s3
 scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf s3-pico.gguf   # closed-loop τ
 cargo xtask s6lr && cargo xtask s6ab --adamw-lr-scale 1 --muon-lr-scale 1   # s6: learning-rate pilot, then the ablation
 scripts/train-s6.sh                                        # s6-pico with the adopted changes (docs/s6-prereg.md)
+scripts/train-cast.sh                                      # s6-cast: data, training, export, GIFT-Eval (docs/s6-cast-prereg.md)
 ```
 To use a published model without training anything, see the [Install](https://maxgfr.github.io/skycmd/install/) page.
 The step-by-step guide is the [tutorial](https://maxgfr.github.io/skycmd/tutorial/).
