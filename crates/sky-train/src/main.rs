@@ -532,6 +532,14 @@ enum Cmd {
     S5Export(sky_train::s5::export::ExportArgs),
     /// s5: reference outputs of a small random iso model for the sky-infer tests.
     S5Golden(sky_train::s5::golden::GoldenArgs),
+    /// s6-cast: train a forecaster on synthetic (and real) series (docs/SPEC-S6-CAST.md).
+    CastTrain(sky_train::cast::train::TrainArgs),
+    /// s6-cast: a run checkpoint as an `skycmd-cast` GGUF file.
+    CastExport(sky_train::cast::ExportArgs),
+    /// s6-cast: reference outputs of a small random model for the sky-infer tests.
+    CastGolden(sky_train::cast::GoldenArgs),
+    /// s6-cast: synthetic series as JSONL.
+    CastSynth(sky_train::cast::SynthArgs),
 }
 
 fn main() -> Result<()> {
@@ -935,6 +943,10 @@ fn main() -> Result<()> {
         Cmd::S5Train(a) => sky_train::s5::train::train(&a)?,
         Cmd::S5Export(a) => sky_train::s5::export::export(&a)?,
         Cmd::S5Golden(a) => sky_train::s5::golden::golden(&a)?,
+        Cmd::CastTrain(a) => sky_train::cast::train::train(&a)?,
+        Cmd::CastExport(a) => sky_train::cast::export(&a)?,
+        Cmd::CastGolden(a) => sky_train::cast::golden(&a)?,
+        Cmd::CastSynth(a) => sky_train::cast::synth(&a)?,
     }
     Ok(())
 }

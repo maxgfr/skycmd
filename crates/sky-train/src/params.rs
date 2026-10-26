@@ -63,7 +63,8 @@ pub enum Group {
 ///
 /// s1 names (`encoder.layers.*`) and s2 names (`blk.*`, `static.blk.*`) are
 /// both recognized: the encoder hidden matrices go to Muon; the s2 embeddings
-/// (`token_embd`, `num_proj`, `type_embd`, and the per-loop `loop_embd`) are never decayed.
+/// (`token_embd`, `num_proj`, `type_embd`, the per-loop `loop_embd`) and the s6-cast input
+/// projection and horizon queries (`patch_proj`, `cast_query`) are never decayed.
 pub fn group_of(name: &str, ndim: usize) -> Group {
     let hidden = name.starts_with("encoder.layers.")
         && (name.ends_with(".attn.Wqkv.weight")
@@ -72,7 +73,12 @@ pub fn group_of(name: &str, ndim: usize) -> Group {
             || name.ends_with(".mlp.Wo.weight"));
     let s2_embedding = matches!(
         name,
-        "token_embd.weight" | "type_embd.weight" | "num_proj.weight" | "loop_embd.weight"
+        "token_embd.weight"
+            | "type_embd.weight"
+            | "num_proj.weight"
+            | "loop_embd.weight"
+            | "patch_proj.weight"
+            | "cast_query.weight"
     );
     if hidden || crate::s2::model::is_hidden_matrix(name) {
         Group::Muon

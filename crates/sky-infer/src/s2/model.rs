@@ -180,7 +180,7 @@ impl Lin {
         }
     }
 
-    fn n_params(&self) -> usize {
+    pub(crate) fn n_params(&self) -> usize {
         self.n_in * self.n_out + self.b.as_ref().map_or(0, Vec::len)
     }
 }
@@ -194,11 +194,11 @@ pub struct Ln {
 
 impl Ln {
     #[inline]
-    fn apply(&self, x: &[f32], d: usize, eps: f32, out: &mut [f32]) {
+    pub(crate) fn apply(&self, x: &[f32], d: usize, eps: f32, out: &mut [f32]) {
         kernels::layer_norm(x, d, &self.w, self.b.as_deref(), eps, out);
     }
 
-    fn n_params(&self) -> usize {
+    pub(crate) fn n_params(&self) -> usize {
         self.w.len() + self.b.as_ref().map_or(0, Vec::len)
     }
 }
@@ -452,18 +452,18 @@ enum AttnMode<'a> {
     },
 }
 
-/// Reads s2 tensors from a GGUF file.
-struct Src<'a, 'b> {
-    g: &'b Gguf<'a>,
+/// Reads s2 tensors from a GGUF file (also the s6-cast encoder blocks).
+pub(crate) struct Src<'a, 'b> {
+    pub(crate) g: &'b Gguf<'a>,
 }
 
 impl Src<'_, '_> {
-    fn has(&self, name: &str) -> bool {
+    pub(crate) fn has(&self, name: &str) -> bool {
         self.g.tensor(name).is_some()
     }
 
     /// An f32 tensor (F32, F16, BF16 or Q8_0 in the file) with a row-major shape check.
-    fn f32(&self, name: &str, shape: &[usize]) -> Result<Vec<f32>> {
+    pub(crate) fn f32(&self, name: &str, shape: &[usize]) -> Result<Vec<f32>> {
         let info = self
             .g
             .tensor(name)
@@ -477,7 +477,7 @@ impl Src<'_, '_> {
         Ok(sky_gguf::dequantize(info.dtype, self.g.tensor_bytes(info))?)
     }
 
-    fn ln(&self, base: &str, d: usize, bias: bool) -> Result<Ln> {
+    pub(crate) fn ln(&self, base: &str, d: usize, bias: bool) -> Result<Ln> {
         Ok(Ln {
             w: self.f32(&format!("{base}.weight"), &[d])?,
             b: if bias {
@@ -490,7 +490,7 @@ impl Src<'_, '_> {
 
     /// A linear layer `base`: ternary (`base.tq` + `base.scale`, also accepted as
     /// `base.weight.tq`) or float (`base.weight`), with `base.bias` when `bias`.
-    fn lin(&self, base: &str, n_out: usize, n_in: usize, bias: bool) -> Result<Lin> {
+    pub(crate) fn lin(&self, base: &str, n_out: usize, n_in: usize, bias: bool) -> Result<Lin> {
         let w = if let Some(tq) = [format!("{base}.tq"), format!("{base}.weight.tq")]
             .into_iter()
             .find(|n| self.has(n))
@@ -524,7 +524,7 @@ impl Src<'_, '_> {
         Ok(Lin { w, b, n_in, n_out })
     }
 
-    fn block(&self, prefix: &str, n: usize, cfg: &S2Config) -> Result<Block> {
+    pub(crate) fn block(&self, prefix: &str, n: usize, cfg: &S2Config) -> Result<Block> {
         let (d, ff) = (cfg.hidden_size, cfg.intermediate_size);
         let p = |s: &str| format!("{prefix}{n}.{s}");
         let attn_norm = if n == 0 && !self.has(&p("attn_norm.weight")) {

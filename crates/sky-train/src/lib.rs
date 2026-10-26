@@ -9,6 +9,7 @@
 //! streams with native numbers, early exits, a cross-attention fusion head,
 //! ternary QAT and the `skycmd-s2` GGUF export.
 
+pub mod cast;
 pub mod config;
 pub mod decision;
 pub mod export;

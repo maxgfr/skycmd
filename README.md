@@ -53,6 +53,7 @@ Two results took more than one try, and the tutorial tells both stories:
   - exit thresholds by conformal risk control (`sky-arena --calibrate-crc`).
 
   `cargo xtask s6ab` runs the {AdamW, Muon v2} × {softmax, Parallax} ablation, then tests each addition on its own.
+- **s6-cast** ([`docs/SPEC-S6-CAST.md`](docs/SPEC-S6-CAST.md), code ready, no model trained yet). A probabilistic forecaster built on the s6 encoder: up to 2,048 past points in patches of 32, nine quantiles for each of the next 64 steps, ternary (144 KB for the 388K-parameter pico), under 1 ms per forecast on one CPU core. It is pretrained on synthetic series from Rust generators (Gaussian-process kernels, pulses, trend + seasonality, SARIMA). `sky-train cast-train` trains it, and `sky-cast` forecasts from the command line.
 - **Training.** Everything is in Rust with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon:
   - MLM pretraining;
   - decision training with cross-entropy on soft targets;

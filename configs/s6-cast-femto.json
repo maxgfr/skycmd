@@ -1,0 +1,15 @@
+{
+  "name": "s6-cast-femto",
+  "hidden_size": 32,
+  "intermediate_size": 64,
+  "head_count": 2,
+  "state_layers": 1,
+  "state_loops": 2,
+  "exits": [1, 2],
+  "parallax": true,
+  "xsa": true,
+  "patch": 8,
+  "context_patches": 40,
+  "horizon_patches": 2,
+  "decoder_layers": 1
+}

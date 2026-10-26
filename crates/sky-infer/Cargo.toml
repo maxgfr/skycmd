@@ -50,5 +50,9 @@ path = "src/bin/sky-compare.rs"
 name = "sky-s5-report"
 path = "src/bin/sky-s5-report.rs"
 
+[[bin]]
+name = "sky-cast"
+path = "src/bin/sky-cast.rs"
+
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O3", "--enable-simd", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals"]

@@ -1,0 +1,14 @@
+{
+  "name": "s6-cast-pico",
+  "hidden_size": 96,
+  "intermediate_size": 192,
+  "head_count": 2,
+  "state_layers": 2,
+  "state_loops": 2,
+  "exits": [1, 2, 3, 4],
+  "parallax": true,
+  "patch": 32,
+  "context_patches": 64,
+  "horizon_patches": 2,
+  "decoder_layers": 2
+}
