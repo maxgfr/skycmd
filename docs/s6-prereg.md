@@ -76,4 +76,17 @@ Le temps réel compte : les vrais entraînements sont budgétés en minutes, et 
 
 ## 7. Amendements
 
-Aucun.
+**Amendement 1 (28/10/2026, avant le pilote : aucun run s6 n'a tourné, aucun résultat n'a été lu). Corpus de pré-entraînement.**
+
+- **Changement.** Le pré-entraînement MLM du pilote, de l'ablation et du modèle final lit `data/text-open` puis `data/text` (`--text data/text-open,data/text` dans `scripts/train-s6.sh` et `cargo xtask s6ab`), au lieu de `data/text` seul.
+- **Le corpus ajouté.** `data/text-open` vient de `sky-data fetch-text --set open` et pèse 150 Mo. Ce sont les parties non web des données d'entraînement publiées de deux LLM entièrement ouverts :
+  - Dolma 3 (OLMo 3) : Wikipedia EN, PDF scientifiques, FineMath ;
+  - TxT360 (LLM360) : PG-19, StackExchange, Europarl en français.
+
+  Les licences sont dans `DATA_LICENSES.md`.
+- **Pourquoi.** `data/text` ne contient que des histoires et du web. Les décisions de s6 portent aussi sur des textes encyclopédiques, techniques et chiffrés, en anglais et en français. Le budget en pas reste de 4 800 × 128 × 128 ≈ 79 M jetons et les deux corpus tiennent sous `--max-tokens` (300 M). Le changement porte donc sur le mélange, environ moitié-moitié, et pas sur la quantité vue.
+- **Ce qui ne change pas.**
+  - Le tokenizer `data/tok/tok-s2-1024.json` (entraîné sur `data/text`, `data/decisions`, `data/games`) ; BPE au niveau de l'octet, il couvre le nouveau texte.
+  - Les budgets, les graines, les bras, les métriques et les règles d'adoption.
+  - La validation MLM : elle reste les derniers 1 % du flux, donc la fin de `data/text` (`tinystories_fr`), comme pour s3, grâce à l'ordre `data/text-open` d'abord.
+- **Règle §1 inchangée.** `scripts/prepare-data.sh` récupère `data/text-open` en même temps que le reste, une fois avant le pilote, sans régénération ensuite.

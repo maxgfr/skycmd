@@ -5,7 +5,7 @@
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{bail, Context, Result};
@@ -677,17 +677,25 @@ struct MlmRecord {
 }
 
 impl NumCorpus {
-    /// Tokenizes every MLM record under `text` up to `max_tokens` (cached in `cache_dir`).
+    /// Tokenizes every MLM record under the `text` paths, in order, up to `max_tokens` (cached
+    /// in `cache_dir`).
     pub fn load(
-        text: &Path,
+        text: &[PathBuf],
         tok: &Tok,
         tokenizer_path: &Path,
         cache_dir: &Path,
         max_tokens: usize,
     ) -> Result<Self> {
-        let files = list_jsonl(text)?;
+        let mut files = Vec::new();
+        for t in text {
+            let found = list_jsonl(t)?;
+            if found.is_empty() {
+                bail!("no *.jsonl under {}", t.display());
+            }
+            files.extend(found);
+        }
         if files.is_empty() {
-            bail!("no *.jsonl under {}", text.display());
+            bail!("no MLM text path given");
         }
         let key = serde_json::json!({
             "files": files.iter().map(|f| Ok((f.display().to_string(), std::fs::metadata(f)?.len()))).collect::<Result<Vec<_>>>()?,

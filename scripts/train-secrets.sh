@@ -34,12 +34,12 @@ data() {
 }
 
 train() {
-  [ -f data/tok/tok-s2-1024.json ] && [ -d data/text ] && [ -d data/numeric ] || {
-    echo "data/tok, data/text and data/numeric come from scripts/prepare-data.sh" >&2
+  [ -f data/tok/tok-s2-1024.json ] && [ -d data/text ] && [ -d data/text-open ] && [ -d data/numeric ] || {
+    echo "data/tok, data/text, data/text-open and data/numeric come from scripts/prepare-data.sh" >&2
     exit 1
   }
   echo "== s6-secrets-pico: pretrain ${PRETRAIN_MIN:-8}m (sequences of 256 tokens)"
-  $T s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text \
+  $T s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text-open,data/text \
     --minutes "${PRETRAIN_MIN:-8}" --seq 256 --batch 64 --num-weight 0.05 \
     --numeric data/numeric --numeric-weight 0.1 --out "$run/pretrain" \
     ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"}

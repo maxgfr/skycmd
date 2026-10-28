@@ -228,6 +228,28 @@ pub const ROWS: usize = NUM_PERM / BANDS;
 
 MinHash runs over word 5-gram shingles, with 128 permutations in 16 LSH bands. A candidate counts as a duplicate when its estimated Jaccard similarity is 0.8 or higher (`Dedup::new(0.8, ...)` in `text.rs`).
 
+### The open set: text from fully open LLMs
+
+Models like OLMo 3 and LLM360 publish their training data along with their weights. `fetch-text --set open` takes the non-web parts of two of those corpora into `data/text-open`. Their web text would only repeat FineWeb.
+
+| name | repo, file | share |
+|---|---|---:|
+| dolma3_wiki_en | `allenai/dolma3_mix-150B-1025`, `data/dolma1_7-wiki-en/shard_00000000.jsonl.zst` | 0.25 |
+| dolma3_science_pdfs | same repo, `data/olmocr_science_pdfs-science_math_and_technology/shard_00000000.jsonl.zst` | 0.25 |
+| dolma3_finemath | same repo, `data/finemath-3plus/shard_00000000.jsonl.zst` | 0.15 |
+| txt360_pg19 | `IFM/TxT360`, `data/pg19/1-1/0_0.jsonl` | 0.15 |
+| txt360_stackexchange | same repo, `data/stackexchange/1-1/0_2289.jsonl` | 0.10 |
+| txt360_europarl_fr | same repo, `data/europarl/1-1/0_6.jsonl` then `1_6.jsonl`, French rows only | 0.10 |
+
+These files are JSON Lines, compressed with zstd or not compressed at all, and up to 1 GB each. Range reads do not apply, so `Location::Jsonl` streams them through the decompressor and stops once the source's budget is met.
+
+Two extra fields of `TextSource` handle their shape:
+
+- `filter` keeps only the rows whose value at a JSON pointer matches. Europarl mixes the EU languages in every file, and `("/meta/language", "fr")` keeps about one document in twenty.
+- `chunks: 8` splits a long document into up to 8 pieces of at most `--max-chars`, where the default set keeps only the first piece. A PG-19 book is about 400 KB and a parliament session is long too. Without the split, more than 95% of the downloaded bytes were thrown away.
+
+s6 pretrains on `--text data/text-open,data/text`. The open set comes first, so the held-out tail of the token stream is still the end of `data/text`, as it was for s3 (amendment 1 of `docs/s6-prereg.md`).
+
 ## Licenses and row counts
 
 `DATA_LICENSES.md` lists every source with its license and the rows written with default caps and seed 1234. Some examples:
@@ -254,11 +276,12 @@ $D fetch-decisions                                  # all sources -> data/decisi
 $D fetch-decisions --only boolq,mnli --cap 20000    # a subset, smaller cap
 $D fetch-text --max-mb 150                          # -> data/text/<src>.jsonl
 $D fetch-text --only simplestories --max-mb 10
+$D fetch-text --set open                            # -> data/text-open/<src>.jsonl
 $D stats                                            # -> data/STATS.md
 $D --cache /Volumes/ssd/hf --seed 7 fetch-decisions
 ```
 
-The global flags are `--cache` (default `data/hf`) and `--seed` (default 1234). `fetch-decisions` also takes `--out` (default `data/decisions`), `--val-frac` (default 0.05), `--teacher` (where `glm_orders` reads the GLM output, default `data/teacher`) and `--list`. `fetch-text` takes `--out`, `--min-chars` (default 64) and `--max-chars` (default 20000). Each command prints a per-source table: raw, invalid, duplicate and per-split counts for decisions, or documents, megabytes and duplicates for text. Download time depends on your connection and was not measured. On the build machine the raw cache `data/hf` takes 1.3 GB (`du -sh data/hf`), and `data/STATS.md` (written by `sky-data stats`, gitignored like the rest of `data/`) lists what comes out of it: 776,247 decision records and 150 MB of pretraining text in 97,660 documents.
+The global flags are `--cache` (default `data/hf`) and `--seed` (default 1234). `fetch-decisions` also takes `--out` (default `data/decisions`), `--val-frac` (default 0.05), `--teacher` (where `glm_orders` reads the GLM output, default `data/teacher`) and `--list`. `fetch-text` takes `--set` (`default` or `open`), `--out` (default `data/text`, or `data/text-open` with `--set open`), `--min-chars` (default 64) and `--max-chars` (default 20000). Each command prints a per-source table: raw, invalid, duplicate and per-split counts for decisions, or documents, megabytes and duplicates for text. Download time depends on your connection and was not measured. On the build machine the raw cache `data/hf` takes 1.3 GB (`du -sh data/hf`), and `data/STATS.md` (written by `sky-data stats`, gitignored like the rest of `data/`) lists what comes out of it: 776,247 decision records and 150 MB of pretraining text in 97,660 documents.
 
 The game records from [chapter 04](./04-game-cores-and-oracles) go to `data/games`. Together with `data/text` and `data/decisions`, they are the default inputs of `sky-data train-tokenizer`, covered in [07 A tokenizer with small vocabularies](./07-tokenizer).
 

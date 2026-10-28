@@ -33,6 +33,9 @@ pub const DECIDE_STEPS: &str = "6400";
 const EPISODES: &str = "30";
 const GAMES: &str = "flappy,rescue,dodge,doom";
 const RECORDS: &str = "data/decisions,data/games,data/numeric";
+/// MLM text of the pretraining: the open corpus first, so that the held-out tail of the stream
+/// stays the end of data/text, as for s3 (docs/s6-prereg.md, amendment 1).
+const TEXT: &str = "data/text-open,data/text";
 /// Default peak learning rates of `s2-pretrain` and `s2-decide` (`opt.build` in sky-train).
 pub const PRETRAIN_LR: f64 = 3e-3;
 pub const DECIDE_LR: f64 = 1e-3;
@@ -253,7 +256,7 @@ fn train_steps(a: &Arm, id: &str, dir: &str, seed: u64, scale: LrScale) -> Vec<S
         "--tokenizer",
         "data/tok/tok-s2-1024.json",
         "--text",
-        "data/text",
+        TEXT,
         "--steps",
         PRETRAIN_STEPS,
         "--num-weight",

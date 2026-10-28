@@ -256,8 +256,10 @@ enum Cmd {
         /// s2 tokenizer.json with [NUM] = 5 (data/tok/tok-s2-<vocab>.json).
         #[arg(long)]
         tokenizer: PathBuf,
-        #[arg(long)]
-        text: PathBuf,
+        /// MLM text: directories or files of *.jsonl, comma-separated, read in this order
+        /// (s6: data/text-open,data/text).
+        #[arg(long, value_delimiter = ',', required = true)]
+        text: Vec<PathBuf>,
         /// Training time budget in minutes (the default schedule).
         #[arg(long)]
         minutes: Option<f64>,

@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Every dataset an s3/s6 run reads, from scratch: Hugging Face decisions and MLM text, the game
-# oracle data (doom included), the GLM teacher data when a teacher endpoint is set, the s2/s3
-# tokenizer with [NUM] and the numeric curriculum. Steps whose output exists are skipped.
+# Every dataset an s3/s6 run reads, from scratch: Hugging Face decisions and MLM text (data/text,
+# and data/text-open from Dolma 3 and TxT360, which only s6 reads), the game oracle data (doom
+# included), the GLM teacher data when a teacher endpoint is set, the s2/s3 tokenizer with [NUM]
+# and the numeric curriculum. Steps whose output exists are skipped.
 # Usage: scripts/prepare-data.sh
 #   FORCE=1     rebuild every output (the Hugging Face cache data/hf is kept)
 #   REFRESH=1   also empty data/hf first, so every source is downloaded again
 #   SKY_TEACHER_URL / SKY_TEACHER_KEY   regenerate the GLM teacher data (drone orders and
 #               question paraphrases); without them those two sources are skipped
-#   OPEN_TEXT=1 also fetch data/text-open, the opt-in MLM corpus from the training data of fully
-#               open LLMs (Dolma 3, TxT360); no current run reads it
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -44,10 +43,9 @@ if [ "$teacher" = 1 ]; then
 fi
 step data/decisions/.done "decisions (Hugging Face)" sh -c "'$D' fetch-decisions && touch data/decisions/.done"
 step data/text/.done "MLM text (Hugging Face)" sh -c "'$D' fetch-text && touch data/text/.done"
-if [ "${OPEN_TEXT:-0}" = 1 ]; then
-  step data/text-open/.done "open MLM text (Dolma 3, TxT360)" sh -c \
-    "'$D' fetch-text --set open && touch data/text-open/.done"
-fi
+# Streamed: about 450 MB are read for the 150 MB kept (Europarl French is 1 document in 20).
+step data/text-open/.done "open MLM text (Dolma 3, TxT360)" sh -c \
+  "'$D' fetch-text --set open && touch data/text-open/.done"
 # `--game all` writes doom too (60k): the 100k doom run comes after it, in the same step.
 step data/games/.done "game oracle data (doom 100k)" sh -c \
   "'$B/sky-games-gen' --game all --n 60000 --seed 1 \
