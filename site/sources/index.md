@@ -46,6 +46,16 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 | [HuggingFaceFW/fineweb-edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) (one shard) | ODC-BY-1.0 |
 | [HuggingFaceFW/fineweb-2](https://huggingface.co/datasets/HuggingFaceFW/fineweb-2) (`fra_Latn`, one shard) | ODC-BY-1.0 |
 
+### Pretraining text from fully open LLMs (s6 onwards)
+OLMo 3 and LLM360 publish their training data with their weights. From s6 on, pretraining also reads the non-web parts of those corpora (`sky-data fetch-text --set open`, [`docs/s6-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-prereg.md), amendment 1). s1 to s5 were trained without them.
+
+| Dataset | Part used | Licence |
+|---|---|---|
+| [allenai/dolma3_mix-150B-1025](https://huggingface.co/datasets/allenai/dolma3_mix-150B-1025) (Dolma 3, OLMo 3) | Wikipedia EN, olmOCR science PDFs, FineMath (one shard each) | ODC-BY-1.0; Wikipedia under CC-BY-SA |
+| [IFM/TxT360](https://huggingface.co/datasets/IFM/TxT360) (LLM360) | PG-19 books, StackExchange, Europarl (French only) | ODC-BY-1.0; PG-19 public domain, StackExchange CC-BY-SA |
+
+Not used, despite open models: the Lucie Training Dataset (CC-BY-NC-SA-4.0, non-commercial), The Pile behind Pythia (no licence tag, includes Books3), and Apertus' FineWeb copies with opt-out tags (no licence declared on the Hub).
+
 ### Generated data
 - **Game oracles**, written in Rust (`crates/sky-games`). They give exact labels for Flappy Drone, Rescue Run, Obstacle Dodge and the Doom-like game, plus the DAgger rounds, in which the model plays and the oracle labels the states it reaches.
 - **Numeric curriculum** (`sky-train s2-numeric`): comparisons, ordering and closest values, with exact answers, in English and French.

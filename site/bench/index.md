@@ -38,6 +38,8 @@ The code of three s6 models is ready, but none is trained yet. Each will appear 
 | s6-cast | probabilistic forecasting on the [Forecast](/forecast/) page ([SPEC](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)) | 388,320 | GIFT-Eval nGMASE ≤ 0.838 and nWQL ≤ 0.587; the goal is TinyCast's 0.774 / 0.545 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md)) |
 | s6-secrets-pico | API-key and secret detection in short texts (SPEC-S6 §14) | 463,969 | beat a gitleaks-style rule scanner: 0.977 on "is a secret exposed?" and 0.787 on "which service?" ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md)) |
 
+s6-pico and s6-secrets-pico pretrain on the s3 text plus the non-web parts of the training data of OLMo 3 (Dolma 3) and LLM360 (TxT360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl ([sources](/sources/)). s6-cast reads no text.
+
 ## Reproduce
 
 ```bash

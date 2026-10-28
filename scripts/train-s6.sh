@@ -42,7 +42,7 @@ post() {
 
 train() {
   echo "== s6-pico: pretrain 8m, decide 15m ($cfg)"
-  $T s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text --minutes 8 \
+  $T s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text-open,data/text --minutes 8 \
     --num-weight 0.05 --numeric data/numeric --numeric-weight 0.1 --out "$run/pretrain" \
     ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"}
   rm -rf "$run/decide"

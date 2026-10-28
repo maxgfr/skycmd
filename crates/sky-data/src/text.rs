@@ -182,7 +182,7 @@ pub fn open_text_sources() -> Vec<TextSource> {
             &["data/stackexchange/1-1/0_2289.jsonl"],
             0.10,
         ),
-        // Every Europarl file mixes the 24 languages: French is about one document in twenty,
+        // Every Europarl file mixes the EU languages: French is about one document in twenty,
         // so this share costs about 20 times its size in download.
         TextSource {
             filter: Some(("/meta/language", "fr")),

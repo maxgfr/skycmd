@@ -928,7 +928,8 @@ fn start(
 pub struct S2PretrainArgs {
     pub config: PathBuf,
     pub tokenizer: PathBuf,
-    pub text: PathBuf,
+    /// MLM text: directories or files of `*.jsonl`, read in this order.
+    pub text: Vec<PathBuf>,
     /// Time or step budget of the whole run.
     pub progress: Progress,
     /// Steps to run in this invocation before saving and exiting.

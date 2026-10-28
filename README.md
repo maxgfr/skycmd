@@ -66,7 +66,7 @@ Two results took more than one try, and the tutorial tells both stories:
   - exit self-distillation;
   - exit thresholds by conformal risk control (`sky-arena --calibrate-crc`).
 
-  `cargo xtask s6ab` runs the {AdamW, Muon v2} × {softmax, Parallax} ablation, then tests each addition on its own.
+  `cargo xtask s6ab` runs the {AdamW, Muon v2} × {softmax, Parallax} ablation, then tests each addition on its own. s6 pretrains on more text than s3: the stories and web of `data/text`, plus `data/text-open`, the non-web parts of the published training data of two fully open LLMs (Dolma 3 for OLMo 3, TxT360 for LLM360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl.
 - **s6-cast** ([`docs/SPEC-S6-CAST.md`](docs/SPEC-S6-CAST.md), code ready, no model trained yet). A probabilistic forecaster built on the s6 encoder: up to 2,048 past points in patches of 32, nine quantiles for each of the next 64 steps, ternary (144 KB for the 388K-parameter pico), under 1 ms per forecast on one CPU core. It is pretrained on synthetic series from Rust generators (Gaussian-process kernels, pulses, trend + seasonality, SARIMA). `sky-train cast-train` trains it, and `sky-cast` forecasts from the command line.
 - **s6-secrets** ([`docs/SPEC-S6.md`](docs/SPEC-S6.md) §14, [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), code ready, no model trained yet). A decision model specialized in API-key and secret detection. It keeps the s6-pico architecture, with a 320-token state window, and reads a short text (`.env`, code, config, `curl`, log, diff). It says whether a usable secret is exposed, which service issued it, what kind of value it is (secret, test key, publishable key, placeholder, or no credential) and on which line. Its data is a synthetic jev (`sky-data secret-jev`) whose keys follow each provider's format with random bodies. The bench uses file types the training never shows. The bar to beat is a gitleaks-style rule scanner: 0.977 on the secret question and 0.787 on the service.
 - **Training.** Everything is in Rust with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon:
@@ -118,7 +118,7 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 scripts/prepare-data.sh                                   # every dataset below, from scratch (FORCE=1, REFRESH=1)
 cargo run --release -p sky-data -- fetch-decisions        # Hugging Face → data/decisions
 cargo run --release -p sky-data -- fetch-text
-cargo run --release -p sky-data -- fetch-text --set open  # opt-in: Dolma 3 + TxT360 → data/text-open (--text data/text-open)
+cargo run --release -p sky-data -- fetch-text --set open    # Dolma 3 + TxT360 → data/text-open (s6 pretraining)
 cargo run --release -p sky-games --bin sky-games-gen -- --game all --n 60000 --seed 1
 cargo run --release -p sky-data -- train-tokenizer --vocab 1024
 scripts/train-ladder.sh pico                               # pretrain → decide → calibrate → export → eval
