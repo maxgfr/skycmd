@@ -118,6 +118,7 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 scripts/prepare-data.sh                                   # every dataset below, from scratch (FORCE=1, REFRESH=1)
 cargo run --release -p sky-data -- fetch-decisions        # Hugging Face → data/decisions
 cargo run --release -p sky-data -- fetch-text
+cargo run --release -p sky-data -- fetch-text --set open  # opt-in: Dolma 3 + TxT360 → data/text-open (--text data/text-open)
 cargo run --release -p sky-games --bin sky-games-gen -- --game all --n 60000 --seed 1
 cargo run --release -p sky-data -- train-tokenizer --vocab 1024
 scripts/train-ladder.sh pico                               # pretrain → decide → calibrate → export → eval

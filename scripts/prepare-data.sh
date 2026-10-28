@@ -7,6 +7,8 @@
 #   REFRESH=1   also empty data/hf first, so every source is downloaded again
 #   SKY_TEACHER_URL / SKY_TEACHER_KEY   regenerate the GLM teacher data (drone orders and
 #               question paraphrases); without them those two sources are skipped
+#   OPEN_TEXT=1 also fetch data/text-open, the opt-in MLM corpus from the training data of fully
+#               open LLMs (Dolma 3, TxT360); no current run reads it
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -42,6 +44,10 @@ if [ "$teacher" = 1 ]; then
 fi
 step data/decisions/.done "decisions (Hugging Face)" sh -c "'$D' fetch-decisions && touch data/decisions/.done"
 step data/text/.done "MLM text (Hugging Face)" sh -c "'$D' fetch-text && touch data/text/.done"
+if [ "${OPEN_TEXT:-0}" = 1 ]; then
+  step data/text-open/.done "open MLM text (Dolma 3, TxT360)" sh -c \
+    "'$D' fetch-text --set open && touch data/text-open/.done"
+fi
 # `--game all` writes doom too (60k): the 100k doom run comes after it, in the same step.
 step data/games/.done "game oracle data (doom 100k)" sh -c \
   "'$B/sky-games-gen' --game all --n 60000 --seed 1 \

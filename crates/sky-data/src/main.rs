@@ -11,7 +11,7 @@ use sky_data::commands::{fetch_commands, CommandOptions};
 use sky_data::decisions::{fetch_decisions, sources, DecisionOptions};
 use sky_data::hf::{Hf, RepoKind};
 use sky_data::teacher::{self, Teacher, TeacherArgs, TeacherConfig};
-use sky_data::text::{fetch_text, TextOptions};
+use sky_data::text::{fetch_text, TextOptions, TextSet};
 use sky_data::tok::{
     build_corpus, int_prior_reps, int_prior_segments, num_segments, sequence_stats,
     state_token_stats, train_tokenizer, train_tokenizer_s2, CorpusOptions,
@@ -197,8 +197,12 @@ enum Cmd {
     },
     /// Download MLM text, size-capped, exact + MinHash near-dup deduplicated.
     FetchText {
-        #[arg(long, default_value = "data/text")]
-        out: PathBuf,
+        /// Output directory (default data/text, or data/text-open with --set open).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Source set: `default` (stories and web) or `open` (Dolma 3 and TxT360, opt-in).
+        #[arg(long, value_enum, default_value_t)]
+        set: TextSet,
         /// Total size cap in MB of text.
         #[arg(long, default_value_t = 150.0)]
         max_mb: f64,
@@ -576,12 +580,17 @@ fn main() -> Result<()> {
         }
         Cmd::FetchText {
             out,
+            set,
             max_mb,
             min_chars,
             max_chars,
             only,
         } => {
             let hf = Hf::new(&cli.cache)?;
+            let out = out.unwrap_or_else(|| match set {
+                TextSet::Default => "data/text".into(),
+                TextSet::Open => "data/text-open".into(),
+            });
             let reports = fetch_text(
                 &hf,
                 &TextOptions {
@@ -591,6 +600,7 @@ fn main() -> Result<()> {
                     min_chars,
                     max_chars,
                     only,
+                    set,
                 },
             )?;
             println!(

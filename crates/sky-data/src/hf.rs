@@ -158,6 +158,16 @@ impl Hf {
         Ok(dest)
     }
 
+    /// Opens `url` as a byte stream. The caller reads only what it needs, so neither the body
+    /// size nor the total time is limited (a slow stream of a large file outlasts the agent's
+    /// global timeout).
+    pub fn stream(&self, url: &str) -> Result<impl Read> {
+        self.retry(url, || {
+            let resp = self.get(url).config().timeout_global(None).build().call()?;
+            Ok(resp.into_body().into_with_config().limit(u64::MAX).reader())
+        })
+    }
+
     /// Every file of a repository at `rev` (recursive listing), with its published hash.
     pub fn repo_files(&self, kind: RepoKind, repo: &str, rev: &str) -> Result<Vec<RepoFile>> {
         if kind == RepoKind::GitHub {
