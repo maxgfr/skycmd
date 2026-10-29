@@ -77,7 +77,7 @@ Not used, despite open models: the Lucie Training Dataset (CC-BY-NC-SA-4.0, non-
 | [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation |
 
 ### s6-nano and s6-micro: test sets (not trained yet)
-A remote teacher, GLM-5.3-flash through the z.ai API, gives soft labels on about 21,000 training questions (kept only where it agrees with the gold answer); no test question is ever sent. They train on the decision sets, the games and the numeric curriculum above, and pretrain on the s3 text plus the open set above ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)).
+A teacher gives soft labels on every training question of the Hugging Face decision sets above (about 747,000), kept only where it agrees with the gold answer. It is [GLM-5.3-flash](https://huggingface.co/zai-org/GLM-5.3-Flash), an open-weight model (MIT), called through the z.ai API. No test question is ever sent. They train on the decision sets, the games and the numeric curriculum above, and pretrain on the s3 text plus the open set above ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)).
 
 | Dataset | Licence | Used as |
 |---|---|---|

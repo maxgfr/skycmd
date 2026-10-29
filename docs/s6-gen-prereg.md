@@ -19,7 +19,7 @@ Les deux tentatives précédentes sur `typed_decisions_bench` sont restées sous
 
 s6-nano et s6-micro ont des fenêtres larges, un vocabulaire plus grand, 300 Mo de texte (`data/text-open` puis `data/text`) et des heures de pré-entraînement.
 
-**Pas de professeur** (remplacé par l'amendement 1 : un professeur GLM distant). Aucun fichier professeur n'est sur disque (ni `data/s4`, ni `data/s5`, ni les professeurs laya ou oscar-150m). Cette v1 est donc entraînée sans distillation, et ce choix est fait avant le run. Les cibles douces déjà présentes dans les jeux de données (tasksource, procedural, calibrated…) suffisent.
+**Pas de professeur** (remplacé par l'amendement 1 : le professeur open source GLM-5.3-flash, à distance). Aucun fichier professeur n'est sur disque (ni `data/s4`, ni `data/s5`, ni les professeurs laya ou oscar-150m). Cette v1 est donc entraînée sans distillation, et ce choix est fait avant le run. Les cibles douces déjà présentes dans les jeux de données (tasksource, procedural, calibrated…) suffisent.
 
 ## 2. Les modèles
 
@@ -133,18 +133,25 @@ s3-pico, s4-micro et s5-lite publiés passent sur les mêmes records, à τ = 1.
 
 ## 8. Amendements
 
-**Amendement 1 (29/10/2026, avant tout run s6 : ni le pilote pico, ni l'ablation, ni aucune taille n'a tourné, aucun résultat n'a été lu). Un professeur distant, GLM.**
+**Amendement 1 (29/10/2026, avant tout run s6 : ni le pilote pico, ni l'ablation, ni aucune taille n'a tourné, aucun résultat n'a été lu). Un professeur open source, GLM-5.3-flash, sur toutes les données de décision.**
 
-- **Changement.** Le §1 disait « pas de professeur ». s6-nano et s6-micro apprennent maintenant aussi des probabilités d'un professeur, GLM-5.3-flash, appelé à distance sur l'API de z.ai (protocole Anthropic Messages, configuré par `ccs`).
-  - **Records envoyés** (`sky-data teacher label-decisions`, `scripts/distill-glm.sh`) : au plus 1 000 records `train` par famille de sources de `data/decisions` (la partie avant `:`, pour que les 389 sous-sources de tasksource pèsent une part comme les autres), graine 1234. Seulement des cibles dures (les cibles douces portent déjà un professeur), entre 2 et 12 options. Jamais `typed_decisions_bench`, notam, banking77 ni les records déjà générés par GLM (`glm_orders`, `para:*`). Jamais un split `val` ou `test`. Le 29/10/2026, cela fait **20 876 records**, en 1 044 appels de 20.
+- **Changement.** Le §1 disait « pas de professeur ». s6-nano et s6-micro apprennent maintenant aussi des probabilités d'un professeur : **GLM-5.3-flash**, un modèle **open source** de Z.ai.
+  - Ses poids sont publiés sous licence **MIT** ([`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash), 321B paramètres en mixture d'experts, dont 18B actifs).
+  - Il est appelé à distance sur l'API de z.ai (protocole Anthropic Messages, configuré par `ccs`). Ses poids étant ouverts, les labels restent reproductibles hors de cette API.
+  - **Records envoyés** (`sky-data teacher label-decisions`, `scripts/distill-glm.sh`) : **tous** les records `train` de `data/decisions`, c'est-à-dire tous les jeux Hugging Face de décision, entre 2 et 12 options. Les cibles douces sont incluses.
+  - Ne sont jamais envoyés : `typed_decisions_bench`, notam, banking77, les records déjà générés par GLM (`glm_orders`, `para:*`), et aucun split `val` ou `test`.
+  - Le 29/10/2026, cela fait **747 198 records**, envoyés dans un ordre tiré au hasard (graine 1234), en 37 360 appels de 20 par 8 workers parallèles.
   - **La question posée** : une probabilité par option, dans l'ordre donné, somme 1 ; température 0,2 ; état coupé à 2 000 caractères. Une réponse mal formée (mauvais nombre d'options, valeur négative, somme nulle) est écartée.
   - **Le mélange** (`sky-data teacher mix-labels`) : un label n'est gardé que si l'argmax du professeur est la réponse or (le filtre d'accord de s5). La cible devient `0,5 · or + 0,5 · professeur`, dans `data/distill/glm.jsonl` (`src = glm:<source>`, split `train`).
-  - **Poids de décision** : `decisions=0.40,distill=0.15,games=0.35,numeric=0.10`. **Poids DAgger** : `games=0.4,rN=0.25,decisions=0.2,distill=0.1,numeric=0.05` (toujours 30 % de décisions).
-- **Pourquoi.** s4-micro a échoué sans pré-entraînement suffisant et sans bon professeur. Les meilleurs professeurs locaux (oscar-1-150m, 0,7755 sur le bench de s5 ; laya-typed-decisions, 0,7665) tourneraient des heures sur la machine, qui chauffe trop. GLM tourne à distance. Essai du 29/10/2026 (2 appels, 20 records, hors `data/`) : 20 réponses valides sur 20, et 15 d'accord avec l'or.
+  - **Poids de décision** : `decisions=0.25,distill=0.30,games=0.35,numeric=0.10`. **Poids DAgger** : `games=0.4,rN=0.25,decisions=0.1,distill=0.2,numeric=0.05`, soit toujours 30 % de décisions.
+- **Pourquoi.**
+  - s4-micro a échoué sans pré-entraînement suffisant et sans bon professeur.
+  - Les meilleurs professeurs locaux (oscar-1-150m, 0,7755 sur le bench de s5 ; laya-typed-decisions, 0,7665) tourneraient des heures sur la machine, qui chauffe trop. GLM tourne à distance.
+  - Essai du 29/10/2026 (2 appels, 20 records, hors `data/`) : 20 réponses valides sur 20, et 15 d'accord avec l'or.
 - **Règles.**
-  - Les labels sont produits une fois, avant le pilote de s6-nano, et jamais régénérés. Un run interrompu reprend là où il s'est arrêté (même sélection, mêmes ids).
+  - Les labels sont produits une fois, avant le pilote de s6-nano, et jamais régénérés. Un run interrompu (quota, réseau) reprend là où il s'est arrêté : même sélection, mêmes ids.
   - Les runs attendent que le fichier de labels couvre au moins 95 % de la sélection. Sinon, un nouvel amendement daté décide, avant tout run.
   - Le rapport donne le modèle exact, le nombre d'appels et de jetons, et le taux d'accord par source (`data/distill/agreement.json`).
 - **Contamination.** Le professeur ne voit aucun record de test. Ses données d'entraînement ne sont pas publiées : on ne peut pas exclure qu'il ait vu les benchmarks publics. Le rapport le dit.
-- **Conditions.** Les sorties de GLM sont soumises aux conditions de son fournisseur (`DATA_LICENSES.md`), comme celles qui ont servi pour s1 à s3.
+- **Conditions.** Les poids du modèle sont sous MIT. Les appels passent par l'API de z.ai, dont les conditions d'utilisation s'appliquent aussi (`DATA_LICENSES.md`).
 - **Ce qui ne change pas.** Les modèles, le pilote, les budgets, les ensembles de test, l'évaluation et les portes.

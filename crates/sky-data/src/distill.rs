@@ -1,12 +1,13 @@
-//! Teacher soft labels of decision records through the GLM endpoint, for the s6 models
-//! (`docs/s6-gen-prereg.md`, amendment 1): the teacher runs remotely, so labelling costs no
+//! Teacher soft labels of decision records through a GLM endpoint, for the s6 models
+//! (`docs/s6-gen-prereg.md`, amendment 1). The teacher is GLM-5.3-flash, an open-weight model
+//! (MIT, `zai-org/GLM-5.3-Flash`), called remotely through the z.ai API, so labelling costs no
 //! local compute.
 //!
-//! `sky-data teacher label-decisions` samples up to `per_source` train records per source family of
-//! `data/decisions` (hard-labelled ones only: soft targets already carry a teacher; never the
-//! benchmark or held-out sources, nor GLM-generated records), sends them in batches and asks for
-//! one probability per option. Replies are appended to a JSONL file, so an interrupted run
-//! resumes where it stopped; several workers can call the endpoint in parallel.
+//! `sky-data teacher label-decisions` sends every train record of `data/decisions` (or, with
+//! `per_source`, a seeded sample per source family), never the benchmark or held-out sources nor
+//! GLM-generated records, in batches, and asks for one probability per option. Replies are
+//! appended to a JSONL file, so an interrupted run resumes where it stopped; several workers can
+//! call the endpoint in parallel.
 //!
 //! `sky-data teacher mix-labels` keeps a label only when the teacher's argmax is the gold one
 //! (the agreement filter of s5) and writes `target = alpha * gold + (1 - alpha) * teacher` as
@@ -64,8 +65,8 @@ pub fn record_id(r: &DecisionRecord) -> String {
     format!("{}-{:016x}", r.src, hash64(key.as_bytes()))
 }
 
-/// Whether a record may be sent to the teacher: a train record with a hard target and 2 to
-/// `MAX_OPTIONS` options, from a source that is neither held out nor GLM-generated.
+/// Whether a record may be sent to the teacher: a train record with 2 to `MAX_OPTIONS` options,
+/// from a source that is neither held out nor GLM-generated.
 pub fn eligible(r: &DecisionRecord) -> bool {
     r.split == "train"
         && !EXCLUDED.contains(&r.src.as_str())
@@ -73,7 +74,6 @@ pub fn eligible(r: &DecisionRecord) -> bool {
         && !r.src.starts_with("glm:")
         && (2..=MAX_OPTIONS).contains(&r.opts.len())
         && r.target.len() == r.opts.len()
-        && r.target.iter().cloned().fold(0.0f32, f32::max) >= 0.999
 }
 
 fn files(from: &[PathBuf]) -> Result<Vec<PathBuf>> {
@@ -110,8 +110,8 @@ pub fn family(src: &str) -> &str {
     src.split(':').next().unwrap_or(src)
 }
 
-/// Up to `per_source` eligible records per source family, drawn with a seed per family, then
-/// shuffled.
+/// Every eligible record (`per_source` 0), or up to `per_source` per source family drawn with a
+/// seed per family; shuffled either way, so that an interrupted run has covered every source.
 pub fn select(o: &LabelOptions) -> Result<Vec<DecisionRecord>> {
     let mut by_src: BTreeMap<String, Vec<DecisionRecord>> = BTreeMap::new();
     for r in eligible_records(&o.from)? {
@@ -122,8 +122,10 @@ pub fn select(o: &LabelOptions) -> Result<Vec<DecisionRecord>> {
     }
     let mut out = Vec::new();
     for (src, mut v) in by_src {
-        Rng::derived(o.seed, &format!("distill/{src}")).shuffle(&mut v);
-        v.truncate(o.per_source);
+        if o.per_source > 0 {
+            Rng::derived(o.seed, &format!("distill/{src}")).shuffle(&mut v);
+            v.truncate(o.per_source);
+        }
         out.extend(v);
     }
     Rng::derived(o.seed, "distill/order").shuffle(&mut out);
@@ -364,7 +366,7 @@ mod tests {
     fn eligibility() {
         assert!(eligible(&rec("boolq", &[0.0, 1.0], "train")));
         assert!(!eligible(&rec("boolq", &[0.0, 1.0], "val")));
-        assert!(!eligible(&rec("boolq", &[0.3, 0.7], "train")));
+        assert!(eligible(&rec("boolq", &[0.3, 0.7], "train")));
         assert!(!eligible(&rec(
             "typed_decisions_bench",
             &[0.0, 1.0],

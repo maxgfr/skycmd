@@ -83,7 +83,7 @@ endpoint, and the report states whether they were there.
 
 | file | how it is used | rows |
 |---|---|---|
-| `data/teacher/glm_labels.jsonl` | `sky-data teacher label-decisions` (`scripts/distill-glm.sh`): GLM-5.3-flash through the z.ai API gives one probability per option for up to 1,000 hard-labelled train records per source family of `data/decisions` (benchmark, held-out and GLM-generated sources excluded); outputs subject to the provider's terms of service | 20,876 selected |
+| `data/teacher/glm_labels.jsonl` | `sky-data teacher label-decisions` (`scripts/distill-glm.sh`): GLM-5.3-flash, an open-weight model (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) called through the z.ai API, gives one probability per option for every train record of `data/decisions` (benchmark, held-out and GLM-generated sources excluded); the z.ai terms of service apply to the API calls | 747,198 selected |
 | `data/distill/glm.jsonl` | `sky-data teacher mix-labels`: the labels whose argmax is the gold answer, `target = 0.5 · gold + 0.5 · teacher`, `src = glm:<source>`, train split; agreement per source in `agreement.json` | the agreeing labels |
 
 The test

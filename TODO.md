@@ -35,16 +35,18 @@ Ordre conseillé (une seule machine) : données → labels GLM (à distance, §1
 - [ ] Vérifier que `data/text-open/` contient les 6 fichiers : `dolma3_*`, `txt360_*`.
 - [ ] Vérifier que `data/s4/heldout/` contient `zs_massive_en.jsonl` (2 000 questions), `zs_massive_fr.jsonl` (1 000) et `zs_banking77.jsonl`. Ce dernier est rapporté comme « dans la distribution », parce que Banking77 est dans `data/decisions`.
 
-### 1.1 Professeur GLM distant pour s6-nano et s6-micro (`docs/s6-gen-prereg.md`, amendement 1)
+### 1.1 Professeur GLM-5.3-flash pour s6-nano et s6-micro (`docs/s6-gen-prereg.md`, amendement 1)
+
+GLM-5.3-flash est open source : poids sous licence MIT, [`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash). On l'appelle par l'API de z.ai pour ne pas faire chauffer la machine.
 
 À faire une fois, après `prepare-data.sh` et avant le pilote de s6-nano. Tout tourne chez z.ai : la machine ne chauffe pas.
 
 - [ ] `ccs list` doit montrer le fournisseur `zai` configuré. Le script lit l'endpoint et la clé dans la config de `ccs`, sans jamais afficher la clé ; `SKY_TEACHER_URL` et `SKY_TEACHER_KEY` priment s'ils sont définis.
-- [ ] `scripts/distill-glm.sh count` (aucun appel) : 20 876 records et 1 044 appels de 20 attendus. Un autre compte veut dire que `data/decisions` a changé : comprendre pourquoi avant d'appeler.
-- [ ] `scripts/distill-glm.sh label` : environ 10 s par appel et 4 appels en parallèle, soit 45 min à 1 h. Si le quota ou le réseau coupe, relancer la même commande : elle reprend où elle s'est arrêtée.
+- [ ] `scripts/distill-glm.sh count` (aucun appel) : 747 198 records (tous les records `train` des jeux Hugging Face de `data/decisions`) et 37 360 appels de 20 attendus. Un autre compte veut dire que `data/decisions` a changé : comprendre pourquoi avant d'appeler.
+- [ ] `scripts/distill-glm.sh label` : environ 10 s par appel et 8 appels en parallèle, soit environ 13 h, et de l'ordre de 200 M jetons en entrée et 40 M en sortie sur le quota z.ai. À lancer en arrière-plan (la machine ne calcule rien). Si le quota ou le réseau coupe, relancer la même commande : elle reprend où elle s'est arrêtée.
 - [ ] Les labels doivent couvrir au moins **95 %** de la sélection (relancer `count` : il dit combien il en reste). Sinon, un amendement daté avant tout run.
 - [ ] `scripts/distill-glm.sh mix` : `data/distill/glm.jsonl` et le taux d'accord par source (`data/distill/agreement.json`), à recopier dans le rapport avec le nombre d'appels et de jetons. L'essai du 29/10/2026 donnait 15 accords sur 20.
-- [ ] Remplacer « 20,876 selected » et « the agreeing labels » par les vrais nombres dans `DATA_LICENSES.md` (section s6-nano / s6-micro).
+- [ ] Remplacer « 747,198 selected » et « the agreeing labels » par les vrais nombres dans `DATA_LICENSES.md` (section s6-nano / s6-micro).
 
 ## 2. Le s6 généraliste : pilote et ablation pico, puis s6-nano et s6-micro (`docs/s6-prereg.md`, `docs/s6-gen-prereg.md`, `docs/SPEC-S6.md` §15)
 
@@ -79,8 +81,8 @@ Pré-entraînement sur `data/text-open,data/text` (amendement 1), décisions sur
 - [ ] `SIZE=nano … scripts/train-s6.sh lr` : le pilote ×0,5, ×1 et ×2 autour du taux pico déplacé par μP, √(96/144) = ×0,816 (20 + 20 min chacun). On garde le centre sauf si un autre taux gagne ≥ **0,01** en `val`. Pas d'extension. La sortie est `runs/s6-nano-lr/summary.json`.
 - [ ] `SIZE=nano … scripts/train-s6.sh train dagger exit eval`. Les étapes :
   - pré-entraînement 90 min ;
-  - décision 90 min (`decisions=0.40,distill=0.15,games=0.35,numeric=0.10`) ;
-  - 3 rounds DAgger de 15 min (oracle 0,2 → 0,1 → 0,05, 30 % de décisions gardées, dont 10 % du mélange GLM) ;
+  - décision 90 min (`decisions=0.25,distill=0.30,games=0.35,numeric=0.10`) ;
+  - 3 rounds DAgger de 15 min (oracle 0,2 → 0,1 → 0,05, 30 % de décisions gardées, dont 20 % du mélange GLM) ;
   - seuils CRC (α = 0,02) ;
   - évaluation et porte (`scripts/s6-gate.py`, résultat dans `runs/s6-nano/eval/results.md`).
 - [ ] Porte : `typed_decisions_bench` **> 0,398**, aucun jeu à −5 % de s3-pico, ECE **≤ 0,08**. Lue à τ = 1. Publié aux seuils CRC si elle y tient aussi.

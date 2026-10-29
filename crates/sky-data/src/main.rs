@@ -351,14 +351,14 @@ enum TeacherTask {
         #[arg(long, default_value_t = 2000)]
         n: usize,
     },
-    /// s6: teacher probabilities per option for sampled hard-labelled train records (resumable).
+    /// s6: teacher probabilities per option for the train decision records (resumable).
     LabelDecisions {
         #[arg(long, value_delimiter = ',', default_value = "data/decisions")]
         from: Vec<PathBuf>,
         #[arg(long, default_value = "data/teacher/glm_labels.jsonl")]
         out: PathBuf,
-        /// Records drawn per source.
-        #[arg(long, default_value_t = 1000)]
+        /// Records drawn per source family (0: every eligible record).
+        #[arg(long, default_value_t = 0)]
         per_source: usize,
         /// The state is cut to this many characters in the prompt.
         #[arg(long, default_value_t = 2000)]

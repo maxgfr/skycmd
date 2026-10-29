@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Teacher soft labels of s6-nano / s6-micro through a GLM endpoint (docs/s6-gen-prereg.md,
-# amendment 1). The teacher runs remotely, so nothing heavy runs on this machine. The endpoint and
+# amendment 1): GLM-5.3-flash, an open-weight model (MIT, zai-org/GLM-5.3-Flash), called through
+# the z.ai API, so nothing heavy runs on this machine. The endpoint and
 # the key come from the zai provider of ccs (Claude Code Switch) unless SKY_TEACHER_URL and
 # SKY_TEACHER_KEY are set; the key is never printed.
 # Usage: scripts/distill-glm.sh [count] [label] [mix]   (default: label mix)
 #   count   eligible records and the calls a label run would make (no API call)
 #   label   sky-data teacher label-decisions -> data/teacher/glm_labels.jsonl (resumable)
 #   mix     sky-data teacher mix-labels -> data/distill/glm.jsonl and agreement.json
-#   MODEL=glm-5.3-flash  PER_SOURCE=1000  BATCH=20  JOBS=4  MAX_CALLS=5000  ALPHA=0.5
+#   MODEL=glm-5.3-flash  PER_SOURCE=0 (all; N: a sample per source family)  BATCH=20  JOBS=8
+#   MAX_CALLS=60000 (retries count)  ALPHA=0.5
 #   DATA=data            where data/decisions lives
 set -euo pipefail
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -37,7 +39,7 @@ endpoint() {
 label() {
   endpoint
   "$D" teacher --model "$model" --max-calls "$1" --batch "$batch" label-decisions \
-    --from "$data/decisions" --out "$labels" --per-source "${PER_SOURCE:-1000}" --jobs "${JOBS:-4}"
+    --from "$data/decisions" --out "$labels" --per-source "${PER_SOURCE:-0}" --jobs "${JOBS:-8}"
 }
 
 steps=("$@")
@@ -45,7 +47,7 @@ steps=("$@")
 for s in "${steps[@]}"; do
   case "$s" in
     count) label 0 ;;
-    label) label "${MAX_CALLS:-5000}" ;;
+    label) label "${MAX_CALLS:-60000}" ;;
     mix) "$D" teacher mix-labels --labels "$labels" --from "$data/decisions" --out "$data/distill" \
       --alpha "${ALPHA:-0.5}" ;;
     *) echo "unknown step $s (count, label, mix)" >&2; exit 2 ;;
