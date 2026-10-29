@@ -1,0 +1,29 @@
+{
+  "name": "s6-nano",
+  "vocab_size": 2048,
+  "hidden_size": 144,
+  "intermediate_size": 288,
+  "state_layers": 2,
+  "state_loops": 2,
+  "static_layers": 2,
+  "fusion_layers": 2,
+  "head_count": 2,
+  "fuse_numbers": true,
+  "parallax": true,
+  "exits": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "max_state_tokens": 256,
+  "max_head_tokens": 128,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "exit_threshold": [
+    0.9,
+    0.9,
+    0.9
+  ],
+  "temperature": {}
+}

@@ -67,6 +67,15 @@ Two results took more than one try, and the tutorial tells both stories:
   - exit thresholds by conformal risk control (`sky-arena --calibrate-crc`).
 
   `cargo xtask s6ab` runs the {AdamW, Muon v2} × {softmax, Parallax} ablation, then tests each addition on its own. s6 pretrains on more text than s3: the stories and web of `data/text`, plus `data/text-open`, the non-web parts of the published training data of two fully open LLMs (Dolma 3 for OLMo 3, TxT360 for LLM360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl.
+- **s6-nano and s6-micro** ([`docs/SPEC-S6.md`](docs/SPEC-S6.md) §15, [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), code ready, no model trained yet). The s6 that will ship is general-purpose: the four games and questions in free text, in two sizes. The pico ablation chooses the recipe and there is no s6-pico final model.
+  - **s6-nano** has 1.57M parameters, 2,048 tokens and 256/128-token windows.
+  - **s6-micro** has 5.85M parameters: the s4-micro shape with Parallax, 4,096 tokens and 384/128-token windows.
+
+  Both pretrain for hours on 300 MB of text (s4-micro had 30 minutes on 150 MB) and train on the decision sets, the games and the numeric curriculum, with no teacher.
+  - **s6-nano gate:** beat the majority class of `typed_decisions_bench` (0.398).
+  - **s6-micro gate:** at least 0.45, with 0.50 as the goal (the level of s4's Qwen3.5-4B teacher).
+
+  Each gate also requires no game more than 5% below s3-pico and an ECE of at most 0.08.
 - **s6-cast** ([`docs/SPEC-S6-CAST.md`](docs/SPEC-S6-CAST.md), code ready, no model trained yet). A probabilistic forecaster built on the s6 encoder: up to 2,048 past points in patches of 32, nine quantiles for each of the next 64 steps, ternary (144 KB for the 388K-parameter pico), under 1 ms per forecast on one CPU core. It is pretrained on synthetic series from Rust generators (Gaussian-process kernels, pulses, trend + seasonality, SARIMA). `sky-train cast-train` trains it, and `sky-cast` forecasts from the command line.
 - **s6-secrets** ([`docs/SPEC-S6.md`](docs/SPEC-S6.md) §14, [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), code ready, no model trained yet). A decision model specialized in API-key and secret detection. It keeps the s6-pico architecture, with a 320-token state window, and reads a short text (`.env`, code, config, `curl`, log, diff). It says whether a usable secret is exposed, which service issued it, what kind of value it is (secret, test key, publishable key, placeholder, or no credential) and on which line. Its data is a synthetic jev (`sky-data secret-jev`) whose keys follow each provider's format with random bodies. The bench uses file types the training never shows. The bar to beat is a gitleaks-style rule scanner: 0.977 on the secret question and 0.787 on the service.
 - **Training.** Everything is in Rust with [mlx-rs](https://github.com/oxiglade/mlx-rs) on Apple Silicon:
@@ -135,7 +144,7 @@ scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf s3-pi
 scripts/night-s4.sh                                        # s4-micro: Qwen3.5-4B teacher, distillation, gate (chapter 22)
 export SKYCMD_STORE=$PWD && cargo xtask s5 list             # s5-lite: every stage of the pre-registered run (chapter 24)
 cargo xtask s6lr && cargo xtask s6ab --adamw-lr-scale 1 --muon-lr-scale 1   # s6: learning-rate pilot, then the ablation
-scripts/train-s6.sh                                        # s6-pico with the adopted changes (docs/s6-prereg.md)
+SIZE=nano scripts/train-s6.sh lr train dagger exit eval    # s6-nano, then SIZE=micro (docs/s6-gen-prereg.md)
 scripts/train-cast.sh data pilot                           # s6-cast: data, then the pre-registered pilots
 scripts/train-cast.sh train export eval                    # s6-cast: training, export, GIFT-Eval (docs/s6-cast-prereg.md)
 scripts/train-secrets.sh data train eval                   # s6-secrets-pico: jev, training, bench vs the rule scanner

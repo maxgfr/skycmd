@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Every dataset an s3/s6 run reads, from scratch: Hugging Face decisions and MLM text (data/text,
 # and data/text-open from Dolma 3 and TxT360, which only s6 reads), the game oracle data (doom
-# included), the GLM teacher data when a teacher endpoint is set, the s2/s3 tokenizer with [NUM]
-# and the numeric curriculum. Steps whose output exists are skipped.
+# included), the GLM teacher data when a teacher endpoint is set, the s2/s3 tokenizer and the
+# s6-nano / s6-micro tokenizers with [NUM], the zero-shot MASSIVE test sets of s6 and the numeric
+# curriculum. Steps whose output exists are skipped.
 # Usage: scripts/prepare-data.sh
 #   FORCE=1     rebuild every output (the Hugging Face cache data/hf is kept)
 #   REFRESH=1   also empty data/hf first, so every source is downloaded again
@@ -61,8 +62,18 @@ else
 fi
 step data/tok/tok-s2-1024.json "s3/s6-pico tokenizer (1024, [NUM])" \
   "$D" train-tokenizer --vocab 1024 --num
+# s6-nano and s6-micro (docs/s6-gen-prereg.md): their own vocabularies, open text included.
+for v in 2048 4096; do
+  step "data/tok/tok-s6-$v.json" "s6 tokenizer ($v, [NUM])" \
+    "$D" train-tokenizer --vocab "$v" --num --inputs data/text,data/text-open,data/decisions,data/games \
+    --out "data/tok/tok-s6-$v.json"
+done
+# Zero-shot test sets of s6-nano / s6-micro: MASSIVE en/fr intents (split test), never trained on.
+step data/commands/massive.jsonl "MASSIVE intents (Hugging Face)" "$D" fetch-commands --only massive
+step data/s4/heldout/zs_massive_en.jsonl "zero-shot held-out sets (MASSIVE en/fr, Banking77)" \
+  "$D" s4-corpus --only-heldout
 step data/numeric/numeric.jsonl "numeric curriculum (100k)" \
   "$B/sky-train" s2-numeric --n 100000 --out data/numeric/numeric.jsonl
 
 echo "== data ready"
-du -sh data/decisions data/text data/games data/numeric data/tok 2>/dev/null || true
+du -sh data/decisions data/text data/text-open data/games data/numeric data/tok data/s4/heldout 2>/dev/null || true

@@ -30,15 +30,16 @@ These models answer questions you write yourself, so they are measured on held-o
 
 ## Coming next: the s6 family
 
-The code of three s6 models is ready, but none is trained yet. Each will appear here only once it is trained and passes the gate fixed in its pre-registration.
+The code of four s6 models is ready, but none is trained yet. The s6-pico ablation only chooses the recipe of s6-nano and s6-micro: there is no s6-pico model to ship. Each will appear here only once it is trained and passes the gate fixed in its pre-registration.
 
 | model | task | parameters | gate (pre-registered) |
 |---|---|---:|---|
-| s6-pico | the four games: s3-pico with Parallax attention and Muon v2 ([SPEC](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6.md)) | 463,969 | no game more than 5 % below s3-pico, and one game 5 % better or the same play with fewer layers ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-prereg.md)) |
+| s6-nano | general-purpose: the four games and multiple-choice questions in free text, 2,048 tokens, 256-token state ([SPEC §15](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6.md)) | 1,569,457 | above the majority class on `typed_decisions_bench` (> 0.398), no game more than 5 % below s3-pico, ECE ≤ 0.08 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)) |
+| s6-micro | the same at s4-micro scale with Parallax, 4,096 tokens, 384-token state | 5,849,601 | ≥ 0.45 on `typed_decisions_bench` (goal 0.50, the level of s4's Qwen3.5-4B teacher), no game more than 5 % below s3-pico, ECE ≤ 0.08 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)) |
 | s6-cast | probabilistic forecasting on the [Forecast](/forecast/) page ([SPEC](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)) | 388,320 | GIFT-Eval nGMASE ≤ 0.838 and nWQL ≤ 0.587; the goal is TinyCast's 0.774 / 0.545 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md)) |
 | s6-secrets-pico | API-key and secret detection in short texts (SPEC-S6 §14) | 463,969 | beat a gitleaks-style rule scanner: 0.977 on "is a secret exposed?" and 0.787 on "which service?" ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md)) |
 
-s6-pico and s6-secrets-pico pretrain on the s3 text plus the non-web parts of the training data of OLMo 3 (Dolma 3) and LLM360 (TxT360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl ([sources](/sources/)). s6-cast reads no text.
+s6-nano, s6-micro and s6-secrets-pico pretrain on the s3 text plus the non-web parts of the training data of OLMo 3 (Dolma 3) and LLM360 (TxT360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl ([sources](/sources/)). s6-cast reads no text.
 
 ## Reproduce
 
