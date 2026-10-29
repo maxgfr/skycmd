@@ -77,6 +77,8 @@ Eleven arms × 3 seeds is 33 runs of about 27 minutes on an M5, so about 15 hour
 | s6-femto-xsa | s6-femto + `xsa` | golden only |
 | s3-pico-xsa | s3-pico + `xsa` | 445,345 / 203,393 (no new tensor) |
 | s6-secrets-pico | s6-pico with a 320-token state and a 192-token head (§14) | 463,969 / 212,705 (RoPE: no new tensor) |
+| s6-nano | general-purpose, vocabulary 2,048, d 144, 256 / 128 windows (§15) | 1,569,457 / 778,065 |
+| s6-micro | s4-micro + `parallax` (§15) | 5,849,601 / 2,960,769 (s4-micro: 5,587,201) |
 
 Each encoder block gains `d²` probe weights and `head_dim` norm weights: 9,312 per block for s6-pico (one state block, one static block).
 
@@ -163,3 +165,31 @@ A model of its own, with the s6-pico architecture, specialized in one task: tell
 - **Wider windows, same weights.** With the s6 tokenizer a random key costs about one token per character: states run to 93 tokens (median) and 312 (max), and the service question with its options to 179. The config widens the state window to 320 tokens and the head to 192. RoPE has no position table, so the parameter count is s6-pico's. The jev stays out of `data/decisions`: the general s6, with 64 state tokens, would read it cut off before the key.
 - **The bar: a rule scanner** (`sky-data secret-baseline`). It combines gitleaks-style prefixes for 20 formats, connection strings with an inline password, and an entropy rule on secret-sounding names, with allowlists for documentation, test and publishable keys. On `secret_bench` it scores 0.977 on the secret question (precision 0.966, recall 0.989) and 0.787 on the service question. All 35 of its false positives are random non-credentials under names like `CACHE_KEY`.
 - **Training** (`scripts/train-secrets.sh data train eval`, prepared and not run): numeric MLM pretraining in 256-token sequences, decision training with QAT on `data/secrets` alone, then calibration, ternary export and `s2-eval`.
+
+## 15. General-purpose sizes: s6-nano and s6-micro (not trained yet)
+
+The s6 that ships is general-purpose: the four games and multiple-choice questions in free text. It comes in two sizes and replaces the s6-pico final model. The pico pilot and ablation (§4) still run, but only to choose the recipe the two sizes inherit. The protocol and the publication gates are in `docs/s6-gen-prereg.md`.
+
+| name | vocabulary | d / ff | blocks × loops | heads | state / head window | params (decision / pretraining stack) |
+|---|---:|---|---|---:|---|---:|
+| s6-nano | 2,048 | 144 / 288 | 2 × 2 (exits 1, 2, 3, 4) | 2 | 256 / 128 | 1,569,457 / 778,065 |
+| s6-micro | 4,096 | 256 / 768 | 2 × 3 (exits 2, 4, 6) | 4 | 384 / 128 | 5,849,601 / 2,960,769 |
+
+- **Why not a pico.** With 1,024 tokens and windows of 64/96, 96.8% of the decision sequences are truncated, and s3-pico (same size as s6-pico) scores 0.382 on `typed_decisions_bench`, below the majority class (0.398). s4-micro (5.6M, same shape as s6-micro without Parallax) failed at 0.343 after only 30 minutes of MLM pretraining on 150 MB.
+- **Inherited recipe.** Both configs have `parallax` and `fuse_numbers`. Before the first run, `parallax` and `xsa` are set from the ablation's adoption rules (`docs/s6-prereg.md` §4), and so are the training variables `OPT`, `LR_SCALE`, `PRETRAIN` and `DECIDE`.
+- **Tokenizers.** `data/tok/tok-s6-2048.json` and `tok-s6-4096.json` (`sky-data train-tokenizer --num` on `data/text`, `data/text-open`, `data/decisions`, `data/games`), written by `scripts/prepare-data.sh`.
+- **Training** (`SIZE=nano|micro scripts/train-s6.sh [lr] [train] [dagger] [exit] [eval]`). The steps:
+  - `lr`: a per-size learning-rate pilot at ×0.5, ×1 and ×2 of the adopted rate (20 + 20 min each);
+  - `train`: MLM pretraining on `data/text-open,data/text` in 256-token sequences (nano 90 min, micro 180 min), then decision training with QAT on `decisions=0.55,games=0.35,numeric=0.10`, batches grouped by length (nano 90 min, micro 180 min);
+  - `dagger`: three rounds that keep 30% decisions (`games=0.4,rN=0.25,decisions=0.3,numeric=0.05`; nano 15 min, micro 20 min each);
+  - `exit`: exit thresholds by conformal risk control (α = 0.02);
+  - `eval`: the evaluation and the gate (`scripts/s6-gate.py`).
+- **Learning rates.** `LR_SCALE` × √(96/d) × the size's pilot scale × each phase's default (3e-3 pretraining, 1e-3 decision), on `--muon-lr`, or on `--adam-lr` with `--no-muon`. `OPT` carries no rate. √(96/d) moves the pico rate to width d as the spectral μP condition predicts for AdamW-matched Muon (×0.816 nano, ×0.612 micro); the pilot then tries ×0.5, ×1 and ×2 of that centre.
+- **Test sets:**
+  - `typed_decisions_bench`;
+  - MASSIVE en/fr intents (`data/s4/heldout`, written by `sky-data s4-corpus --only-heldout`): zero-shot, since MASSIVE is not in `data/decisions`;
+  - notam, test only;
+  - the When2Call test split.
+
+  Banking77 is now in `data/decisions`, so it is trained on: it is reported as in-distribution and never counted as zero-shot.
+- **Truncation report** (`sky-train s2-truncation --config C --tokenizer T --records R [--per-source 500] [--json out]`): the share of records whose state passes `max_state_tokens`, and whose head or an option passes `max_head_tokens` or the 48-token option cap. It reads the first records of each source, applies the config's number fusion, and reports per source and overall.

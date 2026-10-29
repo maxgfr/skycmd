@@ -1880,6 +1880,31 @@ mod tests {
             expected_count(&xsa, S2Parts::DECISION),
             expected_count(&cfg, S2Parts::DECISION)
         );
+        // The general-purpose sizes (docs/s6-gen-prereg.md), fixed before any run:
+        // (config, decision model, pretraining model, state x head windows).
+        for (name, total, pre, windows) in [
+            ("s6-nano", 1_569_457, 778_065, (256, 128)),
+            ("s6-micro", 5_849_601, 2_960_769, (384, 128)),
+        ] {
+            let cfg = ladder(name);
+            assert!(
+                cfg.parallax && cfg.fuse_numbers && cfg.state_loops > 1,
+                "{name}"
+            );
+            assert_eq!(expected_count(&cfg, S2Parts::DECISION), total, "{name}");
+            assert_eq!(expected_count(&cfg, S2Parts::PRETRAIN), pre, "{name}");
+            assert_eq!(
+                (cfg.max_state_tokens, cfg.max_head_tokens),
+                windows,
+                "{name}"
+            );
+        }
+        // s6-micro is s4-micro plus, per encoder block (2 state + 2 static), the probe rows
+        // (256 x 256) and `attn_px_norm` (one head, 64).
+        assert_eq!(
+            expected_count(&ladder("s6-micro"), S2Parts::DECISION),
+            expected_count(&ladder("s4-micro"), S2Parts::DECISION) + 4 * (256 * 256 + 64)
+        );
     }
 
     #[test]

@@ -5,7 +5,9 @@
 # pretraining, decision training with QAT on data/secrets only, calibration, ternary export and
 # evaluation on secret_bench (contexts the training never shows).
 # Usage: scripts/train-secrets.sh [data] [train] [eval]   (default: all three, in order)
-#   OPT="..."       optimizer flags of every phase (as scripts/train-s6.sh)
+#   OPT="..."       optimizer flags of every phase, without a rate (as scripts/train-s6.sh)
+#   LR_SCALE=1      the pico pilot's scale: LR_SCALE x the phase's default rate (3e-3 pretraining,
+#                   1e-3 decision) on --muon-lr (--adam-lr with --no-muon), as cargo xtask s6ab
 #   PRETRAIN="..."  pretraining flags
 #   DECIDE="..."    decision flags (--exit-kd 0.5 --ema 0.999 ...); with --ema the EMA weights
 #                   are calibrated and exported
@@ -25,6 +27,16 @@ run=runs/s6-secrets-pico
 m=models/s6-secrets-pico
 ckpt=last
 [[ " ${DECIDE:-} " == *" --ema "* ]] && ckpt=last-ema
+case " ${OPT:-} " in
+  *" --muon-lr "* | *" --adam-lr "*)
+    echo "OPT carries a rate: set LR_SCALE instead (each phase scales its own default)" >&2
+    exit 2
+    ;;
+esac
+lr_flag=--muon-lr
+[[ " ${OPT:-} " == *" --no-muon "* ]] && lr_flag=--adam-lr
+# rate <phase default>: the peak rate of one phase.
+rate() { LC_ALL=C awk -v a="$1" -v b="${LR_SCALE:-1}" 'BEGIN { printf "%g", a * b }'; }
 
 data() {
   echo "== API-key jev: data/secrets and the rule scanner's score on secret_bench"
@@ -42,12 +54,12 @@ train() {
   $T s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text-open,data/text \
     --minutes "${PRETRAIN_MIN:-8}" --seq 256 --batch 64 --num-weight 0.05 \
     --numeric data/numeric --numeric-weight 0.1 --out "$run/pretrain" \
-    ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"}
+    "$lr_flag" "$(rate 3e-3)" ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"}
   echo "== s6-secrets-pico: decide ${DECIDE_MIN:-15}m on $records (QAT after a 10% float warm-up)"
   rm -rf "$run/decide"
   $T s2-decide --config "$cfg" --init "$run/pretrain/init" --records "$records" --batch 64 \
     --minutes "${DECIDE_MIN:-15}" --qat-frac 0.9 --loop-dropout 0.25 --pad-to 32 \
-    --out "$run/decide" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"}
+    --out "$run/decide" "$lr_flag" "$(rate 1e-3)" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"}
 }
 
 evaluate() {

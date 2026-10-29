@@ -91,8 +91,8 @@ FineWeb datasets are also subject to the terms of use of their CommonCrawl sourc
 
 `sky-data fetch-text --set open`, run by `scripts/prepare-data.sh`. Non-web parts of the
 published training data of two fully open LLMs: Dolma 3 (OLMo 3, Ai2) and TxT360 (LLM360). s6
-pretraining (s6-pico, its pilot and ablation, s6-secrets) reads it before `data/text`
-(`docs/s6-prereg.md` and `docs/s6-secrets-prereg.md`, amendment 1); s1 to s5 were trained
+pretraining (the s6-pico pilot and ablation, s6-nano, s6-micro, s6-secrets) reads it before `data/text`
+(`docs/s6-prereg.md` and `docs/s6-secrets-prereg.md`, amendment 1; `docs/s6-gen-prereg.md`); s1 to s5 were trained
 without it, and `data/text` itself is unchanged.
 The JSONL files are streamed and read only up to each budget. PG-19 books and Europarl sessions
 give up to 8 pieces of at most 20,000 characters per document instead of their first piece.

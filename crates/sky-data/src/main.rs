@@ -294,8 +294,11 @@ enum Cmd {
         #[arg(long, default_value_t = 0)]
         gold_cap: usize,
         /// Only (re)write data/s4/gold.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "only_heldout")]
         only_gold: bool,
+        /// Only (re)write data/s4/heldout (MASSIVE en/fr and Banking77, split test).
+        #[arg(long)]
+        only_heldout: bool,
     },
     /// s4: gold / teacher mix of the scored records (teacher temperature fitted on gold).
     S4Mix {
@@ -768,6 +771,7 @@ fn main() -> Result<()> {
             heldout,
             gold_cap,
             only_gold,
+            only_heldout,
         } => {
             let o = sky_data::s4::CorpusOptions {
                 data,
@@ -781,6 +785,8 @@ fn main() -> Result<()> {
             };
             let counts = if only_gold {
                 sky_data::s4::write_gold(&o)?
+            } else if only_heldout {
+                sky_data::s4::heldout(&o)?
             } else {
                 sky_data::s4::build_corpus(&Hf::new(&cli.cache)?, &o)?
             };

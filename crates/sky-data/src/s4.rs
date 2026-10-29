@@ -812,8 +812,9 @@ fn moderation(hf: &Hf, o: &CorpusOptions, rng: &mut Rng) -> Result<Vec<S4Record>
 }
 
 /// Held-out zero-shot sets: Banking77 (its fetched 8-way choices) and MASSIVE intents (gold
-/// plus 7 random intents), all `split = "test"`.
-fn heldout(o: &CorpusOptions) -> Result<()> {
+/// plus 7 random intents), all `split = "test"`. Returns the records written per file.
+pub fn heldout(o: &CorpusOptions) -> Result<BTreeMap<String, usize>> {
+    let mut counts = BTreeMap::new();
     let dir = o.out.join("heldout");
     fs::create_dir_all(&dir)?;
     let mut rng = Rng::derived(o.seed, "s4/heldout");
@@ -826,7 +827,10 @@ fn heldout(o: &CorpusOptions) -> Result<()> {
             r.src = "zs_banking77".into();
             r.split = "test".into();
         }
-        write_jsonl(&dir.join("zs_banking77.jsonl"), &recs)?;
+        counts.insert(
+            "heldout/zs_banking77".to_string(),
+            write_jsonl(&dir.join("zs_banking77.jsonl"), &recs)?,
+        );
     }
     let m = o.data.join("commands").join("massive.jsonl");
     if m.exists() {
@@ -872,10 +876,13 @@ fn heldout(o: &CorpusOptions) -> Result<()> {
                 rec.split = "test".into();
                 out.push(rec);
             }
-            write_jsonl(&dir.join(format!("zs_massive_{lang}.jsonl")), &out)?;
+            counts.insert(
+                format!("heldout/zs_massive_{lang}"),
+                write_jsonl(&dir.join(format!("zs_massive_{lang}.jsonl")), &out)?,
+            );
         }
     }
-    Ok(())
+    Ok(counts)
 }
 
 pub fn build_corpus(hf: &Hf, o: &CorpusOptions) -> Result<BTreeMap<String, usize>> {
@@ -890,7 +897,7 @@ pub fn build_corpus(hf: &Hf, o: &CorpusOptions) -> Result<BTreeMap<String, usize
         "p1-decisions".to_string(),
         write_jsonl(&q.join("p1-decisions.jsonl"), &p1)?,
     );
-    heldout(o)?;
+    counts.extend(heldout(o)?);
     let mut rng = Rng::derived(o.seed, "s4/p3");
     let mut p3 = tool_routing(o, &mut rng)?;
     match triage(hf, o, &mut rng) {

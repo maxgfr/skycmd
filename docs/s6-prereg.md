@@ -90,3 +90,11 @@ Le temps réel compte : les vrais entraînements sont budgétés en minutes, et 
   - Les budgets, les graines, les bras, les métriques et les règles d'adoption.
   - La validation MLM : elle reste les derniers 1 % du flux, donc la fin de `data/text` (`tinystories_fr`), comme pour s3, grâce à l'ordre `data/text-open` d'abord.
 - **Règle §1 inchangée.** `scripts/prepare-data.sh` récupère `data/text-open` en même temps que le reste, une fois avant le pilote, sans régénération ensuite.
+
+**Amendement 2 (29/10/2026, avant le pilote : aucun run s6 n'a tourné, aucun résultat n'a été lu). Plus de modèle final s6-pico.**
+
+- **Changement.** Le §5 (modèle final s6-pico et sa porte contre s3-pico) est retiré. Le s6 devient un modèle généraliste en deux tailles, s6-nano et s6-micro, avec leur propre pré-enregistrement, `docs/s6-gen-prereg.md`, figé avant leur premier run.
+- **Ce qui reste.** Le pilote (§2) et l'ablation (§3) au format pico, tels quels : données, bras, graines, budgets, métriques. Leurs règles d'adoption (§4) fixent la recette appliquée aux deux tailles (`docs/s6-gen-prereg.md` §2).
+- **Règle 6 (combinaison).** Les variables de `scripts/train-s6.sh` deviennent `OPT`, `LR_SCALE`, `PRETRAIN` et `DECIDE`. `CONFIG` disparaît : Parallax et XSA vont dans `configs/s6-nano.json` et `configs/s6-micro.json`. `OPT` ne porte plus de taux. `LR_SCALE` est l'échelle du pilote pour l'optimiseur retenu, et chaque phase l'applique à son propre taux par défaut (3e-3 en pré-entraînement, 1e-3 en décision), comme `cargo xtask s6ab`. Avant, un `--muon-lr` dans `OPT` aurait donné le même taux aux deux phases, donc un taux de décision trois fois plus haut que celui de l'ablation.
+- **Pourquoi.** s6-pico s'entraîne déjà à 30 % sur des décisions générales. Mais à 1 024 jetons et 64/96 de fenêtre, 96,8 % des séquences sont tronquées, et s3-pico, de même taille, reste sous la classe majoritaire de `typed_decisions_bench`. Un pico ne peut pas être le s6 généraliste. L'ablation y reste utile, parce qu'elle tient en 15 h.
+- **s6-secrets-pico et s6-cast** ne changent pas : s6-secrets reprend toujours les options adoptées par l'ablation (`OPT` et `LR_SCALE`).

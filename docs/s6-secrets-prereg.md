@@ -99,3 +99,9 @@ Quel que soit le résultat, le rapport donne :
 - **Changement.** Le prétraitement MLM du §3 lit `data/text-open` puis `data/text` (`--text data/text-open,data/text` dans `scripts/train-secrets.sh`), au lieu de `data/text` seul.
 - **Pourquoi.** C'est le même changement que l'amendement 1 de `docs/s6-prereg.md`, dont s6-secrets reprend les options. Le texte ajouté (Q/R StackExchange, souvent techniques, PDF scientifiques, maths) est aussi plus proche des fichiers de configuration et de code du jev que les histoires.
 - **Ce qui ne change pas.** La durée (8 minutes), les séquences de 256 jetons, le tokenizer, les données de décision (`data/secrets` seul), le bench et la porte de publication.
+
+**Amendement 2 (29/10/2026, avant tout entraînement de s6-secrets, aucun score lu). Options d'optimiseur.**
+
+- **Changement.** Le modèle final s6-pico n'existe plus (`docs/s6-prereg.md`, amendement 2). « Mêmes options d'optimiseur que s6-pico » (§3) veut dire : les options adoptées par l'ablation pico, `OPT` sans taux, plus `LR_SCALE`. `scripts/train-secrets.sh` applique `LR_SCALE` au taux par défaut de chaque phase (3e-3 en pré-entraînement, 1e-3 en décision) et refuse un `OPT` qui porterait un taux.
+- **Pourquoi.** Un `--muon-lr` passé dans `OPT` aurait donné le même taux aux deux phases, ce que l'ablation ne fait pas.
+- **Ce qui ne change pas.** L'architecture, les données, les budgets, le bench et la porte.

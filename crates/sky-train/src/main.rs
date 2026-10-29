@@ -446,6 +446,20 @@ enum Cmd {
         #[arg(long)]
         gguf_only: bool,
     },
+    /// s2: share of the records whose state or head the truncation rules of a config cut (JSON).
+    S2Truncation {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        tokenizer: PathBuf,
+        #[arg(long)]
+        records: String,
+        /// First records of each source measured (any split).
+        #[arg(long, default_value_t = 500)]
+        per_source: usize,
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
     /// s2: tiny random model -> GGUF (f32 + ternary) and golden outputs for sky-infer.
     S2Golden {
         /// s2 tokenizer.json (default: a built-in byte-level tokenizer with [NUM] = 5).
@@ -856,6 +870,22 @@ fn main() -> Result<()> {
                 &ggufs,
                 report.as_deref(),
             )?;
+        }
+        Cmd::S2Truncation {
+            config,
+            tokenizer,
+            records,
+            per_source,
+            json,
+        } => {
+            let cfg = s2::config::S2Config::load(&config)?;
+            let tok = s2::train::load_tok(&tokenizer, &cfg)?;
+            let r = s2::data::truncation_report(&tok, &cfg, &split_paths(&records), per_source)?;
+            let text = serde_json::to_string_pretty(&r)?;
+            println!("{text}");
+            if let Some(p) = json {
+                std::fs::write(p, text + "\n")?;
+            }
         }
         Cmd::S2Golden {
             tokenizer,

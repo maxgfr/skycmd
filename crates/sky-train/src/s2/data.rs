@@ -295,6 +295,70 @@ pub fn encode_record_with(
     ))
 }
 
+/// Whether the truncation rules cut a record, with the stream settings of `cfg`: `(state, head)`,
+/// the state past `max_state_tokens` and the head or an option past `max_head_tokens` (or the
+/// 48-token option cap).
+pub fn truncation(
+    tok: &Tok,
+    rec: &DecisionRecord,
+    cfg: &crate::s2::config::S2Config,
+) -> Result<(bool, bool)> {
+    let (h, o, s) = s2_texts(rec);
+    let mut texts = vec![h];
+    texts.extend(o);
+    texts.push(s);
+    let mut st: Vec<Stream> = tokenize(tok, &texts)?
+        .into_iter()
+        .map(|x| maybe_fuse(x, cfg.fuse_numbers))
+        .collect();
+    let state = st.pop().unwrap_or_default();
+    let head = st.remove(0);
+    let full = 2 + head.len() + st.iter().map(|o| 1 + o.len()).sum::<usize>();
+    let built = build_static(&head, &st, cfg.max_head_tokens);
+    Ok((
+        state.len() + 2 > cfg.max_state_tokens,
+        built.tokens.len() < full,
+    ))
+}
+
+/// Truncated shares of the first `per_source` records of every source in `records` (any split),
+/// per source and overall: `{src: {n, state, head, any}}`.
+pub fn truncation_report(
+    tok: &Tok,
+    cfg: &crate::s2::config::S2Config,
+    records: &[PathBuf],
+    per_source: usize,
+) -> Result<serde_json::Value> {
+    use std::collections::BTreeMap;
+    let mut counts: BTreeMap<String, [usize; 4]> = BTreeMap::new();
+    for path in records {
+        for rec in read_records(path)? {
+            let c = counts.entry(rec.src.clone()).or_default();
+            if c[0] >= per_source {
+                continue;
+            }
+            let (s, h) = truncation(tok, &rec, cfg)?;
+            for (i, on) in [true, s, h, s || h].into_iter().enumerate() {
+                c[i] += on as usize;
+            }
+        }
+    }
+    let mut all = [0usize; 4];
+    let share = |c: &[usize; 4]| {
+        let n = c[0].max(1) as f64;
+        serde_json::json!({"n": c[0], "state": c[1] as f64 / n, "head": c[2] as f64 / n, "any": c[3] as f64 / n})
+    };
+    let mut out = serde_json::Map::new();
+    for (src, c) in &counts {
+        for i in 0..4 {
+            all[i] += c[i];
+        }
+        out.insert(src.clone(), share(c));
+    }
+    out.insert("all".into(), share(&all));
+    Ok(serde_json::Value::Object(out))
+}
+
 /// One decision question: a static stream (shared) and its state.
 #[derive(Debug, Clone)]
 pub struct S2Item {
@@ -1252,6 +1316,39 @@ pub(crate) mod tests {
         let (st, _) = encode_record(&tok, &r, 96, 64).unwrap();
         assert!(!st.tokens.ids[..st.q_len].contains(&NUM_ID));
         assert!(!st.tokens.ids[1..st.q_len].contains(&MASK_ID));
+    }
+
+    #[test]
+    fn truncation_flags() {
+        let (_d, tok) = s2_tok();
+        let cfg = crate::s2::config::S2Config {
+            max_state_tokens: 20,
+            max_head_tokens: 96,
+            ..crate::s2::config::S2Config::tiny(262)
+        };
+        let cut = |r: &DecisionRecord| truncation(&tok, r, &cfg).unwrap();
+        // [CLS] + 18 + [SEP] fits the state window; one more byte does not.
+        assert_eq!(
+            cut(&rec("noul", "q", &["a", "b"], &"s".repeat(18))),
+            (false, false)
+        );
+        assert_eq!(
+            cut(&rec("noul", "q", &["a", "b"], &"s".repeat(19))),
+            (true, false)
+        );
+        // A long head, or one option past the 48-token cap, cuts the static stream.
+        assert_eq!(
+            cut(&rec("noul", &"x".repeat(100), &["a"], "")),
+            (false, true)
+        );
+        assert_eq!(
+            cut(&rec("choice", "q", &[&"z".repeat(49)], "")),
+            (false, true)
+        );
+        assert_eq!(
+            cut(&rec("choice", "q", &[&"z".repeat(47)], "")),
+            (false, false)
+        );
     }
 
     #[test]
