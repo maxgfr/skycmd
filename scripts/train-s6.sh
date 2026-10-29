@@ -2,9 +2,10 @@
 # Train the general-purpose s6 models, s6-nano and s6-micro (docs/SPEC-S6.md §15,
 # docs/s6-gen-prereg.md), with the recipe the pico ablation adopted (docs/s6-prereg.md): numeric
 # MLM pretraining on data/text-open then data/text, decision training with QAT on the decision
-# sets, the games and the numeric curriculum, DAgger rounds whose oracle share halves each round
-# and that keep 30% decisions, exit thresholds by conformal risk control, then the evaluation and
-# the publication gate.
+# sets, the GLM teacher mix (data/distill, scripts/distill-glm.sh), the games and the numeric
+# curriculum, DAgger rounds whose oracle share halves each round and that keep 30% decisions (10%
+# gold, 20% teacher mix), exit thresholds by conformal risk control, then the evaluation and the
+# publication gate.
 # Usage: SIZE=nano|micro scripts/train-s6.sh [lr] [train] [dagger] [exit] [eval]
 #        (default: train dagger exit eval; lr is the size's learning-rate pilot, run first)
 #   SIZE=nano       nano (configs/s6-nano.json, 2048 tokens) or micro (configs/s6-micro.json, 4096)
@@ -51,8 +52,8 @@ games=${GAMES:-flappy,rescue,dodge,doom}
 episodes=${EPISODES:-30}
 alpha=${ALPHA:-0.02}
 baseline=${BASELINE:-site/public/models/s3-pico.gguf}
-records=data/decisions,data/games,data/numeric
-weights=decisions=0.55,games=0.35,numeric=0.10
+records=data/decisions,data/distill,data/games,data/numeric
+weights=decisions=0.25,distill=0.30,games=0.35,numeric=0.10
 run=runs/$name
 m=models/$name
 ckpt=last mode=ternary
@@ -94,6 +95,10 @@ lr_x() {
   fi
 }
 
+if [ "$dry" != 1 ] && [ ! -s data/distill/glm.jsonl ]; then
+  echo "no data/distill/glm.jsonl: run scripts/distill-glm.sh first (docs/s6-gen-prereg.md, amendment 1)" >&2
+  exit 1
+fi
 [ "$dry" = 1 ] || cargo build -q --release -p sky-train -p sky-arena -p sky-gguf -p sky-infer
 mkdir -p "$m"
 
@@ -161,7 +166,7 @@ dagger() {
     echo "== $name round $r: DAgger from $model (oracle share $beta)"
     x "$A" "$model" --dagger 15000 --seed "$r" --game "$games" --dagger-beta "$beta" --out "$data"
     decide "$init" "$dir/decide" "$round_min" "$s" "$records,$data" \
-      "games=0.4,r$r=0.25,decisions=0.3,numeric=0.05" 1.0
+      "games=0.4,r$r=0.25,decisions=0.1,distill=0.2,numeric=0.05" 1.0
     post "$dir/decide" "$out"
     init=$dir/decide/$ckpt
     model=$out
