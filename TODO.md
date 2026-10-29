@@ -1,8 +1,8 @@
 # TODO : entraîner les modèles s6
 
-Quatre modèles ont leur code prêt et ne sont pas encore entraînés : **s6-nano** et **s6-micro** (le s6 généraliste : les jeux et des questions en texte libre), **s6-secrets-pico** et **s6-cast-pico**. Chacun a un pré-enregistrement figé. **s6-pico n'est plus un modèle final** (`docs/s6-prereg.md`, amendement 2) : son pilote et son ablation restent, parce qu'ils choisissent la recette des deux tailles. On le suit à la lettre :
+Quatre modèles ont leur code prêt et ne sont pas encore entraînés : **s6-nano** et **s6-micro** (le s6 généraliste : les jeux et des questions en texte libre), **s6-secrets-pico** et **s6-cast-pico**. Chacun a un pré-enregistrement figé. **s6-pico n'est plus un modèle final** (`docs/s6-prereg.md`, amendement 2) : son pilote et son ablation restent, parce qu'ils choisissent la recette des deux tailles. On suit chaque pré-enregistrement à la lettre :
 
-- un amendement daté (§7) précède le run qu'il concerne ;
+- un amendement daté (§7, §8 pour `docs/s6-gen-prereg.md`) précède le run qu'il concerne ;
 - on ne relance rien pour « voir » : seul un échec technique justifie un nouveau run, et il est noté dans le rapport ;
 - on ne choisit jamais sur un checkpoint intermédiaire ;
 - un modèle qui échoue à sa porte n'est pas publié, et le rapport le dit.
@@ -19,7 +19,8 @@ Ordre conseillé (une seule machine) : données → pilote et ablation pico → 
 - [ ] Toolchain Metal : `xcodebuild -downloadComponent MetalToolchain`, et `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 - [ ] `export SKYCMD_STORE=$PWD` (le checkout principal) pour `cargo xtask`.
 - [ ] `uv` installé (s6-cast : `scripts/gift-eval.py` tourne sous Python 3.12).
-- [ ] Place disque : environ 9,7 Go libres le 28/10/2026, c'est juste. Les runs écrivent dans `runs/` et `models/`, le corpus ouvert ajoute 150 Mo. Les checkpoints de s6-micro (5,85M paramètres, état d'optimiseur compris) pèsent bien plus que ceux de pico : faire de la place avant 2.5.
+- [ ] `node` et `wasm-pack` (présents le 29/10/2026) : l'étape `eval` de `scripts/train-s6.sh` construit `site/public/pkg` s'il manque (`scripts/build-wasm.sh`) pour mesurer la latence WASM.
+- [ ] Place disque : environ 9,2 Go libres le 29/10/2026 (98 % du disque), c'est juste. Les runs écrivent dans `runs/` et `models/`, le corpus ouvert ajoute 150 Mo. Les checkpoints de s6-micro (5,85M paramètres, état d'optimiseur compris) pèsent bien plus que ceux de pico : faire de la place avant 2.5.
 
 ## 1. Données (une seule fois, avant le premier pilote)
 

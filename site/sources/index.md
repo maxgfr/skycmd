@@ -76,6 +76,17 @@ Not used, despite open models: the Lucie Training Dataset (CC-BY-NC-SA-4.0, non-
 | [PolyAI/banking77](https://huggingface.co/datasets/PolyAI/banking77) | CC-BY-4.0 | **held out** from s4: zero-shot evaluation |
 | [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation |
 
+### s6-nano and s6-micro: test sets (not trained yet)
+No teacher. They train on the decision sets, the games and the numeric curriculum above, and pretrain on the s3 text plus the open set above ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)).
+
+| Dataset | Licence | Used as |
+|---|---|---|
+| [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (test split) | Apache-2.0 | the gated benchmark, `typed_decisions_bench` |
+| [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation |
+| [AirsideLabs/notam-typed-decisions](https://huggingface.co/datasets/AirsideLabs/notam-typed-decisions) | CC-BY-4.0 | **held out**: test only |
+| [nvidia/When2Call](https://huggingface.co/datasets/nvidia/When2Call) (test split) | CC-BY-4.0 | test split of a trained source |
+| [PolyAI/banking77](https://huggingface.co/datasets/PolyAI/banking77) | CC-BY-4.0 | trained on: reported as in-distribution, never as zero-shot |
+
 ### s5: backbones, teacher and held-out evaluation
 | Dataset or model | Licence | Used as |
 |---|---|---|

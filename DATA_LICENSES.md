@@ -74,6 +74,24 @@ outputs are not redistributed.
 | PolyAI/banking77 | CC-BY-4.0 | see above | **held out**: excluded from s4 training, 2,000 of its 8-way choices kept as `zs_banking77` | 2,000 |
 | MASSIVE (`en`, `fr`) | CC-BY-4.0 | see above | **held out**: test utterances, gold intent + 7 random intents, `zs_massive_en` / `zs_massive_fr` | 2,000 + 1,000 |
 
+## s6-nano / s6-micro evaluation sets (`docs/s6-gen-prereg.md`)
+
+s6-nano and s6-micro train on `data/decisions`, `data/games` and `data/numeric` (train splits
+only) and pretrain on `data/text-open` then `data/text`. No teacher model is run for them. The
+GLM files of `data/decisions` (`glm_orders`, `paraphrased`) exist only if `prepare-data.sh` had a
+teacher endpoint, and the report states whether they were there. The test
+sets are read only by the final evaluation (`scripts/train-s6.sh eval`), at most 2,000 questions
+per source. `data/s4/heldout` is written by `sky-data s4-corpus --only-heldout`, without the
+s4 teacher corpus.
+
+| dataset | license | URL | how it is used | rows used |
+|---|---|---|---|---|
+| LocalLLaMA/typed-decisions | Apache-2.0 | see above | test split (`typed_decisions_bench`), the gated benchmark | 2,000 |
+| MASSIVE (`en`, `fr`) | CC-BY-4.0 | see above | **zero-shot**: `zs_massive_en` / `zs_massive_fr` as for s4; MASSIVE is not in `data/decisions` | 2,000 + 1,000 |
+| AirsideLabs/notam-typed-decisions | CC-BY-4.0 | see above | test only, never trained on | 2,000 per config |
+| nvidia/When2Call | CC-BY-4.0 | see above | the `test/mcq` split; its train and val splits are trained on (same distribution) | 2,000 |
+| PolyAI/banking77 | CC-BY-4.0 | see above | **in distribution**: all of it is in `data/decisions` (train + val), so `zs_banking77` is reported apart and counted in no gate | 2,000 |
+
 ## MLM text (`data/text/*.jsonl`)
 
 | dataset | license | URL | how it is used | docs used |
