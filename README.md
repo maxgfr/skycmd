@@ -71,7 +71,7 @@ Two results took more than one try, and the tutorial tells both stories:
   - **s6-nano** has 1.57M parameters, 2,048 tokens and 256/128-token windows.
   - **s6-micro** has 5.85M parameters: the s4-micro shape with Parallax, 4,096 tokens and 384/128-token windows.
 
-  Both pretrain for hours on 300 MB of text (s4-micro had 30 minutes on 150 MB) and train on the decision sets, the games and the numeric curriculum, plus soft labels on every training question of the Hugging Face decision sets (about 747,000). The teacher is GLM-5.3-flash, an open-weight model (MIT), called through the z.ai API (`scripts/distill-glm.sh`).
+  Both pretrain for hours on 300 MB of text (s4-micro had 30 minutes on 150 MB) and train on the decision sets, the games and the numeric curriculum, plus soft labels on every training question of the Hugging Face decision sets (about 747,000). The teacher is GLM-5.3-flash, an open-weight model (MIT), called through the z.ai API: `caffeinate -i scripts/distill-glm.sh loop mix` labels everything remotely, resuming across the 5-hour usage windows of a z.ai plan, so the machine stays cool.
   - **s6-nano gate:** beat the majority class of `typed_decisions_bench` (0.398).
   - **s6-micro gate:** at least 0.45, with 0.50 as the goal (the level of s4's Qwen3.5-4B teacher).
 

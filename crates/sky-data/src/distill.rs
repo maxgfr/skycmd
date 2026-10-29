@@ -31,6 +31,9 @@ use crate::teacher::{BudgetExhausted, Teacher, TeacherConfig};
 /// Most options a labelled question may have.
 pub const MAX_OPTIONS: usize = 12;
 
+/// Failed batches in a row after which a worker stops.
+pub const MAX_FAILED_IN_A_ROW: usize = 3;
+
 /// One teacher label: a probability per option, in record order.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Label {
@@ -254,7 +257,7 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
             c.max_calls = per_job;
             s.spawn(move || {
                 let mut t = Teacher::new(c);
-                let (mut written, mut failed) = (0, 0);
+                let (mut written, mut failed, mut streak) = (0, 0, 0);
                 for b in batches.iter().skip(j).step_by(jobs) {
                     match t.call_json(LABEL_SYSTEM, &label_prompt(b, o.max_state_chars)) {
                         Ok(reply) => {
@@ -267,6 +270,7 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
                             }
                             let _ = f.flush();
                             written += labels.len();
+                            streak = 0;
                             if labels.len() < b.len() {
                                 eprintln!(
                                     "[distill] worker {j}: {} / {} valid",
@@ -278,7 +282,14 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
                         Err(e) if e.is::<BudgetExhausted>() => break,
                         Err(e) => {
                             failed += 1;
+                            streak += 1;
                             eprintln!("[distill] worker {j}: batch failed: {e:#}");
+                            // A spent usage window (z.ai resets every 5 h) or a network outage:
+                            // stop instead of burning the budget; a rerun resumes.
+                            if streak >= MAX_FAILED_IN_A_ROW {
+                                eprintln!("[distill] worker {j}: {streak} failed batches in a row, stopping (rerun to resume)");
+                                break;
+                            }
                         }
                     }
                 }
