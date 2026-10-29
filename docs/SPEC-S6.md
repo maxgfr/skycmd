@@ -77,7 +77,7 @@ Eleven arms × 3 seeds is 33 runs of about 27 minutes on an M5, so about 15 hour
 | s6-femto-xsa | s6-femto + `xsa` | golden only |
 | s3-pico-xsa | s3-pico + `xsa` | 445,345 / 203,393 (no new tensor) |
 | s6-secrets-pico | s6-pico with a 320-token state and a 192-token head (§14) | 463,969 / 212,705 (RoPE: no new tensor) |
-| s6-nano | general-purpose, vocabulary 2,048, d 144, 256 / 128 windows (§15) | 1,569,457 / 778,065 |
+| s6-nano | general-purpose, vocabulary 2,048, d 144, 512 / 160 windows (§15) | 1,569,457 / 778,065 |
 | s6-micro | s4-micro + `parallax` (§15) | 5,849,601 / 2,960,769 (s4-micro: 5,587,201) |
 
 Each encoder block gains `d²` probe weights and `head_dim` norm weights: 9,312 per block for s6-pico (one state block, one static block).
@@ -172,7 +172,7 @@ The s6 that ships is general-purpose: the four games and multiple-choice questio
 
 | name | vocabulary | d / ff | blocks × loops | heads | state / head window | params (decision / pretraining stack) |
 |---|---:|---|---|---:|---|---:|
-| s6-nano | 2,048 | 144 / 288 | 2 × 2 (exits 1, 2, 3, 4) | 2 | 256 / 128 | 1,569,457 / 778,065 |
+| s6-nano | 2,048 | 144 / 288 | 2 × 2 (exits 1, 2, 3, 4) | 2 | 512 / 160 | 1,569,457 / 778,065 |
 | s6-micro | 4,096 | 256 / 768 | 2 × 3 (exits 2, 4, 6) | 4 | 384 / 128 | 5,849,601 / 2,960,769 |
 
 - **Why not a pico.** With 1,024 tokens and windows of 64/96, 96.8% of the decision sequences are truncated, and s3-pico (same size as s6-pico) scores 0.382 on `typed_decisions_bench`, below the majority class (0.398). s4-micro (5.6M, same shape as s6-micro without Parallax) failed at 0.343 after only 30 minutes of MLM pretraining on 150 MB.

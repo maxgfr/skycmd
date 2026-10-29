@@ -98,3 +98,9 @@ Le temps réel compte : les vrais entraînements sont budgétés en minutes, et 
 - **Règle 6 (combinaison).** Les variables de `scripts/train-s6.sh` deviennent `OPT`, `LR_SCALE`, `PRETRAIN` et `DECIDE`. `CONFIG` disparaît : Parallax et XSA vont dans `configs/s6-nano.json` et `configs/s6-micro.json`. `OPT` ne porte plus de taux. `LR_SCALE` est l'échelle du pilote pour l'optimiseur retenu, et chaque phase l'applique à son propre taux par défaut (3e-3 en pré-entraînement, 1e-3 en décision), comme `cargo xtask s6ab`. Avant, un `--muon-lr` dans `OPT` aurait donné le même taux aux deux phases, donc un taux de décision trois fois plus haut que celui de l'ablation.
 - **Pourquoi.** s6-pico s'entraîne déjà à 30 % sur des décisions générales. Mais à 1 024 jetons et 64/96 de fenêtre, 96,8 % des séquences sont tronquées, et s3-pico, de même taille, reste sous la classe majoritaire de `typed_decisions_bench`. Un pico ne peut pas être le s6 généraliste. L'ablation y reste utile, parce qu'elle tient en 15 h.
 - **s6-secrets-pico et s6-cast** ne changent pas : s6-secrets reprend toujours les options adoptées par l'ablation (`OPT` et `LR_SCALE`).
+
+**Amendement 3 (29/10/2026, avant le pilote : aucun run s6 n'a tourné, aucun résultat n'a été lu). Taille réelle de `data/text-open`.**
+
+- **Constat.** `scripts/prepare-data.sh` a récupéré `data/text-open` le 29/10/2026. On obtient 15 011 documents et 99,5 Mo de texte, et non les 150 Mo de l'amendement 1 : le shard Wikipedia de Dolma 3 ne contient que 4,3 Mo, pour un budget de 37,5. Les nombres par source sont dans `DATA_LICENSES.md`.
+- **Conséquence.** Le mélange de pré-entraînement est d'environ 40 % de texte ouvert et 60 % de `data/text` (147 Mo), au lieu de moitié-moitié.
+- **Ce qui ne change pas.** Rien d'autre. Le §1 tient : ces fichiers sont figés pour le pilote, l'ablation et tous les runs qui suivent.

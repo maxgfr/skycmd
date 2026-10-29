@@ -68,7 +68,7 @@ Two results took more than one try, and the tutorial tells both stories:
 
   `cargo xtask s6ab` runs the {AdamW, Muon v2} × {softmax, Parallax} ablation, then tests each addition on its own. s6 pretrains on more text than s3: the stories and web of `data/text`, plus `data/text-open`, the non-web parts of the published training data of two fully open LLMs (Dolma 3 for OLMo 3, TxT360 for LLM360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl.
 - **s6-nano and s6-micro** ([`docs/SPEC-S6.md`](docs/SPEC-S6.md) §15, [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), code ready, no model trained yet). The s6 that will ship is general-purpose: the four games and questions in free text, in two sizes. The pico ablation chooses the recipe and there is no s6-pico final model.
-  - **s6-nano** has 1.57M parameters, 2,048 tokens and 256/128-token windows.
+  - **s6-nano** has 1.57M parameters, 2,048 tokens and 512/160-token windows.
   - **s6-micro** has 5.85M parameters: the s4-micro shape with Parallax, 4,096 tokens and 384/128-token windows.
 
   Both pretrain for hours on 300 MB of text (s4-micro had 30 minutes on 150 MB) and train on the decision sets, the games and the numeric curriculum, plus soft labels on every training question of the Hugging Face decision sets (about 747,000). The teacher is GLM-5.3-flash, an open-weight model (MIT), called through the z.ai API: `caffeinate -i scripts/distill-glm.sh loop mix` labels everything remotely, resuming across the 5-hour usage windows of a z.ai plan, so the machine stays cool.

@@ -1883,7 +1883,7 @@ mod tests {
         // The general-purpose sizes (docs/s6-gen-prereg.md), fixed before any run:
         // (config, decision model, pretraining model, state x head windows).
         for (name, total, pre, windows) in [
-            ("s6-nano", 1_569_457, 778_065, (256, 128)),
+            ("s6-nano", 1_569_457, 778_065, (512, 160)),
             ("s6-micro", 5_849_601, 2_960_769, (384, 128)),
         ] {
             let cfg = ladder(name);

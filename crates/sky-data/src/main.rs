@@ -716,7 +716,12 @@ fn main() -> Result<()> {
                 "{:<24} {:>8} {:>12} {:>14} {:>10} {:>10}",
                 "source", "sampled", "mean tokens", "untruncated", "truncated", "opts cut"
             );
-            for dir in inputs.iter().filter(|d| d.is_dir() && !d.ends_with("text")) {
+            // MLM text (data/text, data/text-open) has no decision records to measure.
+            let is_text = |d: &PathBuf| {
+                d.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("text"))
+            };
+            for dir in inputs.iter().filter(|d| d.is_dir() && !is_text(d)) {
                 for (src, s) in sequence_stats(&tok, dir, 2000, cli.seed)? {
                     println!(
                         "{:<24} {:>8} {:>12.1} {:>14.1} {:>9.1}% {:>9.1}%",

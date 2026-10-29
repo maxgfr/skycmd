@@ -121,16 +121,17 @@ pretraining (the s6-pico pilot and ablation, s6-nano, s6-micro, s6-secrets) read
 without it, and `data/text` itself is unchanged.
 The JSONL files are streamed and read only up to each budget. PG-19 books and Europarl sessions
 give up to 8 pieces of at most 20,000 characters per document instead of their first piece.
-Deduplication as above, within this set.
+Deduplication as above, within this set. Fetched on 29/10/2026: 15,011 documents and 99.5 MB of
+text, against budgets that add up to 150 MB, because the Wikipedia shard read holds only 4.3 MB.
 
 | dataset | license | URL | how it is used | docs used |
 |---|---|---|---|---|
-| allenai/dolma3_mix-150B-1025, `data/dolma1_7-wiki-en` | ODC-BY-1.0 (Dolma 3); Wikipedia and Wikibooks text under CC-BY-SA-4.0 / GFDL | https://huggingface.co/datasets/allenai/dolma3_mix-150B-1025 | `text` of shard `00000000`, 37.5 MB | not fetched yet |
-| allenai/dolma3_mix-150B-1025, `data/olmocr_science_pdfs-science_math_and_technology` | ODC-BY-1.0 (Dolma 3); the PDFs keep their authors' rights, see the Dolma 3 card | same | `text` of shard `00000000` (olmOCR transcriptions of science PDFs), 37.5 MB | not fetched yet |
-| allenai/dolma3_mix-150B-1025, `data/finemath-3plus` | ODC-BY-1.0 (FineMath and Dolma 3), and CommonCrawl's terms of use | same | `text` of shard `00000000`, 22.5 MB; the shard repeats documents (Dolma 3 upsamples FineMath), so most rows are exact duplicates | not fetched yet |
-| IFM/TxT360 (formerly LLM360/TxT360), `data/pg19` | ODC-BY-1.0 (TxT360); PG-19 books are public domain (Project Gutenberg, pre-1919) | https://huggingface.co/datasets/IFM/TxT360 | `text` of `data/pg19/1-1/0_0.jsonl`, up to 8 pieces per book, 22.5 MB | not fetched yet |
-| IFM/TxT360, `data/stackexchange` | ODC-BY-1.0 (TxT360); Stack Exchange posts under CC-BY-SA | same | `text` of `data/stackexchange/1-1/0_2289.jsonl`, 15 MB | not fetched yet |
-| IFM/TxT360, `data/europarl` | ODC-BY-1.0 (TxT360); European Parliament proceedings, reuse authorised with acknowledgement of the source | same | rows with `meta.language == "fr"` of `data/europarl/1-1/0_6.jsonl` then `1_6.jsonl` (French is about 1 document in 20, so ~20× the bytes are read), up to 8 pieces per session, 15 MB | not fetched yet |
+| allenai/dolma3_mix-150B-1025, `data/dolma1_7-wiki-en` | ODC-BY-1.0 (Dolma 3); Wikipedia and Wikibooks text under CC-BY-SA-4.0 / GFDL | https://huggingface.co/datasets/allenai/dolma3_mix-150B-1025 | `text` of shard `00000000`, 37.5 MB | 2,489 (4.3 MB: the shard holds less than the budget) |
+| allenai/dolma3_mix-150B-1025, `data/olmocr_science_pdfs-science_math_and_technology` | ODC-BY-1.0 (Dolma 3); the PDFs keep their authors' rights, see the Dolma 3 card | same | `text` of shard `00000000` (olmOCR transcriptions of science PDFs), 37.5 MB | 1,517 (22.1 MB; 235 exact duplicates dropped) |
+| allenai/dolma3_mix-150B-1025, `data/finemath-3plus` | ODC-BY-1.0 (FineMath and Dolma 3), and CommonCrawl's terms of use | same | `text` of shard `00000000`, 22.5 MB; the shard repeats documents (Dolma 3 upsamples FineMath), so most rows are exact duplicates | 4,354 (20.6 MB; 15,081 exact duplicates dropped) |
+| IFM/TxT360 (formerly LLM360/TxT360), `data/pg19` | ODC-BY-1.0 (TxT360); PG-19 books are public domain (Project Gutenberg, pre-1919) | https://huggingface.co/datasets/IFM/TxT360 | `text` of `data/pg19/1-1/0_0.jsonl`, up to 8 pieces per book, 22.5 MB | 1,140 (22.5 MB) |
+| IFM/TxT360, `data/stackexchange` | ODC-BY-1.0 (TxT360); Stack Exchange posts under CC-BY-SA | same | `text` of `data/stackexchange/1-1/0_2289.jsonl`, 15 MB | 4,638 (15.0 MB) |
+| IFM/TxT360, `data/europarl` | ODC-BY-1.0 (TxT360); European Parliament proceedings, reuse authorised with acknowledgement of the source | same | rows with `meta.language == "fr"` of `data/europarl/1-1/0_6.jsonl` then `1_6.jsonl` (French is about 1 document in 20, so ~20× the bytes are read), up to 8 pieces per session, 15 MB | 873 (15.0 MB) |
 
 Not used from these corpora: the `common_crawl-*` parts of Dolma 3 (overlap with FineWeb, and an
 `adult_content` category), `stack_edu-*` (source code, with a license per file) and TxT360's

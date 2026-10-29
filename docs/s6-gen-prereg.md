@@ -33,7 +33,7 @@ Les tailles et les nombres de paramètres ont été fixés dans `s6_parameter_co
 | largeur d / ff | 144 / 288 | 256 / 768 |
 | blocs × boucles (état) | 2 × 2, sorties après 1, 2, 3, 4 | 2 × 3, sorties après 2, 4, 6 |
 | têtes | 2 (dimension 72) | 4 (dimension 64) |
-| fenêtres état / tête | 256 / 128 | 384 / 128 |
+| fenêtres état / tête | 256 / 128, puis **512 / 160** (amendement 2) | 384 / 128 |
 
 s6-micro a la forme de s4-micro (5 587 201 paramètres) plus les lignes de sonde Parallax. Les deux configs ont `fuse_numbers: true`.
 
@@ -155,3 +155,20 @@ s3-pico, s4-micro et s5-lite publiés passent sur les mêmes records, à τ = 1.
 - **Contamination.** Le professeur ne voit aucun record de test. Ses données d'entraînement ne sont pas publiées : on ne peut pas exclure qu'il ait vu les benchmarks publics. Le rapport le dit.
 - **Conditions.** Les poids du modèle sont sous MIT. Les appels passent par l'API de z.ai, dont les conditions d'utilisation s'appliquent aussi (`DATA_LICENSES.md`).
 - **Ce qui ne change pas.** Les modèles, le pilote, les budgets, les ensembles de test, l'évaluation et les portes.
+
+**Amendement 2 (29/10/2026, avant tout run s6 : aucun entraînement n'a tourné, aucun résultat n'a été lu). Fenêtres de s6-nano : 512 / 160 au lieu de 256 / 128.**
+
+- **Changement.** `configs/s6-nano.json` passe à `max_state_tokens: 512` et `max_head_tokens: 160`. RoPE n'a pas de table de positions : le nombre de paramètres ne change pas (1 569 457 / 778 065), et `s6_parameter_counts` vérifie les nouvelles fenêtres.
+- **Pourquoi.** La part de records tronqués a été mesurée avec les vrais tokenizers, écrits le 29/10/2026 par `scripts/prepare-data.sh` (`sky-train s2-truncation`). Le tokenizer de 2 048 jetons de nano découpe plus finement que celui de micro (4 096) : avec 256 / 128, nano coupait l'état de **71,6 %** des questions de `typed_decisions_bench` et la tête de 11,2 %. Or le bench est justement sa porte.
+
+  | | état tronqué (bench) | tête tronquée (bench) | état tronqué (toutes les sources de test) |
+  |---|---:|---:|---:|
+  | s6-nano, 256 / 128 | 71,6 % | 11,2 % | 15,9 % |
+  | s6-nano, 384 / 128 | 9,5 % | 10,0 % | — |
+  | s6-nano, 384 / 160 | 9,5 % | 0,0 % | — |
+  | **s6-nano, 512 / 160** | **1,8 %** | **0,0 %** | **0,4 %** |
+  | s6-micro, 384 / 128 (inchangé) | 4,2 % | 0,0 % | 1,0 % |
+
+  Chaque ligne mesure 2 000 records par source, sauf la ligne 256 / 128 qui en mesure 500. Les sources de test sont `typed_decisions_bench`, le test de When2Call, `zs_massive_en`, `zs_massive_fr` (1 000 records) et `zs_banking77`.
+- **Coût.** Des séquences plus longues, donc des pas plus lents. Nano reste environ 4 fois plus petit que micro, dont l'état fait 384 jetons.
+- **Ce qui ne change pas.** s6-micro, les tokenizers, les données, les labels du professeur (ils ne dépendent pas des fenêtres), les budgets, l'évaluation et les portes.
