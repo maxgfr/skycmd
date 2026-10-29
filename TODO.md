@@ -7,6 +7,11 @@ Trois modèles ont leur code prêt et ne sont pas encore entraînés : **s6-pico
 - on ne choisit jamais sur un checkpoint intermédiaire ;
 - un modèle qui échoue à sa porte n'est pas publié, et le rapport le dit.
 
+Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
+
+- `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
+- `s6-pico-xsa` est la config que prend s6-pico si l'ablation adopte Parallax et XSA (§2.3).
+
 Ordre conseillé (une seule machine) : données → s6-pico (pilote, ablation, modèle final) → s6-secrets (il reprend les options adoptées par s6-pico) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
 
 ## 0. Prérequis
