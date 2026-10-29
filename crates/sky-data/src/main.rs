@@ -351,6 +351,37 @@ enum TeacherTask {
         #[arg(long, default_value_t = 2000)]
         n: usize,
     },
+    /// s6: teacher probabilities per option for sampled hard-labelled train records (resumable).
+    LabelDecisions {
+        #[arg(long, value_delimiter = ',', default_value = "data/decisions")]
+        from: Vec<PathBuf>,
+        #[arg(long, default_value = "data/teacher/glm_labels.jsonl")]
+        out: PathBuf,
+        /// Records drawn per source.
+        #[arg(long, default_value_t = 1000)]
+        per_source: usize,
+        /// The state is cut to this many characters in the prompt.
+        #[arg(long, default_value_t = 2000)]
+        max_state_chars: usize,
+        /// Parallel workers (the call budget is shared between them).
+        #[arg(long, default_value_t = 4)]
+        jobs: usize,
+        /// Sampling temperature of the teacher.
+        #[arg(long, default_value_t = 0.2)]
+        temperature: f64,
+    },
+    /// s6: gold / teacher mix of the labels that agree with their gold answer (no API call).
+    MixLabels {
+        #[arg(long, default_value = "data/teacher/glm_labels.jsonl")]
+        labels: PathBuf,
+        #[arg(long, value_delimiter = ',', default_value = "data/decisions")]
+        from: Vec<PathBuf>,
+        #[arg(long, default_value = "data/distill")]
+        out: PathBuf,
+        /// Weight of the gold target.
+        #[arg(long, default_value_t = 0.5)]
+        alpha: f32,
+    },
 }
 
 fn main() -> Result<()> {
@@ -720,6 +751,28 @@ fn main() -> Result<()> {
                 println!("wrote {} questions to {out:?}", qs.len());
                 return Ok(());
             }
+            if let TeacherTask::MixLabels {
+                labels,
+                from,
+                out,
+                alpha,
+            } = &task
+            {
+                let a = sky_data::distill::mix_labels(labels, from, out, *alpha)?;
+                let (mut n, mut k) = (0, 0);
+                for (src, (l, g)) in &a {
+                    println!(
+                        "{src:<40} {l:>6} labelled {g:>6} agree ({:.3})",
+                        *g as f64 / (*l).max(1) as f64
+                    );
+                    (n, k) = (n + l, k + g);
+                }
+                println!(
+                    "all: {k} / {n} agree; mixed records in {:?}",
+                    out.join("glm.jsonl")
+                );
+                return Ok(());
+            }
             let cfg = TeacherConfig::resolve(&TeacherArgs {
                 model,
                 max_calls,
@@ -745,7 +798,38 @@ fn main() -> Result<()> {
                         teacher::drone_orders(&mut t, &out, &decisions_out, n, cli.seed)?;
                     println!("{total} orders in {out:?} ({dropped} invalid dropped this run); decision records in {decisions_out:?}");
                 }
-                TeacherTask::ExportQuestions { .. } => unreachable!(),
+                TeacherTask::LabelDecisions {
+                    from,
+                    out,
+                    per_source,
+                    max_state_chars,
+                    jobs,
+                    temperature,
+                } => {
+                    t.cfg.temperature = temperature;
+                    t.cfg.max_tokens = 8192;
+                    let o = sky_data::distill::LabelOptions {
+                        from,
+                        per_source,
+                        max_state_chars,
+                        jobs,
+                        seed: cli.seed,
+                    };
+                    let s = sky_data::distill::label_decisions(&t.cfg, &o, &out)?;
+                    println!(
+                        "wrote {} labels to {out:?}; calls {} ({} failed batches), tokens in {} out {}, {:.1}s",
+                        s.written,
+                        s.calls,
+                        s.failed_batches,
+                        s.input_tokens,
+                        s.output_tokens,
+                        t0.elapsed().as_secs_f64()
+                    );
+                    return Ok(());
+                }
+                TeacherTask::ExportQuestions { .. } | TeacherTask::MixLabels { .. } => {
+                    unreachable!()
+                }
             }
             println!(
                 "calls {} / {}, tokens in {} out {}, {:.1}s",

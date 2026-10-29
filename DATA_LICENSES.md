@@ -74,12 +74,19 @@ outputs are not redistributed.
 | PolyAI/banking77 | CC-BY-4.0 | see above | **held out**: excluded from s4 training, 2,000 of its 8-way choices kept as `zs_banking77` | 2,000 |
 | MASSIVE (`en`, `fr`) | CC-BY-4.0 | see above | **held out**: test utterances, gold intent + 7 random intents, `zs_massive_en` / `zs_massive_fr` | 2,000 + 1,000 |
 
-## s6-nano / s6-micro evaluation sets (`docs/s6-gen-prereg.md`)
+## s6-nano / s6-micro: GLM teacher mix and evaluation sets (`docs/s6-gen-prereg.md`)
 
-s6-nano and s6-micro train on `data/decisions`, `data/games` and `data/numeric` (train splits
-only) and pretrain on `data/text-open` then `data/text`. No teacher model is run for them. The
-GLM files of `data/decisions` (`glm_orders`, `paraphrased`) exist only if `prepare-data.sh` had a
-teacher endpoint, and the report states whether they were there. The test
+s6-nano and s6-micro train on `data/decisions`, `data/distill`, `data/games` and `data/numeric`
+(train splits only) and pretrain on `data/text-open` then `data/text`. The GLM files of
+`data/decisions` (`glm_orders`, `paraphrased`) exist only if `prepare-data.sh` had a teacher
+endpoint, and the report states whether they were there.
+
+| file | how it is used | rows |
+|---|---|---|
+| `data/teacher/glm_labels.jsonl` | `sky-data teacher label-decisions` (`scripts/distill-glm.sh`): GLM-5.3-flash through the z.ai API gives one probability per option for up to 1,000 hard-labelled train records per source family of `data/decisions` (benchmark, held-out and GLM-generated sources excluded); outputs subject to the provider's terms of service | 20,876 selected |
+| `data/distill/glm.jsonl` | `sky-data teacher mix-labels`: the labels whose argmax is the gold answer, `target = 0.5 · gold + 0.5 · teacher`, `src = glm:<source>`, train split; agreement per source in `agreement.json` | the agreeing labels |
+
+The test
 sets are read only by the final evaluation (`scripts/train-s6.sh eval`), at most 2,000 questions
 per source. `data/s4/heldout` is written by `sky-data s4-corpus --only-heldout`, without the
 s4 teacher corpus.
