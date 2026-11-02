@@ -21,7 +21,7 @@ serde_json = { version = "1.0.152", features = ["preserve_order"] }
 ureq = { version = "3.4.2", features = ["json"] }
 parquet = { version = "60.0.0", default-features = false, features = ["snap", "zstd", "flate2", "flate2-rust_backend", "lz4", "json"] }
 bytes = "1.12.1"
-zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 tokenizers = { version = "0.23.2", default-features = false, features = ["onig"] }
 ring = "0.17.14"
 zstd = "0.14.2"
