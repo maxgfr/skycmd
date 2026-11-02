@@ -37,8 +37,19 @@ const groups: [string, number, number][] = [
   ['Decision models for any question (s4, s5)', 21, 25],
 ]
 
+// Every maxgfr.github.io site shares one origin, so one localStorage: VitePress keeps the theme
+// under 'vitepress-theme-appearance', a key all its sites there share. skycmd keeps its own. The
+// first visit after the rename takes the old value over (left in place: other sites may use it).
+const APPEARANCE_KEY = 'skycmd:appearance'
+const SHARED_APPEARANCE_KEY = 'vitepress-theme-appearance'
+const readAppearance = `(()=>{try{let v=localStorage.getItem('${APPEARANCE_KEY}');if(v===null){v=localStorage.getItem('${SHARED_APPEARANCE_KEY}');if(v)localStorage.setItem('${APPEARANCE_KEY}',v)}return v}catch{return null}})()`
+
 export default defineConfig({
   base: '/skycmd/',
+  appearance: { storageKey: APPEARANCE_KEY },
+  // The no-flash theme script VitePress inlines in every page reads the shared key: point it at ours.
+  transformHtml: (html) =>
+    html.replace(/localStorage\.getItem\((['"])vitepress-theme-appearance\1\)/, readAppearance),
   lang: 'en-US',
   title: 'skycmd',
   description:
