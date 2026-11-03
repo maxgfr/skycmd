@@ -77,15 +77,33 @@ GLM-5.3-flash est open source : poids sous licence MIT, [`zai-org/GLM-5.3-Flash`
 
 ### 1.2 Publier nos jeux de données sur Hugging Face
 
-Demandé le 03/11/2026 : les labels GLM synthétiques en premier (dès que le §1.1 a fini), puis tous nos jeux de données. Un dataset repo par jeu, avec une carte qui donne la source, la licence, la commande qui l'a produit et le commit.
+Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'utilisateur, **en public**, les labels GLM compris (en partiel maintenant, puis mis à jour à la fin). Un dataset repo par jeu, une config parquet par source, et une carte qui donne la source, la licence, la commande qui a produit les fichiers et le commit.
 
-- [ ] **Labels GLM-5.3-flash** (§1.1), une fois `mix` terminé : `data/teacher/glm_labels.jsonl` (les labels bruts), `data/distill/glm.jsonl` (le mélange retenu) et `data/distill/agreement.json`. Pour les refus de la modération, publier seulement leur nombre par source, pas les textes. Vérifier avant d'envoyer :
-  - les conditions de z.ai sur la réutilisation des sorties de l'API (les poids sont sous MIT, mais l'API a ses propres conditions) ;
-  - que chaque record hérite de la licence de son texte source (CC-BY-SA reste SA, etc.).
-- [ ] **Nos jeux dérivés** : `data/decisions`, `data/games`, `data/numeric`, `data/commands`, `data/s4/heldout`, les jev de s6-secrets et, plus tard, le jev audio de s6-ear (§8). Chaque jeu garde la licence la plus stricte de ses sources (`DATA_LICENSES.md`). Les lignes NC ou non redistribuables sont exclues.
-- [ ] Pour le texte de pré-entraînement (`data/text-open`, `data/text`) et les clips audio, on ne republie pas les sources. On publie la recette : la commande `sky-data`, la graine et la liste des fichiers avec leurs sha256.
-- [ ] Un script `scripts/hf-publish-data.py` (`--dry-run`, `--only`), sur le modèle de `scripts/hf-publish.py`. Il assemble chaque jeu sous `target/hf-data/<jeu>/` (parquet, carte `README.md`), puis l'envoie.
-- [ ] Ajouter les liens vers les datasets publiés dans `DATA_LICENSES.md` et dans le README.
+- [x] `scripts/hf-publish-data.py` (`--dry-run`, `--only`, `--private`, `--user`). Il assemble chaque jeu sous `target/hf-data/<repo>/` : un parquet par source, `MANIFEST.json` (le sha256 des fichiers d'origine) et la carte `README.md`. Le dry-run du 03/11/2026 donne :
+  - `skycmd-decisions` : 27 sources, 823 387 lignes, 183 Mo ;
+  - `skycmd-games` : 280 000 lignes ;
+  - `skycmd-numeric` : 100 000 ;
+  - `skycmd-secrets` : 201 242 ;
+  - `skycmd-commands` : 32 341 ;
+  - `skycmd-zero-shot` : 5 000.
+- [ ] **Se connecter** : `hf auth login`, avec un token en écriture. Ce n'était pas fait le 03/11. Ensuite, `uv run scripts/hf-publish-data.py --data <checkout principal>/data`.
+- [ ] Vérifier chaque dataset sur le Hub : le viewer marche, les configs se chargent (`load_dataset("<user>/skycmd-decisions", "boolq")`), la carte est lisible.
+- [ ] Ajouter les liens des datasets publiés dans `DATA_LICENSES.md`, dans le README et sur la page Sources du site.
+- **Règles appliquées par le script :**
+  - chaque source garde sa licence, et les sources share-alike restent share-alike ;
+  - `LocalLLaMA/typed-decisions` (le train et le bench) n'est **pas** republié : ce jeu est gated sur le Hub, et le republier en accès libre contournerait la barrière ;
+  - le texte de pré-entraînement et les clips audio ne sont pas republiés. On publie leur recette : la commande `sky-data`, la graine et les sha256.
+- [ ] **Labels GLM-5.3-flash : à trancher par l'utilisateur, non publiés pour l'instant.** Les conditions de l'API z.ai ([Terms of Use](https://docs.z.ai/legal-agreement/terms-of-use), version du 14/04/2026) posent deux règles :
+  - §1(f)(xii) interdit « any use of the Z.ai's models, prompts, or model-generated content for the development, training, labeling, fine-tuning, optimization, iteration, or similar activities related to external models », sauf intégration autorisée dans un usage métier propre ;
+  - §III.5(d) demande de marquer les sorties comme générées par IA.
+
+  La licence MIT couvre les **poids** de GLM-5.3-Flash, pas l'API. Publier les labels en open data comme jeu d'entraînement tombe en plein dans cette clause, et la distillation s6 elle-même (§1.1) est en zone grise. Trois options :
+  - **(a)** demander à z.ai une autorisation écrite ;
+  - **(b)** régénérer les labels avec GLM-5.3-Flash **en local** : les poids sont sous MIT, sans conditions d'API, mais il faut de la puissance de calcul ;
+  - **(c)** publier quand même, avec le marquage IA, à ses risques.
+
+  En attendant, `glm_labels.jsonl` (393 878 labels le 03/11, 52,7 %) reste local, et `hf-publish-data.py` ne lit ni `data/teacher` ni `data/distill`.
+- [ ] Plus tard : le jev audio de s6-ear (§8), après `scripts/train-ear.sh data`. On y met les records et les log-mel, pas les clips (les sources restent sous leur licence CC-BY-4.0, avec attribution).
 
 ## 2. Le s6 généraliste : pilote et ablation pico, puis s6-nano et s6-micro (`docs/s6-prereg.md`, `docs/s6-gen-prereg.md`, `docs/SPEC-S6.md` §15)
 
