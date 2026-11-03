@@ -105,6 +105,7 @@ impl CastConfig {
             parallax: self.parallax,
             xsa: self.xsa,
             ffn_es: None,
+            audio_frame: 0,
             static_layers: 0,
             fusion_layers: 0,
             exits: self.exits.clone(),

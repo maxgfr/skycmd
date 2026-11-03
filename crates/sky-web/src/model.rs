@@ -108,4 +108,22 @@ impl Model {
             .decide_raw(qtype, instructions, options, state)
             .map_err(|e| e.to_string())
     }
+
+    /// s6-ear: probabilities over rendered option texts for a 16 kHz mono PCM clip.
+    pub fn probs_audio(
+        &mut self,
+        qtype: QType,
+        instructions: &str,
+        options: &[String],
+        pcm: &[f32],
+    ) -> Result<Vec<f32>, String> {
+        self.inner
+            .decide_audio(qtype, instructions, options, pcm)
+            .map_err(|e| e.to_string())
+    }
+
+    /// True for an s6-ear model (audio state).
+    pub fn is_audio(&self) -> bool {
+        self.inner.is_audio()
+    }
 }

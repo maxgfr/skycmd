@@ -61,6 +61,10 @@ pub struct S2Config {
     /// Expand-and-sparsify FFN in the encoder blocks (GGUF `ffn_es_*`, absent by default;
     /// SPEC-S3 §9 ablation, see [`es`]).
     pub ffn_es: Option<es::EsSpec>,
+    /// s6-ear (SPEC-S6 §16): values per audio state frame (GGUF `state_kind = "audio"` and
+    /// `audio_frame`, 320 = 8 hops × 40 log-mel bands); 0 for a text state stream (the default).
+    /// An audio model embeds its state frames with `audio_proj` instead of the token table.
+    pub audio_frame: usize,
     pub static_layers: usize,
     pub fusion_layers: usize,
     /// State-encoder depth (1-based block count) after which each exit sits, increasing; the
@@ -85,6 +89,11 @@ pub struct S2Config {
 }
 
 impl S2Config {
+    /// True for an s6-ear model (audio state frames).
+    pub fn is_audio(&self) -> bool {
+        self.audio_frame != 0
+    }
+
     pub fn head_dim(&self) -> usize {
         self.hidden_size / self.num_heads.max(1)
     }
@@ -153,6 +162,9 @@ impl S2Config {
         if self.max_head_tokens == 0 || self.max_head_tokens > MAX_DIM {
             return bad("max_head_tokens");
         }
+        if self.audio_frame != 0 && self.audio_frame != crate::audio::FRAME_DIM {
+            return bad("audio_frame must be 320 (8 hops x 40 log-mel bands)");
+        }
         if let Some(es) = &self.ffn_es {
             if es.units == 0
                 || es.units > MAX_DIM
@@ -206,6 +218,15 @@ impl S2Config {
                 fan_in: req("ffn_es_fan_in")?,
             }),
         };
+        let audio_frame = match g.get_str(&key("state_kind")) {
+            None | Some("text") => 0,
+            Some("audio") => req("audio_frame")?,
+            Some(k) => {
+                return Err(Error::Unsupported(format!(
+                    "state_kind {k:?} (text or audio)"
+                )))
+            }
+        };
         let vocab_size = ["token_embd.weight", "token_embd.q8"]
             .iter()
             .find_map(|n| g.tensor(n))
@@ -238,6 +259,7 @@ impl S2Config {
             parallax,
             xsa,
             ffn_es,
+            audio_frame,
             static_layers: req("static_block_count")?,
             fusion_layers: req("fusion_block_count")?,
             exits,

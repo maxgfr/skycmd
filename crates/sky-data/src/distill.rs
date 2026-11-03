@@ -279,6 +279,17 @@ where
 /// Labels the selected records neither in `out` nor refused before, `jobs` workers in parallel,
 /// each with `max_calls / jobs` calls.
 pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Result<LabelStats> {
+    label_records(cfg, select(o)?, o, out)
+}
+
+/// [`label_decisions`] on an explicit record list (`o.from` and `o.per_source` unused), e.g. the
+/// s6-ear transcript questions of `teacher label-transcripts`.
+pub fn label_records(
+    cfg: &TeacherConfig,
+    selected: Vec<DecisionRecord>,
+    o: &LabelOptions,
+    out: &Path,
+) -> Result<LabelStats> {
     let refused_file = refused_path(out);
     let labelled: HashSet<String> = if out.exists() {
         read_jsonl::<Label>(out)?
@@ -296,7 +307,6 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
     } else {
         HashSet::new()
     };
-    let selected = select(o)?;
     let in_selection = |ids: &HashSet<String>| {
         selected
             .iter()

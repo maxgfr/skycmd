@@ -156,6 +156,35 @@ enum Cmd {
         #[arg(long, default_value_t = 0.05)]
         val_frac: f64,
     },
+    /// s6-ear: audio clips → log-mel features (`sky_infer::audio`), test WAVs and clip manifests
+    /// under --out (`docs/s6-ear-prereg.md`). Sets: smart-turn, speech-commands, mswc, mimi
+    /// (LibriSpeech + the published Mimi codes, for `s2-pretrain --audio`), or all.
+    FetchAudio {
+        #[arg(long, value_delimiter = ',', default_value = "all")]
+        set: Vec<String>,
+        #[arg(long, default_value = "data/ear")]
+        out: PathBuf,
+        /// Clips kept per set (0: all; mswc: per archive).
+        #[arg(long, default_value_t = 0)]
+        max_clips: usize,
+        /// Keep the downloaded parquet shards in the cache (default: removed once processed).
+        #[arg(long)]
+        keep_shards: bool,
+        /// MSWC archives read per language and split (about 650 MB of clips each).
+        #[arg(long, default_value_t = 1)]
+        mswc_archives: usize,
+        #[arg(long, value_delimiter = ',', default_value = "en,fr")]
+        mswc_langs: Vec<String>,
+    },
+    /// s6-ear: the audio jev from the clip manifests of fetch-audio, one record per question
+    /// (<dir>/jev/{turn_end,keyword,keyword_zs[,about]}.jsonl and REPORT.json).
+    AudioJev {
+        #[arg(long, default_value = "data/ear")]
+        dir: PathBuf,
+        /// GLM labels of the transcript questions (`teacher label-transcripts`): adds about.jsonl.
+        #[arg(long)]
+        about: Option<PathBuf>,
+    },
     /// Download NL → command data (function calling + MASSIVE intents) into JSONL.
     FetchCommands {
         #[arg(long, default_value = "data/commands")]
@@ -370,6 +399,19 @@ enum TeacherTask {
         #[arg(long, default_value_t = 0.2)]
         temperature: f64,
     },
+    /// s6-ear v2: GLM probabilities for the `about` questions of every LibriSpeech transcript
+    /// (data/ear/mimi), resumable like label-decisions; `audio-jev --about` turns them into
+    /// audio records (the teacher reads the text, the student hears the audio).
+    LabelTranscripts {
+        #[arg(long, default_value = "data/ear")]
+        dir: PathBuf,
+        #[arg(long, default_value = "data/teacher/ear_about_labels.jsonl")]
+        out: PathBuf,
+        #[arg(long, default_value_t = 4)]
+        jobs: usize,
+        #[arg(long, default_value_t = 0.2)]
+        temperature: f64,
+    },
     /// s6: gold / teacher mix of the labels that agree with their gold answer (no API call).
     MixLabels {
         #[arg(long, default_value = "data/teacher/glm_labels.jsonl")]
@@ -548,6 +590,62 @@ fn main() -> Result<()> {
                     "{}: raw {} dup {} -> train {} val {} test {}",
                     r.src, r.raw, r.duplicates, r.train, r.val, r.test
                 );
+            }
+        }
+        Cmd::FetchAudio {
+            set,
+            out,
+            max_clips,
+            keep_shards,
+            mswc_archives,
+            mswc_langs,
+        } => {
+            use sky_data::audio;
+            let hf = Hf::new(&cli.cache)?;
+            let o = audio::FetchAudio {
+                out,
+                max_clips,
+                seed: cli.seed,
+                drop_shards: !keep_shards,
+                mswc_archives,
+                mswc_langs,
+            };
+            let all = set.iter().any(|s| s == "all");
+            let want = |s: &str| all || set.iter().any(|x| x == s);
+            for s in &set {
+                if !["all", "smart-turn", "speech-commands", "mswc", "mimi"].contains(&s.as_str()) {
+                    anyhow::bail!(
+                        "unknown audio set {s:?} (smart-turn, speech-commands, mswc, mimi, all)"
+                    );
+                }
+            }
+            let mut reports = Vec::new();
+            if want("smart-turn") {
+                reports.push(audio::fetch_smart_turn(&hf, &o)?);
+            }
+            if want("speech-commands") {
+                reports.push(audio::fetch_speech_commands(&hf, &o)?);
+            }
+            if want("mswc") {
+                reports.push(audio::fetch_mswc(&hf, &o)?);
+            }
+            if want("mimi") {
+                reports.push(audio::fetch_mimi(&hf, &o)?);
+            }
+            for r in &reports {
+                println!(
+                    "{}: train {} val {} test {} (skipped {})",
+                    r.set, r.train, r.val, r.test, r.skipped
+                );
+            }
+        }
+        Cmd::AudioJev { dir, about } => {
+            let r = sky_data::audio::write_jev(&dir, cli.seed, about.as_deref())?;
+            for (task, c) in &r.counts {
+                println!("{task}: {c:?}");
+            }
+            for (lang, w) in &r.held_out {
+                println!("held-out words {lang}: {}", w.len());
             }
         }
         Cmd::FetchCommands {
@@ -823,6 +921,35 @@ fn main() -> Result<()> {
                     let s = sky_data::distill::label_decisions(&t.cfg, &o, &out)?;
                     println!(
                         "wrote {} labels to {out:?} ({} refused by moderation); calls {} ({} failed batches), tokens in {} out {}, {:.1}s",
+                        s.written,
+                        s.refused,
+                        s.calls,
+                        s.failed_batches,
+                        s.input_tokens,
+                        s.output_tokens,
+                        t0.elapsed().as_secs_f64()
+                    );
+                    return Ok(());
+                }
+                TeacherTask::LabelTranscripts {
+                    dir,
+                    out,
+                    jobs,
+                    temperature,
+                } => {
+                    t.cfg.temperature = temperature;
+                    t.cfg.max_tokens = 8192;
+                    let recs = sky_data::audio::transcript_records(&dir)?;
+                    let o = sky_data::distill::LabelOptions {
+                        from: Vec::new(),
+                        per_source: 0,
+                        max_state_chars: 2000,
+                        jobs,
+                        seed: cli.seed,
+                    };
+                    let s = sky_data::distill::label_records(&t.cfg, recs, &o, &out)?;
+                    println!(
+                        "wrote {} transcript labels to {out:?} ({} refused by moderation); calls {} ({} failed batches), tokens in {} out {}, {:.1}s",
                         s.written,
                         s.refused,
                         s.calls,

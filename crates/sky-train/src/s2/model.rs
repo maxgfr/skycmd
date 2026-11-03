@@ -17,8 +17,8 @@ use crate::{
     num::{features, NUM_FEATURES},
     params::ParamMap,
     s2::{
-        config::S2Config,
-        data::{NumMlmBatch, S2Batch},
+        config::{S2Config, MIMI_CODES},
+        data::{MimiBatch, NumMlmBatch, S2Batch},
     },
 };
 
@@ -155,19 +155,23 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
     let v = cfg.vocab_size as i32;
     let nf = NUM_FEATURES as i32;
     let lin = |fan_in: i32| Init::Uniform(1.0 / (fan_in as f32).sqrt());
-    let mut out = vec![
-        (
-            "token_embd.weight".to_string(),
-            vec![v, d],
-            Init::TruncNormal(0.02),
-        ),
-        (
-            "num_proj.weight".to_string(),
-            vec![d, nf],
-            Init::TruncNormal(0.02),
-        ),
-        ("num_proj.bias".to_string(), vec![d], Init::Zeros),
-    ];
+    let mut out = Vec::new();
+    // s6-ear pretraining reads audio frames only: no token table until the decision model
+    if parts.decision || !cfg.is_audio() {
+        out.extend([
+            (
+                "token_embd.weight".to_string(),
+                vec![v, d],
+                Init::TruncNormal(0.02),
+            ),
+            (
+                "num_proj.weight".to_string(),
+                vec![d, nf],
+                Init::TruncNormal(0.02),
+            ),
+            ("num_proj.bias".to_string(), vec![d], Init::Zeros),
+        ]);
+    }
     let es_units = cfg.ffn_es.map(|es| es.units(cfg.hidden_size) as i32);
     let px = cfg.parallax.then_some(cfg.head_dim() as i32);
     encoder_specs(
@@ -193,6 +197,12 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
             vec![cfg.state_loops as i32, d],
             Init::TruncNormal(0.02),
         ));
+    }
+    if cfg.is_audio() {
+        // SPEC-S6 §16: the float projection of the audio state frames (as s6-cast's patch_proj)
+        let f = cfg.audio_frame() as i32;
+        out.push(("audio_proj.weight".to_string(), vec![d, f], lin(f)));
+        out.push(("audio_proj.bias".to_string(), vec![d], Init::Zeros));
     }
     let last = cfg.n_exits() - 1;
     if parts.decision && cfg.temporal_carry {
@@ -246,7 +256,28 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
     } else {
         out.push((format!("exit.{last}.norm.weight"), vec![d], Init::Ones));
     }
-    if parts.mlm {
+    if parts.mlm && cfg.is_audio() {
+        // SPEC-S6 §16 pretraining head: the Mimi codebook-0 id of each masked frame
+        let std_out = 0.02 / (2.0 * cfg.depth() as f32).sqrt();
+        let c = MIMI_CODES as i32;
+        out.push((
+            "mimi.mask.weight".to_string(),
+            vec![d],
+            Init::TruncNormal(0.02),
+        ));
+        out.push((
+            "mimi.dense.weight".to_string(),
+            vec![d, d],
+            Init::TruncNormal(std_out),
+        ));
+        out.push(("mimi.norm.weight".to_string(), vec![d], Init::Ones));
+        out.push((
+            "mimi.decoder.weight".to_string(),
+            vec![c, d],
+            Init::TruncNormal(0.02),
+        ));
+        out.push(("mimi.decoder.bias".to_string(), vec![c], Init::Zeros));
+    } else if parts.mlm {
         let std_out = 0.02 / (2.0 * cfg.depth() as f32).sqrt();
         out.push((
             "mlm.dense.weight".to_string(),
@@ -622,6 +653,16 @@ fn embed(p: &ParamMap, ids: &Array, values: &Array, has: &Array) -> R<Array> {
     e.add(num.multiply(has.reshape(&shape)?)?)
 }
 
+/// SPEC-S6 §16: audio state frames `[B, S, 320]` -> `audio_proj · f + audio_proj.bias`.
+fn embed_audio(p: &ParamMap, frames: &Array) -> R<Array> {
+    let wt = w(p, "audio_proj.weight")?;
+    linear(
+        &cast_like(frames.clone(), wt)?,
+        wt,
+        Some(w(p, "audio_proj.bias")?),
+    )
+}
+
 /// Key-padding mask `[B, 1, T, T]` (a query always sees itself).
 fn padding_mask(valid: &Array) -> R<Array> {
     let (b, t) = (valid.dim(0), valid.dim(1));
@@ -874,7 +915,11 @@ fn forward_prepared(
     let qt = flat
         .take_axis(b.q_idx.reshape(&[-1])?, 0)?
         .reshape(&[rows, tq, d])?;
-    let mut x = embed(p, &b.ids, &b.values, &b.has)?;
+    let mut x = if cfg.is_audio() {
+        embed_audio(p, &b.audio)?
+    } else {
+        embed(p, &b.ids, &b.values, &b.has)?
+    };
     if let Some(c) = carry {
         let ln = layer_norm(c.h, w(p, "carry_norm.weight")?, None, cfg.norm_eps)?;
         let term = ln.multiply(w(p, "carry_gate.weight")?)?;
@@ -1168,6 +1213,53 @@ pub fn mlm_loss_parts(p: &ParamMap, cfg: &S2Config, b: &NumMlmBatch) -> R<(Array
         Array::from_f32(1.0),
     )?)?;
     Ok((ce, mse))
+}
+
+/// SPEC-S6 §16 pretraining ("Mimi as the teacher"): the masked frames are replaced by
+/// `mimi.mask` after `audio_proj`, the state stack runs to its last exit, and a head predicts the
+/// Mimi codebook-0 id (2048 classes) of each masked frame. Returns (mean CE, accuracy).
+pub fn mimi_loss_parts(p: &ParamMap, cfg: &S2Config, b: &MimiBatch) -> R<(Array, Array)> {
+    let p = &*prepare(p, cfg, false)?;
+    let x = embed_audio(p, &b.frames)?;
+    let mv = w(p, "mimi.mask.weight")?;
+    let m = cast_like(b.mask.clone(), &x)?.reshape(&[b.frames.dim(0), b.frames.dim(1), 1])?;
+    let x = x
+        .multiply(Array::from_f32(1.0).subtract(&m)?)?
+        .add(m.multiply(cast_like(mv.clone(), &x)?)?)?;
+    let last = cfg.n_exits() - 1;
+    let enc = state_exits(p, cfg, x, &b.valid, &[last])?
+        .pop()
+        .expect("last exit");
+    let d = enc.dim(2);
+    let rows = enc.reshape(&[-1, d])?.take_axis(&b.positions, 0)?;
+    let h = gelu_erf(&linear(&rows, w(p, "mimi.dense.weight")?, None)?)?;
+    let h = layer_norm(&h, w(p, "mimi.norm.weight")?, None, cfg.norm_eps)?;
+    let logits = to_f32(linear(
+        &h,
+        w(p, "mimi.decoder.weight")?,
+        Some(w(p, "mimi.decoder.bias")?),
+    )?)?;
+    let n = logits.dim(0);
+    let lse = logits.logsumexp_axis(-1, None)?;
+    let gold = logits
+        .take_along_axis(b.labels.reshape(&[n, 1])?, -1)?
+        .reshape(&[n])?;
+    let denom = ops::maximum(b.weights.sum(None)?, Array::from_f32(1.0))?;
+    let ce = lse
+        .subtract(&gold)?
+        .multiply(&b.weights)?
+        .sum(None)?
+        .divide(&denom)?;
+    let hit = ops::indexing::argmax_axis(&logits, -1, None)?
+        .eq(&b.labels)?
+        .as_dtype(Dtype::Float32)?;
+    let acc = stop_gradient(&hit.multiply(&b.weights)?.sum(None)?.divide(&denom)?)?;
+    Ok((ce, acc))
+}
+
+/// The CE of [`mimi_loss_parts`].
+pub fn mimi_loss(p: &ParamMap, cfg: &S2Config, b: &MimiBatch) -> R<Array> {
+    Ok(mimi_loss_parts(p, cfg, b)?.0)
 }
 
 /// Splits the logits of [`forward`] into host vectors `[E][B][k_b]`.
@@ -2462,5 +2554,177 @@ mod tests {
         assert!(dst["exit.0.norm.weight"]
             .all_close(&p["exit.1.norm.weight"], 0.0, 0.0, None)
             .unwrap());
+    }
+
+    /// A small s6-ear configuration over the test tokenizer.
+    fn ear_cfg(vocab: usize) -> S2Config {
+        S2Config {
+            state_kind: crate::s2::config::StateKind::Audio,
+            max_state_tokens: 32,
+            parallax: true,
+            fuse_numbers: false,
+            ..looped(2, 2)
+        }
+        .with_vocab(vocab)
+    }
+
+    /// Deterministic audio frames `[n][320]` in the log-mel range.
+    fn ear_frames(n: usize, seed: u32) -> Vec<f32> {
+        let mut s = seed.wrapping_mul(2_654_435_761) | 1;
+        (0..n * sky_infer::audio::FRAME_DIM)
+            .map(|_| {
+                s ^= s << 13;
+                s ^= s >> 17;
+                s ^= s << 5;
+                (s >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.2
+            })
+            .collect()
+    }
+
+    #[test]
+    fn s6_ear_parameter_counts_and_heads() {
+        let _g = test_util::lock();
+        let cfg = ladder("s6-ear-nano");
+        assert!(cfg.is_audio() && cfg.audio_frame() == 320);
+        assert_eq!(expected_count(&cfg, S2Parts::DECISION), 1_615_681);
+        assert_eq!(expected_count(&cfg, S2Parts::PRETRAIN), 821_552);
+        // s6-nano plus audio_proj
+        let nano = ladder("s6-nano");
+        assert_eq!(
+            expected_count(&cfg, S2Parts::DECISION),
+            expected_count(&nano, S2Parts::DECISION) + 144 * 320 + 144
+        );
+        let pre: std::collections::HashMap<String, Vec<i32>> =
+            param_shapes(&cfg, S2Parts::PRETRAIN).into_iter().collect();
+        assert!(!pre.contains_key("token_embd.weight") && !pre.contains_key("mlm.dense.weight"));
+        assert_eq!(pre["mimi.decoder.weight"], vec![2048, 144]);
+        assert_eq!(pre["audio_proj.weight"], vec![144, 320]);
+        let dec: std::collections::HashMap<String, Vec<i32>> =
+            param_shapes(&cfg, S2Parts::DECISION).into_iter().collect();
+        assert!(
+            dec.contains_key("token_embd.weight") && !dec.keys().any(|k| k.starts_with("mimi."))
+        );
+        assert!(!is_ternary("audio_proj.weight"));
+        assert_eq!(
+            crate::params::group_of("audio_proj.weight", 2),
+            crate::params::Group::AdamNoDecay
+        );
+        // a text config has none of it
+        let t: Vec<String> = param_shapes(&nano, S2Parts::PRETRAIN)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert!(t
+            .iter()
+            .all(|n| !n.starts_with("audio_proj") && !n.starts_with("mimi.")));
+    }
+
+    #[test]
+    fn mimi_loss_is_finite_and_trains_the_stack() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let cfg = ear_cfg(262);
+            let p = init(&cfg, S2Parts::PRETRAIN, 3).unwrap();
+            let utts: Vec<crate::s2::data::MimiUtt> = (0..3)
+                .map(|i| crate::s2::data::MimiUtt {
+                    frames: ear_frames(20 + i, i as u32 + 1)
+                        .iter()
+                        .map(|&x| sky_gguf::f32_to_f16(x))
+                        .collect(),
+                    codes: (0..20 + i).map(|t| ((t * 37 + i) % 2048) as u16).collect(),
+                })
+                .collect();
+            let refs: Vec<&crate::s2::data::MimiUtt> = utts.iter().collect();
+            let mut rng = Rng::new(5);
+            let b = crate::s2::data::mimi_batch(&refs, 16, 0.3, &mut rng);
+            let w: Vec<f32> = b.weights.as_slice().to_vec();
+            let masked: f32 = b.mask.as_slice::<f32>().iter().sum();
+            assert_eq!(w.iter().sum::<f32>(), masked);
+            assert!((masked / 48.0 - 0.3).abs() < 0.05, "{masked}");
+            let (ce, acc) = mimi_loss_parts(&p, &cfg, &b).unwrap();
+            let ce = ce.item_exact::<f32>();
+            // a fresh head is near uniform over 2048 classes
+            assert!(ce.is_finite() && (ce - (2048f32).ln()).abs() < 1.0, "{ce}");
+            assert!((0.0..=1.0).contains(&acc.item_exact::<f32>()));
+            let f = |p: HashMap<Rc<str>, Array>, b: &crate::s2::data::MimiBatch| -> R<Vec<Array>> {
+                Ok(vec![mimi_loss(&p, &cfg, b)?])
+            };
+            let (_, g) = keyed_value_and_grad(f)(p.clone(), &b).unwrap();
+            for name in [
+                "audio_proj.weight",
+                "mimi.mask.weight",
+                "blk.0.attn_qkv.weight",
+                "mimi.decoder.weight",
+            ] {
+                let n = g[name]
+                    .abs()
+                    .unwrap()
+                    .sum(None)
+                    .unwrap()
+                    .item_exact::<f32>();
+                assert!(n > 0.0, "{name} has no gradient");
+            }
+        });
+    }
+
+    #[test]
+    fn audio_decisions_match_sky_infer() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let cfg = ear_cfg(tok.vocab_size());
+            let p = crate::s2::golden::golden_params(&cfg, 9).unwrap();
+            let r = rec(
+                "noul",
+                "Has the speaker finished their turn?",
+                &["false: no", "true: yes"],
+                "x",
+            );
+            let (st, _) = crate::s2::data::encode_record_cfg(&tok, &r, &cfg).unwrap();
+            let n = 21;
+            let frames = ear_frames(n, 7);
+            let state = Stream::from_audio(&frames, n);
+            let statics = vec![st];
+            let it = item(0, &state, 2, 2);
+            let b = make_batch(&statics, &[&it], 1);
+            assert_eq!(b.audio.shape(), &[1, n as i32, 320]);
+            let logits = logits_per_row(&forward(&p, &cfg, &b, false).unwrap(), &[2]).unwrap();
+            let last = logits.last().unwrap()[0].clone();
+            let z = last.iter().fold(f32::MIN, |a, &b| a.max(b));
+            let e: Vec<f32> = last.iter().map(|x| (x - z).exp()).collect();
+            let want: Vec<f32> = e.iter().map(|x| x / e.iter().sum::<f32>()).collect();
+            // the exported file, through the inference engine on the same (f16-rounded) frames
+            let bytes = crate::s2::gguf::to_gguf(
+                &p,
+                &cfg,
+                &crate::s2::data::tests::s2_tokenizer_json(),
+                crate::s2::gguf::WeightFormat::F32,
+                "ear-test",
+            )
+            .unwrap();
+            let g = sky_gguf::Gguf::parse(&bytes).unwrap();
+            assert_eq!(
+                crate::s2::gguf::config_from_gguf(&g).unwrap().state_kind,
+                cfg.state_kind
+            );
+            let mut eng = sky_infer::Engine::from_gguf_with(
+                &bytes,
+                sky_infer::EngineOptions {
+                    exit_threshold: Some(1.0),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let rounded: Vec<f32> = frames
+                .iter()
+                .map(|&x| sky_gguf::f16_to_f32(sky_gguf::f32_to_f16(x)))
+                .collect();
+            let got = eng
+                .decide_frames(sky_infer::QType::Noul, &r.ins, &r.opts, &rounded, n)
+                .unwrap();
+            for (a, b) in got.iter().zip(&want) {
+                assert!((a - b).abs() < 1e-4, "infer {got:?} vs train {want:?}");
+            }
+        });
     }
 }

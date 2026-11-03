@@ -755,6 +755,70 @@ impl Engine {
         Ok(p)
     }
 
+    /// s6-ear (SPEC-S6 §16): probabilities (after the temperature) of rendered option texts for
+    /// an audio clip, 16 kHz mono PCM in `[-1, 1]` (the last 10.24 s count). Only for s2 models
+    /// with `state_kind = "audio"`; the question and options stay text.
+    pub fn decide_audio<S: AsRef<str>>(
+        &mut self,
+        qtype: QType,
+        instructions: &str,
+        options: &[S],
+        pcm: &[f32],
+    ) -> Result<Vec<f32>> {
+        let t0 = timer::now();
+        let Inner::S2(e) = &mut self.inner else {
+            return Err(Error::Unsupported(
+                "audio decisions need an s6-ear (skycmd-s2, state_kind audio) model".into(),
+            ));
+        };
+        let o = e.question_audio(qtype, instructions, options, pcm)?;
+        self.last = Some(DecisionStats {
+            exit: Some(o.exit),
+            layers_used: Some(o.layers_used),
+            n_exits: e.model().cfg.exits.len(),
+            static_hit: o.static_hit,
+            state_hit: o.state_hit,
+            tokens: o.tokens,
+        });
+        self.last_micros = timer::since(t0);
+        Ok(o.probs)
+    }
+
+    /// s6-ear: [`Engine::decide_audio`] on state frames already computed (`[n][320]` stacked
+    /// log-mel hops, see [`crate::audio::LogMel::frames`]), e.g. the features of an evaluation
+    /// record.
+    pub fn decide_frames<S: AsRef<str>>(
+        &mut self,
+        qtype: QType,
+        instructions: &str,
+        options: &[S],
+        frames: &[f32],
+        n: usize,
+    ) -> Result<Vec<f32>> {
+        let t0 = timer::now();
+        let Inner::S2(e) = &mut self.inner else {
+            return Err(Error::Unsupported(
+                "audio decisions need an s6-ear (skycmd-s2, state_kind audio) model".into(),
+            ));
+        };
+        let o = e.question_frames(qtype, instructions, options, frames, n)?;
+        self.last = Some(DecisionStats {
+            exit: Some(o.exit),
+            layers_used: Some(o.layers_used),
+            n_exits: e.model().cfg.exits.len(),
+            static_hit: o.static_hit,
+            state_hit: o.state_hit,
+            tokens: o.tokens,
+        });
+        self.last_micros = timer::since(t0);
+        Ok(o.probs)
+    }
+
+    /// True for an s6-ear model (audio state).
+    pub fn is_audio(&self) -> bool {
+        matches!(&self.inner, Inner::S2(e) if e.model().cfg.is_audio())
+    }
+
     /// [`Engine::decide_raw`] for one frame of a game stream (SPEC-S3 §7): with a
     /// `temporal_carry` model, the state encoder of a new frame starts from the final latent of
     /// the stream's previous frame when their state token ids match (else cold), so a stream

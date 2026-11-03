@@ -236,10 +236,30 @@ Inference only: LFM3 is not trained, and its weights and outputs are not redistr
 | DigitalLearningGmbH/MATH-lighteval | MIT (MATH, Hendrycks et al.) | `0530c786` | 300 train problems with a `\boxed{}` answer (calibration) | 300 |
 | HuggingFaceH4/MATH-500 | MIT (a subset of the MATH test set, from PRM800K); the card has no license tag | `6e4ed1a2` | the 500 test problems (test) | 500 |
 
+## s6-ear audio (`data/ear/`, `sky-data fetch-audio`, `sky-data audio-jev`, `docs/s6-ear-prereg.md`)
+
+Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the test clips for the baselines); `data/ear` is not committed and the clips are not redistributed. Counts: not fetched yet.
+
+| dataset / model | license | how it is used |
+|---|---|---|
+| pipecat-ai/smart-turn-data-v3-train | CC-BY-4.0 | `turn_end` (noul, `endpoint_bool`), 23 languages including French; train, 5% val by a seeded hash of the clip id, minus the clips whose id is in the test set |
+| pipecat-ai/smart-turn-data-v3.2-test | CC-BY-4.0 | `turn_end` test: the official held-out set of Smart Turn v3.2 (neither model trains on it) |
+| Speech Commands v0.02 (`download.tensorflow.org/data/speech_commands_v0.02.tar.gz` and the official `speech_commands_test_set_v0.02.tar.gz`; `google/speech_commands` on the Hub is a loading script over them) | CC-BY-4.0 | `keyword` (choice, the 12-class benchmark): train / val by `validation_list.txt`, test = the official test archive |
+| MLCommons/ml_spoken_words (`data/wav/{en,fr}`, the first archive of each split) | CC-BY-4.0 | `keyword_zs`: 50 test words per language held out, never trained on |
+| openslr/librispeech_asr (`clean`: `train.100`, `validation`) | CC-BY-4.0 | audio of the Mimi pretraining (log-mel); transcripts for the v2 `about` labels |
+| shangeth/librispeech-mimi-codes (`train_clean_100`, `dev_clean`) | CC-BY-4.0 | the Mimi codebook-0 ids (12.5 Hz) predicted by `s2-pretrain --audio`, joined to LibriSpeech by utterance id; Mimi itself never runs |
+| AMI meeting corpus (v2, not fetched yet) | CC-BY-4.0 | `duplex_action`, labelled by the pre-registered rule `audio::duplex_label` |
+| pipecat-ai/smart-turn-v3 (`smart-turn-v3.2-cpu.onnx`, revision `f766f81d`) | BSD-2-Clause | the baseline of the turn-end gate, run on our test clips (`scripts/ear-baseline.py`); not redistributed |
+| GLM-5.3-flash labels of the LibriSpeech transcripts (v2, `teacher label-transcripts`) | the transcripts' license (CC-BY-4.0); the model is MIT | the `about` questions, soft targets on the audio |
+
 ## Rejected
 
 | dataset | reason |
 |---|---|
+| Speech-MASSIVE (`FBK-MT/Speech-MASSIVE`) | CC-BY-NC-SA-4.0 (non-commercial); `about` uses GLM labels of LibriSpeech transcripts instead |
+| SLURP | CC-BY-NC-4.0 (non-commercial) |
+| ESC-50 | CC-BY-NC-3.0 (non-commercial) |
+| UrbanSound8K | CC-BY-NC-3.0 (non-commercial) |
 | XNLI (`facebook/xnli`) | CC-BY-NC-4.0 (non-commercial); also dropped from the tasksource collection |
 | Lucie Training Dataset (`OpenLLM-France/Lucie-Training-Dataset`, Lucie-7B) | CC-BY-NC-SA-4.0 (non-commercial) |
 | The Pile (`EleutherAI/the_pile_deduplicated`, Pythia) | no license tag on the Hub, and it includes Books3, taken down over copyright |

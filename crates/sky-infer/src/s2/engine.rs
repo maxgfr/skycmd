@@ -145,6 +145,8 @@ pub struct S2Engine {
     values: Vec<f32>,
     has_value: Vec<bool>,
     logits: Vec<f32>,
+    /// s6-ear front-end tables (built on the first audio question).
+    logmel: Option<crate::audio::LogMel>,
 }
 
 impl S2Engine {
@@ -182,6 +184,7 @@ impl S2Engine {
             values: Vec::new(),
             has_value: Vec::new(),
             logits: Vec::new(),
+            logmel: None,
             model,
             tok,
         })
@@ -368,15 +371,7 @@ impl S2Engine {
             &mut self.has_value,
             Some(&mut self.bpe),
         );
-        let cap = self.opts.state_cache.max(1);
-        let mut entry = if self.states.len() >= cap {
-            self.states.pop().expect("non-empty")
-        } else {
-            self.spare
-                .take()
-                .unwrap_or_else(|| (String::new(), self.model.state_buffers()))
-        };
-        self.states.truncate(cap - 1);
+        let mut entry = self.state_entry();
         if let Err(e) =
             self.model
                 .state_reset(&mut entry.1, &self.ids, &self.values, &self.has_value)
@@ -388,6 +383,196 @@ impl S2Engine {
         entry.0.push_str(state);
         self.states.insert(0, entry);
         Ok(false)
+    }
+
+    /// Buffers for a new state-cache entry: the evicted one when the cache is full.
+    fn state_entry(&mut self) -> (String, StateEnc) {
+        let cap = self.opts.state_cache.max(1);
+        let entry = if self.states.len() >= cap {
+            self.states.pop().expect("non-empty")
+        } else {
+            self.spare
+                .take()
+                .unwrap_or_else(|| (String::new(), self.model.state_buffers()))
+        };
+        self.states.truncate(cap - 1);
+        entry
+    }
+
+    /// s6-ear: the audio state frames of 16 kHz PCM, `([n][320], n)`, cut to the last
+    /// `max_state_tokens` frames (the most recent audio decides).
+    pub fn audio_frames(&mut self, pcm: &[f32]) -> (Vec<f32>, usize) {
+        let lm = self.logmel.get_or_insert_with(crate::audio::LogMel::new);
+        let (fr, n) = lm.frames(pcm);
+        let dim = crate::audio::FRAME_DIM;
+        let (tail, k) = crate::audio::last_frames(&fr, n, dim, self.model.cfg.max_state_tokens);
+        (tail.to_vec(), k)
+    }
+
+    /// s6-ear: bring the state encoding of a PCM clip (16 kHz mono, `[-1, 1]`) to the front of
+    /// the state cache, keyed by a hash of the samples; on a miss its frames are embedded with
+    /// `audio_proj` ([`S2Model::state_reset_audio`]). Returns whether it was cached.
+    pub fn prepare_state_audio(&mut self, pcm: &[f32]) -> Result<bool> {
+        if !self.model.cfg.is_audio() {
+            return Err(Error::InvalidRequest(
+                "this model reads a text state, not audio (state_kind = text)".into(),
+            ));
+        }
+        // a key no state text produces: the text cache and the audio cache cannot collide
+        let key = format!(
+            "\u{0}audio:{:016x}:{}",
+            crate::audio::pcm_hash(pcm),
+            pcm.len()
+        );
+        if self.state_cached(&key) {
+            return Ok(true);
+        }
+        let (frames, n) = self.audio_frames(pcm);
+        if n == 0 {
+            return Err(Error::InvalidRequest(format!(
+                "audio of {} samples: at least {} (80 ms at 16 kHz) are needed",
+                pcm.len(),
+                crate::audio::FRAME_SAMPLES
+            )));
+        }
+        self.insert_audio_state(key, &frames, n)?;
+        Ok(false)
+    }
+
+    /// Moves the state entry `key` to the front of the cache if present.
+    fn state_cached(&mut self, key: &str) -> bool {
+        match self.states.iter().position(|(k, _)| k == key) {
+            Some(i) => {
+                if i > 0 {
+                    let c = self.states.remove(i);
+                    self.states.insert(0, c);
+                }
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// s6-ear: like [`S2Engine::prepare_state_audio`] for state frames already computed
+    /// (`[n][320]`, e.g. the log-mel features of a training record; the last `max_state_tokens`
+    /// count).
+    pub fn prepare_state_frames(&mut self, frames: &[f32], n: usize) -> Result<bool> {
+        if !self.model.cfg.is_audio() {
+            return Err(Error::InvalidRequest(
+                "this model reads a text state, not audio (state_kind = text)".into(),
+            ));
+        }
+        let key = format!("\u{0}frames:{:016x}:{n}", crate::audio::pcm_hash(frames));
+        if self.state_cached(&key) {
+            return Ok(true);
+        }
+        let (tail, k) = crate::audio::last_frames(
+            frames,
+            n,
+            self.model.cfg.audio_frame,
+            self.model.cfg.max_state_tokens,
+        );
+        let tail = tail.to_vec();
+        self.insert_audio_state(key, &tail, k)?;
+        Ok(false)
+    }
+
+    /// s6-ear: answer one question about precomputed state frames (see
+    /// [`S2Engine::prepare_state_frames`]).
+    pub fn question_frames<S: AsRef<str>>(
+        &mut self,
+        qtype: QType,
+        instructions: &str,
+        options: &[S],
+        frames: &[f32],
+        n: usize,
+    ) -> Result<S2Outcome> {
+        let static_hit = self.prepare_static(qtype, instructions, options)?;
+        let state_hit = self.prepare_state_frames(frames, n)?;
+        let mut out = self.answer(qtype, options.len(), None)?;
+        out.static_hit = static_hit;
+        out.state_hit = state_hit;
+        Ok(out)
+    }
+
+    /// s6-ear: probabilities at every exit for precomputed state frames (full depth).
+    pub fn question_frames_all_exits<S: AsRef<str>>(
+        &mut self,
+        qtype: QType,
+        instructions: &str,
+        options: &[S],
+        frames: &[f32],
+        n: usize,
+    ) -> Result<Vec<Vec<f32>>> {
+        self.prepare_static(qtype, instructions, options)?;
+        self.prepare_state_frames(frames, n)?;
+        let k = options.len();
+        let mut out = Vec::with_capacity(self.model.cfg.exits.len());
+        for e in 0..self.model.cfg.exits.len() {
+            self.run_exit(qtype, e, None)?;
+            out.push(probs_from_logits(
+                &self.logits,
+                self.temperature(e, qtype, k),
+            ));
+        }
+        Ok(out)
+    }
+
+    fn insert_audio_state(&mut self, key: String, frames: &[f32], n: usize) -> Result<()> {
+        let mut entry = self.state_entry();
+        if let Err(e) = self.model.state_reset_audio(&mut entry.1, frames, n) {
+            self.spare = Some(entry);
+            return Err(e);
+        }
+        entry.0 = key;
+        self.states.insert(0, entry);
+        Ok(())
+    }
+
+    /// s6-ear: answer one question about a PCM clip (16 kHz mono) with early exit. The static
+    /// stream (question and options) is text, as for every s2 model.
+    pub fn question_audio<S: AsRef<str>>(
+        &mut self,
+        qtype: QType,
+        instructions: &str,
+        options: &[S],
+        pcm: &[f32],
+    ) -> Result<S2Outcome> {
+        let static_hit = self.prepare_static(qtype, instructions, options)?;
+        let state_hit = self.prepare_state_audio(pcm)?;
+        let mut out = self.answer(qtype, options.len(), None)?;
+        out.static_hit = static_hit;
+        out.state_hit = state_hit;
+        if self.opts.static_cache == 0 {
+            self.statics.clear();
+        }
+        if self.opts.state_cache == 0 {
+            self.spare = self.states.pop();
+            self.states.clear();
+        }
+        Ok(out)
+    }
+
+    /// s6-ear: probabilities at every exit for a PCM clip (full depth, for evaluation).
+    pub fn question_audio_all_exits<S: AsRef<str>>(
+        &mut self,
+        qtype: QType,
+        instructions: &str,
+        options: &[S],
+        pcm: &[f32],
+    ) -> Result<Vec<Vec<f32>>> {
+        self.prepare_static(qtype, instructions, options)?;
+        self.prepare_state_audio(pcm)?;
+        let n = options.len();
+        let mut out = Vec::with_capacity(self.model.cfg.exits.len());
+        for e in 0..self.model.cfg.exits.len() {
+            self.run_exit(qtype, e, None)?;
+            out.push(probs_from_logits(
+                &self.logits,
+                self.temperature(e, qtype, n),
+            ));
+        }
+        Ok(out)
     }
 
     /// Scores of exit `e` for the front static entry and the front state entry (or the current

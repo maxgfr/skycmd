@@ -74,6 +74,18 @@ GLM-5.3-flash est open source : poids sous licence MIT, [`zai-org/GLM-5.3-Flash`
 - [ ] `mix` (lancé par `loop mix`, ou seul : `scripts/distill-glm.sh mix`) écrit `data/distill/glm.jsonl` et le taux d'accord par source (`data/distill/agreement.json`). À recopier dans le rapport avec le nombre d'appels et de jetons. Les essais du 29/10/2026 donnaient 15 accords sur 20, puis 19 sur 26.
 - [ ] Remplacer « 747,198 selected » et « the agreeing labels » par les vrais nombres dans `DATA_LICENSES.md` (section s6-nano / s6-micro).
 
+### 1.2 Publier nos jeux de données sur Hugging Face
+
+Demandé le 03/11/2026 : les labels GLM synthétiques en premier (dès que le §1.1 a fini), puis tous nos jeux de données. Un dataset repo par jeu, avec une carte qui donne la source, la licence, la commande qui l'a produit et le commit.
+
+- [ ] **Labels GLM-5.3-flash** (§1.1), une fois `mix` terminé : `data/teacher/glm_labels.jsonl` (les labels bruts), `data/distill/glm.jsonl` (le mélange retenu) et `data/distill/agreement.json`. Pour les refus de la modération, publier seulement leur nombre par source, pas les textes. Vérifier avant d'envoyer :
+  - les conditions de z.ai sur la réutilisation des sorties de l'API (les poids sont sous MIT, mais l'API a ses propres conditions) ;
+  - que chaque record hérite de la licence de son texte source (CC-BY-SA reste SA, etc.).
+- [ ] **Nos jeux dérivés** : `data/decisions`, `data/games`, `data/numeric`, `data/commands`, `data/s4/heldout`, les jev de s6-secrets et, plus tard, le jev audio de s6-ear (§8). Chaque jeu garde la licence la plus stricte de ses sources (`DATA_LICENSES.md`). Les lignes NC ou non redistribuables sont exclues.
+- [ ] Pour le texte de pré-entraînement (`data/text-open`, `data/text`) et les clips audio, on ne republie pas les sources. On publie la recette : la commande `sky-data`, la graine et la liste des fichiers avec leurs sha256.
+- [ ] Un script `scripts/hf-publish-data.py` (`--dry-run`, `--only`), sur le modèle de `scripts/hf-publish.py`. Il assemble chaque jeu sous `target/hf-data/<jeu>/` (parquet, carte `README.md`), puis l'envoie.
+- [ ] Ajouter les liens vers les datasets publiés dans `DATA_LICENSES.md` et dans le README.
+
 ## 2. Le s6 généraliste : pilote et ablation pico, puis s6-nano et s6-micro (`docs/s6-prereg.md`, `docs/s6-gen-prereg.md`, `docs/SPEC-S6.md` §15)
 
 Pré-entraînement sur `data/text-open,data/text` (amendement 1), décisions sur `data/decisions,data/games,data/numeric`.
@@ -228,3 +240,28 @@ Personne n'a publié ça sur des modèles ternaires.
 
 Chaque point passe par un pré-enregistrement figé avant le run, comme pour s6 et le §6.
 
+
+## 8. s6-ear : un s6 qui écoute (`docs/s6-ear-prereg.md`, `docs/SPEC-S6.md` §16)
+
+Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement « Mimi comme professeur », le jev audio, les questions `turn_end` et `keyword` (dont le zéro-shot), le contrôle conformal, les portes. Rien n'est entraîné. **Ne pas lancer en même temps que le run LFM3 du §6 : les deux utilisent le GPU.** La labellisation GLM du §1.1 peut continuer, elle ne fait que du réseau.
+
+- [x] **Prérequis.** Le compilateur Metal de Xcode : sans lui, mlx ne se recompile pas, et `sky-train` ne se construit dans aucun nouveau dossier `target`. Il a été installé le 03/11/2026 avec `xcodebuild -downloadComponent MetalToolchain` (Metal Toolchain 27B47). Les scripts passent `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, parce que `xcode-select` pointe sur les Command Line Tools.
+- [ ] **Données** (une fois ; à mesurer, de l'ordre de 30 Go téléchargés, les shards étant supprimés au fur et à mesure) : `scripts/train-ear.sh data`. Recopier les comptes de `fetch-audio`, et `data/ear/jev/REPORT.json`, dans `DATA_LICENSES.md` à la place de « not fetched yet ».
+  - Fumée d'abord : `MAX_CLIPS=200 scripts/train-ear.sh data`. Le 03/11/2026, sur 200 clips par set :
+    - MSWC fr : 200 / 200 / 200 (train / val / test) ;
+    - LibriSpeech + Mimi : 200 / 200 (les codes Mimi ont une trame de plus que nos log-mel, la paire est coupée à la plus courte) ;
+    - Speech Commands : 876 / 113 / 4 890 (le test officiel n'est pas plafonné).
+  - Smart Turn v3.2 sur 25 clips de test de la fumée : exactitude 0,84, 31 ms par clip. Ces clips venaient encore du jeu d'entraînement de Smart Turn ; le test est depuis `smart-turn-data-v3.2-test`.
+  - Fumée de bout en bout, le 03/11/2026 :
+    - `s2-pretrain --audio`, 30 pas : la CE passe de 7,6 (le hasard sur 2 048 classes) à 7,0, à environ 100 000 trames/s une fois lancé ;
+    - `s2-decide`, 40 pas, compilé, puis `s2-calibrate` et l'export ternaire : 1 615 681 paramètres, 901 Kio ;
+    - `sky-eval` natif à pleine profondeur, par le chemin PCM : 0,6 ms par décision pour 1 s d'audio et 5 ms pour 10 s, log-mel compris ;
+    - parité WASM sur 20 clips (`parity-node.mjs`) : écart maximal 2,4e-7, 20 argmax sur 20, 0,67 ms par décision en médiane.
+- [ ] **Pré-entraînement Mimi** (60 min) : `scripts/train-ear.sh pretrain`. Rapporter la précision du codebook 0 sur les trames masquées de val (`runs/s6-ear-nano/pretrain/log.jsonl`, `val_acc_cb0`).
+- [ ] **Décision et témoin** (2 × 60 min) : `scripts/train-ear.sh decide`. Le témoin sans pré-entraînement est pré-enregistré : il faut le lancer aussi.
+- [ ] **Évaluation et portes** : `scripts/train-ear.sh eval`. Smart Turn v3.2 tourne sur les mêmes clips de test (`uv run scripts/ear-baseline.py`, CPU). Ensuite viennent la parité WASM sur 20 clips et `scripts/ear-gate.py gate`. Les trois portes v1 sont :
+  - fin de tour ≥ Smart Turn ;
+  - mots-clés ≥ 0,90 ;
+  - zéro-shot en et fr ≥ 0,20.
+- [ ] Publier si les portes tiennent (§5). On ajoute une démo micro sur le site : on parle, et le modèle montre en direct sa décision et sa confiance (`Engine.decideAudio`, PCM rééchantillonné à 16 kHz).
+- [ ] **v2, après le §1.1** (même quota z.ai) : `sky-data teacher label-transcripts`, puis `sky-data audio-jev --about data/teacher/ear_about_labels.jsonl`, et un nouveau `decide` avec `about`. **v2 duplex** : écrire le téléchargeur AMI (la règle `audio::duplex_label` existe et elle est testée), puis la question `duplex_action` contre la règle « parler après 500 ms de silence ».

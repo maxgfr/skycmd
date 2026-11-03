@@ -78,6 +78,7 @@ pub fn group_of(name: &str, ndim: usize) -> Group {
             | "num_proj.weight"
             | "loop_embd.weight"
             | "patch_proj.weight"
+            | "audio_proj.weight"
             | "cast_query.weight"
     );
     if hidden || crate::s2::model::is_hidden_matrix(name) {

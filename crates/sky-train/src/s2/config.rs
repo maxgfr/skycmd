@@ -51,6 +51,11 @@ pub struct S2Config {
     /// SPEC-S3 §9 ablation: expand-and-sparsify FFN in the encoder blocks (see `s2::es`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ffn_es: Option<EsFfn>,
+    /// SPEC-S6 §16 (s6-ear): what the state stream is. `audio`: frames of 8 log-mel hops × 40
+    /// bands (80 ms, `audio_frame()` = 320 values) embedded by `audio_proj`, one state position
+    /// per frame (no `[CLS]` / `[SEP]`); the static stream stays BPE text.
+    #[serde(default, skip_serializing_if = "StateKind::is_text")]
+    pub state_kind: StateKind,
     #[serde(default = "default_max_state")]
     pub max_state_tokens: usize,
     #[serde(default = "default_max_head")]
@@ -91,6 +96,34 @@ pub struct EsFfn {
     #[serde(default = "default_es_fan_in")]
     pub fan_in: usize,
 }
+
+/// The input of the state stream.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum StateKind {
+    /// BPE text with native numbers (s2 … s6).
+    #[default]
+    Text,
+    /// Stacked log-mel frames (s6-ear).
+    Audio,
+}
+
+impl StateKind {
+    pub fn is_text(&self) -> bool {
+        *self == StateKind::Text
+    }
+
+    /// GGUF / JSON name.
+    pub fn name(self) -> &'static str {
+        match self {
+            StateKind::Text => "text",
+            StateKind::Audio => "audio",
+        }
+    }
+}
+
+/// Classes of the Mimi codebook 0 predicted by the s6-ear pretraining head (`mimi.decoder`).
+pub const MIMI_CODES: usize = 2048;
 
 fn default_es_expand() -> usize {
     8
@@ -210,6 +243,9 @@ impl S2Config {
         if self.max_state_tokens < 3 {
             bail!("max_state_tokens too small");
         }
+        if self.is_audio() && (self.fuse_numbers || self.temporal_carry || self.ffn_es.is_some()) {
+            bail!("state_kind audio: fuse_numbers, temporal_carry and ffn_es apply to text states only");
+        }
         if let Some(es) = &self.ffn_es {
             if es.expand == 0 || es.fan_in == 0 || es.fan_in > self.hidden_size {
                 bail!("ffn_es: expand must be >= 1 and fan_in in 1..=hidden_size");
@@ -229,6 +265,20 @@ impl S2Config {
     /// `hidden_size / n_heads` (64 unless `head_count` says otherwise).
     pub fn head_dim(&self) -> usize {
         self.hidden_size / self.n_heads()
+    }
+
+    /// True for an s6-ear model (audio state frames).
+    pub fn is_audio(&self) -> bool {
+        self.state_kind == StateKind::Audio
+    }
+
+    /// Values per audio state frame (`audio_proj` input), 0 for a text state.
+    pub fn audio_frame(&self) -> usize {
+        if self.is_audio() {
+            sky_infer::audio::FRAME_DIM
+        } else {
+            0
+        }
     }
 
     /// Effective state-encoder depth in block applications.
@@ -277,6 +327,12 @@ impl S2Config {
         self.exits[e]
     }
 
+    /// The same configuration with another vocabulary size (tests).
+    pub fn with_vocab(mut self, vocab_size: usize) -> Self {
+        self.vocab_size = vocab_size;
+        self
+    }
+
     /// A tiny configuration for unit tests.
     pub fn tiny(vocab_size: usize) -> Self {
         Self {
@@ -295,6 +351,7 @@ impl S2Config {
             parallax: false,
             xsa: false,
             ffn_es: None,
+            state_kind: StateKind::Text,
             max_state_tokens: 24,
             max_head_tokens: 40,
             rope_theta: 10_000.0,

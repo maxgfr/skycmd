@@ -76,6 +76,7 @@ pub fn ladder_config(name: &str) -> Option<S2Config> {
         parallax: false,
         xsa: false,
         ffn_es: None,
+        audio_frame: 0,
         static_layers: stat,
         fusion_layers: fusion,
         exits: exits.to_vec(),
@@ -118,6 +119,10 @@ pub fn write_metadata(w: &mut GgufWriter, cfg: &S2Config, format: &str) {
     }
     if cfg.parallax {
         w.add_kv(k("parallax"), true);
+    }
+    if cfg.is_audio() {
+        w.add_kv(k("state_kind"), "audio");
+        w.add_kv(k("audio_frame"), cfg.audio_frame as u32);
     }
     if cfg.xsa {
         w.add_kv(k("xsa"), true);
@@ -359,6 +364,10 @@ pub fn random_gguf(
         for n in 0..cfg.state_blocks {
             o.norm(&format!("blk.{n}.attn_px_norm"), hd, false)?;
         }
+    }
+    if cfg.is_audio() {
+        // s6-ear: the float projection of the audio state frames
+        o.lin("audio_proj", d, cfg.audio_frame, true, false)?;
     }
     Ok(w.to_bytes()?)
 }

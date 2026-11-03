@@ -314,6 +314,11 @@ enum Cmd {
         /// easiest share of the corpus (lowest lexical diversity, 20% growing to 100%); 0: off.
         #[arg(long, default_value_t = 0.0)]
         curriculum: f64,
+        /// s6-ear (SPEC-S6 §16): masked prediction of the Mimi codebook-0 ids of the audio
+        /// frames instead of the text MLM; --text then names the `sky-data fetch-audio --set
+        /// mimi` corpus (data/ear/mimi) and --seq is in 80 ms frames (at most max_state_tokens).
+        #[arg(long)]
+        audio: bool,
     },
     /// s2: decision training with deep supervision over the exits and ternary QAT at the end.
     S2Decide {
@@ -746,7 +751,9 @@ fn main() -> Result<()> {
             numeric,
             numeric_weight,
             curriculum,
+            audio,
         } => s2::train::pretrain(&S2PretrainArgs {
+            audio,
             config,
             tokenizer,
             text,
