@@ -8,6 +8,7 @@
 - **s6-secrets et s6-cast** : leurs données sont prêtes (§3, §4).
 - **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
 - **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
+- **s6-ear (§8) : à lancer au prochain run libre, après LFM3.** Le code est sur main et testé, et la fumée de bout en bout passe. Le run tient en une commande, environ 3 h de GPU plus le téléchargement : `caffeinate -i scripts/train-ear.sh data pretrain decide eval`. Ensuite viennent le test dans le navigateur et la vérification que tout est carré (§8.1 à §8.3).
 - **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7).
 
 > **La labellisation GLM tourne en arrière-plan depuis le 29/10/2026 (§1.1, environ 80 h).** Si la machine s'éteint ou redémarre, la relancer depuis le checkout principal :
@@ -18,7 +19,7 @@
 >
 > Elle reprend là où elle s'était arrêtée, sans rien perdre. `pgrep -fl distill-glm` dit si elle tourne encore. `scripts/distill-glm.sh count` donne ce qui reste, sans faire d'appel. Le journal est dans `runs/distill-glm.log`.
 
-Quatre modèles ont leur code prêt et ne sont pas encore entraînés : **s6-nano** et **s6-micro** (le s6 généraliste : les jeux et des questions en texte libre), **s6-secrets-pico** et **s6-cast-pico**. Chacun a un pré-enregistrement figé. **s6-pico n'est plus un modèle final** (`docs/s6-prereg.md`, amendement 2) : son pilote et son ablation restent, parce qu'ils choisissent la recette des deux tailles. On suit chaque pré-enregistrement à la lettre :
+Cinq modèles ont leur code prêt et ne sont pas encore entraînés : **s6-nano** et **s6-micro** (le s6 généraliste : les jeux et des questions en texte libre), **s6-secrets-pico**, **s6-cast-pico** et **s6-ear-nano** (l'audio, §8). Chacun a un pré-enregistrement figé. **s6-pico n'est plus un modèle final** (`docs/s6-prereg.md`, amendement 2) : son pilote et son ablation restent, parce qu'ils choisissent la recette des deux tailles. On suit chaque pré-enregistrement à la lettre :
 
 - un amendement daté (§7, §8 pour `docs/s6-gen-prereg.md`) précède le run qu'il concerne ;
 - on ne relance rien pour « voir » : seul un échec technique justifie un nouveau run, et il est noté dans le rapport ;
@@ -30,7 +31,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre conseillé (une seule machine) : LFM3 S1/S2 (§6, une nuit, dès ce soir) → données → labels GLM (§1.1 : à distance, environ 80 h sur plusieurs fenêtres z.ai, la machine reste libre, donc à lancer tout de suite) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
+Ordre conseillé (une seule machine) : LFM3 S1/S2 (§6, une nuit, dès ce soir) → s6-ear (§8, la nuit libre suivante, environ 3 h de GPU) → données → labels GLM (§1.1 : à distance, environ 80 h sur plusieurs fenêtres z.ai, la machine reste libre, donc à lancer tout de suite) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
 
 ## 0. Prérequis
 
@@ -265,3 +266,50 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
   - zéro-shot en et fr ≥ 0,20.
 - [ ] Publier si les portes tiennent (§5). On ajoute une démo micro sur le site : on parle, et le modèle montre en direct sa décision et sa confiance (`Engine.decideAudio`, PCM rééchantillonné à 16 kHz).
 - [ ] **v2, après le §1.1** (même quota z.ai) : `sky-data teacher label-transcripts`, puis `sky-data audio-jev --about data/teacher/ear_about_labels.jsonl`, et un nouveau `decide` avec `about`. **v2 duplex** : écrire le téléchargeur AMI (la règle `audio::duplex_label` existe et elle est testée), puis la question `duplex_action` contre la règle « parler après 500 ms de silence ».
+
+### 8.1 Le prochain run, pas à pas (s6-ear-nano)
+
+À lancer quand le GPU est libre (pas pendant LFM3), depuis le checkout principal à jour de main, dans un terminal qui reste ouvert :
+
+- [ ] `caffeinate -i scripts/train-ear.sh data pretrain decide eval`, ou une étape à la fois. Il faut compter environ 3 h de GPU : 60 min de pré-entraînement, 60 min de décision, 60 min pour le témoin. Le téléchargement, d'environ 30 Go, se fait au fil de l'eau.
+- [ ] Après `data`, mettre dans le rapport :
+  - les comptes par set et par split ;
+  - le nombre de mots réservés par langue (`data/ear/jev/REPORT.json`, `held_out`) : il en faut 50 par langue. Moins de 50 veut dire que la première archive MSWC ne suffit pas. Il faut alors un amendement daté avec `--mswc-archives 2`, **avant** `pretrain`.
+- [ ] Après `pretrain`, rapporter `val_acc_cb0`. Il doit dépasser nettement 1/2 048 : sinon, c'est un échec technique, à noter, avant de lancer `decide`.
+- [ ] Après `eval`, recopier dans le rapport :
+  - `runs/s6-ear-nano/eval/gate.json` (les trois portes, le témoin à côté) ;
+  - `crc.json` (les seuils, la couverture du Système 1) ;
+  - `wasm.json` ;
+  - `baseline-smart-turn.json`.
+
+### 8.2 Tester dans le navigateur
+
+- [ ] Construire le module : `scripts/build-wasm.sh`. Copier `models/s6-ear-nano/s6-ear-nano-crc.gguf` dans `site/public/models/`, avec une entrée dans `manifest.json`.
+- [ ] Écrire la démo micro (page Live, ou une page `/ear/`). Elle doit :
+  - capturer le micro avec `getUserMedia` et un `AudioWorklet` ;
+  - rééchantillonner à 16 kHz et garder un tampon glissant de 10,24 s ;
+  - appeler `engine.decideAudio(...)` toutes les 80 ms, pour `turn_end` et les mots-clés ;
+  - afficher la décision, la confiance, la sortie utilisée et « je passe la main » sous le seuil de renvoi.
+- [ ] La tester dans un vrai navigateur (Chrome, puis Safari), en local (`cd site && npm run docs:dev`) puis sur le site publié. Vérifier :
+  - que le modèle se charge ;
+  - que la permission micro est demandée une seule fois ;
+  - qu'il n'y a aucune erreur dans la console ;
+  - que la latence par décision est affichée et reste sous 80 ms ;
+  - que la décision suit la parole : parler, se taire, dire « yes » ou « stop ».
+- [ ] Enregistrer un GIF de la démo pour le README et la carte Hugging Face.
+
+### 8.3 Que tout soit carré avant de publier
+
+- [ ] Les trois portes lues **telles quelles**, sans relance pour « voir ». Un échec est publié comme tel sur la page Results.
+- [ ] La parité WASM sur 20 clips de test est ≤ 1e-4, avec le même argmax (`wasm.json`). `cargo test -p sky-web --test parity` et `wasm-pack test --node --release crates/sky-web --test parity` passent.
+- [ ] `cargo test` passe sur sky-infer, sky-data, sky-web et sky-gguf, et `cargo test --release -p sky-train` passe (avec `DEVELOPER_DIR` pointé sur Xcode). Clippy et fmt sont propres, et `bash -n` et shellcheck passent sur les scripts.
+- [ ] Dans `DATA_LICENSES.md`, les vrais comptes remplacent « not fetched yet ». Rien de `data/ear` n'est commité.
+- [ ] Les chiffres sont cohérents partout, sans un seul « à mesurer » qui traîne :
+  - SPEC-S6 §16 ;
+  - `docs/s6-ear-prereg.md` ;
+  - README ;
+  - la page Bench (« Coming next » vers les résultats) ;
+  - la page « What we bring » (§8) ;
+  - le chapitre 26 du tutoriel ;
+  - la carte `hf/cards/s6-ear-nano.md`.
+- [ ] `cd site && npm run docs:build` passe (sans lien mort). Le Space Hugging Face est vérifié dans un vrai navigateur (le modèle se charge, la démo répond, la console est propre).

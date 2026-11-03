@@ -69,3 +69,7 @@ local teachers (laya) ──┘   (records)  (mlx-rs)                  ├─ sk
 23. [s5-lite: invariant by construction, tested in the open](./23-s5-lite): options isolated and read by their definitions, three pre-registered bets, and what each failure taught.
 24. [Reproducing s5-lite step by step](./24-reproduce-s5-lite): the store, `cargo xtask s5`, data, teacher, training, the pre-registration guard, evaluation, reports and shipping.
 25. [Publishing on Hugging Face](./25-hugging-face): model cards and a static demo Space per model, built from the site's own components.
+
+## The s6 family
+
+26. [s6-ear: a decision model that listens](./26-s6-ear): log-mel frames at Mimi's frame rate, pretraining on Mimi's semantic codes without running Mimi, questions in text about audio, and a hand-off to a larger model with a conformal guarantee.

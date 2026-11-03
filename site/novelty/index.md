@@ -4,7 +4,7 @@ title: What we bring
 
 # What skycmd brings
 
-*Updated on 14 October 2026, after three nights of experiments (s3, s4, s5).*
+*Updated on 3 November 2026: section 8 adds what the s6 family brings. Its code is ready and tested, and none of its models is trained yet. Sections 1 to 7 date from 14 October 2026, after three nights of experiments (s3, s4, s5).*
 
 **In short:** a System One decision model, the kind of model Jev, Laya and Julia-1 introduced in September 2026, fits in **251 KB**. It was trained **from scratch in under an hour** on a laptop and plays four control games **at the level of an exact oracle**, in about **50 µs per frame in a web browser**. Around it, skycmd brings a decision format that is invariant to the order and names of the options by construction, a calibration lesson for early exits, experiments whose criteria were fixed before any test, and a whole chain in Rust that runs in the browser. As far as we could find, nothing this small exists in this format, and none of it uses Python.
 
@@ -85,6 +85,36 @@ The [Live](/live/) page runs everything on your machine, with no server: the dec
 - **Deep improvement supervision on early exits.** Each exit trains toward the target raised to a power that grows from 0.5 to 1, so the early exits learn a softer copy of the target.
 
 Its failure is a lesson too: without language pretraining, loops cannot make up for it. A BERT-Tiny of 4.4M parameters fine-tuned on the same data reaches 0.794 on Banking77, against 0.303 for s4.
+
+## 8. What s6 adds (code ready, not trained yet)
+
+No s6 number below is a result: each model has a pre-registration with its gate, and it will appear on the [Results](/results/) page only once trained. What follows is how the code differs, and why.
+
+**A better encoder for the same weights.**
+- **Parallax attention** (arXiv 2605.29157). Each head learns a probe that turns softmax attention, a local constant estimator, into a local linear one. It is one extra row block in the same fused projection, so the ternary storage and the first-block lookup table need no new tensor. With a zero probe it is softmax attention exactly, so the options stay isolated.
+- **Muon v2.** Decoupled weight decay and an update scaled to AdamW's RMS (Kimi), then a two-stage Newton–Schulz iteration whose second stage pulls the singular values to within 0.5% of 1.
+- **A pre-registered ablation** decides what ships, one change at a time: Parallax, exclusive self-attention, SODA weight decay, exit self-distillation, a weight EMA, the StableQAT gradient and a pretraining curriculum.
+
+**Early exits with a guarantee.** The exit thresholds are chosen by conformal risk control: an early answer disagrees with full depth at most α of the time. The threshold is then checked by playing at it, because playing with early exits changes which states the model visits. The guarantee does not survive that change unchecked; this is the lesson of section 3, turned into a tool.
+
+**A teacher that never heats the laptop.** GLM-5.3-flash, open weights under MIT, labels all 747,198 training decisions through the z.ai API, with four workers.
+- **Resumable:** labelling restarts where it stopped, across the 5-hour usage windows.
+- **Moderation-proof:** a batch refused by the moderation is halved until the refused text stands alone, so one sensitive text costs its neighbours nothing.
+- **Filtered:** only the labels that agree with the gold answer are mixed in.
+
+**Small specialists on the same engine.**
+- **s6-cast:** a probabilistic forecaster, 388K parameters, pretrained on synthetic series only.
+- **s6-secrets:** API-key detection. Its synthetic keys follow each provider's public format, and its bench uses file types the training never shows. The bar is a gitleaks-style rule scanner.
+
+**System 1 first, System 2 only when needed.** The same idea as the early exits, one level up. For LFM3-1.7B, a 6-coefficient confidence probe decides, question by question, whether the model should think before answering. Thinking can make a small model abandon a good first answer.
+
+**s6-ear: a decision model that listens** ([chapter 26](/tutorial/26-s6-ear)).
+- **Mimi without Mimi.** Kyutai's semantic speech tokens, without the 48M-parameter codec. A 1.6M model reads log-mel frames at Mimi's own frame rate (80 ms) and learns, by masked prediction, the Mimi codebook-0 codes Kyutai published for LibriSpeech. Mimi never runs.
+- **The question is text, the state is sound.** The options are words, so it can be asked about words it never heard in training. Its zero-shot test holds out 50 MSWC words per language, in English and French.
+- **The teacher reads, the student listens.** GLM labels the transcripts, and s6-ear learns the answers from the audio: cross-modal distillation, with no non-commercial spoken-intent set.
+- **A voice agent's System 1.** Every 80 ms: keep listening, acknowledge, speak or yield. Below a conformal threshold it hands the clip to a larger model.
+- **Measured in the smoke run:** 5 ms per decision for 10 s of audio natively, 0.67 ms in WASM for 1 s clips. The browser front-end matches the native one bit for bit, because its log uses no libm.
+- **Honest bars.** The end-of-turn gate is Smart Turn v3.2 (8M parameters, five times larger) on Pipecat's official held-out test set. We first planned a split of Smart Turn's own training data, and dropped it before any run.
 
 ## What it does not bring (honestly)
 
