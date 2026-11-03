@@ -118,6 +118,7 @@ impl CastConfig {
             parallax: self.parallax,
             xsa: self.xsa,
             ffn_es: None,
+            state_kind: Default::default(),
             max_state_tokens: self.context_patches,
             max_head_tokens: 8,
             rope_theta: self.rope_theta,

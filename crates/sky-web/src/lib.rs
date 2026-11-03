@@ -28,6 +28,21 @@ fn to_json<T: serde::Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("serializable")
 }
 
+/// The question type and the rendered options (at least two) of a JSON decision call.
+fn parse_question(
+    qtype: &str,
+    options_json: &str,
+) -> Result<(sky_infer::QType, Vec<String>), String> {
+    let qt = sky_infer::QType::from_name(qtype)
+        .ok_or_else(|| format!("unknown question type {qtype:?} (choice, score, noul)"))?;
+    let options: Vec<String> =
+        serde_json::from_str(options_json).map_err(|e| format!("options: {e}"))?;
+    if options.len() < 2 {
+        return Err("at least two options are needed".into());
+    }
+    Ok((qt, options))
+}
+
 /// A loaded decision model (GGUF s1 or s2: f32, f16, Q8_0 or ternary; computed in f32).
 #[wasm_bindgen]
 pub struct Engine {
@@ -119,6 +134,28 @@ impl Engine {
             .map(|v| v.to_string())
             .map_err(|e| JsError::new(&e))
     }
+
+    /// s6-ear (SPEC-S6 §16): a decision about an audio clip, `pcm` 16 kHz mono in `[-1, 1]`
+    /// (the last 10.24 s count; resample the microphone to 16 kHz first). Same arguments and
+    /// JSON answer as [`Engine::decide`], with `pcm` as the state.
+    #[wasm_bindgen(js_name = decideAudio)]
+    pub fn decide_audio(
+        &mut self,
+        qtype: &str,
+        instructions: &str,
+        options_json: &str,
+        pcm: &[f32],
+    ) -> Result<String, JsError> {
+        self.decide_audio_value(qtype, instructions, options_json, pcm)
+            .map(|v| v.to_string())
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// True for an s6-ear model (its decisions take audio: [`Engine::decide_audio`]).
+    #[wasm_bindgen(js_name = isAudio)]
+    pub fn is_audio(&self) -> bool {
+        self.inner.is_audio()
+    }
 }
 
 impl Engine {
@@ -130,18 +167,31 @@ impl Engine {
         options_json: &str,
         state: &str,
     ) -> Result<serde_json::Value, String> {
-        let qt = sky_infer::QType::from_name(qtype)
-            .ok_or_else(|| format!("unknown question type {qtype:?} (choice, score, noul)"))?;
-        let options: Vec<String> =
-            serde_json::from_str(options_json).map_err(|e| format!("options: {e}"))?;
-        if options.len() < 2 {
-            return Err("at least two options are needed".into());
-        }
+        let (qt, options) = parse_question(qtype, options_json)?;
         let t0 = clock::now_us();
         let probs = self.inner.probs(qt, instructions, &options, state)?;
         let micros = clock::now_us() - t0;
+        Ok(self.answer_json(probs, micros))
+    }
+
+    /// [`Engine::decide_audio`] without `JsError` (usable on native targets).
+    pub fn decide_audio_value(
+        &mut self,
+        qtype: &str,
+        instructions: &str,
+        options_json: &str,
+        pcm: &[f32],
+    ) -> Result<serde_json::Value, String> {
+        let (qt, options) = parse_question(qtype, options_json)?;
+        let t0 = clock::now_us();
+        let probs = self.inner.probs_audio(qt, instructions, &options, pcm)?;
+        let micros = clock::now_us() - t0;
+        Ok(self.answer_json(probs, micros))
+    }
+
+    fn answer_json(&self, probs: Vec<f32>, micros: f64) -> serde_json::Value {
         let st = self.inner.last_stats().cloned().unwrap_or_default();
-        Ok(serde_json::json!({
+        serde_json::json!({
             "probs": probs,
             "exit": st.exit,
             "n_exits": st.n_exits,
@@ -149,7 +199,7 @@ impl Engine {
             "static_hit": st.static_hit,
             "state_hit": st.state_hit,
             "micros": micros,
-        }))
+        })
     }
 
     /// The underlying model (native use and tests).

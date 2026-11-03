@@ -30,6 +30,8 @@
 //!   target) and N − 1 others drawn uniformly, in their original order; the target is
 //!   renormalized over them. The draw depends on `--seed` (default 0) and the record's line
 //!   only, not on the other records. The JSON reports `max_options` and `seed`.
+//! - `--dump-exits PATH`: one line per evaluated question, `{src, t, probs: [per exit], target}`
+//!   (full depth, every exit), the input of the conformal calibration of `scripts/ear-gate.py`.
 //! - `--dump-probs PATH`: one line per evaluated question, `{src, t, k, probs, target, gold}`
 //!   (and `uid` for s5 records), the input of `sky-compare` and `sky-s5-report`.
 //! - `--latency`: decision latency (batch 1: one question per call, in record order) of a fresh
@@ -60,7 +62,7 @@ mod native {
     };
 
     fn usage() -> ! {
-        eprintln!("usage: sky-eval <model.gguf> --records a.jsonl,dir/ [--split test] [--max N] [--exit-threshold T] [--json out.json] [--dump probs.jsonl] [--metrics] [--bootstrap B] [--max-options N] [--seed S] [--dump-probs items.jsonl] [--latency] [--prereg docs/s5-prereg.md] [--lang en]");
+        eprintln!("usage: sky-eval <model.gguf> --records a.jsonl,dir/ [--split test] [--max N] [--exit-threshold T] [--json out.json] [--dump probs.jsonl] [--metrics] [--bootstrap B] [--max-options N] [--seed S] [--dump-probs items.jsonl] [--dump-exits exits.jsonl] [--latency] [--prereg docs/s5-prereg.md] [--lang en]");
         std::process::exit(2);
     }
 
@@ -487,6 +489,35 @@ mod native {
         }
     }
 
+    /// s6-ear input of a record: the clip's WAV (`wav`, the deployed PCM path) when the record
+    /// names one, else the log-mel features of `state` (an `.npy` path, relative to the records file).
+    enum AudioIn {
+        Pcm(Vec<f32>),
+        Frames(Vec<f32>, usize),
+    }
+
+    fn wav_path(file: &std::path::Path, r: &serde_json::Value) -> Option<String> {
+        let w = r["wav"].as_str()?;
+        let dir = file.parent().unwrap_or(std::path::Path::new("."));
+        Some(dir.join(w).to_string_lossy().into_owned())
+    }
+
+    fn audio_input(file: &std::path::Path, r: &serde_json::Value) -> AudioIn {
+        use sky_infer::audio;
+        let dir = file.parent().unwrap_or(std::path::Path::new("."));
+        if let Some(w) = wav_path(file, r) {
+            let bytes = std::fs::read(&w).unwrap_or_else(|e| panic!("{w}: {e}"));
+            let (pcm, rate) = audio::read_wav(&bytes).unwrap_or_else(|e| panic!("{w}: {e}"));
+            return AudioIn::Pcm(audio::resample(&pcm, rate, audio::SAMPLE_RATE));
+        }
+        let path = dir.join(r["state"].as_str().unwrap_or(""));
+        let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+        let (mel, _, cols) = audio::read_npy(&bytes).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+        assert_eq!(cols, audio::N_MELS, "{path:?}: log-mel bands");
+        let (fr, n) = audio::stack(&mel);
+        AudioIn::Frames(fr, n)
+    }
+
     pub fn main() {
         let mut args = std::env::args().skip(1);
         let mut model = None;
@@ -494,6 +525,8 @@ mod native {
         let (mut tau, mut json_out, mut dump) = (None, None, None);
         let (mut metrics, mut resamples, mut seed) = (false, 2000usize, 0u64);
         let (mut max_options, mut dump_probs, mut timing) = (None, None, false);
+        let mut dump_exits: Option<String> = None;
+        let mut exit_lines = Vec::new();
         let mut prereg: Option<String> = None;
         let mut lang: Option<String> = None;
         while let Some(a) = args.next() {
@@ -532,6 +565,7 @@ mod native {
                         .unwrap_or_else(|| usage())
                 }
                 "--dump-probs" => dump_probs = args.next(),
+                "--dump-exits" => dump_exits = args.next(),
                 "--latency" => timing = true,
                 "--prereg" => prereg = args.next(),
                 "--lang" => lang = args.next(),
@@ -616,10 +650,14 @@ mod native {
                     r["ins"].as_str().unwrap_or(""),
                     r["state"].as_str().unwrap_or(""),
                 );
+                let audio = eng.is_audio().then(|| audio_input(&f, &r));
                 let t0 = Instant::now();
-                let p = eng
-                    .decide_raw(qt, ins, &opts, state)
-                    .unwrap_or_else(|e| panic!("{src}: {e}"));
+                let p = match &audio {
+                    Some(AudioIn::Pcm(pcm)) => eng.decide_audio(qt, ins, &opts, pcm),
+                    Some(AudioIn::Frames(fr, n)) => eng.decide_frames(qt, ins, &opts, fr, *n),
+                    None => eng.decide_raw(qt, ins, &opts, state),
+                }
+                .unwrap_or_else(|e| panic!("{src}: {e}"));
                 let us = t0.elapsed().as_secs_f64() * 1e6;
                 let p: Vec<f64> = p.iter().map(|x| *x as f64).collect();
                 let st = eng.last_stats().cloned().unwrap_or_default();
@@ -644,11 +682,28 @@ mod native {
                 if dump.is_some() {
                     dump_lines.push(
                         json!({"src": src, "t": r["t"], "ins": r["ins"], "opts": opts,
-                        "state": r["state"], "probs": p, "exit": st.exit})
+                        "state": r["state"], "wav": wav_path(&f, &r), "probs": p, "exit": st.exit})
                         .to_string(),
                     );
                 }
-                let input = timing.then(|| (ins.to_string(), opts, state.to_string()));
+                if dump_exits.is_some() {
+                    let per_exit = match (&audio, eng.s2_engine_mut()) {
+                        (Some(AudioIn::Frames(fr, n)), Some(s2)) => {
+                            s2.question_frames_all_exits(qt, ins, &opts, fr, *n)
+                        }
+                        (Some(AudioIn::Pcm(pcm)), Some(s2)) => {
+                            s2.question_audio_all_exits(qt, ins, &opts, pcm)
+                        }
+                        _ => eng.probs_per_exit(qt, ins, &opts, state),
+                    }
+                    .unwrap_or_else(|e| panic!("{src}: {e}"));
+                    exit_lines.push(
+                        json!({"src": src, "t": r["t"], "probs": per_exit, "target": target})
+                            .to_string(),
+                    );
+                }
+                let input =
+                    (timing && audio.is_none()).then(|| (ins.to_string(), opts, state.to_string()));
                 items.push(Item {
                     pred: Pred::new(p, target, src.as_str()),
                     src,
@@ -718,6 +773,9 @@ mod native {
         if let Some(path) = dump {
             std::fs::write(&path, dump_lines.join("\n") + "\n").unwrap();
             println!("wrote {path}");
+        }
+        if let Some(path) = dump_exits {
+            std::fs::write(&path, exit_lines.join("\n") + "\n").unwrap();
         }
         if let Some(path) = dump_probs {
             let lines: Vec<String> = items

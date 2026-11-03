@@ -2,6 +2,7 @@
 //! formats), byte-level BPE tokenizer training (s1, and s2 with native numbers), and the GLM
 //! teacher client and its data integration.
 
+pub mod audio;
 pub mod augment;
 pub mod commands;
 pub mod csv;

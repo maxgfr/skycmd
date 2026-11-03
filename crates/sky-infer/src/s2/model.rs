@@ -318,6 +318,9 @@ pub struct S2Model {
     pub cls_norm: Ln,
     pub cls: Lin,
     pub cls_out: Lin,
+    /// s6-ear (SPEC-S6 §16): `audio_proj` `[d, audio_frame]` with bias, the embedding of the
+    /// audio state frames (only with `audio_frame > 0`).
+    pub audio_proj: Option<Lin>,
     rope: Rope,
 }
 
@@ -648,6 +651,11 @@ impl S2Model {
         let cls_norm = src.ln("cls.norm", d, true)?;
         let cls = src.lin("cls", d, d, true)?;
         let cls_out = src.lin("cls.output", 1, d, true)?;
+        let audio_proj = if cfg.is_audio() {
+            Some(src.lin("audio_proj", d, cfg.audio_frame, true)?)
+        } else {
+            None
+        };
         let max_pos = cfg
             .max_state_tokens
             .max(cfg.max_head_tokens.max(8) + 3 + MAX_OPTION_TOKENS + 1);
@@ -669,6 +677,7 @@ impl S2Model {
             cls_norm,
             cls,
             cls_out,
+            audio_proj,
         })
     }
 
@@ -687,6 +696,9 @@ impl S2Model {
         }
         for f in &mut self.fusion {
             v.extend([&mut f.q, &mut f.kv, &mut f.out, &mut f.up, &mut f.down]);
+        }
+        if let Some(a) = &mut self.audio_proj {
+            v.push(a);
         }
         v
     }
@@ -779,6 +791,10 @@ impl S2Model {
     fn build_qkv_table(&self) -> Option<QkvTable> {
         let c = &self.cfg;
         let (v, d, nf) = (c.vocab_size, c.hidden_size, c.num_features);
+        if self.audio_proj.is_some() {
+            // audio state frames are not token ids
+            return None;
+        }
         let blk = self.state_blocks.first()?;
         // 3d outputs, 4d with the Parallax probe (normalized after the table, like a projection)
         let n = blk.qkv.n_out;
@@ -854,6 +870,7 @@ impl S2Model {
                 + f.up.n_params()
                 + f.down.n_params();
         }
+        n += self.audio_proj.as_ref().map_or(0, Lin::n_params);
         n + self.cls_norm.n_params() + self.cls.n_params() + self.cls_out.n_params()
     }
 
@@ -1299,6 +1316,41 @@ impl S2Model {
             &mut st.x[..s * d],
             &mut st.phi[..s * NUM_FEATURES],
         )
+    }
+
+    /// s6-ear (SPEC-S6 §16): embed `n` audio state frames `[n][audio_frame]` (the log-mel hops
+    /// stacked by [`crate::audio::LogMel::frames`]) with `audio_proj` into reused buffers. The
+    /// stream has no `[CLS]` / `[SEP]`: one state position per 80 ms frame.
+    pub fn state_reset_audio(&self, st: &mut StateEnc, frames: &[f32], n: usize) -> Result<()> {
+        let c = &self.cfg;
+        let d = c.hidden_size;
+        let Some(proj) = &self.audio_proj else {
+            return Err(Error::InvalidRequest(
+                "this model reads a text state, not audio".into(),
+            ));
+        };
+        if n == 0 || n > c.max_state_tokens || frames.len() != n * c.audio_frame {
+            return Err(Error::InvalidRequest(format!(
+                "audio state of {n} frames (1..={}) and {} values",
+                c.max_state_tokens,
+                frames.len()
+            )));
+        }
+        if st.x.len() < c.max_state_tokens * d || st.exit_ready.len() != c.exits.len() {
+            *st = self.state_buffers();
+        }
+        st.len = n;
+        st.layers_done = 0;
+        st.carried = false;
+        st.exit_ready.fill(false);
+        st.kv_ready.fill(false);
+        st.ids.clear();
+        st.ids.resize(n, 0);
+        st.has_value.clear();
+        st.has_value.resize(n, false);
+        st.phi[..n * NUM_FEATURES].fill(0.0);
+        proj.forward(frames, n, &mut st.x[..n * d], false);
+        Ok(())
     }
 
     /// SPEC-S3 §7: start the stream `st` (just embedded by [`S2Model::state_reset`]) from the

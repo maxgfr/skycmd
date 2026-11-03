@@ -4,6 +4,9 @@
 //
 //   node crates/sky-web/bench/parity-node.mjs model.gguf dump.jsonl [--n 20]
 //
+// s6-ear dumps (`sky-eval --dump` on an audio model) carry a `wav` path per row: those rows go
+// through `Engine.decideAudio` on the clip's samples (16-bit PCM WAV at 16 kHz).
+//
 // Prints one JSON line: {n, max_abs_diff, argmax_agree, median_wasm_us}. Exit status 1 when a
 // gap exceeds 1e-4 or an argmax differs.
 import { readFileSync } from 'node:fs'
@@ -35,8 +38,35 @@ let maxDiff = 0
 let agree = 0
 const us = []
 const argmax = (v) => v.indexOf(Math.max(...v))
+
+// 16-bit PCM WAV (mono or downmixed) at 16 kHz -> Float32Array in [-1, 1]
+function readWav(path) {
+  const b = readFileSync(path)
+  if (b.toString('ascii', 0, 4) !== 'RIFF' || b.toString('ascii', 8, 12) !== 'WAVE') throw new Error(`${path}: not a WAV file`)
+  let fmt = null
+  for (let i = 12; i + 8 <= b.length; ) {
+    const id = b.toString('ascii', i, i + 4)
+    const len = b.readUInt32LE(i + 4)
+    if (id === 'fmt ') fmt = { tag: b.readUInt16LE(i + 8), ch: b.readUInt16LE(i + 10), rate: b.readUInt32LE(i + 12), bits: b.readUInt16LE(i + 22) }
+    if (id === 'data') {
+      if (!fmt || fmt.tag !== 1 || fmt.bits !== 16 || fmt.rate !== 16000) throw new Error(`${path}: need 16-bit PCM at 16 kHz`)
+      const n = Math.floor(len / (2 * fmt.ch))
+      const out = new Float32Array(n)
+      for (let f = 0; f < n; f++) {
+        let s = 0
+        for (let c = 0; c < fmt.ch; c++) s += b.readInt16LE(i + 8 + 2 * (f * fmt.ch + c)) / 32768
+        out[f] = s / fmt.ch
+      }
+      return out
+    }
+    i += 8 + len + (len & 1)
+  }
+  throw new Error(`${path}: no data chunk`)
+}
+
 for (const r of rows) {
-  const a = JSON.parse(engine.decide(r.t, r.ins, JSON.stringify(r.opts), r.state))
+  const opts = JSON.stringify(r.opts)
+  const a = JSON.parse(r.wav ? engine.decideAudio(r.t, r.ins, opts, readWav(r.wav)) : engine.decide(r.t, r.ins, opts, r.state))
   us.push(a.micros)
   for (let i = 0; i < r.probs.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a.probs[i] - r.probs[i]))
   agree += argmax(a.probs) === argmax(r.probs) ? 1 : 0

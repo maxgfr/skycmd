@@ -375,6 +375,11 @@ pub fn to_gguf(
     if cfg.xsa {
         w.add_kv(k("xsa"), true);
     }
+    // SPEC-S6 §16: an audio state (absent = text, so text files stay byte-identical)
+    if cfg.is_audio() {
+        w.add_kv(k("state_kind"), cfg.state_kind.name());
+        w.add_kv(k("audio_frame"), u(cfg.audio_frame()));
+    }
     // SPEC-S3 §9: the fixed up-projection is the seed alone (no tensor).
     if let Some(es) = &cfg.ffn_es {
         w.add_kv(k("ffn_es_seed"), OwnedValue::U64(es.seed));
@@ -527,6 +532,20 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
             .as_bool()
             .ok_or_else(|| anyhow!("{ARCH}.xsa is not a bool"))?,
     };
+    let state_kind = match g.get_str(&format!("{ARCH}.state_kind")) {
+        None | Some("text") => crate::s2::config::StateKind::Text,
+        Some("audio") => {
+            let frame = u32_key(g, "audio_frame")?;
+            if frame != sky_infer::audio::FRAME_DIM {
+                bail!(
+                    "{ARCH}.audio_frame {frame}, expected {}",
+                    sky_infer::audio::FRAME_DIM
+                );
+            }
+            crate::s2::config::StateKind::Audio
+        }
+        Some(k) => bail!("{ARCH}.state_kind {k:?} (text or audio)"),
+    };
     let state_loops = g
         .get_u64(&format!("{ARCH}.state_loops"))
         .map_or(1, |v| v as usize);
@@ -554,6 +573,7 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         temporal_carry,
         parallax,
         xsa,
+        state_kind,
         vocab_size: u32_key(g, "vocab_size")?,
         hidden_size,
         intermediate_size: u32_key(g, "feed_forward_length")?,

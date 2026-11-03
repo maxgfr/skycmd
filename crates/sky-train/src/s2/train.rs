@@ -91,7 +91,7 @@ pub struct S2Session {
 }
 
 /// Number of arrays [`dec_arrays`] produces per batch.
-const DEC_ARRAYS: usize = 15;
+const DEC_ARRAYS: usize = 16;
 
 fn mlm_arrays(b: &NumMlmBatch) -> Vec<Array> {
     vec![
@@ -127,7 +127,7 @@ fn mlm_from(a: &[Array]) -> NumMlmBatch {
 }
 
 fn dec_arrays(b: &S2Batch) -> Vec<Array> {
-    vec![
+    let v = vec![
         b.st_ids.clone(),
         b.st_values.clone(),
         b.st_has.clone(),
@@ -143,7 +143,10 @@ fn dec_arrays(b: &S2Batch) -> Vec<Array> {
         b.qtype.clone(),
         b.marker_mask.clone(),
         b.target.clone(),
-    ]
+        b.audio.clone(),
+    ];
+    debug_assert_eq!(v.len(), DEC_ARRAYS);
+    v
 }
 
 fn dec_from(a: &[Array]) -> S2Batch {
@@ -163,6 +166,7 @@ fn dec_from(a: &[Array]) -> S2Batch {
         qtype: a[12].clone(),
         marker_mask: a[13].clone(),
         target: a[14].clone(),
+        audio: a[15].clone(),
         n_tokens: 0,
         n_rows: 0,
     }
@@ -268,12 +272,14 @@ impl S2Session {
             let f = self.dec_fn.entry(qat).or_insert_with(|| {
                 CompiledGrad::new(names, move |p, b| {
                     if let Some(kd) = kd {
-                        let beta = dis.then(|| &b[16]);
-                        model::decision_loss_kd(p, &cfg, &dec_from(b), qat, &b[15], beta, kd)
+                        let beta = dis.then(|| &b[DEC_ARRAYS + 1]);
+                        let w = &b[DEC_ARRAYS];
+                        model::decision_loss_kd(p, &cfg, &dec_from(b), qat, w, beta, kd)
                     } else if dis {
-                        model::decision_loss_dis(p, &cfg, &dec_from(b), qat, &b[15], &b[16])
+                        let (w, beta) = (&b[DEC_ARRAYS], &b[DEC_ARRAYS + 1]);
+                        model::decision_loss_dis(p, &cfg, &dec_from(b), qat, w, beta)
                     } else {
-                        model::decision_loss_weighted(p, &cfg, &dec_from(b), qat, &b[15])
+                        model::decision_loss_weighted(p, &cfg, &dec_from(b), qat, &b[DEC_ARRAYS])
                     }
                 })
             });
@@ -959,6 +965,8 @@ pub struct S2PretrainArgs {
     /// are drawn from the easiest share of the corpus (`mlm::curriculum_share`, from 20% to all
     /// of it); 0 disables it.
     pub curriculum: f64,
+    /// s6-ear: Mimi codebook-0 masked prediction over audio frames (`text` = the Mimi corpus).
+    pub audio: bool,
 }
 
 /// Share of the easiest rows the curriculum starts from.
@@ -982,6 +990,17 @@ fn mlm_val(s: &S2Session, val: &[NumMlmBatch]) -> Result<(f64, f64)> {
 pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
     let mut cfg = S2Config::load(&a.config)?;
     cfg.bf16 = a.bf16;
+    if a.audio != cfg.is_audio() {
+        bail!(
+            "{}: state_kind {} needs {}--audio",
+            a.config.display(),
+            cfg.state_kind.name(),
+            if cfg.is_audio() { "" } else { "no " }
+        );
+    }
+    if a.audio {
+        return pretrain_audio(a, cfg);
+    }
     let tok = load_tok(&a.tokenizer, &cfg)?;
     std::fs::create_dir_all(&a.out)?;
     let t_load = Instant::now();
@@ -1198,6 +1217,186 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
     )?;
     std::fs::write(dir.join("tokenizer.json"), &tok_json)?;
     println!("done: {} steps, final val_loss {vl:.4} (token CE {ce:.4}, number MSE {mse:.4}); decision init ({n} tensors from the stack) in {}", s.state.step, dir.display());
+    Ok(())
+}
+
+// ----------------------------------------------------------------------------- s6-ear pretrain
+
+/// Share of the frames masked in s6-ear pretraining (SPEC-S6 §16).
+pub const MIMI_MASK_RATIO: f64 = 0.3;
+
+/// Mean validation (CE, codebook-0 accuracy) of the s6-ear pretraining.
+fn mimi_val(s: &S2Session, val: &[data::MimiBatch]) -> Result<(f64, f64)> {
+    let (mut ce, mut acc) = (0.0, 0.0);
+    for b in val {
+        let (c, h) = model::mimi_loss_parts(&s.params, &s.cfg, b)?;
+        ce += c.item_exact::<f32>() as f64;
+        acc += h.item_exact::<f32>() as f64;
+    }
+    let n = val.len().max(1) as f64;
+    Ok((ce / n, acc / n))
+}
+
+impl S2Session {
+    /// One s6-ear pretraining step (Mimi codebook-0 masked prediction, eager).
+    pub fn mimi_step(&mut self, batch: &data::MimiBatch, lr_scale: f32) -> Result<StepStats> {
+        let cfg = &self.cfg;
+        let (loss, grad_norm) =
+            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+                model::mimi_loss(p, cfg, b)
+            })?;
+        self.state.step += 1;
+        Ok(StepStats {
+            loss,
+            grad_norm,
+            tokens: batch.n_frames,
+        })
+    }
+}
+
+/// SPEC-S6 §16 "Mimi as the teacher": the state stack reads audio frames with 30% of them
+/// masked (spans of 3) and predicts the Mimi codebook-0 id of each masked frame. Budgets,
+/// resume and checkpoints as [`pretrain`]; at the end `<out>/init` holds the decision
+/// initialization (the `mimi.*` head is dropped, the token table starts fresh).
+fn pretrain_audio(a: &S2PretrainArgs, cfg: S2Config) -> Result<()> {
+    if a.seq == 0 || a.seq > cfg.max_state_tokens {
+        bail!(
+            "--seq {} must be in 1..={} frames (max_state_tokens)",
+            a.seq,
+            cfg.max_state_tokens
+        );
+    }
+    std::fs::create_dir_all(&a.out)?;
+    let t_load = Instant::now();
+    let corpus = data::MimiCorpus::load(&a.text, 0)?;
+    println!(
+        "mimi corpus: {} train utterances ({} frames, {:.1} h), {} val, {} frames trimmed to align the codes ({:.1}s)",
+        corpus.train.len(),
+        corpus.n_frames(),
+        corpus.n_frames() as f64 * 0.08 / 3600.0,
+        corpus.val.len(),
+        corpus.trimmed,
+        t_load.elapsed().as_secs_f64()
+    );
+    let last = a.out.join("last");
+    let resumed = a.resume && last.join("state.json").exists();
+    let mut s = if resumed {
+        let s = S2Session::load(&last)?;
+        println!("resumed from {} at step {}", last.display(), s.state.step);
+        s
+    } else {
+        let p = model::init(&cfg, S2Parts::PRETRAIN, a.seed)?;
+        let mut s = S2Session::new(
+            cfg.clone(),
+            p,
+            a.opt.clone(),
+            "s2-pretrain-audio",
+            a.seed,
+            budget_secs(&a.progress),
+        );
+        s.state.extra = json!({"batch": a.batch, "seq": a.seq, "text": a.text, "audio": true});
+        s
+    };
+    let stop_at = start(
+        &mut s,
+        resumed,
+        &a.progress,
+        a.stop_after,
+        a.init_params.as_deref(),
+    )?;
+    s.cfg.bf16 = a.bf16;
+    s.compile = false;
+    println!(
+        "{}: {} parameters (audio pretraining stack + Mimi head), batch {}x{} frames, budget {}",
+        s.cfg.name,
+        params::count(&s.params),
+        a.batch,
+        a.seq,
+        budget_label(&a.progress)
+    );
+    let mut vrng = Rng::new(a.seed ^ 0x5EED);
+    let val_utts: Vec<&data::MimiUtt> = corpus.val.iter().collect();
+    let val: Vec<data::MimiBatch> = val_utts
+        .chunks(a.batch)
+        .take(a.val_batches)
+        .map(|c| data::mimi_batch(c, a.seq, MIMI_MASK_RATIO, &mut vrng))
+        .collect();
+    let tok_json = std::fs::read(&a.tokenizer)?;
+    let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
+    let save = |s: &S2Session| s.save(&last, &[("tokenizer.json", tok_json.clone())]);
+    let base = s.state.elapsed_secs;
+    let t0 = Instant::now();
+    let mut last_ckpt = Instant::now();
+    let (mut wl, mut wt, mut ws, mut wtime) = (0.0f64, 0usize, 0u64, Instant::now());
+    while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
+        let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
+        let lr_scale = wsd(frac) as f32;
+        let utts: Vec<&data::MimiUtt> = (0..a.batch)
+            .map(|_| &corpus.train[s.state.rng.below(corpus.train.len())])
+            .collect();
+        let batch = data::mimi_batch(&utts, a.seq, MIMI_MASK_RATIO, &mut s.state.rng);
+        let st = s.mimi_step(&batch, lr_scale)?;
+        if !st.loss.is_finite() {
+            bail!("non-finite loss at step {}", s.state.step);
+        }
+        s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
+        (wl, wt, ws) = (wl + st.loss as f64, wt + st.tokens, ws + 1);
+        let step = s.state.step;
+        if step % a.log_every == 0 {
+            let dt = wtime.elapsed().as_secs_f64();
+            log.write(&json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm,
+                "lr_scale": lr_scale, "frames_s": wt as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0}))?;
+            println!(
+                "step {step:>6} loss {:.4} lr x{lr_scale:.3} {:.0} frames/s ({})",
+                wl / ws as f64,
+                wt as f64 / dt,
+                progress_label(&a.progress, &s.state)
+            );
+            (wl, wt, ws, wtime) = (0.0, 0, 0, Instant::now());
+        }
+        if step % a.eval_every == 0 && !val.is_empty() {
+            let (ce, acc) = mimi_val(&s, &val)?;
+            log.write(&json!({"step": step, "val_loss": ce, "val_acc_cb0": acc}))?;
+            println!(
+                "step {step:>6} val CE {ce:.4}, codebook-0 accuracy on masked frames {acc:.4}"
+            );
+        }
+        if last_ckpt.elapsed().as_secs_f64() >= a.checkpoint_minutes * 60.0 {
+            save(&s)?;
+            last_ckpt = Instant::now();
+        }
+    }
+    if !a.progress.done(s.state.step, s.state.elapsed_secs) {
+        save(&s)?;
+        println!(
+            "stopped at step {}: checkpoint {}",
+            s.state.step,
+            last.display()
+        );
+        return Ok(());
+    }
+    let (ce, acc) = if val.is_empty() {
+        (f64::NAN, f64::NAN)
+    } else {
+        mimi_val(&s, &val)?
+    };
+    log.write(&json!({"step": s.state.step, "val_loss": ce, "val_acc_cb0": acc, "final": true}))?;
+    save(&s)?;
+    let mut init = model::init(&s.cfg, S2Parts::DECISION, a.seed)?;
+    let n = expand_pretrained(&mut init, &s.params, &s.cfg)?;
+    let dir = a.out.join("init");
+    std::fs::create_dir_all(&dir)?;
+    params::save(&dir.join("model.safetensors"), &init, None)?;
+    std::fs::write(
+        dir.join("config.json"),
+        serde_json::to_string_pretty(&s.cfg)?,
+    )?;
+    std::fs::write(dir.join("tokenizer.json"), &tok_json)?;
+    println!(
+        "done: {} steps, final val CE {ce:.4}, codebook-0 accuracy {acc:.4}; decision init ({n} tensors from the stack) in {}",
+        s.state.step,
+        dir.display()
+    );
     Ok(())
 }
 
@@ -1710,6 +1909,54 @@ mod tests {
         let path = dir.path().join("syn.jsonl");
         std::fs::write(&path, lines.join("\n")).unwrap();
         data::load_cfg(&[path], tok, cfg).unwrap()
+    }
+
+    /// The compiled decision step reads the exit weights (and the s4 betas) after the batch
+    /// arrays: its loss must be the eager one, for a text and for an audio state.
+    #[test]
+    fn compiled_and_eager_decision_steps_agree() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let text = S2Config {
+                hidden_size: 64,
+                intermediate_size: 32,
+                ..S2Config::tiny(262)
+            };
+            let audio = S2Config {
+                state_kind: crate::s2::config::StateKind::Audio,
+                ..text.clone()
+            };
+            for cfg in [text.clone(), audio] {
+                let mut data = synthetic(&tok, &text, 30, 1);
+                if cfg.is_audio() {
+                    // replace the text states by audio frames (the loader reads .npy files)
+                    for (i, it) in data.train.iter_mut().flatten().enumerate() {
+                        let n = 5 + i % 4;
+                        let fr: Vec<f32> = (0..n * 320)
+                            .map(|j| ((j * 7 + i) % 13) as f32 / 13.0 - 0.5)
+                            .collect();
+                        it.state = data::Stream::from_audio(&fr, n);
+                    }
+                }
+                let b = data::sample_batch(&data, &[1.0], 8, &mut Rng::new(4), 16);
+                let mut losses = Vec::new();
+                for compile in [true, false] {
+                    let p = model::init(&cfg, S2Parts::DECISION, 3).unwrap();
+                    let mut s =
+                        S2Session::new(cfg.clone(), p, OptConfig::default(), "s2-decide", 5, 60.0);
+                    s.compile = compile;
+                    losses.push(s.decision_step(&b, 1.0, false).unwrap().loss);
+                }
+                assert!(
+                    (losses[0] - losses[1]).abs() < 1e-4 * losses[1].abs().max(1.0),
+                    "{}: compiled {} vs eager {}",
+                    cfg.state_kind.name(),
+                    losses[0],
+                    losses[1]
+                );
+            }
+        });
     }
 
     #[test]

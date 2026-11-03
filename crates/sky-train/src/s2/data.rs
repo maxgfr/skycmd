@@ -28,6 +28,9 @@ pub struct Stream {
     pub ids: Vec<u32>,
     pub values: Vec<f32>,
     pub has_value: Vec<bool>,
+    /// s6-ear (SPEC-S6 §16): the f16 bits of the audio state frames `[len][320]` (the ids are
+    /// then `[PAD]` placeholders, one per 80 ms frame).
+    pub audio: Option<std::sync::Arc<Vec<u16>>>,
 }
 
 impl Stream {
@@ -38,6 +41,21 @@ impl Stream {
             ids,
             values,
             has_value,
+            audio: None,
+        }
+    }
+
+    /// An audio state of `n` frames `[n][320]` (f32, stored as f16).
+    pub fn from_audio(frames: &[f32], n: usize) -> Self {
+        let bits = frames[..n * sky_infer::audio::FRAME_DIM]
+            .iter()
+            .map(|&x| sky_gguf::f32_to_f16(x))
+            .collect();
+        Self {
+            ids: vec![PAD_ID; n],
+            values: vec![0.0; n],
+            has_value: vec![false; n],
+            audio: Some(std::sync::Arc::new(bits)),
         }
     }
 
@@ -418,13 +436,43 @@ pub fn load_cfg(
     tok: &Tok,
     cfg: &crate::s2::config::S2Config,
 ) -> Result<S2Data> {
-    load_with(
+    load_impl(
         paths,
         tok,
         cfg.max_head_tokens,
         cfg.max_state_tokens,
         cfg.fuse_numbers,
+        cfg.is_audio(),
     )
+}
+
+/// The log-mel features of an s6-ear record (`state` = an `.npy` path `[hops][40]`, relative to
+/// the directory of the records file, or to `records` itself when it is a directory) as an audio
+/// state stream: the hops stacked by 8, the last `max_state` frames.
+pub fn audio_state(records: &Path, state: &str, max_state: usize) -> Result<Stream> {
+    use sky_infer::audio;
+    let base = if records.is_dir() {
+        records
+    } else {
+        records.parent().unwrap_or(Path::new("."))
+    };
+    let path = base.join(state);
+    let bytes = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+    let (mel, _, cols) =
+        audio::read_npy(&bytes).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+    if cols != audio::N_MELS {
+        bail!(
+            "{}: {cols} log-mel bands, expected {}",
+            path.display(),
+            audio::N_MELS
+        );
+    }
+    let (fr, n) = audio::stack(&mel);
+    if n == 0 {
+        bail!("{}: shorter than one 80 ms frame", path.display());
+    }
+    let (tail, k) = audio::last_frames(&fr, n, audio::FRAME_DIM, max_state);
+    Ok(Stream::from_audio(tail, k))
 }
 
 /// Loads the records; `fuse` applies the SPEC-S3 merge rule per text.
@@ -434,6 +482,18 @@ pub fn load_with(
     head_max_len: usize,
     max_state: usize,
     fuse: bool,
+) -> Result<S2Data> {
+    load_impl(paths, tok, head_max_len, max_state, fuse, false)
+}
+
+/// [`load_with`]; with `audio` every state is an s6-ear log-mel file ([`audio_state`]).
+fn load_impl(
+    paths: &[std::path::PathBuf],
+    tok: &Tok,
+    head_max_len: usize,
+    max_state: usize,
+    fuse: bool,
+    audio: bool,
 ) -> Result<S2Data> {
     let mut data = S2Data::default();
     let mut index: HashMap<(String, String, Vec<String>), usize> = HashMap::new();
@@ -480,14 +540,31 @@ pub fn load_with(
             data.statics.push(build_static(&head, &opts, head_max_len));
             data.static_keys.push(key);
         }
-        let states = tokenize(tok, &texts)?
-            .into_iter()
-            .map(|x| maybe_fuse(x, fuse));
+        let states: Vec<Stream> = if audio {
+            // every question about one clip shares its frames
+            let mut seen: HashMap<String, Stream> = HashMap::new();
+            texts
+                .iter()
+                .map(|t| {
+                    if let Some(s) = seen.get(t) {
+                        return Ok(s.clone());
+                    }
+                    let s = audio_state(path, t, max_state)?;
+                    seen.insert(t.clone(), s.clone());
+                    Ok(s)
+                })
+                .collect::<Result<_>>()?
+        } else {
+            tokenize(tok, &texts)?
+                .into_iter()
+                .map(|x| build_state(&maybe_fuse(x, fuse), max_state))
+                .collect()
+        };
         for ((rec, key), state) in kept.into_iter().zip(states) {
             let sum: f32 = rec.target.iter().sum();
             let item = S2Item {
                 stat: index[&key],
-                state: build_state(&state, max_state),
+                state,
                 qtype: qtype_id(&rec.t).unwrap_or(0),
                 target: rec.target.iter().map(|x| x / sum).collect(),
                 src: rec.src,
@@ -525,6 +602,8 @@ pub struct S2Batch {
     /// `has_value` flags `[B, S]` (f32 0/1).
     pub has: Array,
     pub valid: Array,
+    /// s6-ear audio state frames `[B, S, 320]` (f32; `[1, 1, 1]` zeros for a text state).
+    pub audio: Array,
     /// `[B]` question types.
     pub qtype: Array,
     pub marker_mask: Array,
@@ -644,8 +723,23 @@ pub fn make_batch_min(
             valid[r * s + t] = true;
         }
     }
+    let fdim = sky_infer::audio::FRAME_DIM;
+    let audio = if items.iter().any(|it| it.state.audio.is_some()) {
+        let mut a = vec![0f32; b * s * fdim];
+        for (r, it) in items.iter().enumerate() {
+            if let Some(bits) = &it.state.audio {
+                for (o, &h) in a[r * s * fdim..].iter_mut().zip(bits.iter()) {
+                    *o = sky_gguf::f16_to_f32(h);
+                }
+            }
+        }
+        Array::from_slice(&a, &[b as i32, s as i32, fdim as i32])
+    } else {
+        Array::from_slice(&[0f32], &[1, 1, 1])
+    };
     let (bi, ui, ki) = (b as i32, u as i32, k as i32);
     S2Batch {
+        audio,
         st_ids: Array::from_slice(&st_ids, &[ui, ts as i32]),
         st_values: Array::from_slice(&st_values, &[ui, ts as i32]),
         st_has: Array::from_slice(&st_has, &[ui, ts as i32]),
@@ -1018,6 +1112,181 @@ pub fn mask_batch(rows: &[Stream], vocab: usize, ratio: f64, rng: &mut Rng) -> N
         num_targets: Array::from_slice(&ntgt, &[pn as i32]),
         num_weights: Array::from_slice(&nweights, &[pn as i32]),
         n_tokens,
+    }
+}
+
+// ----------------------------------------------------------------------------- s6-ear pretraining
+
+/// One utterance of the s6-ear pretraining corpus: its audio state frames (f16 bits, `[n][320]`)
+/// and the Mimi codebook-0 id of each frame (12.5 Hz, aligned with the 80 ms frames).
+#[derive(Debug, Clone)]
+pub struct MimiUtt {
+    pub frames: Vec<u16>,
+    pub codes: Vec<u16>,
+}
+
+impl MimiUtt {
+    pub fn len(&self) -> usize {
+        self.codes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.codes.is_empty()
+    }
+}
+
+/// The s6-ear pretraining corpus (`sky-data fetch-audio --set mimi`): JSONL lines
+/// `{"id", "mel": "<npy path relative to the file>", "codes": [codebook-0 ids], "split"}`.
+#[derive(Debug, Default)]
+pub struct MimiCorpus {
+    pub train: Vec<MimiUtt>,
+    pub val: Vec<MimiUtt>,
+    /// Frames dropped where the Mimi codes and the log-mel frames disagree in length.
+    pub trimmed: usize,
+}
+
+impl MimiCorpus {
+    /// Reads every `*.jsonl` of `paths` (files or directories); `max_utts` caps the train part
+    /// (0 = all).
+    pub fn load(paths: &[PathBuf], max_utts: usize) -> Result<Self> {
+        use sky_infer::audio;
+        let mut out = MimiCorpus::default();
+        let mut files = Vec::new();
+        for p in paths {
+            files.extend(list_jsonl(p)?);
+        }
+        for file in files {
+            let f = std::fs::File::open(&file).with_context(|| format!("{}", file.display()))?;
+            for line in BufReader::new(f).lines() {
+                let line = line?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let v: serde_json::Value = serde_json::from_str(&line)
+                    .with_context(|| format!("{}: bad line", file.display()))?;
+                let val = v["split"].as_str() == Some("val");
+                if !val && max_utts > 0 && out.train.len() >= max_utts {
+                    continue;
+                }
+                let mel = v["mel"].as_str().context("record without mel")?;
+                let st = audio_state(&file, mel, usize::MAX)?;
+                let codes: Vec<u16> = v["codes"]
+                    .as_array()
+                    .context("record without codes")?
+                    .iter()
+                    .map(|c| {
+                        c.as_u64()
+                            .unwrap_or(0)
+                            .min(crate::s2::config::MIMI_CODES as u64 - 1)
+                            as u16
+                    })
+                    .collect();
+                let n = st.len().min(codes.len());
+                out.trimmed += st.len().max(codes.len()) - n;
+                if n < 4 {
+                    continue;
+                }
+                let bits = st.audio.expect("audio state");
+                let u = MimiUtt {
+                    frames: bits[..n * audio::FRAME_DIM].to_vec(),
+                    codes: codes[..n].to_vec(),
+                };
+                if val {
+                    out.val.push(u);
+                } else {
+                    out.train.push(u);
+                }
+            }
+        }
+        if out.train.is_empty() {
+            bail!("no s6-ear pretraining utterance in {paths:?}");
+        }
+        Ok(out)
+    }
+
+    pub fn n_frames(&self) -> usize {
+        self.train.iter().map(MimiUtt::len).sum()
+    }
+}
+
+/// A padded s6-ear pretraining batch (see `s2::model::mimi_loss`).
+#[derive(Debug, Clone)]
+pub struct MimiBatch {
+    /// `[B, S, 320]` audio state frames.
+    pub frames: Array,
+    /// `[B, S]` real frames.
+    pub valid: Array,
+    /// `[B, S]` f32, 1 for the masked frames.
+    pub mask: Array,
+    /// Flat index into `B * S` of each prediction `[M]`, labels `[M]` and weights `[M]` (0 for
+    /// padding, so `M` is fixed per batch shape).
+    pub positions: Array,
+    pub labels: Array,
+    pub weights: Array,
+    pub n_frames: usize,
+}
+
+/// Masked frames per row: spans of 3 frames until `ratio` of the row is covered (BEST-RQ /
+/// HuBERT style span masking).
+pub const MIMI_SPAN: usize = 3;
+
+/// A batch of random `seq`-frame crops of `utts` with `ratio` of each row masked in spans.
+pub fn mimi_batch(utts: &[&MimiUtt], seq: usize, ratio: f64, rng: &mut Rng) -> MimiBatch {
+    let fdim = sky_infer::audio::FRAME_DIM;
+    let b = utts.len();
+    let s = utts
+        .iter()
+        .map(|u| u.len().min(seq))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let m_max = ((s as f64 * ratio).ceil() as usize + MIMI_SPAN).min(s);
+    let mut frames = vec![0f32; b * s * fdim];
+    let mut valid = vec![false; b * s];
+    let mut mask = vec![0f32; b * s];
+    let mut positions = vec![0i32; b * m_max];
+    let mut labels = vec![0i32; b * m_max];
+    let mut weights = vec![0f32; b * m_max];
+    let mut n_frames = 0;
+    for (r, u) in utts.iter().enumerate() {
+        let len = u.len().min(seq);
+        let start = rng.below(u.len() - len + 1);
+        n_frames += len;
+        for t in 0..len {
+            valid[r * s + t] = true;
+            let src = &u.frames[(start + t) * fdim..(start + t + 1) * fdim];
+            for (o, &h) in frames[(r * s + t) * fdim..].iter_mut().zip(src) {
+                *o = sky_gguf::f16_to_f32(h);
+            }
+        }
+        let want = ((len as f64 * ratio).round() as usize).clamp(1, len);
+        let mut on = vec![false; len];
+        let mut count = 0;
+        while count < want {
+            let a = rng.below(len);
+            for x in &mut on[a..(a + MIMI_SPAN).min(len)] {
+                if !*x && count < want {
+                    *x = true;
+                    count += 1;
+                }
+            }
+        }
+        for (j, t) in (0..len).filter(|&t| on[t]).enumerate().take(m_max) {
+            mask[r * s + t] = 1.0;
+            positions[r * m_max + j] = (r * s + t) as i32;
+            labels[r * m_max + j] = u.codes[start + t] as i32;
+            weights[r * m_max + j] = 1.0;
+        }
+    }
+    let (bi, si) = (b as i32, s as i32);
+    MimiBatch {
+        frames: Array::from_slice(&frames, &[bi, si, fdim as i32]),
+        valid: Array::from_slice(&valid, &[bi, si]),
+        mask: Array::from_slice(&mask, &[bi, si]),
+        positions: Array::from_slice(&positions, &[(b * m_max) as i32]),
+        labels: Array::from_slice(&labels, &[(b * m_max) as i32]),
+        weights: Array::from_slice(&weights, &[(b * m_max) as i32]),
+        n_frames,
     }
 }
 

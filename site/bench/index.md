@@ -30,7 +30,7 @@ These models answer questions you write yourself, so they are measured on held-o
 
 ## Coming next: the s6 family
 
-The code of four s6 models is ready, but none is trained yet. The s6-pico ablation only chooses the recipe of s6-nano and s6-micro: there is no s6-pico model to ship. Each will appear here only once it is trained and passes the gate fixed in its pre-registration.
+The code of five s6 models is ready, but none is trained yet. The s6-pico ablation only chooses the recipe of s6-nano and s6-micro: there is no s6-pico model to ship. Each will appear here only once it is trained and passes the gate fixed in its pre-registration.
 
 | model | task | parameters | gate (pre-registered) |
 |---|---|---:|---|
@@ -38,8 +38,9 @@ The code of four s6 models is ready, but none is trained yet. The s6-pico ablati
 | s6-micro | the same at s4-micro scale with Parallax, 4,096 tokens, 384-token state | 5,849,601 | ≥ 0.45 on `typed_decisions_bench` (goal 0.50, the level of s4's Qwen3.5-4B teacher), no game more than 5 % below s3-pico, ECE ≤ 0.08 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)) |
 | s6-cast | probabilistic forecasting on the [Forecast](/forecast/) page ([SPEC](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)) | 388,320 | GIFT-Eval nGMASE ≤ 0.838 and nWQL ≤ 0.587; the goal is TinyCast's 0.774 / 0.545 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md)) |
 | s6-secrets-pico | API-key and secret detection in short texts (SPEC-S6 §14) | 463,969 | beat a gitleaks-style rule scanner: 0.977 on "is a secret exposed?" and 0.787 on "which service?" ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md)) |
+| s6-ear-nano | an s6 that listens: 10 s of 16 kHz audio as 80 ms log-mel frames, typed questions in text (end of turn, keywords, zero-shot keywords), pretrained to predict Mimi's semantic tokens ([SPEC §16](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6.md)) | 1,615,681 | end of turn at least as accurate as Smart Turn v3.2 (8M) on the same clips, ≥ 0.90 on Speech Commands (12 classes), ≥ 2 × chance on held-out MSWC words in English and French ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md)) |
 
-s6-nano, s6-micro and s6-secrets-pico pretrain on the s3 text plus the non-web parts of the training data of OLMo 3 (Dolma 3) and LLM360 (TxT360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl ([sources](/sources/)). s6-cast reads no text.
+s6-nano, s6-micro and s6-secrets-pico pretrain on the s3 text plus the non-web parts of the training data of OLMo 3 (Dolma 3) and LLM360 (TxT360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl ([sources](/sources/)). s6-cast reads no text, and s6-ear hears its state: it pretrains on LibriSpeech audio against the published Mimi codes.
 
 ## Reproduce
 
