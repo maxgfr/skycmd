@@ -100,6 +100,12 @@ A teacher gives soft labels on every training question of the Hugging Face decis
 
 No output of a hosted LLM is used by s5.
 
+## Our datasets on Hugging Face
+
+Every decision set skycmd trains on is published, one parquet config per source with its licence
+(`scripts/hf-publish-data.py`): [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels). The GLM-5.3-flash labels are AI-generated and
+marked as such; the gated `LocalLLaMA/typed-decisions` is not republished.
+
 ## Libraries and technologies
 
 ### Training (Rust, Apple Silicon)
