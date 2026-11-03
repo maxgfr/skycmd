@@ -1,4 +1,14 @@
-# TODO : entraîner les modèles s6
+# TODO : entraîner les modèles s6, et le routage Système 1 / Système 2 de LFM3-1.7B
+
+## Où on en est (03/11/2026)
+
+- **Ce soir : LFM3-1.7B, Système 1 / Système 2 (§6).** Tout est prêt et l'essai de fumée passe. Une seule commande lance la nuit : `caffeinate -i scripts/lfm3-s1s2.sh`.
+- **Labels GLM-5.3-flash pour s6-nano et s6-micro (§1.1)** : ils tournent à distance chez z.ai, à 47 % le 03/11. La machine reste libre.
+- **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot.
+- **s6-secrets et s6-cast** : leurs données sont prêtes (§3, §4).
+- **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
+- **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
+- **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7).
 
 > **La labellisation GLM tourne en arrière-plan depuis le 29/10/2026 (§1.1, environ 80 h).** Si la machine s'éteint ou redémarre, la relancer depuis le checkout principal :
 >
@@ -20,7 +30,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre conseillé (une seule machine) : données → labels GLM (§1.1 : à distance, environ 80 h sur plusieurs fenêtres z.ai, la machine reste libre, donc à lancer tout de suite) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
+Ordre conseillé (une seule machine) : LFM3 S1/S2 (§6, une nuit, dès ce soir) → données → labels GLM (§1.1 : à distance, environ 80 h sur plusieurs fenêtres z.ai, la machine reste libre, donc à lancer tout de suite) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
 
 ## 0. Prérequis
 
@@ -147,3 +157,74 @@ Indépendant des autres s6, il ne lit pas de texte.
 - [ ] Rapport : tous les chiffres pré-enregistrés, y compris les échecs, sur la page Results et dans le chapitre du tutoriel.
 
 Un modèle qui échoue n'est pas publié, mais son résultat va quand même dans le rapport et sur le site.
+
+## 6. LFM3-1.7B : Système 1 d'abord, Système 2 seulement si besoin (`docs/lfm3-s1s2-prereg.md`)
+
+**L'idée.** LFM3-1.7B réfléchit par défaut, et trop réfléchir peut le faire renoncer à une bonne première réponse. Sans réflexion, il peut aussi partir en boucle : l'essai de fumée l'a montré sur une question de GSM8K. On ne touche pas aux poids, on ne l'entraîne pas.
+1. Il répond d'abord sans réfléchir (**Système 1**), et une petite sonde mesure sa confiance.
+2. Il ne réfléchit, avec un budget borné, que si la confiance est basse (**Système 2**).
+3. Le seuil vient du **contrôle conformal du risque** (α = 0,02), comme les sorties anticipées de skycmd : en espérance, au plus 2 points perdus par rapport à « toujours réfléchir ».
+
+Le but est autant de précision, voire plus, pour bien moins de calcul.
+
+**Prêt le 03/11/2026 :**
+- `scripts/lfm3-s1s2.sh` (étapes `data smoke calib test route`) et `experiments/lfm3-s1s2/s1s2.py` ;
+- le modèle `LiquidAI/LFM3-1.7B-MLX-4bit` (rév. `deb2986b`, 0,97 Go) déjà téléchargé ;
+- les données écrites dans `data/lfm3/` : 600 questions de calibration, 1 000 de test ;
+- un essai de fumée de 3 questions par mode, réussi (`runs/lfm3-s1s2-smoke`). Débit : 98 jetons/s sans réflexion, 80 avec, environ 4,5 s par question.
+
+- [ ] **Ce soir, une seule commande, depuis le checkout principal :** `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
+  - Durée estimée : environ 1 h 30 pour s1, 2 h pour s2-256 et 5 à 6 h pour s2-1024, sur 1 600 questions, soit **environ 9 à 10 h**. La calibration passe en premier (600 questions, environ 3 h 30).
+  - Inférence locale sur le GPU du M5 : ça chauffe pendant la nuit, mais il n'y a aucune réflexion de 32 000 jetons.
+  - Tout reprend après une coupure : relancer la même commande, les questions déjà faites sont sautées.
+  - La labellisation GLM (§1.1) peut continuer en même temps : elle ne fait que du réseau.
+- [ ] **Au réveil**, lire `runs/lfm3-s1s2/report-calib.md` (calibration) puis `runs/lfm3-s1s2/report.md` (test, avec le verdict). Si la nuit n'a pas suffi, relancer `scripts/lfm3-s1s2.sh calib test route` : ça reprend.
+- [ ] **Critères** (pré-enregistrés, §6 du pré-enregistrement) :
+  - **H1** : réfléchir aide-t-il ? C'est un diagnostic, sans seuil.
+  - **H2** : le routeur garde la précision de s2, à 0,02 près.
+  - **H3** : le routeur divise le calcul au moins par deux.
+  - **H4** : le routeur fait mieux que les deux modes, d'au moins 0,01.
+
+  **Succès** = H2 et H3. **« LFM3 amélioré »** = H4 en plus.
+- [ ] Rapport, quel que soit le résultat : les tableaux, l'oracle (le plafond d'un routeur parfait), la part routée vers s1 et la part de réflexions forcées. À mettre sur le site et dans un chapitre du tutoriel si c'est un succès.
+- [ ] **Ensuite, seulement si le rapport le justifie :**
+  - un budget de 64 jetons ;
+  - IFEval ;
+  - une sonde sur les états cachés au lieu des log-probas ;
+  - le Weight-Space Programming de l'issue #75 (fermée), mais seulement si le diagnostic montre un défaut que l'édition des poids pourrait lever (des boucles, par exemple).
+
+  Chacun passe par un amendement daté du pré-enregistrement.
+
+## 7. Poids flexibles : le Weight-Space Programming sur les petits modèles de skycmd (à faire après le §1.1 et le §6)
+
+**Ce que l'article du MIT a montré, et ce qui reste une vision.** Les cinq promesses n'en sont pas au même point :
+
+| promesse | montré dans l'article ? | ce qui le montre |
+|---|---|---|
+| auditer un modèle sans le faire tourner | en partie | un modèle reconnaît le jeu (4 sur 4) ou la langue d'un réseau en lisant ses poids. Mais le modèle flagorneur n'est pas détecté par les poids seuls (0 sur 4) : il faut voir ses activations (3 sur 3) |
+| initialiser un modèle en une fois | oui, sur de petits réseaux | des réseaux MinAtar écrits d'un seul coup : Breakout 517 contre 25 pour PPO après 500M pas |
+| ajouter ou retirer une capacité sans données ni oubli | retirer un défaut, oui ; ajouter une capacité, non | Qwen3.5-0.8B débarrassé de ses boucles. Sur Gemma 3 270M, aucun gain : « ça lève un obstacle, ça n'ajoute pas de capacité » |
+| greffer un circuit d'une architecture dans une autre | non, c'est une perspective | — |
+| auto-amélioration récursive | non, c'est une perspective | — |
+
+**Pourquoi skycmd est le bon terrain.** Les résultats solides de l'article portent sur de petits réseaux de jeux (17 000 à 1,5M poids), la taille de nos modèles : s3-pico fait 445 000 poids, s6-nano 1,57M. L'arena donne en plus deux choses en microsecondes, en local, sans chauffer la machine :
+- un **retour** pour chaque édition ;
+- une **mesure de l'oubli catastrophique** sur les 4 jeux à la fois.
+
+Personne n'a publié ça sur des modèles ternaires.
+
+- [ ] **7.1 Édition ciblée sans oubli** (la promesse 3). GLM-5.3-flash, via `ccs` et z.ai, lit les poids et les activations de s3-pico publié. Il propose des éditions locales pour corriger un défaut mesuré, par exemple les vetos de Dodge ou les crashs de Flappy, et l'arena dit si on garde l'édition.
+  - Règle : une édition est gardée seulement si le jeu ciblé gagne et qu'aucun autre jeu ne perd plus de 2 %.
+  - Contrainte propre au ternaire : on édite le checkpoint flottant d'avant la QAT, puis on réexporte. Une édition directe dans {−1, 0, +1} est une variante à mesurer à part.
+  - Bras : base, édition GLM à 10, 25 et 50 passes, une édition au hasard de même taille, et une baseline sans LLM (différence de moyennes des activations).
+  - À lancer après la labellisation du §1.1, qui utilise le même quota z.ai.
+- [ ] **7.2 Initialisation en une fois** (la promesse 2). GLM écrit les poids de la tête de décision d'une politique de jeu à partir de la description du jeu et des traits d'état. On mesure combien de pas d'entraînement cela fait gagner pour atteindre la qualité de s3-pico. Le but est un coût d'optimisation réduit, pas un modèle sans entraînement.
+- [ ] **7.3 Des poids flexibles en temps réel** (ton idée : « un modèle qui a des poids flexibles »). Un petit adaptateur de bas rang par-dessus le modèle ternaire figé, mis à jour pendant le jeu dans le navigateur. Chaque fois que le réflexe de sécurité (le veto) corrige le modèle, l'adaptateur apprend de cette correction.
+  - **Le garde-fou de skycmd.** Le contrôle conformal du risque décide si l'adaptateur reste actif : s'il dégrade la qualité au-delà de α par rapport au modèle figé, on revient au modèle figé. Ce sont des poids qui bougent, mais avec une garantie.
+  - C'est la version mesurable de « l'auto-amélioration ». Les poids de base ne bougent jamais, donc on peut toujours revenir en arrière.
+  - Les idées voisines dans la littérature : les « fast weights », l'entraînement au moment du test, les mémoires neuronales. Ce sont des souvenirs de modèle, à vérifier par une recherche avant le pré-enregistrement.
+- [ ] **7.4 Audit des poids** (la promesse 1). On implante une porte dérobée dans une copie de s6-secrets, par exemple un déclencheur qui fait dire « pas de secret ». On regarde si GLM la trouve en lisant les poids, puis les activations. Il faut un petit entraînement local pour implanter la porte, donc c'est pour plus tard.
+- Hors de portée pour l'instant : la greffe de circuits entre architectures (promesse 4) et l'auto-amélioration récursive libre (promesse 5). L'article ne les montre pas, et 7.3 en est la version testable.
+
+Chaque point passe par un pré-enregistrement figé avant le run, comme pour s6 et le §6.
+

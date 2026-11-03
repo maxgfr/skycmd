@@ -225,6 +225,17 @@ Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` 
 |---|---|---|
 | `secret_synth`, `secret_bench` | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | generated locally from the seed. Keys follow each provider's public format with random bodies, so none is a real key. 50,000 training texts (95/5 train/val by text) and 2,000 bench texts in contexts the training never shows. Never committed. |
 
+## LFM3-1.7B System 1 / System 2 (`data/lfm3/`, `scripts/lfm3-s1s2.sh`, `docs/lfm3-s1s2-prereg.md`)
+
+Inference only: LFM3 is not trained, and its weights and outputs are not redistributed.
+
+| dataset / model | license | revision | how it is used | rows |
+|---|---|---|---|---:|
+| LiquidAI/LFM3-1.7B-MLX-4bit | LFM Open License v1.0 (`lfm1.0`) | `deb2986b` | the model whose answers are routed, run locally with mlx-vlm 0.7.11 | — |
+| openai/gsm8k (`main`) | MIT | `740312ad` | 300 train questions (calibration), 500 test questions (test), seed 1234 | 800 |
+| DigitalLearningGmbH/MATH-lighteval | MIT (MATH, Hendrycks et al.) | `0530c786` | 300 train problems with a `\boxed{}` answer (calibration) | 300 |
+| HuggingFaceH4/MATH-500 | MIT (a subset of the MATH test set, from PRM800K); the card has no license tag | `6e4ed1a2` | the 500 test problems (test) | 500 |
+
 ## Rejected
 
 | dataset | reason |
