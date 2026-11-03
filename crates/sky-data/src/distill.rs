@@ -206,16 +206,81 @@ pub fn parse_labels(reply: &Value, batch: &[(String, DecisionRecord)], model: &s
 #[derive(Default, Debug)]
 pub struct LabelStats {
     pub written: usize,
+    /// Records the provider's moderation refuses on their own (never sent again).
+    pub refused: usize,
     pub calls: usize,
     pub failed_batches: usize,
     pub input_tokens: u64,
     pub output_tokens: u64,
 }
 
-/// Labels the selected records not yet in `out`, `jobs` workers in parallel, each with
-/// `max_calls / jobs` calls.
+/// A record the provider's content moderation refuses even alone. It keeps its gold target in
+/// `data/decisions` and is never sent again.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Refused {
+    pub id: String,
+    pub src: String,
+    pub reason: String,
+}
+
+/// The file of refused records next to the labels (`glm_labels.refused.jsonl`).
+pub fn refused_path(labels: &Path) -> PathBuf {
+    labels.with_extension("refused.jsonl")
+}
+
+/// Whether an endpoint error is the provider's content moderation (z.ai: HTTP 400 with error
+/// code 1301): the same batch would be refused again.
+pub fn is_moderated(e: &anyhow::Error) -> bool {
+    let s = format!("{e:#}");
+    s.contains("HTTP 400") && s.contains("\"1301\"")
+}
+
+/// Labels one batch through `call`. A batch the moderation refuses is split in halves until each
+/// refused record stands alone, so one sensitive text costs its batch neighbours nothing. Labels
+/// and refused records go to `sink` as soon as they are known; returns their counts.
+pub fn label_batch<C, S>(
+    call: &mut C,
+    model: &str,
+    b: &[(String, DecisionRecord)],
+    sink: &mut S,
+) -> Result<(usize, usize)>
+where
+    C: FnMut(&[(String, DecisionRecord)]) -> Result<Value>,
+    S: FnMut(&[Label], &[Refused]),
+{
+    match call(b) {
+        Ok(reply) => {
+            let labels = parse_labels(&reply, b, model);
+            sink(&labels, &[]);
+            Ok((labels.len(), 0))
+        }
+        Err(e) if is_moderated(&e) && b.len() > 1 => {
+            let (l, r) = b.split_at(b.len() / 2);
+            let (a, x) = label_batch(call, model, l, sink)?;
+            let (c, y) = label_batch(call, model, r, sink)?;
+            Ok((a + c, x + y))
+        }
+        Err(e) if is_moderated(&e) => {
+            let (id, r) = &b[0];
+            sink(
+                &[],
+                &[Refused {
+                    id: id.clone(),
+                    src: r.src.clone(),
+                    reason: "moderation (1301)".into(),
+                }],
+            );
+            Ok((0, 1))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Labels the selected records neither in `out` nor refused before, `jobs` workers in parallel,
+/// each with `max_calls / jobs` calls.
 pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Result<LabelStats> {
-    let done: HashSet<String> = if out.exists() {
+    let refused_file = refused_path(out);
+    let labelled: HashSet<String> = if out.exists() {
         read_jsonl::<Label>(out)?
             .into_iter()
             .map(|l| l.id)
@@ -223,15 +288,32 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
     } else {
         HashSet::new()
     };
-    let todo: Vec<(String, DecisionRecord)> = select(o)?
+    let refused: HashSet<String> = if refused_file.exists() {
+        read_jsonl::<Refused>(&refused_file)?
+            .into_iter()
+            .map(|r| r.id)
+            .collect()
+    } else {
+        HashSet::new()
+    };
+    let selected = select(o)?;
+    let in_selection = |ids: &HashSet<String>| {
+        selected
+            .iter()
+            .filter(|r| ids.contains(&record_id(r)))
+            .count()
+    };
+    let (n_labelled, n_refused) = (in_selection(&labelled), in_selection(&refused));
+    let todo: Vec<(String, DecisionRecord)> = selected
         .into_iter()
         .map(|r| (record_id(&r), r))
-        .filter(|(id, _)| !done.contains(id))
+        .filter(|(id, _)| !labelled.contains(id) && !refused.contains(id))
         .collect();
     eprintln!(
-        "[distill] {} records to label ({} already labelled), {} workers",
+        "[distill] {} records to label ({} already labelled, {} refused by moderation), {} workers",
         todo.len(),
-        done.len(),
+        n_labelled,
+        n_refused,
         o.jobs
     );
     eprintln!(
@@ -246,37 +328,43 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
         fs::create_dir_all(d)?;
     }
     let file = Mutex::new(OpenOptions::new().create(true).append(true).open(out)?);
+    let refused_out = Mutex::new(
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&refused_file)?,
+    );
     let stats = Mutex::new(LabelStats::default());
     let batches: Vec<&[(String, DecisionRecord)]> = todo.chunks(cfg.batch).collect();
     let jobs = o.jobs.max(1);
     let per_job = cfg.max_calls.div_ceil(jobs);
     std::thread::scope(|s| {
         for j in 0..jobs {
-            let (file, stats, batches) = (&file, &stats, &batches);
+            let (file, refused_out, stats, batches) = (&file, &refused_out, &stats, &batches);
             let mut c = cfg.clone();
             c.max_calls = per_job;
             s.spawn(move || {
                 let mut t = Teacher::new(c);
-                let (mut written, mut failed, mut streak) = (0, 0, 0);
+                let model = t.cfg.model.clone();
+                let (mut written, mut refused, mut failed, mut streak) = (0, 0, 0, 0);
+                let mut sink = |labels: &[Label], gone: &[Refused]| {
+                    write_lines(file, labels);
+                    write_lines(refused_out, gone);
+                };
                 for b in batches.iter().skip(j).step_by(jobs) {
-                    match t.call_json(LABEL_SYSTEM, &label_prompt(b, o.max_state_chars)) {
-                        Ok(reply) => {
-                            let labels = parse_labels(&reply, b, &t.cfg.model);
-                            let mut f = file.lock().unwrap();
-                            for l in &labels {
-                                if let Ok(line) = serde_json::to_string(l) {
-                                    let _ = writeln!(f, "{line}");
-                                }
-                            }
-                            let _ = f.flush();
-                            written += labels.len();
+                    let mut call = |b: &[(String, DecisionRecord)]| {
+                        t.call_json(LABEL_SYSTEM, &label_prompt(b, o.max_state_chars))
+                    };
+                    match label_batch(&mut call, &model, b, &mut sink) {
+                        Ok((n, k)) => {
+                            written += n;
+                            refused += k;
                             streak = 0;
-                            if labels.len() < b.len() {
-                                eprintln!(
-                                    "[distill] worker {j}: {} / {} valid",
-                                    labels.len(),
-                                    b.len()
-                                );
+                            if n + k < b.len() {
+                                eprintln!("[distill] worker {j}: {n} / {} valid", b.len());
+                            }
+                            if k > 0 {
+                                eprintln!("[distill] worker {j}: {k} record(s) refused by moderation");
                             }
                         }
                         Err(e) if e.is::<BudgetExhausted>() => break,
@@ -295,6 +383,7 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
                 }
                 let mut st = stats.lock().unwrap();
                 st.written += written;
+                st.refused += refused;
                 st.failed_batches += failed;
                 st.calls += t.calls;
                 st.input_tokens += t.input_tokens;
@@ -303,6 +392,20 @@ pub fn label_decisions(cfg: &TeacherConfig, o: &LabelOptions, out: &Path) -> Res
         }
     });
     Ok(stats.into_inner().unwrap())
+}
+
+/// Appends one JSON line per item and flushes.
+fn write_lines<T: Serialize>(f: &Mutex<fs::File>, items: &[T]) {
+    if items.is_empty() {
+        return;
+    }
+    let mut f = f.lock().unwrap();
+    for x in items {
+        if let Ok(line) = serde_json::to_string(x) {
+            let _ = writeln!(f, "{line}");
+        }
+    }
+    let _ = f.flush();
 }
 
 /// Per source: labelled records and how many agree with the gold argmax.
@@ -429,5 +532,60 @@ mod tests {
         assert_eq!(mixed[0].target, vec![0.0625, 0.875, 0.0625]);
         assert_eq!(mixed[0].split, "train");
         fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn moderation_isolates_refused_records() {
+        // 8 records, the 3rd and 6th refused: an endpoint that rejects any batch holding one.
+        let batch: Vec<(String, DecisionRecord)> = (0..8)
+            .map(|i| {
+                let r = DecisionRecord {
+                    state: format!("text {i}"),
+                    ..rec("refusal", &[0.0, 1.0], "train")
+                };
+                (format!("id{i}"), r)
+            })
+            .collect();
+        let bad = ["id2", "id5"];
+        let mut calls = 0;
+        let mut call = |b: &[(String, DecisionRecord)]| -> Result<Value> {
+            calls += 1;
+            if b.iter().any(|(id, _)| bad.contains(&id.as_str())) {
+                anyhow::bail!(
+                    r#"HTTP 400: {{"type":"error","error":{{"type":"invalid_request_error","code":"1301","message":"unsafe"}}}}"#
+                );
+            }
+            let items: Vec<Value> = b
+                .iter()
+                .map(|(id, _)| json!({"id": id, "p": [1, 3]}))
+                .collect();
+            Ok(json!({ "items": items }))
+        };
+        let (mut labels, mut gone) = (Vec::new(), Vec::new());
+        let mut sink = |l: &[Label], r: &[Refused]| {
+            labels.extend_from_slice(l);
+            gone.extend_from_slice(r);
+        };
+        let (n, k) = label_batch(&mut call, "glm", &batch, &mut sink).unwrap();
+        assert_eq!((n, k), (6, 2));
+        let mut ids: Vec<&str> = gone.iter().map(|r| r.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, ["id2", "id5"]);
+        assert_eq!(labels.len(), 6);
+        assert!(calls < 16, "halving, not one call per record: {calls}");
+        // Other errors are not moderation: they propagate and the batch is retried later.
+        let mut down =
+            |_: &[(String, DecisionRecord)]| -> Result<Value> { anyhow::bail!("HTTP 503: busy") };
+        assert!(label_batch(
+            &mut down,
+            "glm",
+            &batch,
+            &mut |_: &[Label], _: &[Refused]| {}
+        )
+        .is_err());
+        assert_eq!(
+            refused_path(Path::new("data/teacher/glm_labels.jsonl")),
+            Path::new("data/teacher/glm_labels.refused.jsonl")
+        );
     }
 }
