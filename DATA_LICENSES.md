@@ -79,9 +79,9 @@ outputs are not redistributed.
 **Terms of the z.ai API.** The GLM-5.3-Flash weights are MIT, but the labels come from the z.ai
 API, whose [terms](https://docs.z.ai/legal-agreement/terms-of-use) (14 April 2026, §1(f)(xii))
 forbid using model-generated content for "training, labeling, fine-tuning ... related to external
-models" outside an authorized integration, and ask for AI outputs to be marked. The labels are
-therefore not published (`scripts/hf-publish-data.py` never reads `data/teacher` or
-`data/distill`) until this is settled (TODO.md §1.2).
+models" outside an authorized integration, and ask for AI outputs to be marked. The user chose to
+publish them anyway (3 November 2026): `maxgfr/skycmd-glm-labels`, marked as AI-generated, with
+the texts under their sources' licences (TODO.md §1.2).
 
 s6-nano and s6-micro train on `data/decisions`, `data/distill`, `data/games` and `data/numeric`
 (train splits only) and pretrain on `data/text-open` then `data/text`. The GLM files of
@@ -258,6 +258,12 @@ Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the
 | AMI meeting corpus (v2, not fetched yet) | CC-BY-4.0 | `duplex_action`, labelled by the pre-registered rule `audio::duplex_label` |
 | pipecat-ai/smart-turn-v3 (`smart-turn-v3.2-cpu.onnx`, revision `f766f81d`) | BSD-2-Clause | the baseline of the turn-end gate, run on our test clips (`scripts/ear-baseline.py`); not redistributed |
 | GLM-5.3-flash labels of the LibriSpeech transcripts (v2, `teacher label-transcripts`) | the transcripts' license (CC-BY-4.0); the model is MIT | the `about` questions, soft targets on the audio |
+
+## Published on Hugging Face (`scripts/hf-publish-data.py`)
+
+One dataset repository per set, one parquet config per source, each config under its source's
+licence (share-alike stays share-alike); `LocalLLaMA/typed-decisions` (gated) is not republished,
+nor the MLM text or the audio clips. [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
 
 ## Rejected
 

@@ -86,23 +86,36 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
   - `skycmd-secrets` : 201 242 ;
   - `skycmd-commands` : 32 341 ;
   - `skycmd-zero-shot` : 5 000.
-- [ ] **Se connecter** : `hf auth login`, avec un token en écriture. Ce n'était pas fait le 03/11. Ensuite, `uv run scripts/hf-publish-data.py --data <checkout principal>/data`.
-- [ ] Vérifier chaque dataset sur le Hub : le viewer marche, les configs se chargent (`load_dataset("<user>/skycmd-decisions", "boolq")`), la carte est lisible.
-- [ ] Ajouter les liens des datasets publiés dans `DATA_LICENSES.md`, dans le README et sur la page Sources du site.
+- [x] **Publiés le 03/11/2026, en public**, sur `maxgfr` :
+  - `skycmd-decisions` : 27 sources, 823 387 lignes ;
+  - `skycmd-games` : 280 000 ;
+  - `skycmd-numeric` : 100 000 ;
+  - `skycmd-secrets` : 201 242 ;
+  - `skycmd-commands` : 32 341 ;
+  - `skycmd-zero-shot` : 5 000.
+
+  Les liens sont dans le README, `DATA_LICENSES.md` et la page Sources.
+- [ ] Vérifier le viewer du Hub sur chaque dataset quand l'indexation est finie (`https://datasets-server.huggingface.co/is-valid?dataset=maxgfr/<repo>`), et `load_dataset("maxgfr/skycmd-decisions", "boolq")`.
 - **Règles appliquées par le script :**
   - chaque source garde sa licence, et les sources share-alike restent share-alike ;
   - `LocalLLaMA/typed-decisions` (le train et le bench) n'est **pas** republié : ce jeu est gated sur le Hub, et le republier en accès libre contournerait la barrière ;
   - le texte de pré-entraînement et les clips audio ne sont pas republiés. On publie leur recette : la commande `sky-data`, la graine et les sha256.
-- [ ] **Labels GLM-5.3-flash : à trancher par l'utilisateur, non publiés pour l'instant.** Les conditions de l'API z.ai ([Terms of Use](https://docs.z.ai/legal-agreement/terms-of-use), version du 14/04/2026) posent deux règles :
-  - §1(f)(xii) interdit « any use of the Z.ai's models, prompts, or model-generated content for the development, training, labeling, fine-tuning, optimization, iteration, or similar activities related to external models », sauf intégration autorisée dans un usage métier propre ;
-  - §III.5(d) demande de marquer les sorties comme générées par IA.
+- [x] **Labels GLM-5.3-flash publiés en partiel**, sur décision de l'utilisateur (« c'est open source, tu peux publier »), malgré la clause §1(f)(xii) des [conditions de l'API z.ai](https://docs.z.ai/legal-agreement/terms-of-use). Cette clause interdit d'utiliser les sorties pour « training, labeling, fine-tuning … related to external models ». La licence MIT couvre les poids, pas l'API.
+  - Le repo est `maxgfr/skycmd-glm-labels`. Il est marqué comme contenu généré par IA, comme le demande le §III.5(d).
+  - Il a deux configs : `agree` (les records dont l'argmax du professeur est la réponse juste, avec pour cible les probabilités du professeur) et `labels` (tous les labels bruts).
+  - Il ne contient ni les textes refusés par la modération ni `typed_decisions_train`.
+- [ ] **Mettre à jour `skycmd-glm-labels`** à chaque étape de la labellisation, puis une dernière fois à la fin. Les commandes, depuis le checkout principal :
+  - `target/s3-train/release/sky-data teacher mix-labels --labels data/teacher/glm_labels.jsonl --from data/decisions --out <tmp>/glm-mix --alpha 0` ;
+  - puis `uv run scripts/hf-publish-data.py --glm <tmp>/glm-mix --glm-date "<date>"`.
 
-  La licence MIT couvre les **poids** de GLM-5.3-Flash, pas l'API. Publier les labels en open data comme jeu d'entraînement tombe en plein dans cette clause, et la distillation s6 elle-même (§1.1) est en zone grise. Trois options :
-  - **(a)** demander à z.ai une autorisation écrite ;
-  - **(b)** régénérer les labels avec GLM-5.3-Flash **en local** : les poids sont sous MIT, sans conditions d'API, mais il faut de la puissance de calcul ;
-  - **(c)** publier quand même, avec le marquage IA, à ses risques.
+  Ne **jamais** écrire ce mélange partiel dans `data/distill` : `train-s6.sh` le prendrait pour le mélange final.
+- **Vitesse de la labellisation sur z.ai** (03/11/2026). Le quota n'est pas la limite, la concurrence l'est. Les mesures :
+  - 4 workers × 20 records par appel : environ 240 labels/min, sans erreur ;
+  - 6 workers × 50 : erreurs HTTP 429 « Rate limit reached for requests » (code 1302) ;
+  - 4 workers × 50 : environ 150 labels/min, plus lent (le temps de génération d'un appel croît plus vite que le nombre de records) ;
+  - 5 workers × 20 : environ 240 labels/min, comme à 4 workers, avec des erreurs 429.
 
-  En attendant, `glm_labels.jsonl` (393 878 labels le 03/11, 52,7 %) reste local, et `hf-publish-data.py` ne lit ni `data/teacher` ni `data/distill`.
+  **Le plafond de z.ai est d'environ 4 labels/s, quel que soit le réglage.** On garde le défaut, 4 × 20, relancé le 03/11 à 20:30. Il reste environ 333 000 records, soit environ 23 h de labellisation, plus les pauses entre fenêtres. Pour relancer : `nohup caffeinate -i scripts/distill-glm.sh loop mix >> runs/distill-glm.log 2>&1 &`.
 - [ ] Plus tard : le jev audio de s6-ear (§8), après `scripts/train-ear.sh data`. On y met les records et les log-mel, pas les clips (les sources restent sous leur licence CC-BY-4.0, avec attribution).
 
 ## 2. Le s6 généraliste : pilote et ablation pico, puis s6-nano et s6-micro (`docs/s6-prereg.md`, `docs/s6-gen-prereg.md`, `docs/SPEC-S6.md` §15)
