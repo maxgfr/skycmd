@@ -18,3 +18,6 @@ runs-ladder.log
 site/public/lib/
 .venv-teacher/
 logs-s4/
+
+# Claude Code worktrees (isolated working copies, never committed)
+.claude/worktrees/
