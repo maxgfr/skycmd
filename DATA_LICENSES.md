@@ -76,6 +76,13 @@ outputs are not redistributed.
 
 ## s6-nano / s6-micro: GLM teacher mix and evaluation sets (`docs/s6-gen-prereg.md`)
 
+**Terms of the z.ai API.** The GLM-5.3-Flash weights are MIT, but the labels come from the z.ai
+API, whose [terms](https://docs.z.ai/legal-agreement/terms-of-use) (14 April 2026, §1(f)(xii))
+forbid using model-generated content for "training, labeling, fine-tuning ... related to external
+models" outside an authorized integration, and ask for AI outputs to be marked. The labels are
+therefore not published (`scripts/hf-publish-data.py` never reads `data/teacher` or
+`data/distill`) until this is settled (TODO.md §1.2).
+
 s6-nano and s6-micro train on `data/decisions`, `data/distill`, `data/games` and `data/numeric`
 (train splits only) and pretrain on `data/text-open` then `data/text`. The GLM files of
 `data/decisions` (`glm_orders`, `paraphrased`) exist only if `prepare-data.sh` had a teacher
