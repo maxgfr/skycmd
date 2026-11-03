@@ -822,8 +822,9 @@ fn main() -> Result<()> {
                     };
                     let s = sky_data::distill::label_decisions(&t.cfg, &o, &out)?;
                     println!(
-                        "wrote {} labels to {out:?}; calls {} ({} failed batches), tokens in {} out {}, {:.1}s",
+                        "wrote {} labels to {out:?} ({} refused by moderation); calls {} ({} failed batches), tokens in {} out {}, {:.1}s",
                         s.written,
+                        s.refused,
                         s.calls,
                         s.failed_batches,
                         s.input_tokens,

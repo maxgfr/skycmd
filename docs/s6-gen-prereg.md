@@ -172,3 +172,10 @@ s3-pico, s4-micro et s5-lite publiés passent sur les mêmes records, à τ = 1.
   Chaque ligne mesure 2 000 records par source, sauf la ligne 256 / 128 qui en mesure 500. Les sources de test sont `typed_decisions_bench`, le test de When2Call, `zs_massive_en`, `zs_massive_fr` (1 000 records) et `zs_banking77`.
 - **Coût.** Des séquences plus longues, donc des pas plus lents. Nano reste environ 4 fois plus petit que micro, dont l'état fait 384 jetons.
 - **Ce qui ne change pas.** s6-micro, les tokenizers, les données, les labels du professeur (ils ne dépendent pas des fenêtres), les budgets, l'évaluation et les portes.
+
+**Amendement 3 (03/11/2026, pendant la labellisation, avant tout entraînement s6 : aucun résultat de modèle n'a été lu). Les textes refusés par la modération de z.ai.**
+
+- **Constat.** Du 29/10 au 02/11/2026, la labellisation a écrit 350 949 labels sur 747 198. 128 réponses étaient des refus de la modération de z.ai : HTTP 400, code 1301, « contenu potentiellement sensible ». Des sources comme la modération, les injures ou les refus contiennent forcément de tels textes. Un lot refusé l'était à chaque passe, et ses 19 voisins innocents n'étaient jamais labellisés. Les 89 autres échecs étaient des coupures réseau, reprises ensuite.
+- **Changement.** Un lot refusé par la modération est coupé en deux, récursivement, jusqu'à isoler chaque texte refusé seul (`sky-data teacher label-decisions`). Ces textes vont dans `data/teacher/glm_labels.refused.jsonl` et ne sont plus jamais envoyés. Ils gardent leur seule cible or dans `data/decisions` et n'entrent pas dans `data/distill`. Un refus ne compte pas parmi les « 3 lots ratés de suite » qui arrêtent un worker.
+- **Règles inchangées.** La couverture exigée reste de 95 % de la sélection en labels. Les textes refusés comptent comme non labellisés. Le rapport donne leur nombre par source.
+- **Ce qui ne change pas.** La sélection, la question posée, le filtre d'accord, les poids, les modèles, l'évaluation et les portes.

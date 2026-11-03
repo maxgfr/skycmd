@@ -8,7 +8,9 @@
 #   count   records left to label and the calls that takes (no API call)
 #   label   one pass of sky-data teacher label-decisions -> data/teacher/glm_labels.jsonl; it
 #           resumes where the last pass stopped, and a worker stops after 3 failed batches in a
-#           row (a spent z.ai usage window, a network outage)
+#           row (a spent z.ai usage window, a network outage). A batch the z.ai moderation
+#           refuses (HTTP 400, code 1301) is halved until the refused records stand alone; they
+#           go to glm_labels.refused.jsonl, keep their gold target, and are never sent again
 #   loop    label passes until at most COVER_MISS% of the selection is left (default 1), pausing
 #           PAUSE seconds (default 1800) after a pass that labels nothing (the z.ai usage window
 #           resets every 5 h), and giving up after TRIES such pauses (default 24)
@@ -49,10 +51,12 @@ label() {
     --from "$data/decisions" --out "$labels" --per-source "${PER_SOURCE:-0}" --jobs "${JOBS:-4}"
 }
 
-# left: "<records left> <records selected>", from a pass without any call.
+# left: "<records left> <records selected>", from a pass without any call. Records the
+# provider's moderation refuses (data/teacher/glm_labels.refused.jsonl) are done: never sent again.
 left() {
-  label 0 2>&1 | sed -n 's/^\[distill\] \([0-9]*\) records to label (\([0-9]*\) already labelled).*/\1 \2/p' |
-    awk '{ print $1, $1 + $2 }'
+  label 0 2>&1 |
+    sed -En 's/^\[distill\] ([0-9]+) records to label \(([0-9]+) already labelled(, ([0-9]+) refused by moderation)?\).*/\1 \2 \4/p' |
+    awk '{ print $1, $1 + $2 + $3 }'
 }
 
 loop() {
