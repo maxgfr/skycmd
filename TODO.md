@@ -1,4 +1,14 @@
-# TODO : entraîner les modèles s6
+# TODO : entraîner les modèles s6, et le routage Système 1 / Système 2 de LFM3-1.7B
+
+## Où on en est (03/11/2026)
+
+- **Ce soir : LFM3-1.7B, Système 1 / Système 2 (§6).** Tout est prêt et l'essai de fumée passe. Une seule commande lance la nuit : `caffeinate -i scripts/lfm3-s1s2.sh`.
+- **Labels GLM-5.3-flash pour s6-nano et s6-micro (§1.1)** : ils tournent à distance chez z.ai, à 47 % le 03/11. La machine reste libre.
+- **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot.
+- **s6-secrets et s6-cast** : leurs données sont prêtes (§3, §4).
+- **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
+- **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
+- **Issue #75 (Weight-Space Programming) fermée** au profit du routage S1/S2 (§6).
 
 > **La labellisation GLM tourne en arrière-plan depuis le 29/10/2026 (§1.1, environ 80 h).** Si la machine s'éteint ou redémarre, la relancer depuis le checkout principal :
 >
@@ -20,7 +30,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre conseillé (une seule machine) : données → labels GLM (§1.1 : à distance, environ 80 h sur plusieurs fenêtres z.ai, la machine reste libre, donc à lancer tout de suite) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
+Ordre conseillé (une seule machine) : LFM3 S1/S2 (§6, une nuit, dès ce soir) → données → labels GLM (§1.1 : à distance, environ 80 h sur plusieurs fenêtres z.ai, la machine reste libre, donc à lancer tout de suite) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
 
 ## 0. Prérequis
 
@@ -147,3 +157,41 @@ Indépendant des autres s6, il ne lit pas de texte.
 - [ ] Rapport : tous les chiffres pré-enregistrés, y compris les échecs, sur la page Results et dans le chapitre du tutoriel.
 
 Un modèle qui échoue n'est pas publié, mais son résultat va quand même dans le rapport et sur le site.
+
+## 6. LFM3-1.7B : Système 1 d'abord, Système 2 seulement si besoin (`docs/lfm3-s1s2-prereg.md`)
+
+**L'idée.** LFM3-1.7B réfléchit par défaut, et trop réfléchir peut le faire renoncer à une bonne première réponse. Sans réflexion, il peut aussi partir en boucle : l'essai de fumée l'a montré sur une question de GSM8K. On ne touche pas aux poids, on ne l'entraîne pas.
+1. Il répond d'abord sans réfléchir (**Système 1**), et une petite sonde mesure sa confiance.
+2. Il ne réfléchit, avec un budget borné, que si la confiance est basse (**Système 2**).
+3. Le seuil vient du **contrôle conformal du risque** (α = 0,02), comme les sorties anticipées de skycmd : en espérance, au plus 2 points perdus par rapport à « toujours réfléchir ».
+
+Le but est autant de précision, voire plus, pour bien moins de calcul.
+
+**Prêt le 03/11/2026 :**
+- `scripts/lfm3-s1s2.sh` (étapes `data smoke calib test route`) et `experiments/lfm3-s1s2/s1s2.py` ;
+- le modèle `LiquidAI/LFM3-1.7B-MLX-4bit` (rév. `deb2986b`, 0,97 Go) déjà téléchargé ;
+- les données écrites dans `data/lfm3/` : 600 questions de calibration, 1 000 de test ;
+- un essai de fumée de 3 questions par mode, réussi (`runs/lfm3-s1s2-smoke`). Débit : 98 jetons/s sans réflexion, 80 avec, environ 4,5 s par question.
+
+- [ ] **Ce soir, une seule commande, depuis le checkout principal :** `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
+  - Durée estimée : environ 1 h 30 pour s1, 2 h pour s2-256 et 5 à 6 h pour s2-1024, sur 1 600 questions, soit **environ 9 à 10 h**. La calibration passe en premier (600 questions, environ 3 h 30).
+  - Inférence locale sur le GPU du M5 : ça chauffe pendant la nuit, mais il n'y a aucune réflexion de 32 000 jetons.
+  - Tout reprend après une coupure : relancer la même commande, les questions déjà faites sont sautées.
+  - La labellisation GLM (§1.1) peut continuer en même temps : elle ne fait que du réseau.
+- [ ] **Au réveil**, lire `runs/lfm3-s1s2/report-calib.md` (calibration) puis `runs/lfm3-s1s2/report.md` (test, avec le verdict). Si la nuit n'a pas suffi, relancer `scripts/lfm3-s1s2.sh calib test route` : ça reprend.
+- [ ] **Critères** (pré-enregistrés, §6 du pré-enregistrement) :
+  - **H1** : réfléchir aide-t-il ? C'est un diagnostic, sans seuil.
+  - **H2** : le routeur garde la précision de s2, à 0,02 près.
+  - **H3** : le routeur divise le calcul au moins par deux.
+  - **H4** : le routeur fait mieux que les deux modes, d'au moins 0,01.
+
+  **Succès** = H2 et H3. **« LFM3 amélioré »** = H4 en plus.
+- [ ] Rapport, quel que soit le résultat : les tableaux, l'oracle (le plafond d'un routeur parfait), la part routée vers s1 et la part de réflexions forcées. À mettre sur le site et dans un chapitre du tutoriel si c'est un succès.
+- [ ] **Ensuite, seulement si le rapport le justifie :**
+  - un budget de 64 jetons ;
+  - IFEval ;
+  - une sonde sur les états cachés au lieu des log-probas ;
+  - le Weight-Space Programming de l'issue #75 (fermée), mais seulement si le diagnostic montre un défaut que l'édition des poids pourrait lever (des boucles, par exemple).
+
+  Chacun passe par un amendement daté du pré-enregistrement.
+
