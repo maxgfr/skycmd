@@ -69,6 +69,7 @@ According to its model card, `oscar-1-17m` scores **0.6775** on `LocalLLaMA/type
   - 2604.05635 (spline encodings): piecewise-linear number encoding would change the 17-feature `num_proj` format.
   - 2405.20541 (perplexity pruning): it needs a trained reference model first; s3-pico can play that role once the corpus is rebuilt.
   - 2605.26246 (hard and soft labels): its gain comes from exposure bias in generation, which a one-pass decision does not have.
+  - 2610.42112 (ZHA, Zyphra Hierarchical Attention): a tree of learned chunk summaries over the KV cache, routed top-p, retrofitted on frozen ≥4B models by KL distillation of the attention mass; it beats dense attention only beyond about 48K tokens (modelled, not measured) and struggles below 1B parameters. Our states are 64–512 tokens on 1–6M ternary models, so nothing to gain; to revisit if a state ever exceeds about 10K tokens (minutes of audio for s6-ear, long series for s6-cast).
 - **2609.30535**: code-switching curricula help align languages. → We mix FR and EN.
 - **2609.01404 (DroneCATS)**: small models struggle with termination actions. → `end` and `abort` are explicit actions.
 - **2609.23742**: constrained decoding removes structural JSON errors but not semantic ones. → A coded validator always gets the last word.
