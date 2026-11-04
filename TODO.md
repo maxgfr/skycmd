@@ -315,19 +315,27 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 
 ### 8.2 Tester dans le navigateur
 
-- [ ] Construire le module : `scripts/build-wasm.sh`. Copier `models/s6-ear-nano/s6-ear-nano-crc.gguf` dans `site/public/models/`, avec une entrée dans `manifest.json`.
-- [ ] Écrire la démo micro (page Live, ou une page `/ear/`). Elle doit :
-  - capturer le micro avec `getUserMedia` et un `AudioWorklet` ;
-  - rééchantillonner à 16 kHz et garder un tampon glissant de 10,24 s ;
-  - appeler `engine.decideAudio(...)` toutes les 80 ms, pour `turn_end` et les mots-clés ;
-  - afficher la décision, la confiance, la sortie utilisée et « je passe la main » sous le seuil de renvoi.
-- [ ] La tester dans un vrai navigateur (Chrome, puis Safari), en local (`cd site && npm run docs:dev`) puis sur le site publié. Vérifier :
-  - que le modèle se charge ;
-  - que la permission micro est demandée une seule fois ;
-  - qu'il n'y a aucune erreur dans la console ;
-  - que la latence par décision est affichée et reste sous 80 ms ;
-  - que la décision suit la parole : parler, se taire, dire « yes » ou « stop ».
-- [ ] Enregistrer un GIF de la démo pour le README et la carte Hugging Face.
+- [x] **La démo est écrite** (04/11/2026) : la page `/ear/` (« Listen ») et le composant `EarDemo.vue`.
+  - **Entrées :** le micro (`getUserMedia` et un `AudioWorklet`), ou l'un de 3 extraits CC-BY-4.0 joués par le même chemin (`site/public/ear/`).
+  - **Audio :** un contexte audio à 16 kHz quand le navigateur le permet, sinon un rééchantillonnage en JS (le cas de Firefox) ; un tampon glissant de 10,24 s.
+  - **Décisions :** `engine.decideAudio` toutes les 80 ms, pour `turn_end` et les mots-clés. La page affiche la décision, la confiance, la sortie utilisée, la latence, et « je passe la main » sous le seuil de renvoi (`route` dans le manifest, 0,5 sinon).
+  - **Sans modèle :** si le manifest n'a aucune entrée `task: "ear"`, la page dit que s6-ear n'est pas encore entraîné. C'est le cas aujourd'hui.
+- [x] **Testée dans Chrome** (04/11/2026), avec le modèle de fumée de 40 pas, en `docs:build` + `vitepress preview`. En `docs:dev`, Vite refuse d'importer le module WASM depuis `/public`, comme pour les autres pages.
+  - le modèle se charge ;
+  - les 3 extraits remplissent le tampon et donnent une décision toutes les 80 ms : 2,9 ms en médiane pour les deux questions, log-mel compris ;
+  - changer d'extrait en pleine lecture repart bien de zéro (bug corrigé : les rappels de l'extrait précédent fuyaient dans le nouveau) ;
+  - aucune erreur dans la console.
+
+  Pour tester un modèle local, le copier dans `site/public/ear/dev/` (ignoré par git) et ouvrir `/skycmd/ear/?model=/ear/dev/<fichier>.gguf`.
+- [ ] **Le micro, par l'utilisateur** : la permission micro du navigateur ne s'automatise pas. À faire dans Chrome puis Safari, avec le modèle entraîné. Vérifier :
+  - que la permission est demandée une seule fois ;
+  - que la décision suit la parole : parler, se taire, dire « yes » ou « stop » ;
+  - que la latence reste sous 80 ms ;
+  - qu'il n'y a aucune erreur dans la console.
+- [ ] **À la publication du modèle :**
+  - copier `models/s6-ear-nano/s6-ear-nano-crc.gguf` dans `site/public/models/`, avec une entrée `manifest.json` (`task: "ear"`, `arch: "skycmd-s2"`, et `route: {"noul": ρ, "choice": ρ}` tiré de `runs/s6-ear-nano/eval/crc.json`) ;
+  - ajouter « Listen » à la barre de navigation (`site/.vitepress/config.ts`) ;
+  - enregistrer un GIF de la démo pour le README et la carte Hugging Face.
 
 ### 8.3 Que tout soit carré avant de publier
 

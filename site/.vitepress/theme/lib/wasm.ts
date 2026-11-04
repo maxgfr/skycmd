@@ -14,6 +14,10 @@ export interface WasmEngine {
   /** Generic decision over rendered option texts (JSON array); returns the JSON answer
    * `{probs, exit, n_exits, layers_used, static_hit, micros}`. */
   decide(qtype: string, instructions: string, optionsJson: string, state: string): string
+  /** s6-ear: the same decision about 16 kHz mono PCM (the last 10.24 s count). */
+  decideAudio(qtype: string, instructions: string, optionsJson: string, pcm: Float32Array): string
+  /** True for an s6-ear (audio state) model. */
+  isAudio(): boolean
   free(): void
 }
 
@@ -57,6 +61,8 @@ export interface ModelEntry {
   weight_format?: string
   /** `generic`: a decision model for free-text questions (s4, the Live page), not for the games. */
   task?: string
+  /** s6-ear: the System 2 hand-off thresholds per question type (conformal, `ear-gate.py crc`). */
+  route?: Record<string, number>
   /** The games the model was trained and measured on (`sky-arena`); absent = every game. */
   games?: string[]
 }
