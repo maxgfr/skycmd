@@ -147,11 +147,16 @@ fn cut(s: &str, n: usize) -> String {
     }
 }
 
+/// The prompt of one labelling call. Items are numbered 1..n in the prompt rather than given
+/// their record ids, and the JSON is compact: on 04/11/2026 this cut the generated tokens by
+/// about 30 % and the call time by 25 to 30 % (the teacher no longer copies 16 hex digits per
+/// item, which also lost one label in twenty); `parse_labels` maps the numbers back.
 pub fn label_prompt(batch: &[(String, DecisionRecord)], max_state_chars: usize) -> String {
     let items: Vec<Value> = batch
         .iter()
-        .map(|(id, r)| {
-            json!({"id": id, "type": r.t, "instructions": r.ins,
+        .enumerate()
+        .map(|(i, (_, r))| {
+            json!({"id": (i + 1).to_string(), "type": r.t, "instructions": r.ins,
                    "state": cut(&r.state, max_state_chars), "options": r.opts})
         })
         .collect();
@@ -163,24 +168,33 @@ pub fn label_prompt(batch: &[(String, DecisionRecord)], max_state_chars: usize) 
          Put most of the mass on the best answer and spread it only where you are genuinely unsure.\n\
          Reply with exactly: {{\"items\": [{{\"id\": \"<id>\", \"p\": [numbers]}}, ...]}} with one item per input id.\n\
          Items:\n{}",
-        serde_json::to_string_pretty(&items).unwrap_or_default()
+        serde_json::to_string(&items).unwrap_or_default()
     )
 }
 
-/// Valid labels of a reply: a known id, one finite non-negative number per option, a positive
-/// sum (normalized to 1).
+/// Valid labels of a reply: a known item number (1..n, as `label_prompt` numbers them; a string
+/// or an integer), one finite non-negative number per option, a positive sum (normalized to 1).
+/// Labels carry the record id of their item.
 pub fn parse_labels(reply: &Value, batch: &[(String, DecisionRecord)], model: &str) -> Vec<Label> {
-    let want: HashMap<&str, &DecisionRecord> = batch.iter().map(|(i, r)| (i.as_str(), r)).collect();
+    let want: HashMap<String, (&str, &DecisionRecord)> = batch
+        .iter()
+        .enumerate()
+        .map(|(i, (id, r))| ((i + 1).to_string(), (id.as_str(), r)))
+        .collect();
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     let Some(items) = reply.get("items").and_then(Value::as_array) else {
         return out;
     };
     for it in items {
-        let Some(id) = it.get("id").and_then(Value::as_str) else {
+        let key = match it.get("id") {
+            Some(Value::String(k)) => k.trim().to_string(),
+            Some(Value::Number(n)) => n.to_string(),
+            _ => continue,
+        };
+        let Some(&(id, r)) = want.get(&key) else {
             continue;
         };
-        let Some(r) = want.get(id) else { continue };
         let Some(p) = it.get("p").and_then(Value::as_array) else {
             continue;
         };
@@ -507,16 +521,28 @@ mod tests {
         let id = record_id(&r);
         let batch = vec![(id.clone(), r.clone())];
         let reply = json!({"items": [
-            {"id": id, "p": [1, 6, 1]},
+            {"id": "1", "p": [1, 6, 1]},
+            {"id": 1, "p": [1, 0, 0]},
+            {"id": "2", "p": [1, 0, 0]},
             {"id": id, "p": [1, 0, 0]},
-            {"id": "unknown", "p": [1, 0, 0]},
         ]});
         let l = parse_labels(&reply, &batch, "glm");
         assert_eq!(l.len(), 1);
+        assert_eq!(l[0].id, id);
         assert_eq!(l[0].probs, vec![0.125, 0.75, 0.125]);
+        // An integer item number is accepted too.
+        let l2 = parse_labels(
+            &json!({"items": [{"id": 1, "p": [1, 1, 2]}]}),
+            &batch,
+            "glm",
+        );
+        assert_eq!((l2.len(), l2[0].id.as_str()), (1, id.as_str()));
+        // The prompt numbers the items and does not show the record ids.
+        let pr = label_prompt(&batch, 100);
+        assert!(pr.contains(r#""id":"1""#) && !pr.contains(&id));
         // Wrong length, negative or all-zero probabilities are dropped.
         for p in [json!([0.5, 0.5]), json!([-1, 1, 1]), json!([0, 0, 0])] {
-            let bad = json!({"items": [{"id": batch[0].0, "p": p}]});
+            let bad = json!({"items": [{"id": "1", "p": p}]});
             assert!(parse_labels(&bad, &batch, "glm").is_empty());
         }
 
@@ -565,9 +591,8 @@ mod tests {
                     r#"HTTP 400: {{"type":"error","error":{{"type":"invalid_request_error","code":"1301","message":"unsafe"}}}}"#
                 );
             }
-            let items: Vec<Value> = b
-                .iter()
-                .map(|(id, _)| json!({"id": id, "p": [1, 3]}))
+            let items: Vec<Value> = (1..=b.len())
+                .map(|i| json!({"id": i.to_string(), "p": [1, 3]}))
                 .collect();
             Ok(json!({ "items": items }))
         };
