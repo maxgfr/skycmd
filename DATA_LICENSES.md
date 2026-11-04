@@ -245,7 +245,18 @@ Inference only: LFM3 is not trained, and its weights and outputs are not redistr
 
 ## s6-ear audio (`data/ear/`, `sky-data fetch-audio`, `sky-data audio-jev`, `docs/s6-ear-prereg.md`)
 
-Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the test clips for the baselines); `data/ear` is not committed and the clips are not redistributed. Counts: not fetched yet.
+Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the test clips for the baselines); `data/ear` is not committed and the clips are not redistributed. Counts (fetched on 4 November 2026, 31 GB of features):
+
+| set | train | val | test |
+|---|---:|---:|---:|
+| Smart Turn (v3 train; test = v3.2-test) | 215,655 | 11,370 | 31,527 |
+| Speech Commands v0.02 | 40,538 | 4,861 | 4,890 |
+| MSWC en + fr (first archive of each split) | 120,000 | 120,000 | 120,000 |
+| LibriSpeech `clean` + Mimi codes | 28,539 | 2,703 | — |
+
+Questions written by `sky-data audio-jev`: `turn_end` 215,655 / 11,370 / 31,527, `keyword`
+40,538 / 4,861 / 4,890, `keyword_zs` 113,238 / 109,049 / 2,000 (50 held-out words per language,
+20 questions each).
 
 | dataset / model | license | how it is used |
 |---|---|---|
