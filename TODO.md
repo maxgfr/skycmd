@@ -1,15 +1,20 @@
 # TODO : entraîner les modèles s6, et le routage Système 1 / Système 2 de LFM3-1.7B
 
-## Où on en est (03/11/2026)
+## Où on en est (04/11/2026, 19:15)
 
-- **Ce soir : LFM3-1.7B, Système 1 / Système 2 (§6).** Tout est prêt et l'essai de fumée passe. Une seule commande lance la nuit : `caffeinate -i scripts/lfm3-s1s2.sh`.
-- **Labels GLM-5.3-flash pour s6-nano et s6-micro (§1.1)** : ils tournent à distance chez z.ai, à 47 % le 03/11. La machine reste libre.
-- **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot.
-- **s6-secrets et s6-cast** : leurs données sont prêtes (§3, §4).
+- **Ce soir : l'utilisateur lance l'entraînement.** Les deux runs prêts utilisent le GPU : **jamais en même temps**. Depuis le checkout principal à jour de main :
+  - **s6-ear-nano (§8.1)**, environ 3 h. Les données sont déjà là (`data/ear`, 31 Go), il ne reste que `caffeinate -i scripts/train-ear.sh pretrain decide eval`. Vérifié le 04/11 : l'essai à blanc (`DRY_RUN=1`) enchaîne les bonnes commandes, et aucun reste de la fumée ne fait sauter une étape (`runs/s6-ear-nano/eval` et `models/s6-ear-nano` sont vides). Le script recompile lui-même les binaires.
+  - **LFM3-1.7B S1/S2 (§6)**, environ 9 à 10 h, pas encore lancé : `caffeinate -i scripts/lfm3-s1s2.sh`.
+  - Pour faire les deux dans la même nuit, l'un après l'autre (environ 13 h) : `caffeinate -i sh -c 'scripts/train-ear.sh pretrain decide eval; scripts/lfm3-s1s2.sh'`. Le `;` lance LFM3 même si s6-ear échoue, et les deux reprennent là où ils s'étaient arrêtés si on relance.
+  - Au réveil : §8.1 (ce qu'il faut recopier dans le rapport de s6-ear) et §6 (`runs/lfm3-s1s2/report.md`).
+- **Labels GLM-5.3-flash (§1.1)** : 539 229 sur 747 198 (72 %) le 04/11 à 19:15, 63 textes refusés par la modération. La boucle s'était arrêtée le 04/11 à 11:38, quand les sessions ont été relancées, et a repris à 12:32 sans rien perdre. Environ 3,3 labels/s depuis : il reste 207 906 records, soit environ 17 h, donc la fin vers le 05/11 après-midi. Le dataset `skycmd-glm-labels` a été republié à 72 % (§1.2).
+- **Données s6-ear téléchargées (§8)** : les comptes sont dans `DATA_LICENSES.md`, et il y a bien 50 mots réservés par langue, sans amendement.
+- **Nos 7 jeux de données sont publics sur Hugging Face (§1.2)**, labels GLM compris (marqués comme générés par IA).
+- **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot. Celles de s6-secrets et s6-cast aussi (§3, §4).
 - **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
 - **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
-- **s6-ear (§8) : à lancer au prochain run libre, après LFM3.** Le code est sur main et testé, et la fumée de bout en bout passe. Le run tient en une commande, environ 3 h de GPU plus le téléchargement : `caffeinate -i scripts/train-ear.sh data pretrain decide eval`. Ensuite viennent le test dans le navigateur et la vérification que tout est carré (§8.1 à §8.3).
-- **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7).
+- **Lu et non adopté** (04/11) : ZHA, l'attention hiérarchique de Zyphra (arXiv 2610.42112). Elle ne bat l'attention dense qu'au-delà d'environ 48K tokens et marche mal sous 1B paramètres ; nos états font 64 à 512 tokens. Les raisons sont dans `docs/research.md` (« Not adopted yet »).
+- **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7). Son worktree `.claude/worktrees/issue-75-wsp-lfm3` traîne encore : à supprimer sur l'accord de l'utilisateur.
 
 > **La labellisation GLM tourne en arrière-plan depuis le 29/10/2026 (§1.1, environ 80 h).** Si la machine s'éteint ou redémarre, la relancer depuis le checkout principal :
 >
@@ -31,7 +36,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre conseillé (une seule machine) : LFM3 S1/S2 (§6, une nuit, dès ce soir) → s6-ear (§8, la nuit libre suivante, environ 3 h de GPU) → données → labels GLM (§1.1 : à distance, environ 80 h sur plusieurs fenêtres z.ai, la machine reste libre, donc à lancer tout de suite) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
+Ordre conseillé (une seule machine) : s6-ear (§8, environ 3 h de GPU, les données sont prêtes) et LFM3 S1/S2 (§6, une nuit), l'un après l'autre → labels GLM (§1.1 : à distance, fin prévue vers le 05/11, la machine reste libre) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
 
 ## 0. Prérequis
 
@@ -64,6 +69,7 @@ GLM-5.3-flash est open source : poids sous licence MIT, [`zai-org/GLM-5.3-Flash`
 - [x] `scripts/distill-glm.sh count` (aucun appel) : 747 198 records (tous les records `train` des jeux Hugging Face de `data/decisions`) et 37 360 appels de 20 attendus. Un autre compte veut dire que `data/decisions` a changé : comprendre pourquoi avant d'appeler.
 - [ ] **Lancer le tout, sans surveillance :** `caffeinate -i scripts/distill-glm.sh loop mix`, dans un terminal qui reste ouvert (ou `mkdir -p runs && nohup caffeinate -i scripts/distill-glm.sh loop mix > runs/distill-glm.log 2>&1 &`).
   - **En cours depuis le 29/10/2026 à 16:28**, avec `nohup` (journal : `runs/distill-glm.log`). Pour savoir s'il tourne encore : `pgrep -fl distill-glm`. Cocher quand `loop` affiche « coverage reached » et que `mix` a écrit `data/distill/glm.jsonl`.
+  - **Le 04/11/2026 à 19:15** : 539 229 sur 747 198 (72 %), 63 refus. La boucle s'était arrêtée à 11:38 (relance des sessions) ; relancée à 12:32, environ 3,3 labels/s depuis.
   - **Le 03/11/2026** : 350 949 labels sur 747 198 (47 %). Le redémarrage de la machine du 02/11 à 21:17 avait arrêté la boucle ; elle a été relancée le 03/11. Il reste 396 249 records, soit 19 813 appels.
   - **Refus de la modération z.ai** (HTTP 400, code 1301, amendement 3) : un lot refusé est coupé en deux jusqu'à isoler les textes refusés. Ceux-ci vont dans `data/teacher/glm_labels.refused.jsonl` et ne sont plus envoyés. `count` et le journal donnent leur nombre.
   - **4 workers** (`JOBS=4`), c'est le maximum utile. Mesuré le 29/10/2026 : z.ai plafonne vers 2,5 labels/s quel que soit le nombre de workers, et dès 8 workers une partie des appels part en relances (8 workers : 10 relances sur 24 appels ; 16 workers : 22 sur 32).
@@ -104,7 +110,8 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
   - Le repo est `maxgfr/skycmd-glm-labels`. Il est marqué comme contenu généré par IA, comme le demande le §III.5(d).
   - Il a deux configs : `agree` (les records dont l'argmax du professeur est la réponse juste, avec pour cible les probabilités du professeur) et `labels` (tous les labels bruts).
   - Il ne contient ni les textes refusés par la modération ni `typed_decisions_train`.
-- [ ] **Mettre à jour `skycmd-glm-labels`** à chaque étape de la labellisation, puis une dernière fois à la fin. Les commandes, depuis le checkout principal :
+- [x] **Republié le 04/11/2026 à 72 %** : `labels` 535 278 lignes, `agree` 403 040 (93,7 Mo). L'accord avec la bonne réponse est de 405 990 sur 539 368 (0,753) sur tout ce qui est labellisé, `typed_decisions` compris.
+- [ ] **Mettre à jour `skycmd-glm-labels`** une dernière fois à la fin de la labellisation (vers le 05/11). Les commandes, depuis le checkout principal :
   - `target/s3-train/release/sky-data teacher mix-labels --labels data/teacher/glm_labels.jsonl --from data/decisions --out <tmp>/glm-mix --alpha 0` ;
   - puis `uv run scripts/hf-publish-data.py --glm <tmp>/glm-mix --glm-date "<date>"`.
 
@@ -116,7 +123,7 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
   - 5 workers × 20 : environ 240 labels/min, comme à 4 workers, avec des erreurs 429.
 
   **Le plafond de z.ai est d'environ 4 labels/s, quel que soit le réglage.** On garde le défaut, 4 × 20, relancé le 03/11 à 20:30. Il reste environ 333 000 records, soit environ 23 h de labellisation, plus les pauses entre fenêtres. Pour relancer : `nohup caffeinate -i scripts/distill-glm.sh loop mix >> runs/distill-glm.log 2>&1 &`.
-- [ ] Plus tard : le jev audio de s6-ear (§8), après `scripts/train-ear.sh data`. On y met les records et les log-mel, pas les clips (les sources restent sous leur licence CC-BY-4.0, avec attribution).
+- [ ] Plus tard : le jev audio de s6-ear (§8). Les données sont prêtes depuis le 04/11 (31 Go de log-mel : voir s'il vaut mieux ne publier que les records et la recette). On y met les records et les log-mel, pas les clips (les sources restent sous leur licence CC-BY-4.0, avec attribution).
 
 ## 2. Le s6 généraliste : pilote et ablation pico, puis s6-nano et s6-micro (`docs/s6-prereg.md`, `docs/s6-gen-prereg.md`, `docs/SPEC-S6.md` §15)
 
@@ -217,7 +224,7 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 - les données écrites dans `data/lfm3/` : 600 questions de calibration, 1 000 de test ;
 - un essai de fumée de 3 questions par mode, réussi (`runs/lfm3-s1s2-smoke`). Débit : 98 jetons/s sans réflexion, 80 avec, environ 4,5 s par question.
 
-- [ ] **Ce soir, une seule commande, depuis le checkout principal :** `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
+- [ ] **Une nuit, une seule commande, depuis le checkout principal :** `caffeinate -i scripts/lfm3-s1s2.sh` (pas encore lancé au 04/11 ; jamais en même temps que s6-ear). Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
   - Durée estimée : environ 1 h 30 pour s1, 2 h pour s2-256 et 5 à 6 h pour s2-1024, sur 1 600 questions, soit **environ 9 à 10 h**. La calibration passe en premier (600 questions, environ 3 h 30).
   - Inférence locale sur le GPU du M5 : ça chauffe pendant la nuit, mais il n'y a aucune réflexion de 32 000 jetons.
   - Tout reprend après une coupure : relancer la même commande, les questions déjà faites sont sautées.
@@ -278,7 +285,14 @@ Chaque point passe par un pré-enregistrement figé avant le run, comme pour s6 
 Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement « Mimi comme professeur », le jev audio, les questions `turn_end` et `keyword` (dont le zéro-shot), le contrôle conformal, les portes. Rien n'est entraîné. **Ne pas lancer en même temps que le run LFM3 du §6 : les deux utilisent le GPU.** La labellisation GLM du §1.1 peut continuer, elle ne fait que du réseau.
 
 - [x] **Prérequis.** Le compilateur Metal de Xcode : sans lui, mlx ne se recompile pas, et `sky-train` ne se construit dans aucun nouveau dossier `target`. Il a été installé le 03/11/2026 avec `xcodebuild -downloadComponent MetalToolchain` (Metal Toolchain 27B47). Les scripts passent `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, parce que `xcode-select` pointe sur les Command Line Tools.
-- [ ] **Données** (une fois ; à mesurer, de l'ordre de 30 Go téléchargés, les shards étant supprimés au fur et à mesure) : `scripts/train-ear.sh data`. Recopier les comptes de `fetch-audio`, et `data/ear/jev/REPORT.json`, dans `DATA_LICENSES.md` à la place de « not fetched yet ».
+- [x] **Données** (`scripts/train-ear.sh data`, fini le 04/11/2026) : 31 Go dans `data/ear`. Les comptes sont recopiés dans `DATA_LICENSES.md` :
+  - Smart Turn : 215 655 / 11 370 / 31 527 (train / val / test, le test étant `smart-turn-data-v3.2-test`) ;
+  - Speech Commands : 40 538 / 4 861 / 4 890 ;
+  - MSWC en + fr : 120 000 par split ;
+  - LibriSpeech + Mimi : 28 539 / 2 703 ;
+  - jev : `turn_end` 215 655 / 11 370 / 31 527, `keyword` 40 538 / 4 861 / 4 890, `keyword_zs` 113 238 / 109 049 / 2 000 (50 mots × 20 questions × 2 langues).
+  - 50 mots réservés par langue (`held_out` de `data/ear/jev/REPORT.json`) : pas d'amendement.
+  - **À dire dans le rapport :** la première archive MSWC suit l'ordre alphabétique. En anglais, 48 des 50 mots réservés commencent par « a » ; en français, ils vont de « a » à « d ». Les options d'entraînement aussi. Le zéro-shot en est plutôt plus dur : la première syllabe ne départage pas les options.
   - Fumée d'abord : `MAX_CLIPS=200 scripts/train-ear.sh data`. Le 03/11/2026, sur 200 clips par set :
     - MSWC fr : 200 / 200 / 200 (train / val / test) ;
     - LibriSpeech + Mimi : 200 / 200 (les codes Mimi ont une trame de plus que nos log-mel, la paire est coupée à la plus courte) ;
@@ -302,8 +316,8 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 
 À lancer quand le GPU est libre (pas pendant LFM3), depuis le checkout principal à jour de main, dans un terminal qui reste ouvert :
 
-- [ ] `caffeinate -i scripts/train-ear.sh data pretrain decide eval`, ou une étape à la fois. Il faut compter environ 3 h de GPU : 60 min de pré-entraînement, 60 min de décision, 60 min pour le témoin. Le téléchargement, d'environ 30 Go, se fait au fil de l'eau.
-- [ ] Après `data`, mettre dans le rapport :
+- [ ] `caffeinate -i scripts/train-ear.sh pretrain decide eval` (`data` est fait), ou une étape à la fois. Il faut compter environ 3 h de GPU : 60 min de pré-entraînement, 60 min de décision, 60 min pour le témoin. Le téléchargement, d'environ 30 Go, se fait au fil de l'eau.
+- [x] Après `data` (04/11/2026, les nombres au §8), mettre dans le rapport :
   - les comptes par set et par split ;
   - le nombre de mots réservés par langue (`data/ear/jev/REPORT.json`, `held_out`) : il en faut 50 par langue. Moins de 50 veut dire que la première archive MSWC ne suffit pas. Il faut alors un amendement daté avec `--mswc-archives 2`, **avant** `pretrain`.
 - [ ] Après `pretrain`, rapporter `val_acc_cb0`. Il doit dépasser nettement 1/2 048 : sinon, c'est un échec technique, à noter, avant de lancer `decide`.
@@ -342,7 +356,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 - [ ] Les trois portes lues **telles quelles**, sans relance pour « voir ». Un échec est publié comme tel sur la page Results.
 - [ ] La parité WASM sur 20 clips de test est ≤ 1e-4, avec le même argmax (`wasm.json`). `cargo test -p sky-web --test parity` et `wasm-pack test --node --release crates/sky-web --test parity` passent.
 - [ ] `cargo test` passe sur sky-infer, sky-data, sky-web et sky-gguf, et `cargo test --release -p sky-train` passe (avec `DEVELOPER_DIR` pointé sur Xcode). Clippy et fmt sont propres, et `bash -n` et shellcheck passent sur les scripts.
-- [ ] Dans `DATA_LICENSES.md`, les vrais comptes remplacent « not fetched yet ». Rien de `data/ear` n'est commité.
+- [x] Dans `DATA_LICENSES.md`, les vrais comptes remplacent « not fetched yet » (04/11/2026). Rien de `data/ear` n'est commité.
 - [ ] Les chiffres sont cohérents partout, sans un seul « à mesurer » qui traîne :
   - SPEC-S6 §16 ;
   - `docs/s6-ear-prereg.md` ;
