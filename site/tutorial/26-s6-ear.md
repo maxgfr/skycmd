@@ -103,7 +103,7 @@ MAX_CLIPS=200 scripts/train-ear.sh data      # smoke data: 200 clips per set
 scripts/train-ear.sh data pretrain decide eval
 ```
 
-In the browser, once a model ships:
+The [Listen](/ear/) page runs it on your microphone or on sample clips once the model ships. In your own page:
 
 ```js
 const r = JSON.parse(engine.decideAudio('noul', 'Has the speaker finished their turn?',

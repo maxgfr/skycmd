@@ -9,6 +9,7 @@ node_modules/
 site/.vitepress/cache
 site/.vitepress/dist
 site/public/pkg
+site/public/ear/dev
 .DS_Store
 *.env
 
