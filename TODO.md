@@ -122,6 +122,8 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
   - 4 workers × 50 : environ 150 labels/min, plus lent (le temps de génération d'un appel croît plus vite que le nombre de records) ;
   - 5 workers × 20 : environ 240 labels/min, comme à 4 workers, avec des erreurs 429.
 
+  - **Le 04/11/2026 : le prompt numérote les items (1 à 20) et passe en JSON compact.** Avant, GLM recopiait pour chaque item un identifiant de record de 16 chiffres hexadécimaux. Mesuré sur le même lot de 20 (deux essais) : 913 et 1 035 jetons générés au lieu de 1 337 et 1 449, et 11,3 et 13,7 s par appel au lieu de 16,2 et 18,0 s. `parse_labels` remet les identifiants de records. La consigne et les probabilités demandées ne changent pas.
+
   **Le plafond de z.ai est d'environ 4 labels/s, quel que soit le réglage.** On garde le défaut, 4 × 20, relancé le 03/11 à 20:30. Il reste environ 333 000 records, soit environ 23 h de labellisation, plus les pauses entre fenêtres. Pour relancer : `nohup caffeinate -i scripts/distill-glm.sh loop mix >> runs/distill-glm.log 2>&1 &`.
 - [ ] Plus tard : le jev audio de s6-ear (§8). Les données sont prêtes depuis le 04/11 (31 Go de log-mel : voir s'il vaut mieux ne publier que les records et la recette). On y met les records et les log-mel, pas les clips (les sources restent sous leur licence CC-BY-4.0, avec attribution).
 
