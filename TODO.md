@@ -9,11 +9,11 @@
   - **Le Mac ne doit pas se mettre en veille.** Dans la nuit du 04 au 05/11, rien n'a tourné : à 22:12, le Mac a été débranché et l'écran rabattu, et il est passé en « Clamshell Sleep ». `caffeinate -i` n'empêche pas cette veille-là.
     - Le plus simple : le laisser branché et ouvert.
     - Sinon, l'utilisateur tape lui-même `sudo pmset -a disablesleep 1` avant, puis `sudo pmset -a disablesleep 0` après. C'est un réglage système : Claude ne le fait pas.
-- **Labels GLM-5.3-flash (§1.1)** : 599 350 sur 747 198 (80 %) le 05/11 à 08:41, 80 refus de la modération.
-  - **La nuit :** presque rien n'a avancé à cause de la veille, et rien n'est perdu. La reprise s'est faite au réveil, à 07:42.
-  - **Le débit :** 4,7 labels/s avec le prompt aux items numérotés (#85). Le 05/11, un essai à 6 workers a donné 3,99 labels/s, avec des erreurs HTTP 429 (code 1302), et un worker qui s'arrête après 3 échecs de suite. **On reste à 4 workers.**
-  - **La fin :** le 05/11 à 15 h, 682 319 labels sur 747 198 (91 %) à 280 labels/min, donc **la fin vers 19 h**. La veille du Mac de la nuit du 04 au 05/11 a fait glisser l'estimation de 17 h 30.
-  - `skycmd-glm-labels` a été republié à 91 % le 05/11 (§1.2). La version finale sera publiée à la fin de la boucle.
+- **Labels GLM-5.3-flash (§1.1) : finis le 05/11/2026 à 19 h 40, à 100 %.** 747 077 labels et 121 textes refusés par la modération, soit les 747 198 records.
+  - L'accord avec la bonne réponse est de 560 238 sur 747 077 (0,750).
+  - `data/distill/glm.jsonl` est écrit : c'est le mélange final, que `train-s6.sh` attend.
+  - `skycmd-glm-labels` est publié en version complète (§1.2).
+  - La boucle s'est arrêtée seule à 19:22, avec 267 records restants (99,96 %, au-dessus du seuil de 99 %). Deux passes `label` les ont finis, puis `mix`.
 - **Données s6-ear téléchargées (§8)** : les comptes sont dans `DATA_LICENSES.md`, et il y a bien 50 mots réservés par langue, sans amendement.
 - **Nos 13 jeux de données sont publics sur Hugging Face (§1.2)** : tout ce qu'un modèle lit et tout ce qu'on a créé nous-mêmes (jeux, séries synthétiques, secrets, évaluations écrites à la main), les labels GLM compris (marqués comme générés par IA). Seuls manquent l'audio de s6-ear (31 Go, reconstruit par `sky-data fetch-audio`), le jeu gated et GIFT-Eval.
 - **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot. Celles de s6-secrets et s6-cast aussi (§3, §4).
@@ -23,13 +23,7 @@
 - **LFM3 fine-tuné sur Hugging Face Jobs (§6.1)** : pré-enregistrement figé (`docs/lfm3-ft-prereg.md`), scripts et tests prêts, **rien n'a tourné**. Le routeur S1/S2 du §6 passe à distance, en bf16, par l'amendement 1 de son pré-enregistrement. Le premier pas est le smoke, sur L4 pour environ 0,50 $, après l'accord de l'utilisateur sur le coût.
 - **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7). Son worktree `.claude/worktrees/issue-75-wsp-lfm3` traîne encore : à supprimer sur l'accord de l'utilisateur.
 
-> **La labellisation GLM tourne en arrière-plan depuis le 29/10/2026 (§1.1, environ 80 h).** Si la machine s'éteint ou redémarre, la relancer depuis le checkout principal :
->
-> ```
-> caffeinate -i scripts/distill-glm.sh loop mix
-> ```
->
-> Elle reprend là où elle s'était arrêtée, sans rien perdre. `pgrep -fl distill-glm` dit si elle tourne encore. `scripts/distill-glm.sh count` donne ce qui reste, sans faire d'appel. Le journal est dans `runs/distill-glm.log`.
+> **La labellisation GLM est finie (05/11/2026, §1.1).** Il n'y a plus rien à relancer. `scripts/distill-glm.sh count` doit afficher 0 record à labelliser.
 
 Cinq modèles ont leur code prêt et ne sont pas encore entraînés : **s6-nano** et **s6-micro** (le s6 généraliste : les jeux et des questions en texte libre), **s6-secrets-pico**, **s6-cast-pico** et **s6-ear-nano** (l'audio, §8). Chacun a un pré-enregistrement figé. **s6-pico n'est plus un modèle final** (`docs/s6-prereg.md`, amendement 2) : son pilote et son ablation restent, parce qu'ils choisissent la recette des deux tailles. On suit chaque pré-enregistrement à la lettre :
 
@@ -43,7 +37,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre (§9, tout sur le M5, une tranche par nuit) : labels GLM (§1.1, fin prévue vers le 05/11 à 17 h 30) → pilote et ablation pico → recette (`scripts/s6-adopt.py`) → s6-ear → s6-secrets → s6-nano → s6-micro → s6-cast → LFM3 S1/S2 (§6) → LFM3 fine-tuné (§6.1). Les durées sont mesurées ou estimées sur le M5.
+Ordre (§9, tout sur le M5, une tranche par nuit) : labels GLM (§1.1, finis le 05/11) → pilote et ablation pico → recette (`scripts/s6-adopt.py`) → s6-ear → s6-secrets → s6-nano → s6-micro → s6-cast → LFM3 S1/S2 (§6) → LFM3 fine-tuné (§6.1). Les durées sont mesurées ou estimées sur le M5.
 
 ## 0. Prérequis
 
@@ -74,7 +68,7 @@ GLM-5.3-flash est open source : poids sous licence MIT, [`zai-org/GLM-5.3-Flash`
 
 - [x] `ccs list` doit montrer le fournisseur `zai` configuré (`ccs use zai` sinon). Le script lit l'endpoint et la clé dans la config de `ccs`, sans jamais afficher la clé ; `SKY_TEACHER_URL` et `SKY_TEACHER_KEY` priment s'ils sont définis.
 - [x] `scripts/distill-glm.sh count` (aucun appel) : 747 198 records (tous les records `train` des jeux Hugging Face de `data/decisions`) et 37 360 appels de 20 attendus. Un autre compte veut dire que `data/decisions` a changé : comprendre pourquoi avant d'appeler.
-- [ ] **Lancer le tout, sans surveillance :** `caffeinate -i scripts/distill-glm.sh loop mix`, dans un terminal qui reste ouvert (ou `mkdir -p runs && nohup caffeinate -i scripts/distill-glm.sh loop mix > runs/distill-glm.log 2>&1 &`).
+- [x] **Lancer le tout, sans surveillance :** `caffeinate -i scripts/distill-glm.sh loop mix`, dans un terminal qui reste ouvert (ou `mkdir -p runs && nohup caffeinate -i scripts/distill-glm.sh loop mix > runs/distill-glm.log 2>&1 &`).
   - **En cours depuis le 29/10/2026 à 16:28**, avec `nohup` (journal : `runs/distill-glm.log`). Pour savoir s'il tourne encore : `pgrep -fl distill-glm`. Cocher quand `loop` affiche « coverage reached » et que `mix` a écrit `data/distill/glm.jsonl`.
   - **Le 04/11/2026 à 19:15** : 539 229 sur 747 198 (72 %), 63 refus. La boucle s'était arrêtée à 11:38 (relance des sessions) ; relancée à 12:32, environ 3,3 labels/s depuis.
   - **Le 03/11/2026** : 350 949 labels sur 747 198 (47 %). Le redémarrage de la machine du 02/11 à 21:17 avait arrêté la boucle ; elle a été relancée le 03/11. Il reste 396 249 records, soit 19 813 appels.
@@ -84,9 +78,9 @@ GLM-5.3-flash est open source : poids sous licence MIT, [`zai-org/GLM-5.3-Flash`
   - Quand une fenêtre est épuisée, chaque worker s'arrête après 3 lots ratés de suite. `loop` fait une pause de 30 min (`PAUSE=1800`) et reprend là où il s'était arrêté, jusqu'à ce qu'il reste au plus 1 % de la sélection (`COVER_MISS=1`). Il abandonne après 24 pauses sans progrès (`TRIES=24`), soit 12 h.
   - Avancement à tout moment : `scripts/distill-glm.sh count` (sans appel).
   - Si `loop` s'arrête avant la fin (machine éteinte, `TRIES` atteint), relancer la même commande : rien n'est perdu.
-- [ ] Les labels doivent couvrir au moins **95 %** de la sélection (`loop` vise 99 %, les textes refusés comptant comme traités). Les textes refusés par la modération comptent comme **non labellisés** pour ces 95 %. Sinon, un amendement daté avant tout run. Le rapport donne le nombre de refus par source (`glm_labels.refused.jsonl`).
-- [ ] `mix` (lancé par `loop mix`, ou seul : `scripts/distill-glm.sh mix`) écrit `data/distill/glm.jsonl` et le taux d'accord par source (`data/distill/agreement.json`). À recopier dans le rapport avec le nombre d'appels et de jetons. Les essais du 29/10/2026 donnaient 15 accords sur 20, puis 19 sur 26.
-- [ ] Remplacer « 747,198 selected » et « the agreeing labels » par les vrais nombres dans `DATA_LICENSES.md` (section s6-nano / s6-micro).
+- [x] **Couverture : 99,98 %** (747 077 sur 747 198, les 121 refus comptés comme non labellisés), donc pas d'amendement. Les labels doivent couvrir au moins **95 %** de la sélection (`loop` vise 99 %, les textes refusés comptant comme traités). Les textes refusés par la modération comptent comme **non labellisés** pour ces 95 %. Sinon, un amendement daté avant tout run. Le rapport donne le nombre de refus par source (`glm_labels.refused.jsonl`).
+- [x] **Fini le 05/11/2026 :** 560 238 accords sur 747 077 (0,750), le détail par source est dans `data/distill/agreement.json`. `mix` (lancé par `loop mix`, ou seul : `scripts/distill-glm.sh mix`) écrit `data/distill/glm.jsonl` et le taux d'accord par source (`data/distill/agreement.json`). À recopier dans le rapport avec le nombre d'appels et de jetons. Les essais du 29/10/2026 donnaient 15 accords sur 20, puis 19 sur 26.
+- [x] Remplacer « 747,198 selected » et « the agreeing labels » par les vrais nombres dans `DATA_LICENSES.md` (section s6-nano / s6-micro).
 
 ### 1.2 Publier nos jeux de données sur Hugging Face
 
@@ -128,9 +122,9 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
   - Il a deux configs : `agree` (les records dont l'argmax du professeur est la réponse juste, avec pour cible les probabilités du professeur) et `labels` (tous les labels bruts).
   - Il ne contient ni les textes refusés par la modération ni `typed_decisions_train`.
 - [x] **Republié le 04/11/2026 à 72 %** : `labels` 535 278 lignes, `agree` 403 040 (93,7 Mo). L'accord avec la bonne réponse est de 405 990 sur 539 368 (0,753) sur tout ce qui est labellisé, `typed_decisions` compris.
-- [ ] **Mettre à jour `skycmd-glm-labels`** une dernière fois à la fin de la labellisation (vers le 05/11). Les commandes, depuis le checkout principal :
+- [x] **`skycmd-glm-labels` publié en version complète le 05/11/2026** (`--glm-final`) : `labels` 741 437 lignes et `agree` 556 175, sans `typed_decisions_train`, qui est gated. Les commandes, depuis le checkout principal :
   - `target/s3-train/release/sky-data teacher mix-labels --labels data/teacher/glm_labels.jsonl --from data/decisions --out <tmp>/glm-mix --alpha 0` ;
-  - puis `uv run scripts/hf-publish-data.py --glm <tmp>/glm-mix --glm-date "<date>"`.
+  - puis `uv run scripts/hf-publish-data.py --glm <tmp>/glm-mix --glm-date "<date>" --glm-final`.
 
   Ne **jamais** écrire ce mélange partiel dans `data/distill` : `train-s6.sh` le prendrait pour le mélange final.
 - **Vitesse de la labellisation sur z.ai** (03/11/2026). Le quota n'est pas la limite, la concurrence l'est. Les mesures :
