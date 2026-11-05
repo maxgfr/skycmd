@@ -2,13 +2,13 @@
 
 ## Où on en est (05/11/2026, 08:45)
 
-- **Le prochain run : tout entraîner, au mieux (§9), sur des machines louées, jamais sur le M5.** C'est la décision de l'utilisateur du 05/11 : « entraîne tout au mieux avec tout ce qu'il faut, on va louer un GPU ». Ce n'est **pas** pour tout de suite : on le lance une prochaine fois. Le §9 dit ce qui est prêt et ce qui reste à faire avant.
-  - **Les 5 modèles s6**, avec les optimisations que le pilote et l'ablation adoptent (règles appliquées automatiquement).
-  - **LFM3-1.7B fine-tuné** sur HF Jobs (§6.1).
-  - **Aucun modèle local**, parce que le M5 chauffe trop. LFM3 ne tourne plus en local : son ancienne commande (§6) est à ne pas lancer.
-  - **Le Mac ne doit pas se mettre en veille** pendant la labellisation GLM qui tourne encore. Dans la nuit du 04 au 05/11, rien n'a tourné : à 22:12, le Mac a été débranché et l'écran rabattu, et il est passé en « Clamshell Sleep ». `caffeinate -i` n'empêche pas cette veille-là.
+- **Le prochain run : tout entraîner, au mieux (§9), sur le M5.** Le 05/11, l'utilisateur avait d'abord parlé de louer des GPU, puis a tranché : « finalement je ferai tout sur mon pc ». Il n'y a donc **ni Mac loué ni HF Jobs**, et ce n'est **pas** pour tout de suite. Le §9 dit ce qui est prêt et ce qui reste à faire.
+  - **Les 5 modèles s6**, avec les optimisations que le pilote et l'ablation adoptent (règles appliquées automatiquement) : environ 48 h de GPU.
+  - **LFM3-1.7B** : le routeur S1/S2 (§6) et le fine-tuning (§6.1), en local. Il faut d'abord les amendements du §9.2 : le §6.1 et l'amendement 1 du §6 visaient HF Jobs.
+  - **La machine va chauffer pendant plusieurs jours.** On découpe en tranches d'une nuit (§9.4) : tout reprend là où ça s'était arrêté.
+  - **Le Mac ne doit pas se mettre en veille.** Dans la nuit du 04 au 05/11, rien n'a tourné : à 22:12, le Mac a été débranché et l'écran rabattu, et il est passé en « Clamshell Sleep ». `caffeinate -i` n'empêche pas cette veille-là.
     - Le plus simple : le laisser branché et ouvert.
-    - Sinon, l'utilisateur tape lui-même `sudo pmset -a disablesleep 1`, puis `sudo pmset -a disablesleep 0` ensuite. C'est un réglage système : Claude ne le fait pas.
+    - Sinon, l'utilisateur tape lui-même `sudo pmset -a disablesleep 1` avant, puis `sudo pmset -a disablesleep 0` après. C'est un réglage système : Claude ne le fait pas.
 - **Labels GLM-5.3-flash (§1.1)** : 599 350 sur 747 198 (80 %) le 05/11 à 08:41, 80 refus de la modération.
   - **La nuit :** presque rien n'a avancé à cause de la veille, et rien n'est perdu. La reprise s'est faite au réveil, à 07:42.
   - **Le débit :** 4,7 labels/s avec le prompt aux items numérotés (#85). Le 05/11, un essai à 6 workers a donné 3,99 labels/s, avec des erreurs HTTP 429 (code 1302), et un worker qui s'arrête après 3 échecs de suite. **On reste à 4 workers.**
@@ -43,7 +43,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre (§9) : labels GLM (§1.1, fin prévue vers le 05/11 à 17 h 30) → le grand run sur 3 Mac loués : pilote → ablation pico → recette (`scripts/s6-adopt.py`) → s6-ear, s6-secrets, s6-nano, s6-micro et s6-cast en 3 voies parallèles. En même temps, LFM3 S1/S2 (§6) et son fine-tuning (§6.1) sur Hugging Face Jobs. Rien de lourd sur le M5. Les durées sont mesurées ou estimées à la vitesse d'un M5.
+Ordre (§9, tout sur le M5, une tranche par nuit) : labels GLM (§1.1, fin prévue vers le 05/11 à 17 h 30) → pilote et ablation pico → recette (`scripts/s6-adopt.py`) → s6-ear → s6-secrets → s6-nano → s6-micro → s6-cast → LFM3 S1/S2 (§6) → LFM3 fine-tuné (§6.1). Les durées sont mesurées ou estimées sur le M5.
 
 ## 0. Prérequis
 
@@ -235,13 +235,12 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 - les données écrites dans `data/lfm3/` : 600 questions de calibration, 1 000 de test ;
 - un essai de fumée de 3 questions par mode, réussi (`runs/lfm3-s1s2-smoke`). Débit : 98 jetons/s sans réflexion, 80 avec, environ 4,5 s par question.
 
-- [x] **Amendement 1 du pré-enregistrement (05/11/2026)** : le run passe à distance, en bf16, sur Hugging Face Jobs avec vLLM (ou le repli transformers), pour le modèle de base **et** le modèle fine-tuné. `route` tourne en local sur les générations rapatriées. Les commandes sont au §6.1 (`scripts/lfm3-ft.sh eval pull route`). L'option « GPU loué » ci-dessous a été retenue.
-- [ ] **Pas en local** (décision de l'utilisateur, 05/11/2026). Faire tourner LFM3 sur le GPU du M5 pendant 10 h chauffe trop la machine. Le run ne se fera qu'à distance, après un **amendement daté** du pré-enregistrement (fait, ci-dessus) : les deux options ci-dessous changent le modèle, qui passe en bf16 au lieu de `LFM3-1.7B-MLX-4bit`, et le moteur. La sonde S1 lit les log-probas des jetons (`r.logprobs` dans `s1s2.py`), donc l'option retenue doit les fournir. Les options :
-  - **L'API de Liquid (Liquid Console)** : LFM3 y est annoncé, mais le prix n'est pas confirmé (une source donne 0,08 $ / 0,20 $ par million de jetons en entrée / sortie), et il faut vérifier qu'elle rend les log-probas. LFM3 n'est **pas** sur OpenRouter au 05/11 (seulement `liquid/lfm-2.5-*`), ni chez un fournisseur d'inférence Hugging Face.
-  - **Un GPU loué** avec `vllm serve LiquidAI/LFM3-1.7B`, qui rend les log-probas. Il faut adapter `s1s2.py` à un client OpenAI-compatible.
-- [ ] Pour mémoire, l'ancienne commande locale, **à ne pas lancer** : `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
+- **Le 05/11/2026, deux décisions de l'utilisateur se sont succédé.**
+  - D'abord « pas en local » : le M5 chauffe trop. L'amendement 1 du pré-enregistrement a fait passer le run à distance (bf16, Hugging Face Jobs, vLLM ou transformers).
+  - Puis « finalement je ferai tout sur mon pc ». Il faut donc un **amendement 2** qui annule le 1 et revient au protocole d'origine : MLX-4bit, mlx-vlm et le M5 (§9.2).
+- [ ] **La commande, une nuit (§9.4, nuit 5), après l'amendement 2 :** `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
   - Durée estimée : environ 1 h 30 pour s1, 2 h pour s2-256 et 5 à 6 h pour s2-1024, sur 1 600 questions, soit **environ 9 à 10 h**. La calibration passe en premier (600 questions, environ 3 h 30).
-  - Inférence locale sur le GPU du M5 : ça chauffe pendant toute la nuit. C'est la raison de la décision du 05/11.
+  - Inférence locale sur le GPU du M5 : ça chauffe toute la nuit. Le Mac doit rester branché et ouvert.
   - Tout reprend après une coupure : relancer la même commande, les questions déjà faites sont sautées.
   - La labellisation GLM (§1.1) peut continuer en même temps : elle ne fait que du réseau.
 - [ ] **Au réveil**, lire `runs/lfm3-s1s2/report-calib.md` (calibration) puis `runs/lfm3-s1s2/report.md` (test, avec le verdict). Si la nuit n'a pas suffi, relancer `scripts/lfm3-s1s2.sh calib test route` : ça reprend.
@@ -261,7 +260,12 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 
   Chacun passe par un amendement daté du pré-enregistrement.
 
-### 6.1 LFM3 fine-tuné (HF Jobs) (`docs/lfm3-ft-prereg.md`) — **rien n'a tourné**
+### 6.1 LFM3 fine-tuné (`docs/lfm3-ft-prereg.md`) — **rien n'a tourné**
+
+> **Changement du 05/11/2026 : tout se fait sur le M5, plus sur HF Jobs** (décision de l'utilisateur). Le texte ci-dessous décrit encore la version HF Jobs. Avant le moindre calcul, il faut l'amendement 1 de `docs/lfm3-ft-prereg.md` et l'amendement 2 de `docs/lfm3-s1s2-prereg.md`, qui remplace le 1 (§9.2), ainsi qu'un mode local dans `scripts/lfm3-ft.sh`.
+> - **Génération et évaluation :** avec mlx-vlm, comme `experiments/lfm3-s1s2/s1s2.py` (mlx-lm ne charge pas LFM3, et vLLM ne tourne pas sur Mac).
+> - **La LoRA :** avec transformers + peft sur MPS, ou avec l'entraîneur LoRA de mlx-vlm. Un smoke local de quelques minutes tranche, avec une règle écrite avant.
+> - **La génération locale est lente** : environ 80 jetons/s, soit environ 4,5 s par question. Le plafond pré-enregistré de 1 000 questions par tâche s'applique donc d'office : environ 2 000 questions × 4 tirages, soit de l'ordre de 10 à 15 h, à étaler sur plusieurs nuits.
 
 **L'idée.** Le routeur choisit quand réfléchir, mais ne répare pas le Système 1 : sans réflexion, LFM3-1.7B peut boucler jusqu'à la limite (l'essai de fumée). Ici, on apprend au modèle à répondre juste et court sans réfléchir. C'est un LoRA entraîné sur :
 - les solutions rédigées de GSM8K et MATH (train, MIT) ;
@@ -421,16 +425,17 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
   - la carte `hf/cards/s6-ear-nano.md`.
 - [ ] `cd site && npm run docs:build` passe (sans lien mort). Le Space Hugging Face est vérifié dans un vrai navigateur (le modèle se charge, la démo répond, la console est propre).
 
-## 9. Le grand run : tout entraîner, au mieux (décidé le 05/11/2026, à lancer une prochaine fois)
+## 9. Le grand run : tout entraîner, au mieux, sur le M5 (décidé le 05/11/2026, à lancer une prochaine fois)
 
-**La demande.** « Entraîne tout au mieux avec tout ce qu'il faut, on va louer un GPU. » Concrètement :
+**La demande.** « Entraîne tout au mieux avec tout ce qu'il faut », puis, le 05/11 : « finalement je ferai tout sur mon pc ». Concrètement :
 - **Les 5 modèles s6** (s6-ear-nano, s6-nano, s6-micro, s6-secrets-pico, s6-cast-pico), avec les optimisations que le pilote et l'ablation pico adoptent. Le choix de l'utilisateur, « ablation automatique puis tout », est la version honnête de « toutes les optimisations » : une option n'est adoptée que si les règles pré-enregistrées le disent, et **aucune décision n'est prise à la main**.
-- **LFM3-1.7B fine-tuné** (§6.1).
-- **Rien de lourd sur le M5**, qui chauffe trop.
+- **LFM3-1.7B** : le routeur S1/S2 (§6) et le fine-tuning (§6.1).
+- **Tout sur le M5.** Il n'y a ni Mac loué ni HF Jobs, donc rien à payer. En contrepartie, la machine chauffe pendant plusieurs jours, découpés en nuits (§9.4).
 
-**La contrainte qui décide de tout.** `sky-train` tourne sur mlx-rs, donc uniquement sur Apple Silicon (Metal). **Un GPU NVIDIA ne peut pas entraîner les s6.**
-- **Pour les s6 :** il faut louer des Mac Apple Silicon. Le choix est 3 Scaleway **M4-XL** (M4 Pro 14 cœurs, GPU 20 cœurs, 64 Go), à 0,49 €/h HT, avec **24 h minimum** (licence Apple). Ça donne environ 20 à 24 h de bout en bout au lieu d'environ 48 h sur une seule machine, pour à peu près 40 € en tout. AWS fait payer son `mac-m4pro` 1,97 $/h, aussi avec 24 h minimum.
-- **Pour LFM3 :** HF Jobs (NVIDIA), environ 20 à 40 $ en tout. Claude confirme le coût avant chaque lancement payant.
+**Ce que ça change par rapport au plan avec location.**
+- `TIME_SCALE` reste à 1, puisque les budgets sont ceux du M5. `scripts/speed-probe.sh` ne sert pas, et `cloud-mac.sh` n'est plus à écrire.
+- L'ablation tourne entière sur une seule machine (environ 15 h), sans `--summary-only`.
+- `s6lr --extend`, `s6-adopt.py` et la recette passée aux scripts servent tels quels.
 
 ### 9.1 Ce qui est prêt (05/11/2026, testé)
 
@@ -457,57 +462,46 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 ### 9.2 Ce qui reste à faire avant le run (par Claude, sans GPU)
 
 - [ ] **Les amendements datés, commités avant le moindre run :**
-  - **`docs/s6-prereg.md` §7, amendement 4.** Il couvre quatre points :
-    - les règles §4 sont appliquées par `scripts/s6-adopt.py`, et la recette écrite dans `runs/recipe/recipe.json` remplace le commit manuel (elle sera commitée dans le rapport) ;
-    - l'extension au bord est lancée automatiquement par `s6lr --extend` ;
-    - les runs tournent sur des M4 Pro loués, et les budgets en minutes des modèles finaux sont multipliés par `TIME_SCALE` ;
-    - les 11 bras de l'ablation sont répartis sur 3 machines identiques.
+  - **`docs/s6-prereg.md` §7, amendement 4** : les règles §4 sont appliquées par `scripts/s6-adopt.py`. La recette écrite dans `runs/recipe/recipe.json` remplace le commit manuel, et elle est commitée dans le rapport. L'extension au bord est lancée automatiquement par `s6lr --extend`.
   - **`docs/s6-ear-prereg.md` §8, amendement 2.** s6-ear tourne après l'ablation, avec la recette, pour le modèle et pour son témoin. Son taux est centré par μP. Le curriculum est sans effet en audio.
   - **`docs/s6-cast-prereg.md` §7, amendement 3.** s6-cast prend Muon ou AdamW, SODA, sans polish, StableQAT et XSA si l'ablation les adopte. Son pilote décide seul, par ses propres règles.
   - **`docs/s6-gen-prereg.md` et `docs/s6-secrets-prereg.md`** : une ligne chacun, pour dire que la recette passe par le fichier.
-- [ ] **La référence de vitesse du M5** : `configs/speed-m5.json`, à mesurer par `scripts/speed-probe.sh` sur le M5, puis à copier depuis `runs/speed/<hôte>.json`. Ce sont environ 2 min de GPU, le seul calcul qui touche le M5. Le 05/11, la mesure a été arrêtée avant la fin : on ne lance rien maintenant.
-- [ ] **`scripts/train-all.sh`, l'orchestrateur.** Chaque étape est idempotente, avec un marqueur dans `runs/all/done/`, un journal dans `runs/all/` et `DRY_RUN=1`. Les étapes :
-  - `probe` (`TIME_SCALE`) ;
+  - **`docs/lfm3-s1s2-prereg.md`, amendement 2** : il annule l'amendement 1 (à distance), et le routeur repart en local, avec MLX-4bit et mlx-vlm, comme pré-enregistré à l'origine.
+  - **`docs/lfm3-ft-prereg.md`, amendement 1** : moteur local, LoRA par la méthode que le smoke local tranche, et le plafond de 1 000 questions par tâche. Les portes G1 à G3 ne changent pas.
+- [ ] **`scripts/train-all.sh`, l'orchestrateur, sur une seule machine.** Chaque étape est idempotente, avec un marqueur dans `runs/all/done/`, un journal dans `runs/all/` et `DRY_RUN=1`. Les étapes, dans l'ordre :
   - `pilot` (`cargo xtask s6lr`, puis `s6lr --extend`) ;
-  - `ablation P/3` (`cargo xtask s6ab --arms <un tiers des 11 bras> --adamw-lr-scale … --muon-lr-scale …`, avec les échelles lues dans `runs/s6lr/summary.json`) ;
-  - `merge` (il vérifie que les 33 `arena.json` sont là, puis lance `s6ab --summary-only`) ;
+  - `ablation` (`cargo xtask s6ab --adamw-lr-scale … --muon-lr-scale …`, avec les échelles lues dans `runs/s6lr/summary.json`) ;
   - `adopt` ;
   - les modèles, chacun avec `eval "$(scripts/s6-adopt.py env …)"` :
     - `ear` : `pretrain decide eval` ;
     - `secrets` : `train eval` ;
     - `nano` et `micro` : `lr train dagger exit eval`, après avoir vérifié `data/distill/glm.jsonl` et une couverture d'au moins 95 % ;
     - `cast` : `pilot train export eval` ;
-  - les voies : `lane1` = micro, `lane2` = nano puis secrets, `lane3` = ear puis cast ;
   - `report`, qui rassemble les portes de chaque modèle dans `runs/all/REPORT.md`.
   - Un mode `SMOKE=1` avec des budgets de quelques minutes, `ROUNDS=1`, `DAGGER_N=200` et `EPISODES=2`.
-- [ ] **`scripts/cloud-mac.sh HOST`.**
-  - `setup` : Xcode et Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`), rustup, uv et node ; le clone de main ; un rsync des données, environ 45 Go (`data/{ear,decisions,games,numeric,text,text-open,secrets,series,gift-eval,gift-eval-src,gift-eval-out,tok,s4,distill}`) ; le build.
-  - `run STEP` : lance l'étape dans tmux, sous `caffeinate`.
-  - `pull` : rapatrie `runs/` et `models/`.
-  - `push-runs` : envoie les runs d'ablation vers la machine qui fait le `merge`.
+- [ ] **Le mode local de `scripts/lfm3-ft.sh`** (`gen`, `sft` et `eval` avec mlx-vlm ou MPS, sans `hf jobs`) et son smoke local.
 - [ ] **Les vérifications :**
   - `cargo test -p xtask` ;
   - `python3 -I scripts/test_s6_adopt.py` ;
+  - `python3 experiments/lfm3-ft/test_common.py` ;
   - `bash -n` et shellcheck ;
-  - `DRY_RUN=1 scripts/train-all.sh` sur chaque étape.
+  - `DRY_RUN=1` sur chaque étape de `train-all.sh` et de `lfm3-ft.sh`.
 
 ### 9.3 Ce que fait l'utilisateur
 
-- [ ] **Louer 3 Scaleway M4-XL.** C'est de la même gamme pour les trois, ce qu'exige la règle des 15 % de `train_minutes`. Ajouter la clé ssh de ce Mac, et donner les 3 adresses à Claude.
-- [ ] **Alimenter HF Jobs** (compte Pro ou crédits) pour LFM3 (§6.1).
-- [ ] **Garder le Mac éveillé** jusqu'à la fin de la labellisation GLM.
+- [ ] Laisser le Mac **branché et ouvert** pendant chaque tranche, ou bien `sudo pmset -a disablesleep 1` avant et `sudo pmset -a disablesleep 0` après (§ « Où on en est »).
+- [ ] Lancer chaque tranche (§9.4), une commande par nuit, ou laisser Claude la lancer sur demande.
 
-### 9.4 Le run (une fois 9.2 et 9.3 faits)
+### 9.4 Le run sur le M5, en tranches d'une nuit (une fois le 9.2 fait)
 
-1. **La fumée `SMOKE=1`** sur la première machine louée, environ 30 min : les 5 modèles de bout en bout, en quelques minutes chacun, sortent leur GGUF et leurs portes.
-2. **Le pilote** sur la machine 1, environ 2 h 30 à la vitesse du M5, puis l'extension si besoin.
-3. **L'ablation** en 3 parts, une par machine, environ 5 à 6 h. Ensuite `push-runs`, puis `merge` et `adopt` sur la machine 1.
-4. **Les labels GLM :** finis vers le 05/11 à 17 h 30. `mix` écrit `data/distill/glm.jsonl`, que `cloud-mac.sh` envoie aux machines 1 et 2 avant s6-micro et s6-nano.
-5. **Les 3 voies en parallèle**, environ 12 h, la plus longue étant s6-micro :
-   - machine 1 : s6-micro ;
-   - machine 2 : s6-nano puis s6-secrets ;
-   - machine 3 : s6-ear puis s6-cast.
-6. **Les résultats.** `pull` sur les 3 machines, puis `report`. Chaque porte est lue telle quelle, sans relance pour « voir », et un échec est publié comme tel.
-   - On met à jour le TODO, `BENCH.md` et la page Results, et on commite la recette et `REPORT.md`.
-   - Les machines sont supprimées dès qu'on n'en a plus besoin : elles sont facturées jusqu'à leur suppression.
-7. **La publication (§5)** se fait seulement avec l'accord de l'utilisateur, modèle par modèle.
+Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `train-all.sh`, reprise de xtask et des scripts). Les durées sont celles du M5.
+
+1. **La fumée `SMOKE=1`**, environ 30 min : les 5 modèles de bout en bout, en quelques minutes chacun, sortent leur GGUF et leurs portes.
+2. **Nuit 1 : le pilote et l'ablation pico, environ 17 h 30.** Le pilote prend environ 2 h 30, plus l'extension si besoin ; l'ablation prend environ 15 h. Puis `adopt`, qui écrit la recette.
+3. **Nuit 2 : s6-ear, s6-secrets puis s6-nano, environ 11 h.** s6-ear prend environ 3 h, s6-secrets environ 30 min et s6-nano environ 7 h. Les labels GLM doivent être finis et mélangés (`data/distill/glm.jsonl`).
+4. **Nuit 3 : s6-micro, environ 11 h.**
+5. **Nuit 4 : s6-cast, environ 9 h** (pilote, puis 8 h d'entraînement).
+6. **Nuit 5 : LFM3 S1/S2 (§6), environ 9 à 10 h**, avec `caffeinate -i scripts/lfm3-s1s2.sh`.
+7. **Nuits 6 et suivantes : LFM3 fine-tuné (§6.1).** La génération prend de l'ordre de 10 à 15 h, puis viennent la LoRA et l'évaluation des deux modèles.
+8. **Les résultats.** `report` rassemble tout. Chaque porte est lue telle quelle, sans relance pour « voir », et un échec est publié comme tel. On met à jour le TODO, `BENCH.md` et la page Results, et on commite la recette et `REPORT.md`.
+9. **La publication (§5)** se fait seulement avec l'accord de l'utilisateur, modèle par modèle.
