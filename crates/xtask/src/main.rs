@@ -42,8 +42,8 @@ fn usage() -> ! {
     eprintln!(
         "usage:\n  cargo xtask s5 list\n  cargo xtask s5 <stage> [--force] [--dry-run] [--jobs N] [--runs a,b]\n  cargo xtask store\n  \
          cargo xtask regress [--update]\n  cargo xtask loopcal [--force] [--jobs N]\n  \
-         cargo xtask s6lr [--force] [--dry-run]\n  \
-         cargo xtask s6ab [--force] [--dry-run] [--arms a,b] [--adamw-lr-scale x] [--muon-lr-scale y]\n\n\
+         cargo xtask s6lr [--force] [--dry-run] [--extend]\n  \
+         cargo xtask s6ab [--force] [--dry-run] [--arms a,b] [--summary-only] [--adamw-lr-scale x] [--muon-lr-scale y]\n\n\
          SKYCMD_STORE must point at the main checkout of this repository."
     );
     std::process::exit(2)
@@ -89,7 +89,7 @@ fn main() -> Result<()> {
             loopcal::summarize(&store, &checkout())
         }
         Some("s6ab") => {
-            let (mut force, mut dry, mut only) = (false, false, None);
+            let (mut force, mut dry, mut only, mut summary_only) = (false, false, None, false);
             let mut scale = s6ab::LrScale::default();
             let mut it = args[1..].iter();
             let num = |flag: &str, v: Option<&String>| -> Result<f64> {
@@ -105,6 +105,10 @@ fn main() -> Result<()> {
                     "--force" => force = true,
                     "--dry-run" => dry = true,
                     "--arms" => only = Some(it.next().context("--arms a,b")?.clone()),
+                    // The runs were made elsewhere (one part of the arms per machine) and copied
+                    // into the store: only the summary, no training (the resume stamps are per
+                    // machine and stage, so a rerun would not see these runs as done).
+                    "--summary-only" => summary_only = true,
                     "--adamw-lr-scale" => scale.adamw = num(a, it.next())?,
                     "--muon-lr-scale" => scale.muon = num(a, it.next())?,
                     bad => bail!("unknown argument {bad:?}"),
@@ -113,24 +117,32 @@ fn main() -> Result<()> {
             let arms = s6ab::selected(only.as_deref())?;
             let store = store()?;
             fs::create_dir_all(store.join("runs/s6ab"))?;
-            run_stage(&s6ab::stage(&arms, scale), force, dry, 1)?;
+            if !summary_only {
+                run_stage(&s6ab::stage(&arms, scale), force, dry, 1)?;
+            }
             if dry {
                 return Ok(());
             }
             s6ab::summarize(&store, &arms, scale)
         }
         Some("s6lr") => {
-            let (mut force, mut dry) = (false, false);
+            let (mut force, mut dry, mut extend) = (false, false, false);
             for a in &args[1..] {
                 match a.as_str() {
                     "--force" => force = true,
                     "--dry-run" => dry = true,
+                    "--extend" => extend = true,
                     bad => bail!("unknown argument {bad:?}"),
                 }
             }
             let store = store()?;
             fs::create_dir_all(store.join("runs/s6lr"))?;
-            run_stage(&s6ab::pilot_stage(), force, dry, 1)?;
+            if extend {
+                // The grid has run: only the extension of an edge choice (amendment 4).
+                run_stage(&s6ab::pilot_extend_stage(&store)?, force, dry, 1)?;
+            } else {
+                run_stage(&s6ab::pilot_stage(), force, dry, 1)?;
+            }
             if dry {
                 return Ok(());
             }
