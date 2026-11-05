@@ -26,6 +26,6 @@ pub use doom::{Doom, DoomAction};
 pub use flappy::{Flappy, FlappyAction};
 pub use rescue::{Rescue, RescueAction};
 pub use rollout::{
-    evaluate, evaluate_with, make_game, EvalOptions, Metrics, OraclePolicy, Policy, RandomPolicy,
-    GAMES,
+    evaluate, evaluate_with, make_game, record_with, EvalOptions, Metrics, OraclePolicy, Policy,
+    RandomPolicy, TrajEpisode, TrajStep, GAMES,
 };

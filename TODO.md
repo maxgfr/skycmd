@@ -15,7 +15,7 @@
   - `skycmd-glm-labels` est publié en version complète (§1.2).
   - La boucle s'est arrêtée seule à 19:22, avec 267 records restants (99,96 %, au-dessus du seuil de 99 %). Deux passes `label` les ont finis, puis `mix`.
 - **Données s6-ear téléchargées (§8)** : les comptes sont dans `DATA_LICENSES.md`, et il y a bien 50 mots réservés par langue, sans amendement.
-- **Nos 13 jeux de données sont publics sur Hugging Face (§1.2)** : tout ce qu'un modèle lit et tout ce qu'on a créé nous-mêmes (jeux, séries synthétiques, secrets, évaluations écrites à la main), les labels GLM compris (marqués comme générés par IA). Seuls manquent l'audio de s6-ear (31 Go, reconstruit par `sky-data fetch-audio`), le jeu gated et GIFT-Eval.
+- **Nos 14 jeux de données sont publics sur Hugging Face (§1.2)** : tout ce qu'un modèle lit et tout ce qu'on a créé nous-mêmes (jeux, trajectoires de nos modèles face à l'oracle, séries synthétiques, secrets, évaluations écrites à la main), les labels GLM compris (marqués comme générés par IA). Seuls manquent l'audio de s6-ear (31 Go, reconstruit par `sky-data fetch-audio`), le jeu gated et GIFT-Eval.
 - **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot. Celles de s6-secrets et s6-cast aussi (§3, §4).
 - **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
 - **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
@@ -110,6 +110,10 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
   - puis, à la demande de l'utilisateur (« sur Hugging Face, les données qu'on a créées nous-mêmes »), deux jeux de plus :
     - `skycmd-cast-synth` : un échantillon fixe de nos 4 générateurs de séries synthétiques et du mélange d'entraînement, 8 000 séries de 2 048 points (`sky-train cast-synth --seed 1`). s6-cast s'entraîne sur un flux sans fin des mêmes générateurs, pas sur ces lignes ;
     - `skycmd-evals` : notre matériel d'évaluation écrit à la main, à savoir les 56 cas des démos, `defs.json` et `paraphrases.json` de s5.
+  - et un 14e, le plus original, `skycmd-trajectories`, avec `scripts/gen-trajectories.sh` et le nouveau `sky-arena --trajectories`, CPU seulement, en quelques minutes. Ce sont des parties complètes des 4 jeux, jouées par l'oracle et par nos modèles publiés s1-pico, s2-nano, s2-nano-doom et s3-pico : 1 033 412 décisions sur 2 100 parties, 17 Mo en parquet.
+    - À chaque décision, il y a l'état, les probabilités du modèle, la cible de l'oracle, l'action, la récompense et les événements ; il y a aussi une ligne par partie. Le jeu sert à l'imitation et au DAgger, à l'apprentissage par renforcement hors ligne et à la calibration.
+    - L'accord avec l'oracle va de 0,77 à 0,96 sur flappy, rescue et dodge. Sur doom, il est de 0,91 à 0,92 pour s2-nano-doom et s3-pico, et presque nul pour s1-pico et s2-nano, qui n'ont jamais vu doom : ces échecs complets sont gardés, ils sont utiles en hors ligne.
+    - s4-micro et s5-lite sont écartés : ce ne sont pas des modèles de jeu.
 
   Non republiés : `LocalLLaMA/typed-decisions` (gated), l'audio de s6-ear (31 Go de log-mel, que `sky-data fetch-audio` reconstruit) et GIFT-Eval (évaluation seulement).
 - [ ] Vérifier le viewer du Hub sur chaque dataset quand l'indexation est finie (`https://datasets-server.huggingface.co/is-valid?dataset=maxgfr/<repo>`), et `load_dataset("maxgfr/skycmd-decisions", "boolq")`.
