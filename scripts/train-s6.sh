@@ -20,6 +20,11 @@
 #   DECIDE="..."    decision flags, first run and DAgger rounds (--exit-kd 0.5 --ema 0.999
 #                   --qat-grad-a 0.21); with --ema the EMA weights are calibrated and exported
 #   PRE_MIN DEC_MIN ROUND_MINUTES LR_MIN   budgets in minutes (nano 90 90 15 20, micro 180 180 20 20)
+#   TIME_SCALE=1    multiplies every budget in minutes (the M5's speed over this host's,
+#                   scripts/speed-probe.sh): the same steps as on the M5 (docs/s6-prereg.md, am. 4)
+#   CONFIG          the model config (default configs/s6-$SIZE.json; scripts/s6-adopt.py writes
+#                   the one with Parallax and XSA as the ablation adopted them)
+#   DAGGER_N=15000  decisions collected per DAgger round
 #   ROUNDS=3  BETA=0.2 (oracle share of round 1)  ALPHA=0.02 (CRC bound)
 #   GAMES=flappy,rescue,dodge,doom  EPISODES=30  BASELINE=site/public/models/s3-pico.gguf
 #   DRY_RUN=1       print the commands instead of running them (nothing is built or read)
@@ -38,12 +43,16 @@ case "$size" in
   *) echo "SIZE must be nano or micro, not $size" >&2; exit 2 ;;
 esac
 name=s6-$size
-cfg=configs/$name.json
+cfg=${CONFIG:-configs/$name.json}
 tok=data/tok/tok-s6-$vocab.json
-pre_min=${PRE_MIN:-$bpre}
-dec_min=${DEC_MIN:-$bdec}
-round_min=${ROUND_MINUTES:-$bround}
-lr_min=${LR_MIN:-20}
+# tmin <minutes>: a budget in minutes times TIME_SCALE (the M5's speed over this host's,
+# scripts/speed-probe.sh), so that a slower machine runs the steps the M5 would (amendment 4).
+tmin() { LC_ALL=C awk -v a="$1" -v b="${TIME_SCALE:-1}" 'BEGIN { printf "%g", a * b }'; }
+pre_min=$(tmin "${PRE_MIN:-$bpre}")
+dec_min=$(tmin "${DEC_MIN:-$bdec}")
+round_min=$(tmin "${ROUND_MINUTES:-$bround}")
+lr_min=$(tmin "${LR_MIN:-20}")
+dagger_n=${DAGGER_N:-15000}
 read -r -a opt <<<"${OPT:-}"
 read -r -a pre <<<"${PRETRAIN:-}"
 read -r -a dec <<<"${DECIDE:-}"
@@ -164,7 +173,7 @@ dagger() {
   for r in $(seq 1 "$rounds"); do
     local dir=$run-g$r data=data/dagger-$name/r$r out=$m/skycmd-$name-g$r-ternary.gguf
     echo "== $name round $r: DAgger from $model (oracle share $beta)"
-    x "$A" "$model" --dagger 15000 --seed "$r" --game "$games" --dagger-beta "$beta" --out "$data"
+    x "$A" "$model" --dagger "$dagger_n" --seed "$r" --game "$games" --dagger-beta "$beta" --out "$data"
     decide "$init" "$dir/decide" "$round_min" "$s" "$records,$data" \
       "games=0.4,r$r=0.25,decisions=0.1,distill=0.2,numeric=0.05" 1.0
     post "$dir/decide" "$out"

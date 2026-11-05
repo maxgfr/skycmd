@@ -3,14 +3,19 @@
 # pre-registered in docs/s6-cast-prereg.md.
 # Usage: scripts/train-cast.sh [data] [pilot] [train] [export] [eval]   (default: all but pilot)
 #   data    real series (sky-data fetch-series), game series, GIFT-Eval windows (local only)
-#   pilot   3000-step pilots: learning rate 1e-3 / 3e-3 / 1e-2, and with / without TinyCast
-#           distillation (prints the pre-registered choices)
+#   pilot   3000-step pilots: learning rate 1e-3 / 3e-3 / 1e-2, then TinyCast distillation at the
+#           chosen rate; applies the pre-registered rules and writes runs/s6-cast-pilot/choice.json
+#           ({"lr", "teacher"}), which train reads when LR / TEACHER are unset
 #   train   MINUTES of training (synthetic pool + real series, TinyCast as teacher unless
 #           TEACHER=none), QAT over the last 20%, EMA
 #   export  ternary GGUF of the checkpoint the pre-registration picks, exit calibration
 #   eval    GIFT-Eval scores of s6-cast (with and without flip), seasonal naive, TinyCast
 #   CONFIG=configs/s6-cast-pico.json RUN=runs/s6-cast-pico MINUTES=480 BATCH=256 LR=3e-3
 #   TEACHER=crates/sky-infer/tests/golden/tinycast.gguf (or none) TEACHER_WEIGHT=0.5 TEACHER_FRAC=0.5
+#   CAST_OPT="..."  optimizer flags adopted by the pico ablation, without a rate (--no-muon,
+#                   --wd-mode soda, --ns-polish 0, --qat-grad-a 0.21; scripts/s6-adopt.py env
+#                   s6-cast-pico), for the pilots and the run (docs/s6-cast-prereg.md, amendment 3)
+#   TIME_SCALE=1    multiplies MINUTES (scripts/speed-probe.sh)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -19,10 +24,21 @@ B=$CARGO_TARGET_DIR/release
 cfg=${CONFIG:-configs/s6-cast-pico.json}
 run=${RUN:-runs/s6-cast-pico}
 name=$(basename "$run")
-minutes=${MINUTES:-480}
+minutes=$(LC_ALL=C awk -v a="${MINUTES:-480}" -v b="${TIME_SCALE:-1}" 'BEGIN { printf "%g", a * b }')
 batch=${BATCH:-256}
-lr=${LR:-3e-3}
-teacher=${TEACHER:-crates/sky-infer/tests/golden/tinycast.gguf}
+read -r -a copt <<<"${CAST_OPT:-}"
+case " ${CAST_OPT:-} " in
+  *" --muon-lr "* | *" --adam-lr "*)
+    echo "CAST_OPT carries a rate: the rate is LR, chosen by the pilot" >&2
+    exit 2
+    ;;
+esac
+golden=crates/sky-infer/tests/golden/tinycast.gguf
+choice_json=runs/s6-cast-pilot/choice.json
+# choice <key>: the pilot's pre-registered choice, when it has run
+choice() { [ -f "$choice_json" ] && python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$choice_json" "$1"; }
+lr=${LR:-$(choice lr || echo 3e-3)}
+teacher=${TEACHER:-$(choice teacher || echo "$golden")}
 teacher_args=()
 [ "$teacher" = none ] || teacher_args=(--teacher "$teacher" --teacher-weight "${TEACHER_WEIGHT:-0.5}" --teacher-frac "${TEACHER_FRAC:-0.5}")
 m=models/s6-cast
@@ -52,25 +68,47 @@ print(best if best is not None else "nan")
 EOF
 }
 
+# The pilot (docs/s6-cast-prereg.md §2, amendment 3): the rates, the rule, then the distillation
+# at the chosen rate and its rule; writes runs/s6-cast-pilot/choice.json.
 pilot() {
+  local x p=() r
   for x in 1e-3 3e-3 1e-2; do
-    local r=runs/s6-cast-pilot/lr-$x
+    r=runs/s6-cast-pilot/lr-$x
     [ -f "$r/last/state.json" ] || "$B/sky-train" cast-train --config "$cfg" --out "$r" \
-      --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$x" --eval-every 3000
-    echo "lr $x: final f32 val pinball $(final_pinball "$r" f32)"
+      --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$x" --eval-every 3000 \
+      ${copt[@]+"${copt[@]}"}
+    p+=("$x=$(final_pinball "$r" f32)")
+    echo "lr $x: final f32 val pinball ${p[${#p[@]}-1]#*=}"
   done
-  echo "pre-registered rule: keep 3e-3 unless another rate lowers the pinball by >= 2% (docs/s6-cast-prereg.md)"
-  local d=runs/s6-cast-pilot/distill
+  # keep 3e-3 unless another rate lowers the pinball by at least 2%
+  local best
+  best=$(python3 -I -c '
+import sys
+p = {k: float(v) for k, v in (a.split("=") for a in sys.argv[1:])}
+b = min(p, key=p.get)
+print(b if p[b] <= 0.98 * p["3e-3"] else "3e-3")' "${p[@]}")
+  echo "pre-registered rule: keep 3e-3 unless another rate lowers the pinball by >= 2% -> $best"
+  local d=runs/s6-cast-pilot/distill-$best
   [ -f "$d/last/state.json" ] || "$B/sky-train" cast-train --config "$cfg" --out "$d" \
-    --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$lr" --eval-every 3000 \
-    --teacher crates/sky-infer/tests/golden/tinycast.gguf
-  echo "distillation: final f32 val pinball $(final_pinball "$d" f32) (lr-3e-3 without: $(final_pinball runs/s6-cast-pilot/lr-3e-3 f32))"
-  echo "pre-registered rule: distil unless the pinball is worse by more than 1% (docs/s6-cast-prereg.md)"
+    --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$best" --eval-every 3000 \
+    --teacher "$golden" ${copt[@]+"${copt[@]}"}
+  local pd pn
+  pd=$(final_pinball "$d" f32)
+  pn=$(final_pinball "runs/s6-cast-pilot/lr-$best" f32)
+  # distil unless the pinball is worse by more than 1%
+  python3 -I -c '
+import json, sys
+lr, pd, pn, golden, out = sys.argv[1], float(sys.argv[2]), float(sys.argv[3]), sys.argv[4], sys.argv[5]
+teacher = "none" if pd > 1.01 * pn else golden
+json.dump({"lr": lr, "teacher": teacher, "pinball_distill": pd, "pinball_plain": pn}, open(out, "w"), indent=2)
+print(f"distillation: {pd:.5g} vs {pn:.5g} without -> teacher {teacher}")' "$best" "$pd" "$pn" "$golden" "$choice_json"
+  echo "pre-registered rule: distil unless the pinball is worse by more than 1% -> $choice_json"
 }
 
 train() {
   "$B/sky-train" cast-train --config "$cfg" --out "$run" --minutes "$minutes" --batch "$batch" \
-    --series data/series --qat-frac 0.2 --ema 0.999 --adam-lr "$lr" --resume ${teacher_args[@]+"${teacher_args[@]}"}
+    --series data/series --qat-frac 0.2 --ema 0.999 --adam-lr "$lr" --resume ${teacher_args[@]+"${teacher_args[@]}"} \
+    ${copt[@]+"${copt[@]}"}
 }
 
 # The exported checkpoint: the EMA if its final ternary pinball is lower, else the last weights.

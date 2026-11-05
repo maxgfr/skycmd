@@ -46,6 +46,18 @@ pub const PILOT_SEED: u64 = 7;
 /// Below this gain in final ternary accuracy over ×1, the pilot keeps the default rate.
 pub const PILOT_MIN_GAIN: f64 = 0.01;
 
+/// The one extension a choice on the edge of the grid allows (docs/s6-prereg.md §2): ×0.25
+/// after ×0.5, ×4 after ×2. `cargo xtask s6lr --extend` runs it (amendment 4).
+pub fn pilot_extension(choice: f64) -> Option<f64> {
+    if choice == PILOT_SCALES[0] {
+        Some(0.25)
+    } else if choice == PILOT_SCALES[PILOT_SCALES.len() - 1] {
+        Some(4.0)
+    } else {
+        None
+    }
+}
+
 /// Multipliers of the default peak learning rates (the pilot's choice).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LrScale {
@@ -459,7 +471,7 @@ pub fn summarize(store: &Path, arms: &[Arm], scale: LrScale) -> Result<()> {
         let games: Map<String, Value> = games.iter().map(|(g, xs)| (g.clone(), stat(xs))).collect();
         out.push(json!({
             "name": a.name, "about": a.about, "config": a.config,
-            "opt": a.opt, "decide": a.decide,
+            "opt": a.opt, "pretrain": a.pretrain, "decide": a.decide,
             "val": val, "arena_score": games, "train_minutes": stat(&minutes),
         }));
     }
@@ -508,9 +520,14 @@ fn pilot_dir(a: &Arm, m: f64) -> String {
 /// The learning-rate pilot: both training phases of each pilot arm at every scale, one seed.
 /// Validation is enough to choose, so there is no calibration, export or arena.
 pub fn pilot_stage() -> Stage {
+    pilot_stage_at(&|_| PILOT_SCALES.to_vec())
+}
+
+/// The pilot at the scales `scales(arm)` gives each arm (the grid, or only its extension).
+fn pilot_stage_at(scales: &dyn Fn(&Arm) -> Vec<f64>) -> Stage {
     let mut steps = Vec::new();
     for a in pilot_arms() {
-        for m in PILOT_SCALES {
+        for m in scales(&a) {
             let id = format!("{}-x{m}", a.name);
             steps.extend(train_steps(
                 &a,
@@ -543,6 +560,37 @@ pub fn pilot_choice(acc: &[(f64, f64)]) -> f64 {
     }
 }
 
+/// The extension stage: for each pilot arm whose choice on the grid is on its edge, the one
+/// extra scale (no step if no arm is on the edge). Reads the grid's validation logs.
+pub fn pilot_extend_stage(store: &Path) -> Result<Stage> {
+    let mut extra = Vec::new();
+    for a in pilot_arms() {
+        let mut acc = Vec::new();
+        for m in PILOT_SCALES {
+            let p = store.join(pilot_dir(&a, m)).join("decide/log.jsonl");
+            let log = std::fs::read_to_string(&p).with_context(|| p.display().to_string())?;
+            acc.push((m, final_val(&log, a.val_mode())?[0]));
+        }
+        if let Some(e) = pilot_extension(pilot_choice(&acc)) {
+            println!(
+                "[s6lr] {}: choice on the edge of the grid, extension x{e}",
+                a.name
+            );
+            extra.push((a.name, e));
+        }
+    }
+    let mut st = pilot_stage_at(&|a: &Arm| {
+        extra
+            .iter()
+            .filter(|(n, _)| *n == a.name)
+            .map(|&(_, e)| e)
+            .collect()
+    });
+    st.name = "s6lr-extend";
+    st.about = "s6 learning-rate pilot: the one extension of a choice on the edge (x0.25 or x4)";
+    Ok(st)
+}
+
 /// Reads the pilot runs, writes `runs/s6lr/summary.json` and returns the chosen scales.
 pub fn pilot_summarize(store: &Path) -> Result<LrScale> {
     let mut out = Vec::new();
@@ -550,7 +598,18 @@ pub fn pilot_summarize(store: &Path) -> Result<LrScale> {
     for a in pilot_arms() {
         let mut acc = Vec::new();
         let mut runs = Vec::new();
-        for m in PILOT_SCALES {
+        // The grid, then the extension when it ran (only after a choice on the edge).
+        let mut scales = PILOT_SCALES.to_vec();
+        for e in [0.25, 4.0] {
+            if store
+                .join(pilot_dir(&a, e))
+                .join("decide/log.jsonl")
+                .exists()
+            {
+                scales.push(e);
+            }
+        }
+        for m in scales {
             let dir = store.join(pilot_dir(&a, m));
             let p = dir.join("decide/log.jsonl");
             let log = std::fs::read_to_string(&p).with_context(|| p.display().to_string())?;
@@ -715,6 +774,43 @@ mod tests {
         assert_eq!(pilot_choice(&[(0.5, 0.63), (1.0, 0.61), (2.0, 0.62)]), 0.5);
         assert_eq!(pilot_choice(&[(0.5, 0.60), (1.0, 0.61), (2.0, 0.64)]), 2.0);
         assert_eq!(pilot_choice(&[(0.5, 0.60), (2.0, 0.64)]), 1.0);
+        // An edge choice allows one extension; an inner one none.
+        assert_eq!(pilot_extension(0.5), Some(0.25));
+        assert_eq!(pilot_extension(2.0), Some(4.0));
+        assert_eq!(pilot_extension(1.0), None);
+        // With the extension, the choice reads all four scales against x1.
+        assert_eq!(
+            pilot_choice(&[(0.5, 0.63), (1.0, 0.61), (2.0, 0.60), (0.25, 0.65)]),
+            0.25
+        );
+    }
+
+    #[test]
+    fn pilot_extension_runs_only_the_edge_arm() {
+        let store = std::env::temp_dir().join(format!("s6lr-extend-{}", std::process::id()));
+        // softmax-adamw wins at x2 (edge), parallax-muon keeps x1.
+        let acc = |name: &str, m: f64| match (name, m) {
+            ("softmax-adamw", 2.0) => 0.70,
+            ("parallax-muon", 0.5) => 0.605,
+            _ => 0.60,
+        };
+        for a in pilot_arms() {
+            for m in PILOT_SCALES {
+                let d = store.join(pilot_dir(&a, m)).join("decide");
+                std::fs::create_dir_all(&d).unwrap();
+                let line = json!({"step": 1, "mode": a.val_mode(),
+                    "val": {"exit0": {"all": {"accuracy": acc(a.name, m), "ece": 0.1, "margin": 1.0}}},
+                    "erank": {"exit0": 5.0}});
+                std::fs::write(d.join("log.jsonl"), line.to_string() + "\n").unwrap();
+            }
+        }
+        let st = pilot_extend_stage(&store).unwrap();
+        assert_eq!(st.steps.len(), 2);
+        assert!(st
+            .steps
+            .iter()
+            .all(|t| t.name.starts_with("softmax-adamw-x4-")));
+        std::fs::remove_dir_all(&store).unwrap();
     }
 
     #[test]
