@@ -1,13 +1,19 @@
 # TODO : entraîner les modèles s6, et le routage Système 1 / Système 2 de LFM3-1.7B
 
-## Où on en est (04/11/2026, 19:15)
+## Où on en est (05/11/2026, 08:45)
 
-- **Ce soir : l'utilisateur lance l'entraînement.** Les deux runs prêts utilisent le GPU : **jamais en même temps**. Depuis le checkout principal à jour de main :
-  - **s6-ear-nano (§8.1)**, environ 3 h. Les données sont déjà là (`data/ear`, 31 Go), il ne reste que `caffeinate -i scripts/train-ear.sh pretrain decide eval`. Vérifié le 04/11 : l'essai à blanc (`DRY_RUN=1`) enchaîne les bonnes commandes, et aucun reste de la fumée ne fait sauter une étape (`runs/s6-ear-nano/eval` et `models/s6-ear-nano` sont vides). Le script recompile lui-même les binaires.
-  - **LFM3-1.7B S1/S2 (§6)**, environ 9 à 10 h, pas encore lancé : `caffeinate -i scripts/lfm3-s1s2.sh`.
-  - Pour faire les deux dans la même nuit, l'un après l'autre (environ 13 h) : `caffeinate -i sh -c 'scripts/train-ear.sh pretrain decide eval; scripts/lfm3-s1s2.sh'`. Le `;` lance LFM3 même si s6-ear échoue, et les deux reprennent là où ils s'étaient arrêtés si on relance.
-  - Au réveil : §8.1 (ce qu'il faut recopier dans le rapport de s6-ear) et §6 (`runs/lfm3-s1s2/report.md`).
-- **Labels GLM-5.3-flash (§1.1)** : 539 229 sur 747 198 (72 %) le 04/11 à 19:15, 63 textes refusés par la modération. La boucle s'était arrêtée le 04/11 à 11:38, quand les sessions ont été relancées, et a repris à 12:32 sans rien perdre. Relancée à 19:52 avec le prompt aux items numérotés (#85) : **4,7 labels/s** mesurés sur 10 min, contre 3,3 à 3,6 avant (+31 %). Il restait 197 000 records à 20:03, soit environ 11 h 30, donc **la fin vers le 05/11 à 7 h 30**. Le dataset `skycmd-glm-labels` a été republié à 72 % (§1.2).
+- **Le prochain run : s6-ear-nano seulement (§8.1), et aucun modèle local.** L'utilisateur l'a décidé le 05/11 : la machine chauffait trop la dernière fois. LFM3-1.7B S1/S2 (§6), qui fait tourner LFM3 en local pendant environ 10 h, sort donc du run. Il ne se fera qu'à distance (§6).
+  - **Commande** (depuis le checkout principal à jour de main) : `caffeinate -i scripts/train-ear.sh pretrain decide eval`. Ça prend environ 3 h de GPU (l'entraînement de notre propre modèle de 1,6M paramètres). Les données sont déjà là (`data/ear`, 31 Go).
+  - **Vérifié le 04/11 :** l'essai à blanc (`DRY_RUN=1`) enchaîne les bonnes commandes, et aucun reste de la fumée ne fait sauter une étape. Le script recompile lui-même les binaires.
+  - **Au réveil :** le §8.1 dit ce qu'il faut recopier dans le rapport.
+  - **Le Mac ne doit pas se mettre en veille.** Dans la nuit du 04 au 05/11, rien n'a tourné : à 22:12, le Mac a été débranché et l'écran rabattu, et il est passé en « Clamshell Sleep ». `caffeinate -i` n'empêche pas cette veille-là.
+    - Le plus simple : le laisser branché et ouvert.
+    - Sinon, l'utilisateur tape lui-même `sudo pmset -a disablesleep 1` avant la nuit, puis `sudo pmset -a disablesleep 0` le lendemain. C'est un réglage système : Claude ne le fait pas.
+- **Labels GLM-5.3-flash (§1.1)** : 599 350 sur 747 198 (80 %) le 05/11 à 08:41, 80 refus de la modération.
+  - **La nuit :** presque rien n'a avancé à cause de la veille, et rien n'est perdu. La reprise s'est faite au réveil, à 07:42.
+  - **Le débit :** 4,7 labels/s avec le prompt aux items numérotés (#85). Le 05/11, un essai à 6 workers a donné 3,99 labels/s, avec des erreurs HTTP 429 (code 1302), et un worker qui s'arrête après 3 échecs de suite. **On reste à 4 workers.**
+  - **La fin :** il reste 147 768 records, soit environ 8 h 45, donc **la fin vers le 05/11 à 17 h 30**, si le Mac reste éveillé.
+  - `skycmd-glm-labels` a été republié à 72 % (§1.2). La version finale sera publiée à la fin de la boucle.
 - **Données s6-ear téléchargées (§8)** : les comptes sont dans `DATA_LICENSES.md`, et il y a bien 50 mots réservés par langue, sans amendement.
 - **Nos 7 jeux de données sont publics sur Hugging Face (§1.2)**, labels GLM compris (marqués comme générés par IA).
 - **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot. Celles de s6-secrets et s6-cast aussi (§3, §4).
@@ -36,7 +42,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre conseillé (une seule machine) : s6-ear (§8, environ 3 h de GPU, les données sont prêtes) et LFM3 S1/S2 (§6, une nuit), l'un après l'autre → labels GLM (§1.1 : à distance, fin prévue vers le 05/11 à 7 h 30, la machine reste libre) → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
+Ordre conseillé (une seule machine) : s6-ear (§8, environ 3 h de GPU, les données sont prêtes) → labels GLM (§1.1 : à distance, fin prévue vers le 05/11 à 17 h 30, la machine reste libre) ; LFM3 S1/S2 (§6) seulement à distance, jamais en local → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
 
 ## 0. Prérequis
 
@@ -124,7 +130,9 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
 
   - **Le 04/11/2026 : le prompt numérote les items (1 à 20) et passe en JSON compact.** Avant, GLM recopiait pour chaque item un identifiant de record de 16 chiffres hexadécimaux. Mesuré sur le même lot de 20 (deux essais) : 913 et 1 035 jetons générés au lieu de 1 337 et 1 449, et 11,3 et 13,7 s par appel au lieu de 16,2 et 18,0 s. `parse_labels` remet les identifiants de records. La consigne et les probabilités demandées ne changent pas. En continu, 4 × 20 : **4,7 labels/s** au lieu de 3,3 à 3,6 (+31 %), et 3,4 % des appels perdent un label au lieu d'environ 6 % (le journal n'écrit une ligne « 19 / 20 valid » que pour les appels incomplets).
 
-  **Le plafond de z.ai est d'environ 4 labels/s, quel que soit le réglage.** On garde le défaut, 4 × 20, relancé le 03/11 à 20:30. Il reste environ 333 000 records, soit environ 23 h de labellisation, plus les pauses entre fenêtres. Pour relancer : `nohup caffeinate -i scripts/distill-glm.sh loop mix >> runs/distill-glm.log 2>&1 &`.
+  - **Le 05/11/2026, 6 workers × 20 avec le nouveau prompt :** 3,99 labels/s en 10 min, contre 4,7 à 4 workers, avec des erreurs HTTP 429 (code 1302), et un worker qui s'arrête après 3 échecs de suite. Retour à 4 workers.
+
+  **La limite de z.ai porte sur le nombre de requêtes en parallèle (4 utiles) : on gagne en raccourcissant les appels, pas en ajoutant des workers.** Au 03/11, avec l'ancien prompt, le plafond était d'environ 4 labels/s. On garde le défaut, 4 × 20, relancé le 03/11 à 20:30. Il reste environ 333 000 records, soit environ 23 h de labellisation, plus les pauses entre fenêtres. Pour relancer : `nohup caffeinate -i scripts/distill-glm.sh loop mix >> runs/distill-glm.log 2>&1 &`.
 - [ ] Plus tard : le jev audio de s6-ear (§8). Les données sont prêtes depuis le 04/11 (31 Go de log-mel : voir s'il vaut mieux ne publier que les records et la recette). On y met les records et les log-mel, pas les clips (les sources restent sous leur licence CC-BY-4.0, avec attribution).
 
 ## 2. Le s6 généraliste : pilote et ablation pico, puis s6-nano et s6-micro (`docs/s6-prereg.md`, `docs/s6-gen-prereg.md`, `docs/SPEC-S6.md` §15)
@@ -226,9 +234,12 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 - les données écrites dans `data/lfm3/` : 600 questions de calibration, 1 000 de test ;
 - un essai de fumée de 3 questions par mode, réussi (`runs/lfm3-s1s2-smoke`). Débit : 98 jetons/s sans réflexion, 80 avec, environ 4,5 s par question.
 
-- [ ] **Une nuit, une seule commande, depuis le checkout principal :** `caffeinate -i scripts/lfm3-s1s2.sh` (pas encore lancé au 04/11 ; jamais en même temps que s6-ear). Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
+- [ ] **Pas en local** (décision de l'utilisateur, 05/11/2026). Faire tourner LFM3 sur le GPU du M5 pendant 10 h chauffe trop la machine. Le run ne se fera qu'à distance, après un **amendement daté** du pré-enregistrement : les deux options ci-dessous changent le modèle, qui passe en bf16 au lieu de `LFM3-1.7B-MLX-4bit`, et le moteur. La sonde S1 lit les log-probas des jetons (`r.logprobs` dans `s1s2.py`), donc l'option retenue doit les fournir. Les options :
+  - **L'API de Liquid (Liquid Console)** : LFM3 y est annoncé, mais le prix n'est pas confirmé (une source donne 0,08 $ / 0,20 $ par million de jetons en entrée / sortie), et il faut vérifier qu'elle rend les log-probas. LFM3 n'est **pas** sur OpenRouter au 05/11 (seulement `liquid/lfm-2.5-*`), ni chez un fournisseur d'inférence Hugging Face.
+  - **Un GPU loué** avec `vllm serve LiquidAI/LFM3-1.7B`, qui rend les log-probas. Il faut adapter `s1s2.py` à un client OpenAI-compatible.
+- [ ] Pour mémoire, l'ancienne commande locale, **à ne pas lancer** : `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
   - Durée estimée : environ 1 h 30 pour s1, 2 h pour s2-256 et 5 à 6 h pour s2-1024, sur 1 600 questions, soit **environ 9 à 10 h**. La calibration passe en premier (600 questions, environ 3 h 30).
-  - Inférence locale sur le GPU du M5 : ça chauffe pendant la nuit, mais il n'y a aucune réflexion de 32 000 jetons.
+  - Inférence locale sur le GPU du M5 : ça chauffe pendant toute la nuit. C'est la raison de la décision du 05/11.
   - Tout reprend après une coupure : relancer la même commande, les questions déjà faites sont sautées.
   - La labellisation GLM (§1.1) peut continuer en même temps : elle ne fait que du réseau.
 - [ ] **Au réveil**, lire `runs/lfm3-s1s2/report-calib.md` (calibration) puis `runs/lfm3-s1s2/report.md` (test, avec le verdict). Si la nuit n'a pas suffi, relancer `scripts/lfm3-s1s2.sh calib test route` : ça reprend.
