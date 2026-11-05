@@ -20,8 +20,12 @@ Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) befor
   * the GLM-5.3-flash labels are published only with --glm MIXDIR (`sky-data teacher mix-labels
     --alpha 0 --out MIXDIR`) as `skycmd-glm-labels`, marked as AI-generated (z.ai terms §III.5(d));
     the user chose to publish them despite §1(f)(xii) of the z.ai API terms (TODO.md §1.2);
-  * the MLM text and the audio clips are not republished: their recipe is (the sky-data command,
-    the seed, the sha256 of each file in MANIFEST.json).
+  * every set a model reads is published: decisions, games, numeric, secrets, commands, zero-shot,
+    the s6-cast series, the MLM text with its tokenizers, the LFM3 questions and the s6-ear
+    questions with their clip index and Mimi codes;
+  * the audio itself (31 GB of log-mel features and test WAVs) is not: `sky-data fetch-audio`
+    rebuilds it from the upstream sets; nor GIFT-Eval, which is an evaluation set never
+    redistributed.
 """
 import argparse
 import hashlib
@@ -83,6 +87,67 @@ SCHEMA = """Each row is one typed decision question (docs/SPEC.md):
 | `split` | string | `train`, `val` or `test` |
 """
 
+MONASH = "autogluon/chronos_datasets `{}` (Monash archive, Godahewa et al. 2021)"
+SERIES = {
+    "london_smart_meters": (MONASH.format("monash_london_smart_meters"), "cc-by-4.0", "first 2,000 series, last 8,192 points"),
+    "wind_farms_hourly": (MONASH.format("wind_farms_hourly"), "cc-by-4.0", "all series, last 8,192 points"),
+    "wind_farms_daily": (MONASH.format("wind_farms_daily"), "cc-by-4.0", "all series, last 8,192 points"),
+    "pedestrian_counts": (MONASH.format("monash_pedestrian_counts"), "cc-by-4.0", "all series"),
+    "rideshare": (MONASH.format("monash_rideshare"), "cc-by-4.0", "every numeric column of the first 200 rows"),
+    "wiki_daily": ("autogluon/chronos_datasets `wiki_daily_100k` (Wikimedia pageviews)", "cc0-1.0", "first 5,000 series"),
+    "ushcn_daily": ("autogluon/chronos_datasets `ushcn_daily` (NOAA NCEI)", "public domain (U.S. Government work)", "every numeric column of the first 1,300 rows"),
+    "games": ("ours: state variables of the skycmd games (`sky-train cast-synth --games`)", "apache-2.0", "60 oracle episodes per game"),
+}
+TEXT = {
+    "simplestories": ("SimpleStories/SimpleStories", "mit", "`story` column, first row groups of train, 30 MB"),
+    "tinystories": ("roneneldan/TinyStories", "cdla-sharing-1.0", "`text` column, first row groups of train, 30 MB"),
+    "tinystories_fr": ("btecsec/tinystories-fr", "cdla-sharing-1.0", "French `text`, whole train split"),
+    "fineweb_edu": ("HuggingFaceFW/fineweb-edu (`sample/10BT`, shard `000_00000`)", "odc-by (and CommonCrawl's terms of use)", "first row groups, 37.5 MB"),
+    "fineweb2_fr": ("HuggingFaceFW/fineweb-2 (`fra_Latn`, shard `train/000_00000`)", "odc-by (and CommonCrawl's terms of use)", "first row groups, 34 MB"),
+    "dolma3_wiki_en": ("allenai/dolma3_mix-150B-1025 `data/dolma1_7-wiki-en`", "odc-by (Dolma 3); Wikipedia and Wikibooks text CC-BY-SA-4.0 / GFDL", "shard `00000000`"),
+    "dolma3_science_pdfs": ("allenai/dolma3_mix-150B-1025 `data/olmocr_science_pdfs-science_math_and_technology`", "odc-by (Dolma 3); the PDFs keep their authors' rights, see the Dolma 3 card", "shard `00000000`, olmOCR transcriptions"),
+    "dolma3_finemath": ("allenai/dolma3_mix-150B-1025 `data/finemath-3plus`", "odc-by (FineMath, Dolma 3) and CommonCrawl's terms of use", "shard `00000000`, exact duplicates dropped"),
+    "txt360_pg19": ("IFM/TxT360 `data/pg19`", "odc-by (TxT360); the books are public domain (Project Gutenberg)", "up to 8 pieces of 20,000 characters per book"),
+    "txt360_stackexchange": ("IFM/TxT360 `data/stackexchange`", "odc-by (TxT360); Stack Exchange posts CC-BY-SA", "one shard, 15 MB"),
+    "txt360_europarl_fr": ("IFM/TxT360 `data/europarl` (French rows)", "odc-by (TxT360); European Parliament proceedings, reuse authorised with acknowledgement", "up to 8 pieces per session, 15 MB"),
+}
+LFM3 = {
+    "calib": ("openai/gsm8k (`main`, train, `740312ad`) and DigitalLearningGmbH/MATH-lighteval (train, `0530c786`)", "mit", "300 + 300 calibration questions, seed 1234"),
+    "test": ("openai/gsm8k (`main`, test) and HuggingFaceH4/MATH-500 (`6e4ed1a2`)", "mit", "500 + 500 test questions, seed 1234"),
+}
+EAR = {
+    "turn_end": ("pipecat-ai/smart-turn-data-v3-train (train, val) and pipecat-ai/smart-turn-data-v3.2-test (test)", "cc-by-4.0", "`turn_end` noul questions"),
+    "keyword": ("Speech Commands v0.02 (Warden 2018), official splits and test archive", "cc-by-4.0", "`keyword` choice, the 12-class benchmark"),
+    "keyword_zs": ("MLCommons/ml_spoken_words (en, fr; first archive of each split)", "cc-by-4.0", "`keyword_zs` choice, 50 test words per language held out"),
+    "clips_smart-turn": ("pipecat-ai/smart-turn-data-v3-train and v3.2-test", "cc-by-4.0", "clip index: id, split, language, frames, label"),
+    "clips_speech-commands": ("Speech Commands v0.02", "cc-by-4.0", "clip index"),
+    "clips_mswc": ("MLCommons/ml_spoken_words", "cc-by-4.0", "clip index"),
+    "mimi_train": ("openslr/librispeech_asr (`clean`, `train.100`) and shangeth/librispeech-mimi-codes", "cc-by-4.0", "Mimi codebook-0 ids (12.5 Hz) per utterance, the audio pretraining target"),
+    "mimi_val": ("openslr/librispeech_asr (`clean`, `validation`) and shangeth/librispeech-mimi-codes", "cc-by-4.0", "same, validation"),
+}
+
+SERIES_SCHEMA = """Each row is one series: `id` (`<source>:<series>`) and `values` (a list of floats, in time order).
+The s6-cast trainer holds out one series in ten, by id, for validation; windows and synthetic
+series (`sky-train cast-synth`) are drawn from these at training time.
+"""
+TEXT_SCHEMA = """Each row is one document: `src` (the source) and `text`. All of it is deduplicated exactly and with
+MinHash/LSH (word 5-grams, Jaccard >= 0.8). The tokenizers trained on it are in `tokenizers/`
+(`sky-data train-tokenizer --vocab N --num`).
+"""
+LFM3_SCHEMA = """Each row is one question: `id`, `task` (`gsm8k` or `math`), `question` and `answer` (the final
+answer, compared after normalization).
+"""
+EAR_SCHEMA = """- the question configs (`turn_end`, `keyword`, `keyword_zs`) have the typed-decision schema of
+  skycmd-decisions (`src`, `t`, `ins`, `opts`, `state`, `target`, `split`) plus `lang` and `clip`;
+  `state` is the path of the clip's float16 log-mel features (`.npy`) relative to the question file;
+- the `clips_*` configs index every clip: `id`, `set`, `split`, `lang`, `mel` (features path),
+  `frames`, `label`, and `wav` for the test clips;
+- the `mimi_*` configs give, per LibriSpeech utterance, its features path and its Mimi codes.
+
+**The audio is not in this repository** (31 GB of log-mel features and 16 kHz test WAVs): it is
+rebuilt from the upstream sets by `sky-data fetch-audio`, deterministically, with the same paths.
+"""
+
 SETS = {
     "decisions": {
         "repo": "skycmd-decisions",
@@ -141,7 +206,68 @@ SETS = {
         "license": "cc-by-4.0",
         "upstream": "MASSIVE (CC-BY-4.0) and PolyAI/banking77 (CC-BY-4.0)",
     },
+    "series": {
+        "repo": "skycmd-series",
+        "files": "series/*.jsonl",
+        "pretty": "skycmd time series (s6-cast training)",
+        "summary": "The training series of the s6-cast forecaster: public series absent from GIFT-Eval and Chronos' zero-shot benchmark, and the state variables of the skycmd games.",
+        "command": "sky-data fetch-series and sky-train cast-synth --games",
+        "languages": [],
+        "license": "other",
+        "sources": SERIES,
+        "schema": SERIES_SCHEMA,
+        "task": "time-series-forecasting",
+    },
+    "text": {
+        "repo": "skycmd-text",
+        "files": ["text/*.jsonl", "text-open/*.jsonl"],
+        "extra": "tok/*.json",
+        "pretty": "skycmd pretraining text and tokenizers",
+        "summary": "The text of skycmd's masked-language-model pretraining (s1 to s6), English and French, and the tokenizers trained on it. `data/text` is read by every model; `data/text-open` (non-web parts of Dolma 3 and TxT360) is read first by the s6 models.",
+        "command": "sky-data fetch-text and sky-data fetch-text --set open (scripts/prepare-data.sh)",
+        "languages": ["en", "fr"],
+        "license": "other",
+        "sources": TEXT,
+        "schema": TEXT_SCHEMA,
+        "task": "fill-mask",
+        "note": "TinyStories, TinyStories-fr and SimpleStories are synthetic stories written by language models upstream (see their cards); skycmd generated none of this text.",
+    },
+    "lfm3": {
+        "repo": "skycmd-lfm3-math",
+        "files": "lfm3/*.jsonl",
+        "pretty": "skycmd LFM3 System 1 / System 2 questions",
+        "summary": "The calibration and test questions of the LFM3-1.7B System 1 / System 2 router (`docs/lfm3-s1s2-prereg.md`): GSM8K and MATH, drawn with a fixed seed at pinned revisions.",
+        "command": "scripts/lfm3-s1s2.sh data",
+        "languages": ["en"],
+        "license": "mit",
+        "sources": LFM3,
+        "schema": LFM3_SCHEMA,
+        "task": "question-answering",
+    },
+    "ear": {
+        "repo": "skycmd-ear",
+        "files": [("ear/jev/*.jsonl", ""), ("ear/clips/*.jsonl", "clips_"), ("ear/mimi/*.jsonl", "mimi_")],
+        "pretty": "skycmd ear questions (s6-ear)",
+        "summary": "The audio questions of s6-ear (turn end, keyword spotting, zero-shot keywords), the index of every clip and the Mimi codes of its audio pretraining.",
+        "command": "sky-data fetch-audio and sky-data audio-jev",
+        "languages": ["en", "fr"],
+        "license": "cc-by-4.0",
+        "sources": EAR,
+        "schema": EAR_SCHEMA,
+        "task": "audio-classification",
+    },
 }
+
+
+def set_files(data: Path, s: dict) -> list:
+    """(config name, path, manifest key) of every source file of a set."""
+    specs = s["files"]
+    specs = [specs] if isinstance(specs, str) else specs
+    out = []
+    for spec in specs:
+        pattern, prefix = (spec, "") if isinstance(spec, str) else spec
+        out += [(prefix + f.stem, f, prefix + f.name) for f in sorted(data.glob(pattern))]
+    return out
 
 
 def sha256(p: Path) -> str:
@@ -162,19 +288,22 @@ def to_parquet(src: Path, dst: Path) -> int:
     return t.num_rows
 
 
-def card(name: str, s: dict, rows: dict, commit: str, user: str) -> str:
+def card(name: str, s: dict, rows: dict, commit: str, user: str, extra_files: list = ()) -> str:
     cfgs = "\n".join(
         f"- config_name: {stem}\n  data_files: data/{stem}.parquet" for stem in sorted(rows)
     )
     langs = "\n".join(f"- {l}" for l in s["languages"])
+    lang_block = f"language:\n{langs}\n" if langs else ""
     lic = s["license"]
     extra = ""
-    if s.get("per_source"):
+    src = DECISIONS if s.get("per_source") else s.get("sources")
+    if src:
         table = "\n".join(
-            f"| `{stem}` | {DECISIONS[stem][0]} | {DECISIONS[stem][1]} | {DECISIONS[stem][2]} | {rows[stem]:,} |"
+            f"| `{stem}` | {src[stem][0]} | {src[stem][1]} | {src[stem][2]} | {rows[stem]:,} |"
             for stem in sorted(rows)
         )
         excl = "\n".join(f"- `{k}`: {v}." for k, v in EXCLUDED.items())
+        excl = f"\nNot republished:\n{excl}\n" if s.get("per_source") else ""
         extra = f"""## Sources and licences
 
 Each config is one source and keeps **its source's licence** (share-alike sources stay share-alike).
@@ -183,29 +312,26 @@ Attribution goes to the upstream authors; the conversion is ours.
 | config | upstream | licence | how it is used | rows |
 |---|---|---|---|---:|
 {table}
-
-Not republished:
-{excl}
-"""
+{excl}"""
     elif s.get("upstream"):
         extra = f"## Source and licence\n\n{s['upstream']}. The conversion is ours.\n"
     else:
         extra = "## Licence\n\nApache-2.0: generated by skycmd's own code, no third-party data.\n"
     files = "\n".join(f"| `data/{stem}.parquet` | {n:,} |" for stem, n in sorted(rows.items()))
+    files += "".join(f"\n| `{x}` | — |" for x in extra_files)
+    schema = s.get("schema", SCHEMA if name != "commands" else "")
+    note = f"\n{s['note']}\n" if s.get("note") else ""
+    tags = "- skycmd\n- typed-decisions\n- system-one" if "schema" not in s else "- skycmd"
     lic_extra = (
         f"\nlicense_name: per-source\nlicense_link: {REPO_URL}/blob/main/DATA_LICENSES.md" if lic == "other" else ""
     )
     return f"""---
 license: {lic}{lic_extra}
-language:
-{langs}
-pretty_name: {s['pretty']}
+{lang_block}pretty_name: {s['pretty']}
 task_categories:
-- text-classification
+- {s.get('task', 'text-classification')}
 tags:
-- skycmd
-- typed-decisions
-- system-one
+{tags}
 configs:
 {cfgs}
 ---
@@ -218,7 +344,7 @@ Part of [skycmd]({REPO_URL}), tiny decision models trained from scratch in Rust 
 browser. Written by `{s['command']}` at commit [`{commit[:8]}`]({REPO_URL}/commit/{commit}).
 Licences of every set: [DATA_LICENSES.md]({REPO_URL}/blob/main/DATA_LICENSES.md).
 
-{SCHEMA if name != 'commands' else ''}
+{schema}
 {extra}
 ## Files
 
@@ -233,7 +359,7 @@ ds = load_dataset("{user}/{s['repo']}", "{sorted(rows)[0]}")
 
 skycmd wrote no row with a language model: the targets come from the upstream labels (some upstream
 sets carry their own teacher soft labels, see their cards), the games' oracles or our generators.
-"""
+{note}"""
 
 
 def publish_glm(a, api, user: str, sha: str) -> None:
@@ -377,24 +503,33 @@ def main() -> None:
     for name, s in SETS.items():
         if (only or a.glm) and name not in only:
             continue
-        files = sorted(data.glob(s["files"]))
-        if s.get("per_source"):
-            unknown = [f.stem for f in files if f.stem not in DECISIONS and f.stem not in EXCLUDED]
+        files = set_files(data, s)
+        known = DECISIONS if s.get("per_source") else s.get("sources")
+        if known is not None:
+            unknown = [c for c, _, _ in files if c not in known and c not in EXCLUDED]
             if unknown:
-                raise SystemExit(f"{name}: no licence entry for {unknown}: add them to DECISIONS or EXCLUDED")
-            files = [f for f in files if f.stem in DECISIONS]
+                raise SystemExit(f"{name}: no licence entry for {unknown}: add them to its sources or EXCLUDED")
+            files = [x for x in files if x[0] in known]
         if not files:
-            print(f"{name}: no file under {data / s['files']}, skipped")
+            print(f"{name}: no file under {data} for {s['files']}, skipped")
             continue
         out = OUT / s["repo"]
         shutil.rmtree(out, ignore_errors=True)
         (out / "data").mkdir(parents=True)
         rows, manifest = {}, {}
-        for f in files:
-            rows[f.stem] = to_parquet(f, out / "data" / f"{f.stem}.parquet")
-            manifest[f.name] = {"sha256": sha256(f), "rows": rows[f.stem]}
+        for cfg, f, key in files:
+            rows[cfg] = to_parquet(f, out / "data" / f"{cfg}.parquet")
+            manifest[key] = {"sha256": sha256(f), "rows": rows[cfg]}
+        extra_files = []
+        if s.get("extra"):
+            dst = out / "tokenizers"
+            dst.mkdir()
+            for f in sorted(data.glob(s["extra"])):
+                shutil.copy(f, dst / f.name)
+                manifest[f.name] = {"sha256": sha256(f)}
+                extra_files.append(f"tokenizers/{f.name}")
         (out / "MANIFEST.json").write_text(json.dumps({"commit": commit, "source_files": manifest}, indent=2) + "\n")
-        (out / "README.md").write_text(card(name, s, rows, commit, user))
+        (out / "README.md").write_text(card(name, s, rows, commit, user, extra_files))
         size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
         print(f"{name}: {user}/{s['repo']}, {len(rows)} files, {sum(rows.values()):,} rows, {size / 1e6:.1f} MB")
         if a.dry_run:

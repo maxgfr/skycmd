@@ -264,7 +264,7 @@ Commercial use only within the license's revenue threshold.
 
 ## s6-ear audio (`data/ear/`, `sky-data fetch-audio`, `sky-data audio-jev`, `docs/s6-ear-prereg.md`)
 
-Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the test clips for the baselines); `data/ear` is not committed and the clips are not redistributed. Counts (fetched on 4 November 2026, 31 GB of features):
+Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the test clips for the baselines); `data/ear` is not committed and the audio is not redistributed (the questions, the clip index and the Mimi codes are, in `skycmd-ear`). Counts (fetched on 4 November 2026, 31 GB of features):
 
 | set | train | val | test |
 |---|---:|---:|---:|
@@ -292,8 +292,13 @@ Questions written by `sky-data audio-jev`: `turn_end` 215,655 / 11,370 / 31,527,
 ## Published on Hugging Face (`scripts/hf-publish-data.py`)
 
 One dataset repository per set, one parquet config per source, each config under its source's
-licence (share-alike stays share-alike); `LocalLLaMA/typed-decisions` (gated) is not republished,
-nor the MLM text or the audio clips. [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
+licence (share-alike stays share-alike). Not republished: `LocalLLaMA/typed-decisions` (gated), the
+audio of s6-ear (31 GB of log-mel features, rebuilt by `sky-data fetch-audio`) and GIFT-Eval (an
+evaluation set). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-series) (s6-cast),
+[skycmd-text](https://huggingface.co/datasets/maxgfr/skycmd-text) (MLM text and tokenizers),
+[skycmd-ear](https://huggingface.co/datasets/maxgfr/skycmd-ear) (s6-ear questions, clip index, Mimi
+codes), [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math) (LFM3 router
+questions), [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
 
 ## Rejected
 

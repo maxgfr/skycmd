@@ -102,9 +102,10 @@ No output of a hosted LLM is used by s5.
 
 ## Our datasets on Hugging Face
 
-Every decision set skycmd trains on is published, one parquet config per source with its licence
-(`scripts/hf-publish-data.py`): [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels). The GLM-5.3-flash labels are AI-generated and
-marked as such; the gated `LocalLLaMA/typed-decisions` is not republished.
+Every set a skycmd model reads is published, one parquet config per source with its licence
+(`scripts/hf-publish-data.py`): [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-series), [skycmd-text](https://huggingface.co/datasets/maxgfr/skycmd-text), [skycmd-ear](https://huggingface.co/datasets/maxgfr/skycmd-ear), [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels). The GLM-5.3-flash labels are AI-generated and
+marked as such. Not republished: the gated `LocalLLaMA/typed-decisions`, the s6-ear audio
+(31 GB of log-mel features, rebuilt by `sky-data fetch-audio`) and GIFT-Eval (evaluation only).
 
 ## Libraries and technologies
 
