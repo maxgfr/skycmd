@@ -12,10 +12,10 @@
 - **Labels GLM-5.3-flash (§1.1)** : 599 350 sur 747 198 (80 %) le 05/11 à 08:41, 80 refus de la modération.
   - **La nuit :** presque rien n'a avancé à cause de la veille, et rien n'est perdu. La reprise s'est faite au réveil, à 07:42.
   - **Le débit :** 4,7 labels/s avec le prompt aux items numérotés (#85). Le 05/11, un essai à 6 workers a donné 3,99 labels/s, avec des erreurs HTTP 429 (code 1302), et un worker qui s'arrête après 3 échecs de suite. **On reste à 4 workers.**
-  - **La fin :** il reste 147 768 records, soit environ 8 h 45, donc **la fin vers le 05/11 à 17 h 30**, si le Mac reste éveillé.
-  - `skycmd-glm-labels` a été republié à 72 % (§1.2). La version finale sera publiée à la fin de la boucle.
+  - **La fin :** le 05/11 à 15 h, 682 319 labels sur 747 198 (91 %) à 280 labels/min, donc **la fin vers 19 h**. La veille du Mac de la nuit du 04 au 05/11 a fait glisser l'estimation de 17 h 30.
+  - `skycmd-glm-labels` a été republié à 91 % le 05/11 (§1.2). La version finale sera publiée à la fin de la boucle.
 - **Données s6-ear téléchargées (§8)** : les comptes sont dans `DATA_LICENSES.md`, et il y a bien 50 mots réservés par langue, sans amendement.
-- **Nos 7 jeux de données sont publics sur Hugging Face (§1.2)**, labels GLM compris (marqués comme générés par IA).
+- **Nos 11 jeux de données sont publics sur Hugging Face (§1.2)** : tout ce qu'un modèle lit, les labels GLM compris (marqués comme générés par IA). Seuls manquent l'audio de s6-ear (31 Go, reconstruit par `sky-data fetch-audio`), le jeu gated et GIFT-Eval.
 - **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot. Celles de s6-secrets et s6-cast aussi (§3, §4).
 - **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
 - **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
@@ -108,6 +108,13 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
   - `skycmd-zero-shot` : 5 000.
 
   Les liens sont dans le README, `DATA_LICENSES.md` et la page Sources.
+- [x] **Le 05/11/2026 : tout ce qu'un modèle lit est publié.** Les 6 jeux du 03/11 n'ont pas changé : sha256 identiques à leur `MANIFEST.json` sur le Hub. Quatre nouveaux dépôts, en public, ont été ajoutés :
+  - `skycmd-series` : les séries de s6-cast, 8 sources, 10 789 séries ;
+  - `skycmd-text` : le texte MLM (`data/text` et `data/text-open`), 11 sources, 112 671 documents, plus les 3 tokenizers ;
+  - `skycmd-ear` : les questions de s6-ear, l'index des clips et les codes Mimi, 1 233 211 lignes ;
+  - `skycmd-lfm3-math` : les 600 questions de calibration et les 1 000 de test du routeur LFM3.
+
+  Non republiés : `LocalLLaMA/typed-decisions` (gated), l'audio de s6-ear (31 Go de log-mel, que `sky-data fetch-audio` reconstruit) et GIFT-Eval (évaluation seulement).
 - [ ] Vérifier le viewer du Hub sur chaque dataset quand l'indexation est finie (`https://datasets-server.huggingface.co/is-valid?dataset=maxgfr/<repo>`), et `load_dataset("maxgfr/skycmd-decisions", "boolq")`.
 - **Règles appliquées par le script :**
   - chaque source garde sa licence, et les sources share-alike restent share-alike ;
