@@ -232,16 +232,35 @@ Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` 
 |---|---|---|
 | `secret_synth`, `secret_bench` | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | generated locally from the seed. Keys follow each provider's public format with random bodies, so none is a real key. 50,000 training texts (95/5 train/val by text) and 2,000 bench texts in contexts the training never shows. Never committed. |
 
-## LFM3-1.7B System 1 / System 2 (`data/lfm3/`, `scripts/lfm3-s1s2.sh`, `docs/lfm3-s1s2-prereg.md`)
+## LFM3-1.7B System 1 / System 2 and its fine-tune (`data/lfm3/`, `scripts/lfm3-s1s2.sh`, `scripts/lfm3-ft.sh`, `docs/lfm3-s1s2-prereg.md`, `docs/lfm3-ft-prereg.md`)
 
-Inference only: LFM3 is not trained, and its weights and outputs are not redistributed.
+The router (`docs/lfm3-s1s2-prereg.md`) is inference only. Since its amendment 1 (05/11/2026) it runs remotely on Hugging Face Jobs, in bf16, on the base model and on the fine-tuned one.
+
+**Fine-tuning (planned, not run).** `docs/lfm3-ft-prereg.md` trains a LoRA on LFM3-1.7B, on Hugging Face Jobs. The training data is MIT only:
+- the GSM8K and MATH train worked solutions;
+- the base model's own correct answers on those train questions (self-distillation).
+
+None of the 600 calibration questions and no test question is trained on; questions with the same normalized text are excluded too. The GLM / z.ai labels are **never** used for LFM3: z.ai's API terms forbid training external models on its outputs.
+
+**Where the outputs go.**
+- Generations, evaluations and logs go to the private dataset repo `maxgfr/skycmd-lfm3-ft-work`.
+- The merged model and its adapter go to the private model repo `maxgfr/skycmd-lfm3-1.7b-s1`.
+
+**Derived weights stay private until the user agrees.** If they are ever published, it is under LFM Open License v1.0, with:
+- the license text and a NOTICE;
+- the modified files marked;
+- a name that does not present the model as "LFM3": "fine-tuned from LiquidAI/LFM3-1.7B", since the license grants no trademark rights.
+
+Commercial use only within the license's revenue threshold.
 
 | dataset / model | license | revision | how it is used | rows |
 |---|---|---|---|---:|
-| LiquidAI/LFM3-1.7B-MLX-4bit | LFM Open License v1.0 (`lfm1.0`) | `deb2986b` | the model whose answers are routed, run locally with mlx-vlm 0.7.11 | — |
-| openai/gsm8k (`main`) | MIT | `740312ad` | 300 train questions (calibration), 500 test questions (test), seed 1234 | 800 |
-| DigitalLearningGmbH/MATH-lighteval | MIT (MATH, Hendrycks et al.) | `0530c786` | 300 train problems with a `\boxed{}` answer (calibration) | 300 |
+| LiquidAI/LFM3-1.7B-MLX-4bit | LFM Open License v1.0 (`lfm1.0`) | `deb2986b` | the local smoke test of the router only (mlx-vlm 0.7.11); the run itself moved to bf16 (amendment 1) | — |
+| LiquidAI/LFM3-1.7B | LFM Open License v1.0 (`lfm1.0`), custom code (`trust_remote_code`) | pinned by `lfm3-ft.sh smoke`, then by an amendment of `docs/lfm3-ft-prereg.md` | bf16 base model: router run, self-distillation samples, LoRA fine-tuning (planned); derived weights private | — |
+| openai/gsm8k (`main`) | MIT | `740312ad` | 300 train questions (calibration), 500 test questions (test), seed 1234; the other train questions and their worked solutions (`<<...>>` removed, `\boxed{}` final line) for the fine-tune | 800 + about 7,170 |
+| DigitalLearningGmbH/MATH-lighteval | MIT (MATH, Hendrycks et al.) | `0530c786` | 300 train problems with a `\boxed{}` answer (calibration); the other train problems and their solutions for the fine-tune | 300 + about 7,200 |
 | HuggingFaceH4/MATH-500 | MIT (a subset of the MATH test set, from PRM800K); the card has no license tag | `6e4ed1a2` | the 500 test problems (test) | 500 |
+| TIGER-Lab/MMLU-Pro (test) | MIT (card license tag; questions drawn from MMLU, STEM websites, TheoremQA and SciBench) | `b189ec76` | 500 questions sampled with seed 1234, asked in s1: the forgetting gate G3 of the fine-tune; evaluation only, never trained on | 500 |
 
 ## s6-ear audio (`data/ear/`, `sky-data fetch-audio`, `sky-data audio-jev`, `docs/s6-ear-prereg.md`)
 

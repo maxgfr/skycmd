@@ -20,6 +20,7 @@
 - **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
 - **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
 - **Lu et non adopté** (04/11) : ZHA, l'attention hiérarchique de Zyphra (arXiv 2610.42112). Elle ne bat l'attention dense qu'au-delà d'environ 48K tokens et marche mal sous 1B paramètres ; nos états font 64 à 512 tokens. Les raisons sont dans `docs/research.md` (« Not adopted yet »).
+- **LFM3 fine-tuné sur Hugging Face Jobs (§6.1)** : pré-enregistrement figé (`docs/lfm3-ft-prereg.md`), scripts et tests prêts, **rien n'a tourné**. Le routeur S1/S2 du §6 passe à distance, en bf16, par l'amendement 1 de son pré-enregistrement. Le premier pas est le smoke, sur L4 pour environ 0,50 $, après l'accord de l'utilisateur sur le coût.
 - **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7). Son worktree `.claude/worktrees/issue-75-wsp-lfm3` traîne encore : à supprimer sur l'accord de l'utilisateur.
 
 > **La labellisation GLM tourne en arrière-plan depuis le 29/10/2026 (§1.1, environ 80 h).** Si la machine s'éteint ou redémarre, la relancer depuis le checkout principal :
@@ -42,7 +43,7 @@ Les autres configs `s6-*` de `configs/` ne sont pas des modèles à entraîner :
 - `s6-femto`, `s6-femto-xsa` et `s6-cast-femto` sont de minuscules configs aux poids aléatoires, pour les tests golden de `sky-infer` (`tests/golden_s6.rs`, `golden_s6x.rs`, `golden_cast.rs`) et les tests unitaires ;
 - `s6-pico` et `s6-pico-xsa` sont les configs du pilote et de l'ablation (§2.1, §2.2), pas des modèles à publier.
 
-Ordre conseillé (une seule machine) : s6-ear (§8, environ 3 h de GPU, les données sont prêtes) → labels GLM (§1.1 : à distance, fin prévue vers le 05/11 à 17 h 30, la machine reste libre) ; LFM3 S1/S2 (§6) seulement à distance, jamais en local → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
+Ordre conseillé (une seule machine) : s6-ear (§8, environ 3 h de GPU, les données sont prêtes) → labels GLM (§1.1 : à distance, fin prévue vers le 05/11 à 17 h 30, la machine reste libre) ; LFM3 S1/S2 (§6) et son fine-tuning (§6.1) seulement à distance, sur Hugging Face Jobs, jamais en local → pilote et ablation pico → s6-nano → s6-micro → s6-secrets (il reprend les options adoptées par l'ablation) → s6-cast (indépendant, à caser quand la machine est libre). Durées mesurées ou estimées sur un M5.
 
 ## 0. Prérequis
 
@@ -234,7 +235,8 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 - les données écrites dans `data/lfm3/` : 600 questions de calibration, 1 000 de test ;
 - un essai de fumée de 3 questions par mode, réussi (`runs/lfm3-s1s2-smoke`). Débit : 98 jetons/s sans réflexion, 80 avec, environ 4,5 s par question.
 
-- [ ] **Pas en local** (décision de l'utilisateur, 05/11/2026). Faire tourner LFM3 sur le GPU du M5 pendant 10 h chauffe trop la machine. Le run ne se fera qu'à distance, après un **amendement daté** du pré-enregistrement : les deux options ci-dessous changent le modèle, qui passe en bf16 au lieu de `LFM3-1.7B-MLX-4bit`, et le moteur. La sonde S1 lit les log-probas des jetons (`r.logprobs` dans `s1s2.py`), donc l'option retenue doit les fournir. Les options :
+- [x] **Amendement 1 du pré-enregistrement (05/11/2026)** : le run passe à distance, en bf16, sur Hugging Face Jobs avec vLLM (ou le repli transformers), pour le modèle de base **et** le modèle fine-tuné. `route` tourne en local sur les générations rapatriées. Les commandes sont au §6.1 (`scripts/lfm3-ft.sh eval pull route`). L'option « GPU loué » ci-dessous a été retenue.
+- [ ] **Pas en local** (décision de l'utilisateur, 05/11/2026). Faire tourner LFM3 sur le GPU du M5 pendant 10 h chauffe trop la machine. Le run ne se fera qu'à distance, après un **amendement daté** du pré-enregistrement (fait, ci-dessus) : les deux options ci-dessous changent le modèle, qui passe en bf16 au lieu de `LFM3-1.7B-MLX-4bit`, et le moteur. La sonde S1 lit les log-probas des jetons (`r.logprobs` dans `s1s2.py`), donc l'option retenue doit les fournir. Les options :
   - **L'API de Liquid (Liquid Console)** : LFM3 y est annoncé, mais le prix n'est pas confirmé (une source donne 0,08 $ / 0,20 $ par million de jetons en entrée / sortie), et il faut vérifier qu'elle rend les log-probas. LFM3 n'est **pas** sur OpenRouter au 05/11 (seulement `liquid/lfm-2.5-*`), ni chez un fournisseur d'inférence Hugging Face.
   - **Un GPU loué** avec `vllm serve LiquidAI/LFM3-1.7B`, qui rend les log-probas. Il faut adapter `s1s2.py` à un client OpenAI-compatible.
 - [ ] Pour mémoire, l'ancienne commande locale, **à ne pas lancer** : `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
@@ -258,6 +260,45 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
   - le Weight-Space Programming de l'issue #75 (fermée), mais seulement si le diagnostic montre un défaut que l'édition des poids pourrait lever (des boucles, par exemple).
 
   Chacun passe par un amendement daté du pré-enregistrement.
+
+### 6.1 LFM3 fine-tuné (HF Jobs) (`docs/lfm3-ft-prereg.md`) — **rien n'a tourné**
+
+**L'idée.** Le routeur choisit quand réfléchir, mais ne répare pas le Système 1 : sans réflexion, LFM3-1.7B peut boucler jusqu'à la limite (l'essai de fumée). Ici, on apprend au modèle à répondre juste et court sans réfléchir. C'est un LoRA entraîné sur :
+- les solutions rédigées de GSM8K et MATH (train, MIT) ;
+- ses propres bonnes réponses en s2-1024 (auto-distillation).
+
+Aucune question de calibration, de test ou de MMLU-Pro n'y entre. Les labels GLM ne servent **jamais** ici : les conditions de z.ai l'interdisent.
+
+**Où ça tourne.** Tout passe par Hugging Face Jobs, rien en local à part `route` et `gate` (CPU). Les artefacts vont dans le dataset **privé** `maxgfr/skycmd-lfm3-ft-work`, le modèle dans le dépôt **privé** `maxgfr/skycmd-lfm3-1.7b-s1`. Rien n'est public, et les poids dérivés restent privés tant que l'utilisateur n'a pas dit oui.
+
+**Prêt le 05/11/2026, pas lancé :**
+- `scripts/lfm3-ft.sh` ;
+- `experiments/lfm3-ft/` : `smoke.py`, `gen.py`, `sft.py`, `eval.py`, `common.py`, `route.py`, `gate.py` ;
+- les tests CPU : `python3 experiments/lfm3-ft/test_common.py`.
+
+`DRY_RUN=1 scripts/lfm3-ft.sh smoke gen sft eval` affiche les commandes `hf jobs` sans rien lancer. Sans `DRY_RUN`, chaque job payant affiche son coût estimé et maximal, puis attend « y ». **L'utilisateur confirme le coût avant chaque job payant.**
+
+Depuis le checkout principal à jour de main (`data/lfm3` y est déjà) :
+
+- [ ] **Smoke** (L4, 30 à 40 min, environ 0,50 $, au plus 0,80 $) : `scripts/lfm3-ft.sh smoke`. Le suivre avec `hf jobs ps`, puis `hf jobs logs <id>`. Il vérifie :
+  - la révision du modèle de base, qu'il rend ;
+  - si vLLM 0.33.0 charge LFM3 et s'accorde avec transformers ;
+  - le gabarit avec et sans réflexion ;
+  - les noms des modules LoRA ;
+  - deux pas de TRL, la fusion et le rechargement.
+- [ ] `scripts/lfm3-ft.sh pull`, puis lire `runs/lfm3-ft/smoke/report.json` : `revision`, `engine`, `lora_targets_match`, `trl.ok`.
+- [ ] **Amendement 1 de `docs/lfm3-ft-prereg.md`** (daté, commité) : recopier la révision et le moteur. Les reporter dans `BASE_REV_PINNED` et `ENGINE_PINNED` en tête de `scripts/lfm3-ft.sh`. Si `lora_targets_match` ou `trl.ok` est faux, on s'arrête : l'écart passe d'abord par l'amendement.
+- [ ] **Génération** (A100, environ 2 h, environ 5 $, au plus 10 $) : `scripts/lfm3-ft.sh gen`. Elle reprend si le job est coupé : relancer la même commande.
+- [ ] **Entraînement** (A100, 1 à 2 h, environ 5 $, au plus 10 $) : `scripts/lfm3-ft.sh sft`. Puis `scripts/lfm3-ft.sh pull`, pour avoir `runs/lfm3-ft/sft/result.json` et le commit du modèle.
+- [ ] **Évaluation** (A100, environ 1 h 30 par modèle, environ 7,50 $ pour les deux, au plus 15 $) : `scripts/lfm3-ft.sh eval`. C'est un job pour la base, un pour le modèle fine-tuné. Le job de la base est aussi le run à distance du routeur du §6 (amendement 1).
+- [ ] **Lecture** (local, gratuit) : `scripts/lfm3-ft.sh pull route gate`. Elle donne `runs/lfm3-ft/report.md` et `gate.json`, et `runs/lfm3-ft/eval/<base|ft>/report.md` pour le routeur.
+- [ ] **Portes** (pré-enregistrées, §6) :
+  - **G1** : précision s1 sur le test ≥ base + 0,03, et arrêts par limite ≤ la moitié de la base ;
+  - **G2** : précision s2-1024 ≥ base − 0,01, et réflexion ≤ 0,6 × la base. Elle est rapportée à part ;
+  - **G3** : MMLU-Pro (500, s1) ≥ base − 0,02.
+
+  **« LFM3 amélioré »** = G1 et G3. Le routeur (H1 à H4) est rapporté pour les deux modèles.
+- [ ] Total estimé : **environ 18 $** (au plus 36 $ si chaque job va jusqu'à son délai). Pas de relance pour « voir », pas de choix de checkpoint, les échecs vont au rapport.
 
 ## 7. Poids flexibles : le Weight-Space Programming sur les petits modèles de skycmd (à faire après le §1.1 et le §6)
 

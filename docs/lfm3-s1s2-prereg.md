@@ -91,4 +91,20 @@ Le rapport donne tout, quel que soit le résultat :
 
 ## 8. Amendements
 
-Aucun pour l'instant.
+**Amendement 1 (05/11/2026, avant tout run : seul l'essai de fumée local de 3 questions par mode a tourné, aucun résultat de calibration ni de test n'existe). Le run passe à distance, en bf16.**
+
+- **Changement.** Le run ne se fait plus en local. C'est la décision de l'utilisateur : le M5 chauffe trop pendant les 10 h d'inférence. Le même protocole tourne à distance, sur Hugging Face Jobs, par `scripts/lfm3-ft.sh eval` (`experiments/lfm3-ft/eval.py`) :
+  - **modèle** : `LiquidAI/LFM3-1.7B` en bf16, au lieu de `LiquidAI/LFM3-1.7B-MLX-4bit` (rév. `deb2986b`). La révision est épinglée par le smoke de `docs/lfm3-ft-prereg.md` ;
+  - **moteur** : vLLM au lieu de mlx-vlm. Les log-probabilités de s1 sont celles de vLLM (`logprobs=1`, le jeton tiré). Si le smoke montre que vLLM ne charge pas LFM3 correctement, c'est le repli `generate` de transformers, avec la règle de décision et les log-probabilités définies au §2 de `docs/lfm3-ft-prereg.md` ;
+  - **prompt** : le texte du gabarit de chat, tokenisé sans ajouter de jeton spécial (le gabarit commence déjà par BOS).
+- **Ce qui ne change pas.**
+  - Le prompt, les modes s1, s2-256 et s2-1024 : budget, forçage, échantillonnage, une graine par question dérivée de son id.
+  - L'extraction de la réponse, la notation, les 6 traits.
+  - Le routeur, α = 0,02, le choix de B\*, les critères H1 à H4 et les interdits.
+  - Le code de `route` est celui de `s1s2.py`, inchangé : `experiments/lfm3-ft/route.py` le pointe sur `runs/lfm3-ft/eval/<base|ft>` au lieu de `runs/lfm3-s1s2`.
+  - Les fonctions copiées dans `experiments/lfm3-ft/common.py` sont vérifiées identiques à celles de `s1s2.py` par `test_common.py`.
+- **Appliqué à deux modèles.**
+  - Le modèle de base.
+  - Le modèle fine-tuné de `docs/lfm3-ft-prereg.md`, avec exactement le même protocole. Sa sonde et son τ sont ajustés sur sa propre calibration, et son test est lu une fois.
+- **Où tourne `route`.** En local, sur CPU, sur les générations rapatriées (`scripts/lfm3-ft.sh pull route`) : `route --split calib`, puis `route --split test`, une fois par modèle.
+- **Pourquoi.** La sonde lit les log-probabilités des jetons : il faut un moteur qui les rende. Aucune API ne sert LFM3 avec ses log-probabilités au 05/11/2026 (`TODO.md` §6). bf16 et 4 bits ne donnent pas exactement les mêmes sorties : les résultats de ce run sont ceux de LFM3-1.7B en bf16, et le rapport le dit.
