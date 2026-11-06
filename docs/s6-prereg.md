@@ -104,3 +104,13 @@ Le temps réel compte : les vrais entraînements sont budgétés en minutes, et 
 - **Constat.** `scripts/prepare-data.sh` a récupéré `data/text-open` le 29/10/2026. On obtient 15 011 documents et 99,5 Mo de texte, et non les 150 Mo de l'amendement 1 : le shard Wikipedia de Dolma 3 ne contient que 4,3 Mo, pour un budget de 37,5. Les nombres par source sont dans `DATA_LICENSES.md`.
 - **Conséquence.** Le mélange de pré-entraînement est d'environ 40 % de texte ouvert et 60 % de `data/text` (147 Mo), au lieu de moitié-moitié.
 - **Ce qui ne change pas.** Rien d'autre. Le §1 tient : ces fichiers sont figés pour le pilote, l'ablation et tous les runs qui suivent.
+
+**Amendement 4 (06/11/2026, avant le pilote : aucun run s6 n'a tourné, aucun résultat n'a été lu). Les règles appliquées par un script, l'extension automatique, tout sur le M5.**
+
+- **Les règles du §4 sont appliquées par `scripts/s6-adopt.py adopt`**, testé par `scripts/test_s6_adopt.py`. Aucune règle ni aucun seuil ne change : gain d'au moins 0,01 et supérieur à l'écart-type de chaque bras, 0,02 si le surcoût de Muon dépasse 15 %, perte arena au-delà de 5 %, 0,005 et ECE à 0,01 près pour les changements isolés, ≥ −0,005 et 2 % plus rapide sans polish.
+- **La recette.** Le script écrit `runs/recipe/recipe.json` : chaque règle avec ses chiffres, le sha256 des deux résumés lus et l'horodatage. Il écrit aussi les configs dérivées (`runs/recipe/configs/`). Ce fichier remplace le commit manuel des choix, et il est commité avec le rapport.
+- **L'extension au bord de grille (§2) n'attend plus d'amendement.** `cargo xtask s6lr --extend` la lance si et seulement si un optimiseur a choisi ×0,5 ou ×2, et elle tourne alors à ×0,25 ou ×4. Le résumé du pilote l'inclut dans le choix, avec la même règle des 0,01 contre ×1.
+- **L'enchaînement.** `scripts/s6-recipe.sh` enchaîne le pilote, l'extension, l'ablation aux échelles du pilote, puis `adopt`, sans aucune décision à la main entre les étapes.
+- **La machine.** Tout tourne sur le M5, la machine des budgets (`TIME_SCALE` = 1).
+- **Ce qui ne change pas.** Données, bras, graines, budgets en pas, métriques et seuils.
+- **Pourquoi.** Un choix fait à la main entre l'ablation et les modèles finaux est un moment où l'on lit les résultats et où l'on peut infléchir une règle. Un script testé l'applique à la lettre.

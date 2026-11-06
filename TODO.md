@@ -1,8 +1,36 @@
 # TODO : entraîner les modèles s6, et le routage Système 1 / Système 2 de LFM3-1.7B
 
-## Où on en est (05/11/2026, 08:45)
+## À lancer le 06/11/2026 : la nuit 1 du grand run (la recette s6)
 
-- **Le prochain run : tout entraîner, au mieux (§9), sur le M5.** Le 05/11, l'utilisateur avait d'abord parlé de louer des GPU, puis a tranché : « finalement je ferai tout sur mon pc ». Il n'y a donc **ni Mac loué ni HF Jobs**, et ce n'est **pas** pour tout de suite. Le §9 dit ce qui est prêt et ce qui reste à faire.
+Tout est prêt pour cette nuit. Les labels GLM sont finis à 100 %, l'amendement 4 de `docs/s6-prereg.md` est commité, et le dry-run passe. Cette nuit ne lit pas encore `data/distill/glm.jsonl`, qui sert à la nuit 2, mais le mélange est déjà prêt. Dans un terminal, **Mac branché et ouvert** :
+
+```
+cd ~/Documents/Code/skycmd && git pull
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # Metal (absent du profil du shell)
+caffeinate -i scripts/s6-recipe.sh 2>&1 | tee runs/s6-recipe.log
+```
+
+- **Ce que ça fait, sans aucune décision à la main :**
+  - le pilote du taux d'apprentissage (6 runs, environ 2 h 30) ;
+  - l'extension, seulement si un choix tombe au bord de la grille ;
+  - l'ablation pico aux échelles du pilote (11 bras × 3 graines, environ 15 h) ;
+  - puis `scripts/s6-adopt.py adopt`, qui écrit la recette dans `runs/recipe/recipe.json`.
+
+  Au total, environ **17 h 30** : lancer le soir, la fin arrive le lendemain après-midi.
+- **Pour suivre :**
+  - `tail -f runs/s6-recipe.log` ;
+  - les journaux de chaque étape dans `runs/s5-logs/` ;
+  - `ls runs/s6lr runs/s6ab`.
+- **En cas d'arrêt** (veille, crash, Mac débranché) : relancer la même commande. xtask reprend là où il s'était arrêté.
+- **Avant, si on veut voir les commandes sans rien lancer :** `DRY_RUN=1 scripts/s6-recipe.sh`.
+- **Après :** ouvrir une session Claude Code pour :
+  - lire `runs/recipe/recipe.json` et commiter la recette ;
+  - écrire ce qui reste au §9.2 avant la nuit 2 : les amendements s6-ear, s6-cast, s6-gen, s6-secrets et LFM3, `train-all.sh` et le mode local de `lfm3-ft.sh`.
+- **À ne pas faire en même temps :** LFM3 S1/S2 (§6) et s6-ear (§8). Ils utilisent le même GPU.
+
+## Où on en est (06/11/2026)
+
+- **Le prochain run : tout entraîner, au mieux (§9), sur le M5.** Le 05/11, l'utilisateur avait d'abord parlé de louer des GPU, puis a tranché : « finalement je ferai tout sur mon pc ». Il n'y a donc **ni Mac loué ni HF Jobs**. **La nuit 1, la recette s6, se lance le 06/11** (voir plus haut). Le §9 dit ce qui est prêt et ce qui reste à faire pour les nuits suivantes.
   - **Les 5 modèles s6**, avec les optimisations que le pilote et l'ablation adoptent (règles appliquées automatiquement) : environ 48 h de GPU.
   - **LFM3-1.7B** : le routeur S1/S2 (§6) et le fine-tuning (§6.1), en local. Il faut d'abord les amendements du §9.2 : le §6.1 et l'amendement 1 du §6 visaient HF Jobs.
   - **La machine va chauffer pendant plusieurs jours.** On découpe en tranches d'une nuit (§9.4) : tout reprend là où ça s'était arrêté.
@@ -42,10 +70,10 @@ Ordre (§9, tout sur le M5, une tranche par nuit) : labels GLM (§1.1, finis le 
 ## 0. Prérequis
 
 - [x] Toolchain Metal : `xcodebuild -downloadComponent MetalToolchain`, et `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Présente le 29/10/2026 (`xcrun metal --version` : 32023.921).
-- [ ] `export SKYCMD_STORE=$PWD` (le checkout principal) pour `cargo xtask`, dans le terminal qui lance le pilote et l'ablation.
+- [x] `export SKYCMD_STORE=$PWD` (le checkout principal) pour `cargo xtask` : `scripts/s6-recipe.sh` le fait tout seul.
 - [x] `uv` installé (s6-cast : `scripts/gift-eval.py` tourne sous Python 3.12).
 - [x] `node` et `wasm-pack` (présents le 29/10/2026) : l'étape `eval` de `scripts/train-s6.sh` construit `site/public/pkg` s'il manque (`scripts/build-wasm.sh`) pour mesurer la latence WASM.
-- [ ] Place disque : **15 Go libres** le 29/10/2026, après suppression du cache de build debug (`target/s3-train/debug`, 9,2 Go, produit par `cargo test` et clippy ; il se reconstruit tout seul). Les scripts d'entraînement n'utilisent que `target/s3-train/release`. Les runs écrivent dans `runs/` et `models/`, et les checkpoints de s6-micro (5,85M paramètres, état d'optimiseur compris) pèsent bien plus que ceux de pico. Revérifier avant 2.5, et supprimer à nouveau `target/s3-train/debug` après des `cargo test`.
+- [x] Place disque : **95 Go libres** le 06/11/2026 (15 Go le 29/10/2026), après suppression du cache de build debug (`target/s3-train/debug`, 9,2 Go, produit par `cargo test` et clippy ; il se reconstruit tout seul). Les scripts d'entraînement n'utilisent que `target/s3-train/release`. Les runs écrivent dans `runs/` et `models/`, et les checkpoints de s6-micro (5,85M paramètres, état d'optimiseur compris) pèsent bien plus que ceux de pico. Revérifier avant 2.5, et supprimer à nouveau `target/s3-train/debug` après des `cargo test`.
 
 ## 1. Données (une seule fois, avant le premier pilote)
 
@@ -470,7 +498,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 ### 9.2 Ce qui reste à faire avant le run (par Claude, sans GPU)
 
 - [ ] **Les amendements datés, commités avant le moindre run :**
-  - **`docs/s6-prereg.md` §7, amendement 4** : les règles §4 sont appliquées par `scripts/s6-adopt.py`. La recette écrite dans `runs/recipe/recipe.json` remplace le commit manuel, et elle est commitée dans le rapport. L'extension au bord est lancée automatiquement par `s6lr --extend`.
+  - [x] **`docs/s6-prereg.md` §7, amendement 4 (commité le 06/11/2026, avec `scripts/s6-recipe.sh`)** : les règles §4 sont appliquées par `scripts/s6-adopt.py`. La recette écrite dans `runs/recipe/recipe.json` remplace le commit manuel, et elle est commitée dans le rapport. L'extension au bord est lancée automatiquement par `s6lr --extend`.
   - **`docs/s6-ear-prereg.md` §8, amendement 2.** s6-ear tourne après l'ablation, avec la recette, pour le modèle et pour son témoin. Son taux est centré par μP. Le curriculum est sans effet en audio.
   - **`docs/s6-cast-prereg.md` §7, amendement 3.** s6-cast prend Muon ou AdamW, SODA, sans polish, StableQAT et XSA si l'ablation les adopte. Son pilote décide seul, par ses propres règles.
   - **`docs/s6-gen-prereg.md` et `docs/s6-secrets-prereg.md`** : une ligne chacun, pour dire que la recette passe par le fichier.
@@ -505,7 +533,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `train-all.sh`, reprise de xtask et des scripts). Les durées sont celles du M5.
 
 1. **La fumée `SMOKE=1`**, environ 30 min : les 5 modèles de bout en bout, en quelques minutes chacun, sortent leur GGUF et leurs portes.
-2. **Nuit 1 : le pilote et l'ablation pico, environ 17 h 30.** Le pilote prend environ 2 h 30, plus l'extension si besoin ; l'ablation prend environ 15 h. Puis `adopt`, qui écrit la recette.
+2. **Nuit 1 : le pilote et l'ablation pico, environ 17 h 30, avec `caffeinate -i scripts/s6-recipe.sh`** (le mode d'emploi est en tête du TODO). Le pilote prend environ 2 h 30, plus l'extension si besoin ; l'ablation prend environ 15 h. Puis `adopt`, qui écrit la recette. Elle peut tourner avant la fumée et le reste du §9.2, qui ne servent qu'à partir de la nuit 2.
 3. **Nuit 2 : s6-ear, s6-secrets puis s6-nano, environ 11 h.** s6-ear prend environ 3 h, s6-secrets environ 30 min et s6-nano environ 7 h. Les labels GLM doivent être finis et mélangés (`data/distill/glm.jsonl`).
 4. **Nuit 3 : s6-micro, environ 11 h.**
 5. **Nuit 4 : s6-cast, environ 9 h** (pilote, puis 8 h d'entraînement).
