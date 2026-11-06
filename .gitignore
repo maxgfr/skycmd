@@ -22,3 +22,7 @@ logs-s4/
 
 # Claude Code worktrees (isolated working copies, never committed)
 .claude/worktrees/
+
+# Python bytecode
+__pycache__/
+*.pyc
