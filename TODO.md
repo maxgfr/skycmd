@@ -2,6 +2,17 @@
 
 ## À lancer le 06/11/2026 : la nuit 1 du grand run (la recette s6)
 
+> **Cette nuit n'entraîne pas les s6.** Elle choisit leur recette, c'est-à-dire quelles optimisations garder, et ne produit aucun modèle final. Les 5 modèles s6 demandent environ 48 h de GPU, en 4 nuits :
+>
+> | nuit | ce qui tourne | durée | prête ? |
+> |---|---|---|---|
+> | 1 | pilote + ablation pico → recette (`scripts/s6-recipe.sh`) | ~17 h 30 | **oui** |
+> | 2 | s6-ear, s6-secrets puis s6-nano | ~11 h | non : il manque des amendements et `train-all.sh` (§9.2) |
+> | 3 | s6-micro | ~11 h | non (§9.2) |
+> | 4 | s6-cast | ~9 h | non (§9.2) |
+>
+> Puis LFM3 S1/S2 et LFM3 fine-tuné (§9.4, nuits 5 et suivantes). Ce qui manque pour les nuits 2 à 4 se fait dans une session Claude Code pendant ou après la nuit 1, sans GPU.
+
 Tout est prêt pour cette nuit. Les labels GLM sont finis à 100 %, l'amendement 4 de `docs/s6-prereg.md` est commité, et le dry-run passe. Cette nuit ne lit pas encore `data/distill/glm.jsonl`, qui sert à la nuit 2, mais le mélange est déjà prêt. Dans un terminal, **Mac branché et ouvert** :
 
 ```
@@ -46,10 +57,10 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee runs/s6-recipe.log
 - **Nos 14 jeux de données sont publics sur Hugging Face (§1.2)** : tout ce qu'un modèle lit et tout ce qu'on a créé nous-mêmes (jeux, trajectoires de nos modèles face à l'oracle, séries synthétiques, secrets, évaluations écrites à la main), les labels GLM compris (marqués comme générés par IA). Seuls manquent l'audio de s6-ear (31 Go, reconstruit par `sky-data fetch-audio`), le jeu gated et GIFT-Eval.
 - **Données s6 prêtes (§1)** : le corpus ouvert, les tokenizers 2048 et 4096, et les tests zéro-shot. Celles de s6-secrets et s6-cast aussi (§3, §4).
 - **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
-- **Les entraînements s6 viendront plus tard** : pilote, ablation, s6-nano, s6-micro, s6-secrets, s6-cast.
+- **Les entraînements s6** : la nuit 1 (pilote, ablation, recette) est prête à lancer. s6-ear, s6-secrets, s6-nano, s6-micro et s6-cast suivent les nuits 2 à 4, une fois le §9.2 fait.
 - **Lu et non adopté** (04/11) : ZHA, l'attention hiérarchique de Zyphra (arXiv 2610.42112). Elle ne bat l'attention dense qu'au-delà d'environ 48K tokens et marche mal sous 1B paramètres ; nos états font 64 à 512 tokens. Les raisons sont dans `docs/research.md` (« Not adopted yet »).
-- **LFM3 fine-tuné sur Hugging Face Jobs (§6.1)** : pré-enregistrement figé (`docs/lfm3-ft-prereg.md`), scripts et tests prêts, **rien n'a tourné**. Le routeur S1/S2 du §6 passe à distance, en bf16, par l'amendement 1 de son pré-enregistrement. Le premier pas est le smoke, sur L4 pour environ 0,50 $, après l'accord de l'utilisateur sur le coût.
-- **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7). Son worktree `.claude/worktrees/issue-75-wsp-lfm3` traîne encore : à supprimer sur l'accord de l'utilisateur.
+- **LFM3 fine-tuné (§6.1)** : pré-enregistrement figé (`docs/lfm3-ft-prereg.md`), scripts et tests prêts, **rien n'a tourné**. Les scripts visent encore Hugging Face Jobs. Depuis le 05/11, tout se fait sur le M5 : il faut l'amendement 1 de `lfm3-ft-prereg`, l'amendement 2 de `lfm3-s1s2-prereg` (qui annule le passage à distance) et le mode local de `lfm3-ft.sh` (§9.2).
+- **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7). Son worktree a été supprimé le 06/11/2026 : il ne contenait aucun travail non mergé.
 
 > **La labellisation GLM est finie (05/11/2026, §1.1).** Il n'y a plus rien à relancer. `scripts/distill-glm.sh count` doit afficher 0 record à labelliser.
 
