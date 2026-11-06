@@ -295,3 +295,64 @@ fn doom_oracle_beats_random_quickly() {
     assert!(o.completion_rate >= 0.75, "{o:?}");
     assert_eq!(r.completion_rate, 0.0, "{r:?}");
 }
+
+/// `record_with` plays the same episodes as `evaluate_with`: same scores, one row per decision,
+/// and the oracle policy always plays the oracle's argmax.
+#[test]
+fn recorded_trajectories_match_the_evaluation() {
+    let opts = EvalOptions {
+        flappy_max_pipes: 20,
+        veto: true,
+    };
+    for game in GAMES {
+        let m = evaluate_with(game, &mut OraclePolicy::default(), 3, 11, opts);
+        let (mut steps, mut eps) = (Vec::new(), Vec::new());
+        record_with(
+            game,
+            &mut OraclePolicy::default(),
+            3,
+            11,
+            opts,
+            |s| steps.push(s),
+            |e| eps.push(e),
+        );
+        assert_eq!(eps.len(), 3, "{game}");
+        let mean = eps.iter().map(|e| e.stats.score).sum::<f32>() / 3.0;
+        assert!(
+            (mean - m.mean_score).abs() < 1e-6,
+            "{game}: {mean} vs {}",
+            m.mean_score
+        );
+        assert_eq!(
+            steps.len(),
+            eps.iter().map(|e| e.decisions).sum::<usize>(),
+            "{game}"
+        );
+        assert_eq!(steps.iter().filter(|s| s.last).count(), 3, "{game}");
+        assert!(steps.iter().all(|s| s.action == s.oracle_action), "{game}");
+        assert!(
+            steps.iter().all(|s| s.probs.len() == s.options.len()),
+            "{game}"
+        );
+        assert_eq!(
+            steps.iter().all(|s| s.abort.is_some()),
+            game == "dodge",
+            "{game}"
+        );
+        // every reward after the first decision is attributed to exactly one step
+        for e in &eps {
+            let r: f64 = steps
+                .iter()
+                .filter(|s| s.episode == e.episode)
+                .map(|s| s.reward as f64)
+                .sum();
+            let tol = 1e-3 * (1.0 + e.ret.abs() as f64);
+            assert!(
+                (r - e.ret as f64).abs() <= tol,
+                "{game} episode {}: {r} vs {}",
+                e.episode,
+                e.ret
+            );
+        }
+    }
+}

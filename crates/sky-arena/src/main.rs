@@ -6,6 +6,9 @@
 //! sky-arena <model> --dagger N --out data/dagger [--dagger-beta B]
 //!           # N oracle-labelled records per game, from the model's own play (the oracle acts on a
 //!           # share B of the decisions, default 0.2: lower it round after round)
+//! sky-arena <model | oracle> --trajectories DIR [--episodes N] [--seed S] [--game G] [--max-pipes N]
+//!           # every decision of N episodes per game (state, the model's probabilities, the oracle's
+//!           # target, reward, events) to DIR/steps.jsonl, and each episode to DIR/episodes.jsonl
 //! sky-arena <model> --calibrate-crc ALPHA [--json out.json]
 //!           # s2: exit thresholds by conformal risk control (disagreement with full depth <= ALPHA)
 //! ```
@@ -17,7 +20,7 @@ mod crc;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use sky_games::rollout::{evaluate_with, EvalOptions, Metrics, OraclePolicy, Policy};
+use sky_games::rollout::{evaluate_with, record_with, EvalOptions, Metrics, OraclePolicy, Policy};
 use sky_games::{make_game, GAMES};
 use sky_infer::{Engine, EngineOptions, QType};
 
@@ -159,6 +162,60 @@ fn dagger(
     Ok(())
 }
 
+/// `--trajectories DIR`: records every decision and every episode of `policy` (see
+/// [`record_with`]), each row tagged with `model`.
+fn trajectories(
+    policy: &mut dyn Policy,
+    model: &str,
+    games: &[&str],
+    episodes: usize,
+    seed: u64,
+    opts: EvalOptions,
+    out: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    std::fs::create_dir_all(out)?;
+    let mut steps = std::io::BufWriter::new(std::fs::File::create(format!("{out}/steps.jsonl"))?);
+    let mut eps = std::io::BufWriter::new(std::fs::File::create(format!("{out}/episodes.jsonl"))?);
+    /// A row tagged with the model's name (f32 values stay in their shortest form).
+    #[derive(serde::Serialize)]
+    struct Tagged<'a, T: serde::Serialize> {
+        model: &'a str,
+        #[serde(flatten)]
+        row: &'a T,
+    }
+    for &game in games {
+        let (mut rows, mut ends) = (Vec::new(), Vec::new());
+        record_with(
+            game,
+            policy,
+            episodes,
+            seed,
+            opts,
+            |s| rows.push(s),
+            |e| ends.push(e),
+        );
+        for r in &rows {
+            serde_json::to_writer(&mut steps, &Tagged { model, row: r })?;
+            steps.write_all(b"\n")?;
+        }
+        for e in &ends {
+            serde_json::to_writer(&mut eps, &Tagged { model, row: e })?;
+            eps.write_all(b"\n")?;
+        }
+        let agree = rows.iter().filter(|r| r.action == r.oracle_action).count();
+        eprintln!(
+            "{model} {game}: {} episodes, {} decisions, agreement with the oracle {:.3}",
+            ends.len(),
+            rows.len(),
+            agree as f64 / rows.len().max(1) as f64
+        );
+    }
+    steps.flush()?;
+    eps.flush()?;
+    Ok(())
+}
+
 /// `--calibrate-crc ALPHA`: plays the games at full depth, records every exit of every decision,
 /// and picks per question type the lowest exit threshold whose conformal bound on disagreeing
 /// with full depth stays ≤ ALPHA (see [`crc`]). Prints the `gguf-set` command that writes them.
@@ -264,9 +321,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .cloned()
     };
     let Some(model) = args.first().filter(|a| !a.starts_with("--")) else {
-        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T] [--dagger N --out DIR [--dagger-beta B]] [--calibrate-crc ALPHA]");
+        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T] [--dagger N --out DIR [--dagger-beta B]] [--trajectories DIR] [--calibrate-crc ALPHA]");
         std::process::exit(2);
     };
+    let name = std::path::Path::new(model)
+        .file_stem()
+        .map_or(model.clone(), |s| s.to_string_lossy().into_owned());
     let episodes: usize = flag("--episodes").map_or(Ok(100), |v| v.parse())?;
     let seed: u64 = flag("--seed").map_or(Ok(7), |v| v.parse())?;
     let max_pipes: u32 = flag("--max-pipes").map_or(Ok(200), |v| v.parse())?;
@@ -277,6 +337,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|g| game_arg == "all" || game_arg.split(',').any(|a| a == *g))
         .collect();
 
+    if let Some(out) = flag("--trajectories") {
+        if model == "oracle" {
+            let opts = EvalOptions {
+                flappy_max_pipes: max_pipes,
+                veto: true,
+            };
+            return trajectories(
+                &mut OraclePolicy::default(),
+                "oracle",
+                &games,
+                episodes,
+                seed,
+                opts,
+                &out,
+            );
+        }
+    }
     let exit_threshold: Option<f32> = flag("--exit-threshold").map(|v| v.parse()).transpose()?;
     let opts = EngineOptions {
         exit_threshold,
@@ -298,6 +375,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             alpha.parse()?,
             flag("--json"),
         );
+    }
+    if let Some(out) = flag("--trajectories") {
+        let opts = EvalOptions {
+            flappy_max_pipes: max_pipes,
+            veto: true,
+        };
+        return trajectories(&mut policy, &name, &games, episodes, seed, opts, &out);
     }
     if let Some(n) = flag("--dagger") {
         let out = flag("--out").unwrap_or_else(|| "data/dagger".into());

@@ -300,7 +300,17 @@ evaluation set). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-s
 codes), [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math) (LFM3 router
 questions), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) (a fixed sample of
 our four synthetic series generators, Apache-2.0), [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals) (our hand-written
-evaluation material: demo cases, s5 zero-shot definitions and paraphrases, Apache-2.0), [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
+evaluation material: demo cases, s5 zero-shot definitions and paraphrases, Apache-2.0), [skycmd-trajectories](https://huggingface.co/datasets/maxgfr/skycmd-trajectories) (complete game episodes played by
+our models and the oracle, Apache-2.0), [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
+
+## Game trajectories (`data/trajectories/`, `scripts/gen-trajectories.sh`)
+
+No external data. `sky-arena <model> --trajectories` plays complete episodes of the four games
+(seed 2026: 20 flappy stopped alive at 50 pipes, 200 rescue, 100 dodge, 100 doom) with the oracle
+and with the published models s1-pico, s2-nano, s2-nano-doom and s3-pico, and writes every
+decision: the text state, the model's probabilities, the oracle's soft target, the action, the
+reward and the events until the next decision. 1,033,412 decisions and 2,100 episodes, Apache-2.0
+(our game cores and models). s4-micro and s5-lite are left out: they are not game models.
 
 ## Rejected
 
