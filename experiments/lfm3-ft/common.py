@@ -624,7 +624,7 @@ def hub_upload(repo, local_path, path_in_repo, message, repo_type="dataset"):
 
 def versions():
     out = {}
-    for m in ("torch", "transformers", "vllm", "trl", "peft", "datasets", "huggingface_hub", "accelerate"):
+    for m in ("torch", "transformers", "vllm", "mlx_vlm", "trl", "peft", "datasets", "huggingface_hub", "accelerate"):
         try:
             out[m] = __import__(m).__version__
         except Exception:
@@ -665,10 +665,12 @@ def tokenize_mix(tok, mix, max_len=MAX_LEN):
     return rows, dropped
 
 
-def make_trainer(model_id, revision, rows, out_dir, max_steps=-1, epochs=2, per_device=8, grad_accum=4):
+def make_trainer(model_id, revision, rows, out_dir, max_steps=-1, epochs=2, per_device=8, grad_accum=4, save_steps=0,
+                 callbacks=None):
     """TRL SFTTrainer with the pre-registered LoRA (r 32, alpha 64, dropout 0.05, LORA_TARGETS), 2 epochs,
     lr 1e-4 cosine, warmup 3 % of the steps, bf16, seed 1234, completion-only loss, no intermediate
-    checkpoint (the last one is the model)."""
+    checkpoint to choose from (the last one is the model). save_steps > 0 keeps one technical checkpoint
+    to resume after a shutdown, on the M5 (docs/lfm3-ft-prereg.md, amendment 1)."""
     import torch
     from datasets import Dataset
     from peft import LoraConfig
@@ -686,12 +688,13 @@ def make_trainer(model_id, revision, rows, out_dir, max_steps=-1, epochs=2, per_
         lr_scheduler_type="cosine", warmup_steps=math.ceil(0.03 * total), per_device_train_batch_size=per_device,
         gradient_accumulation_steps=grad_accum, bf16=True, seed=SEED, data_seed=SEED, max_length=MAX_LEN,
         completion_only_loss=True, packing=False, gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": False}, logging_steps=10, save_strategy="no",
+        gradient_checkpointing_kwargs={"use_reentrant": False}, logging_steps=10,
+        save_strategy="steps" if save_steps else "no", save_steps=save_steps or 500, save_total_limit=1,
         report_to="none",
     )
     lora = LoraConfig(r=32, lora_alpha=64, lora_dropout=0.05, target_modules=list(LORA_TARGETS), bias="none",
                       task_type="CAUSAL_LM")
-    trainer = SFTTrainer(model=model, args=cfg, train_dataset=ds, processing_class=tok, peft_config=lora)
+    trainer = SFTTrainer(model=model, args=cfg, train_dataset=ds, processing_class=tok, peft_config=lora, callbacks=callbacks)
     return trainer, tok, total
 
 

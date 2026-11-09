@@ -16,14 +16,31 @@
 #                   --wd-mode soda, --ns-polish 0, --qat-grad-a 0.21; scripts/s6-adopt.py env
 #                   s6-cast-pico), for the pilots and the run (docs/s6-cast-prereg.md, amendment 3)
 #   TIME_SCALE=1    multiplies MINUTES (scripts/speed-probe.sh)
+#   PILOT_STEPS=3000  steps of each pilot (only SMOKE=1 of scripts/train-all.sh lowers it)
+#   SKY_OUT         a prefix for everything this script writes (scripts/train-all.sh SMOKE=1)
+#   DRY_RUN=1       print the commands instead of running them (nothing is built or read)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
-cargo build -q --release -p sky-train -p sky-infer -p sky-data
+dry=${DRY_RUN:-0}
+[ "$dry" = 1 ] || cargo build -q --release -p sky-train -p sky-infer -p sky-data
+# x <command...>: runs it, or prints it under DRY_RUN=1.
+x() {
+  if [ "$dry" = 1 ]; then
+    printf '+'
+    printf ' %q' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
 B=$CARGO_TARGET_DIR/release
 cfg=${CONFIG:-configs/s6-cast-pico.json}
-run=${RUN:-runs/s6-cast-pico}
+sky_out=${SKY_OUT:-}
+run=${RUN:-${sky_out}runs/s6-cast-pico}
 name=$(basename "$run")
+pilot_steps=${PILOT_STEPS:-3000}
+pilot_dir=${sky_out}runs/s6-cast-pilot
 minutes=$(LC_ALL=C awk -v a="${MINUTES:-480}" -v b="${TIME_SCALE:-1}" 'BEGIN { printf "%g", a * b }')
 batch=${BATCH:-256}
 read -r -a copt <<<"${CAST_OPT:-}"
@@ -34,15 +51,15 @@ case " ${CAST_OPT:-} " in
     ;;
 esac
 golden=crates/sky-infer/tests/golden/tinycast.gguf
-choice_json=runs/s6-cast-pilot/choice.json
+choice_json=$pilot_dir/choice.json
 # choice <key>: the pilot's pre-registered choice, when it has run
 choice() { [ -f "$choice_json" ] && python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$choice_json" "$1"; }
 lr=${LR:-$(choice lr || echo 3e-3)}
 teacher=${TEACHER:-$(choice teacher || echo "$golden")}
 teacher_args=()
 [ "$teacher" = none ] || teacher_args=(--teacher "$teacher" --teacher-weight "${TEACHER_WEIGHT:-0.5}" --teacher-frac "${TEACHER_FRAC:-0.5}")
-m=models/s6-cast
-mkdir -p "$m"
+m=${sky_out}models/s6-cast
+[ "$dry" = 1 ] || mkdir -p "$m"
 
 data() {
   [ -f data/series/wiki_daily.jsonl ] || "$B/sky-data" fetch-series --out data/series
@@ -71,14 +88,22 @@ EOF
 # The pilot (docs/s6-cast-prereg.md §2, amendment 3): the rates, the rule, then the distillation
 # at the chosen rate and its rule; writes runs/s6-cast-pilot/choice.json.
 pilot() {
-  local x p=() r
-  for x in 1e-3 3e-3 1e-2; do
-    r=runs/s6-cast-pilot/lr-$x
+  local lr_x p=() r
+  if [ "$dry" = 1 ]; then
+    for lr_x in 1e-3 3e-3 1e-2; do
+      x "$B/sky-train" cast-train --config "$cfg" --out "$pilot_dir/lr-$lr_x" --resume --steps "$pilot_steps" \
+        --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$lr_x" --eval-every "$pilot_steps" ${copt[@]+"${copt[@]}"}
+    done
+    echo "would apply the pilot's two rules and write $choice_json (it reads the pilots' logs)"
+    return
+  fi
+  for lr_x in 1e-3 3e-3 1e-2; do
+    r=$pilot_dir/lr-$lr_x
     "$B/sky-train" cast-train --config "$cfg" --out "$r" --resume \
-      --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$x" --eval-every 3000 \
+      --steps "$pilot_steps" --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$lr_x" --eval-every "$pilot_steps" \
       ${copt[@]+"${copt[@]}"}
-    p+=("$x=$(final_pinball "$r" f32)")
-    echo "lr $x: final f32 val pinball ${p[${#p[@]}-1]#*=}"
+    p+=("$lr_x=$(final_pinball "$r" f32)")
+    echo "lr $lr_x: final f32 val pinball ${p[${#p[@]}-1]#*=}"
   done
   # keep 3e-3 unless another rate lowers the pinball by at least 2%
   local best
@@ -88,13 +113,13 @@ p = {k: float(v) for k, v in (a.split("=") for a in sys.argv[1:])}
 b = min(p, key=p.get)
 print(b if p[b] <= 0.98 * p["3e-3"] else "3e-3")' "${p[@]}")
   echo "pre-registered rule: keep 3e-3 unless another rate lowers the pinball by >= 2% -> $best"
-  local d=runs/s6-cast-pilot/distill-$best
+  local d=$pilot_dir/distill-$best
   "$B/sky-train" cast-train --config "$cfg" --out "$d" --resume \
-    --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$best" --eval-every 3000 \
+    --steps "$pilot_steps" --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$best" --eval-every "$pilot_steps" \
     --teacher "$golden" ${copt[@]+"${copt[@]}"}
   local pd pn
   pd=$(final_pinball "$d" f32)
-  pn=$(final_pinball "runs/s6-cast-pilot/lr-$best" f32)
+  pn=$(final_pinball "$pilot_dir/lr-$best" f32)
   # distil unless the pinball is worse by more than 1%
   python3 -I -c '
 import json, sys
@@ -106,7 +131,7 @@ print(f"distillation: {pd:.5g} vs {pn:.5g} without -> teacher {teacher}")' "$bes
 }
 
 train() {
-  "$B/sky-train" cast-train --config "$cfg" --out "$run" --minutes "$minutes" --batch "$batch" \
+  x "$B/sky-train" cast-train --config "$cfg" --out "$run" --minutes "$minutes" --batch "$batch" \
     --series data/series --qat-frac 0.2 --ema 0.999 --adam-lr "$lr" --resume ${teacher_args[@]+"${teacher_args[@]}"} \
     ${copt[@]+"${copt[@]}"}
 }
@@ -121,28 +146,28 @@ pick() {
 
 export_model() {
   local ck
-  ck=$(pick)
+  if [ "$dry" = 1 ]; then ck="<last or last-ema>"; else ck=$(pick); fi
   echo "== exporting $run/$ck"
-  "$B/sky-train" cast-export --run "$run/$ck" --format ternary --out "$m/$name-full.gguf"
-  "$B/sky-cast-eval" calibrate --model "$m/$name-full.gguf" --out "$m/$name.gguf"
+  x "$B/sky-train" cast-export --run "$run/$ck" --format ternary --out "$m/$name-full.gguf"
+  x "$B/sky-cast-eval" calibrate --model "$m/$name-full.gguf" --out "$m/$name.gguf"
 }
 
 score() {
-  uv run --python 3.12 scripts/gift-eval.py score --data data/gift-eval-src --forecasts "$1" --name "$2"
+  x uv run --python 3.12 scripts/gift-eval.py score --data data/gift-eval-src --forecasts "$1" --name "$2"
 }
 
 eval_all() {
-  local out=data/gift-eval-out
+  local out=${sky_out}data/gift-eval-out
   [ -f "$out/seasonal-naive/summary.json" ] || {
-    "$B/sky-cast-eval" naive --windows data/gift-eval --out "$out/seasonal-naive"
+    x "$B/sky-cast-eval" naive --windows data/gift-eval --out "$out/seasonal-naive"
     score "$out/seasonal-naive" Seasonal_Naive
   }
-  "$B/sky-cast-eval" run --model "$m/$name.gguf" --windows data/gift-eval --out "$out/$name"
+  x "$B/sky-cast-eval" run --model "$m/$name.gguf" --windows data/gift-eval --out "$out/$name"
   score "$out/$name" "$name"
-  "$B/sky-cast-eval" run --model "$m/$name.gguf" --windows data/gift-eval --out "$out/$name-flip" --flip
+  x "$B/sky-cast-eval" run --model "$m/$name.gguf" --windows data/gift-eval --out "$out/$name-flip" --flip
   score "$out/$name-flip" "$name-flip"
   if [ -f crates/sky-infer/tests/golden/tinycast.gguf ] && [ ! -f "$out/tinycast/summary.json" ]; then
-    "$B/sky-cast-eval" run --model crates/sky-infer/tests/golden/tinycast.gguf --windows data/gift-eval \
+    x "$B/sky-cast-eval" run --model crates/sky-infer/tests/golden/tinycast.gguf --windows data/gift-eval \
       --out "$out/tinycast" --flip
     score "$out/tinycast" TinyCast-ours
   fi

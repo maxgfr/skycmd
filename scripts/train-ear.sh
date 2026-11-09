@@ -34,8 +34,9 @@ cfg=${CONFIG:-configs/$name.json}
 tok=data/tok/tok-s6-2048.json
 ear=data/ear
 jev=$ear/jev
-run=runs/$name
-m=models/$name
+# SKY_OUT: a prefix for everything this script writes (scripts/train-all.sh SMOKE=1); empty for a real run.
+run=${SKY_OUT:-}runs/$name
+m=${SKY_OUT:-}models/$name
 # tmin <minutes>: a budget in minutes times TIME_SCALE (the M5's speed over this host's,
 # scripts/speed-probe.sh), so that a slower machine runs the steps the M5 would (amendment 4).
 tmin() { LC_ALL=C awk -v a="$1" -v b="${TIME_SCALE:-1}" 'BEGIN { printf "%g", a * b }'; }
@@ -154,10 +155,15 @@ eval_() {
     x node crates/sky-web/bench/parity-node.mjs "$crc" "$ev/dump-wav.jsonl" --n 20
   else
     grep '"wav":"' "$ev/dump-crc.jsonl" | head -20 >"$ev/dump-wav.jsonl" || true
-    node crates/sky-web/bench/parity-node.mjs "$crc" "$ev/dump-wav.jsonl" --n 20 | tee "$ev/wasm.json"
+    # A parity failure (exit 1) stays in wasm.json, for the report (as scripts/train-s6.sh).
+    node crates/sky-web/bench/parity-node.mjs "$crc" "$ev/dump-wav.jsonl" --n 20 | tee "$ev/wasm.json" || true
   fi
+  # A failed gate is a result, not a crash: it stays in gate.json and the run goes on.
   x python3 -I scripts/ear-gate.py gate --eval "$ev/eval-full.json" --baseline "$ev/baseline-smart-turn.json" \
-    --control "$ev/eval-control.json" --json "$ev/gate.json"
+    --control "$ev/eval-control.json" --json "$ev/gate.json" || {
+    [ -s "$ev/gate.json" ] || exit 1
+    echo "== $name: gate not passed, see $ev/gate.json (not published, docs/s6-ear-prereg.md §6)"
+  }
 }
 
 steps=("$@")

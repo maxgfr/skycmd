@@ -11,11 +11,11 @@
 > | tranche | ce qui tourne | à pleine vitesse | bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`) | prête ? |
 > |---|---|---|---|---|
 > | 1 | pilote + ablation pico → recette (`scripts/s6-recipe.sh`) | ~17 h 30 | **~47 h** | **oui** |
-> | 2 | s6-ear, s6-secrets puis s6-nano | ~11 h | ~29 h | non : il manque des amendements et `train-all.sh` (§9.2) |
-> | 3 | s6-micro | ~11 h | ~29 h | non (§9.2) |
-> | 4 | s6-cast | ~9 h | ~24 h | non (§9.2) |
+> | 2 | s6-ear, s6-secrets puis s6-nano | ~11 h | ~29 h | oui, après la fumée `SMOKE=1` (§9.2) |
+> | 3 | s6-micro | ~11 h | ~29 h | oui, après la fumée |
+> | 4 | s6-cast | ~9 h | ~24 h | oui, après la fumée |
 >
-> Puis LFM3 S1/S2 et LFM3 fine-tuné (§9.4, tranches 5 et suivantes). Ce qui manque pour les tranches 2 à 4 se fait dans une session Claude Code pendant ou après la tranche 1, sans GPU.
+> Puis LFM3 S1/S2 et LFM3 fine-tuné (§9.4, tranches 5 et suivantes). Le 09/11/2026, le §9.2 a été écrit pendant la tranche 1 : les amendements, `scripts/train-all.sh` et le mode local de `scripts/lfm3-ft.sh`.
 
 Tout est prêt pour cette tranche : le plantage au pas 74 du pré-entraînement est corrigé (`non-finite loss`, un nombre du texte trop grand pour un `f32` ; `docs/s6-prereg.md`, amendement 5). Les labels GLM sont finis à 100 %, les amendements 4 et 5 de `docs/s6-prereg.md` sont écrits, et le dry-run passe. Cette tranche ne lit pas encore `data/distill/glm.jsonl`, qui sert à la tranche 2, mais le mélange est déjà prêt. Dans un terminal, **de préférence sur secteur** :
 
@@ -32,12 +32,12 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
   - puis `scripts/s6-adopt.py adopt`, qui écrit la recette dans `runs/recipe/recipe.json`.
 
   Au total, environ **47 h de Mac ouvert**, à étaler sur plusieurs jours.
-- **Régler la chauffe**, avec deux variables à exporter avant la commande (on peut les changer à chaque relance, elles n'entrent pas dans les résultats) :
+- **Régler la chauffe**, avec deux variables à exporter avant la commande. **Garder un seul mode pour toute la tranche 1** : changer de mode en cours de route ne bouge pas la précision, mais peut fausser `train_minutes`, sur lequel reposent deux règles d'adoption (Muon +15 %, sans polish 2 % plus rapide).
   - `SKY_DUTY` est la part du temps où le GPU travaille : `0.3` chauffe moins et prend environ 78 h, `0.7` chauffe plus et prend environ 33 h, `1` est la pleine vitesse ;
   - `SKY_COOL` est le cycle en minutes, travail puis repos : `40:20` refroidit plus longtemps (environ 53 h), et `SKY_COOL=` (vide) supprime les repos. Le journal affiche `cooling down for … s` à chaque repos ; le run n'est pas bloqué.
 - **Fermer le Mac quand on veut :**
   - **rabattre l'écran** met le run en pause, et il repart seul à l'ouverture : aucune commande à retaper ;
-  - **éteindre ou redémarrer** arrête le run : relancer la même commande. Les étapes finies sont sautées, seule l'étape en cours repart de son début (30 min au plus à perdre en mode bridé) ;
+  - **éteindre ou redémarrer** arrête le run : relancer la même commande. Les étapes finies sont sautées, seule l'étape en cours repart de son début (40 min au plus à perdre en mode bridé) ;
   - une erreur, par exemple du GPU au réveil, relance toute seule le script après 60 s. Il abandonne après 5 échecs de suite sans étape finie, et le journal le dit ;
   - **ne pas utiliser `pmset disablesleep`** dans ce mode : le Mac tournerait écran rabattu, le pire cas pour la chaleur.
 - **Pour suivre :**
@@ -518,14 +518,14 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 
 ### 9.2 Ce qui reste à faire avant le run (par Claude, sans GPU)
 
-- [ ] **Les amendements datés, commités avant le moindre run :**
+- [x] **Les amendements datés, commités avant le moindre run (écrits le 09/11/2026, chacun avec sa ligne sur le mode bridé) :**
   - [x] **`docs/s6-prereg.md` §7, amendement 4 (commité le 06/11/2026, avec `scripts/s6-recipe.sh`)** : les règles §4 sont appliquées par `scripts/s6-adopt.py`. La recette écrite dans `runs/recipe/recipe.json` remplace le commit manuel, et elle est commitée dans le rapport. L'extension au bord est lancée automatiquement par `s6lr --extend`.
   - **`docs/s6-ear-prereg.md` §8, amendement 2.** s6-ear tourne après l'ablation, avec la recette, pour le modèle et pour son témoin. Son taux est centré par μP. Le curriculum est sans effet en audio.
   - **`docs/s6-cast-prereg.md` §7, amendement 3.** s6-cast prend Muon ou AdamW, SODA, sans polish, StableQAT et XSA si l'ablation les adopte. Son pilote décide seul, par ses propres règles.
   - **`docs/s6-gen-prereg.md` et `docs/s6-secrets-prereg.md`** : une ligne chacun, pour dire que la recette passe par le fichier.
   - **`docs/lfm3-s1s2-prereg.md`, amendement 2** : il annule l'amendement 1 (à distance), et le routeur repart en local, avec MLX-4bit et mlx-vlm, comme pré-enregistré à l'origine.
   - **`docs/lfm3-ft-prereg.md`, amendement 1** : moteur local, LoRA par la méthode que le smoke local tranche, et le plafond de 1 000 questions par tâche. Les portes G1 à G3 ne changent pas.
-- [ ] **`scripts/train-all.sh`, l'orchestrateur, sur une seule machine.** Chaque étape est idempotente, avec un marqueur dans `runs/all/done/`, un journal dans `runs/all/` et `DRY_RUN=1`. Les étapes, dans l'ordre :
+- [x] **`scripts/train-all.sh`, l'orchestrateur, sur une seule machine (écrit le 09/11/2026 ; `SMOKE=1` écrit tout sous `runs/all-smoke/`, et `report` lit les portes avec `scripts/all-report.py`).** Chaque étape est idempotente, avec un marqueur dans `runs/all/done/`, un journal dans `runs/all/` et `DRY_RUN=1`. Les étapes, dans l'ordre :
   - `pilot` (`cargo xtask s6lr`, puis `s6lr --extend`) ;
   - `ablation` (`cargo xtask s6ab --adamw-lr-scale … --muon-lr-scale …`, avec les échelles lues dans `runs/s6lr/summary.json`) ;
   - `adopt` ;
@@ -537,9 +537,9 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
   - `report`, qui rassemble les portes de chaque modèle dans `runs/all/REPORT.md`.
   - Un mode `SMOKE=1` avec des budgets de quelques minutes, `ROUNDS=1`, `DAGGER_N=200` et `EPISODES=2`.
   - **Le mode bridé et la reprise, par défaut.** `train-all.sh` exporte `SKY_DUTY=${SKY_DUTY:-0.5}`, `SKY_COOL=${SKY_COOL-45:15}` et `RESUME=1` (`sky-train` et les `train-*.sh` les lisent déjà). Attention : avec `RESUME=1`, un run reprend tout ce qu'il trouve dans son dossier. `SMOKE=1` doit donc écrire ailleurs que `runs/s6-*`, ou nettoyer ses dossiers, sinon les vrais budgets repartiraient d'un checkpoint de fumée.
-- [ ] **Le mode local de `scripts/lfm3-ft.sh`** (`gen`, `sft` et `eval` avec mlx-vlm ou MPS, sans `hf jobs`) et son smoke local. Il doit respecter `SKY_DUTY` et `SKY_COOL` comme `experiments/lfm3-s1s2/s1s2.py`.
-- [ ] **Dans chaque amendement ci-dessus :** une ligne pour dire que le run se fait en mode bridé, comme l'amendement 5 de `docs/s6-prereg.md`.
-- [ ] **Les vérifications :**
+- [x] **Le mode local de `scripts/lfm3-ft.sh`** (`gen`, `sft` et `eval` avec mlx-vlm ou MPS, sans `hf jobs`) et son smoke local, dans `experiments/lfm3-ft/local.py`. Il respecte `SKY_DUTY` et `SKY_COOL` comme `experiments/lfm3-s1s2/s1s2.py`. **Écrit le 09/11/2026, jamais exécuté hors dry-run** : le smoke local reste à lancer (§9.4).
+- [x] **Dans chaque amendement ci-dessus :** une ligne pour dire que le run se fait en mode bridé, comme l'amendement 5 de `docs/s6-prereg.md`.
+- [ ] **Les vérifications (faites le 09/11/2026, sauf `cargo test -p xtask` et le dry-run de l'étape `eval` de `lfm3-ft.sh`, à faire à la fin de la tranche 1) :**
   - `cargo test -p xtask` ;
   - `python3 -I scripts/test_s6_adopt.py` ;
   - `python3 experiments/lfm3-ft/test_common.py` ;

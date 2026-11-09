@@ -15,10 +15,23 @@
 #   TIME_SCALE=1    multiplies both budgets (scripts/speed-probe.sh; docs/s6-prereg.md, amendment 4)
 #   CONFIG=configs/s6-secrets-pico.json (scripts/s6-adopt.py writes the adopted one)
 #   RESUME=1        continue from the checkpoints of an interrupted run (unset: start over)
+#   SKY_OUT         a prefix for everything this script writes (scripts/train-all.sh SMOKE=1)
+#   DRY_RUN=1       print the commands instead of running them (nothing is built or read)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
-cargo build -q --release -p sky-data -p sky-train
+dry=${DRY_RUN:-0}
+[ "$dry" = 1 ] || cargo build -q --release -p sky-data -p sky-train
+# x <command...>: runs it, or prints it under DRY_RUN=1.
+x() {
+  if [ "$dry" = 1 ]; then
+    printf '+'
+    printf ' %q' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
 B=$CARGO_TARGET_DIR/release
 T=$B/sky-train
 cfg=${CONFIG:-configs/s6-secrets-pico.json}
@@ -33,8 +46,8 @@ read -r -a dec <<<"${DECIDE:-}"
 resume=()
 [ -n "${RESUME:-}" ] && resume=(--resume)
 records=data/secrets
-run=runs/s6-secrets-pico
-m=models/s6-secrets-pico
+run=${SKY_OUT:-}runs/s6-secrets-pico
+m=${SKY_OUT:-}models/s6-secrets-pico
 ckpt=last
 [[ " ${DECIDE:-} " == *" --ema "* ]] && ckpt=last-ema
 case " ${OPT:-} " in
@@ -56,30 +69,31 @@ data() {
 }
 
 train() {
-  [ -f data/tok/tok-s2-1024.json ] && [ -d data/text ] && [ -d data/text-open ] && [ -d data/numeric ] || {
+  if [ "$dry" != 1 ] && { [ ! -f data/tok/tok-s2-1024.json ] || [ ! -d data/text ] || [ ! -d data/text-open ] || [ ! -d data/numeric ]; }; then
     echo "data/tok, data/text, data/text-open and data/numeric come from scripts/prepare-data.sh" >&2
     exit 1
-  }
+  fi
   echo "== s6-secrets-pico: pretrain ${pre_min}m (sequences of 256 tokens)"
-  $T s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text-open,data/text \
+  x "$T" s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text-open,data/text \
     --minutes "$pre_min" --seq 256 --batch 64 --num-weight 0.05 \
     --numeric data/numeric --numeric-weight 0.1 --out "$run/pretrain" \
     "$lr_flag" "$(rate 3e-3)" ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"} ${resume[@]+"${resume[@]}"}
   echo "== s6-secrets-pico: decide ${dec_min}m on $records (QAT after a 10% float warm-up)"
-  [ -n "${RESUME:-}" ] || rm -rf "$run/decide"
-  $T s2-decide --config "$cfg" --init "$run/pretrain/init" --records "$records" --batch 64 \
+  [ -n "${RESUME:-}" ] || x rm -rf "$run/decide"
+  x "$T" s2-decide --config "$cfg" --init "$run/pretrain/init" --records "$records" --batch 64 \
     --minutes "$dec_min" --qat-frac 0.9 --loop-dropout 0.25 --pad-to 32 \
     --out "$run/decide" "$lr_flag" "$(rate 1e-3)" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"} ${resume[@]+"${resume[@]}"}
 }
 
 evaluate() {
-  mkdir -p "$m"
-  $T s2-calibrate --run "$run/decide/$ckpt" --records "$records"
-  $T s2-export --run "$run/decide/$ckpt" --format ternary --out "$m/skycmd-s6-secrets-pico-ternary.gguf"
-  $T s2-eval --run "$run/decide/$ckpt" --records "$records" \
+  x mkdir -p "$m"
+  x "$T" s2-calibrate --run "$run/decide/$ckpt" --records "$records"
+  x "$T" s2-export --run "$run/decide/$ckpt" --format ternary --out "$m/skycmd-s6-secrets-pico-ternary.gguf"
+  x "$T" s2-eval --run "$run/decide/$ckpt" --records "$records" \
     --gguf "$m/skycmd-s6-secrets-pico-ternary.gguf" --report "$run/report.md"
   echo "== rule scanner (the bar of docs/s6-secrets-prereg.md):"
-  cat "$run/baseline.txt"
+  # the rule scanner's score comes from `data`, once, in the real run's directory
+  x cat "runs/s6-secrets-pico/baseline.txt"
 }
 
 steps=("$@")

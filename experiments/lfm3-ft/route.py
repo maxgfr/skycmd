@@ -34,12 +34,12 @@ def main():
     d = os.path.join(a.runs, "eval", a.tag)
     meta_path = os.path.join(d, "meta.json")
     if not os.path.exists(meta_path):
-        sys.exit(f"{meta_path} missing: run `scripts/lfm3-ft.sh pull` after the eval job")
+        sys.exit(f"{meta_path} missing: run `scripts/lfm3-ft.sh eval` first")
     with open(meta_path) as f:
         meta = json.load(f)
     s = load_s1s2()
     s.RUNS = d
-    s.MODEL = f"{meta['model']} (bf16, {meta['engine']})"
+    s.MODEL = f"{meta['model']} ({meta.get('weights', 'bf16')}, {meta['engine']})"
     s.MODEL_REV = meta["revision"]
     s.cmd_route(argparse.Namespace(split="calib"))
     s.cmd_route(argparse.Namespace(split="test"))

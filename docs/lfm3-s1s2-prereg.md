@@ -108,3 +108,10 @@ Le rapport donne tout, quel que soit le résultat :
   - Le modèle fine-tuné de `docs/lfm3-ft-prereg.md`, avec exactement le même protocole. Sa sonde et son τ sont ajustés sur sa propre calibration, et son test est lu une fois.
 - **Où tourne `route`.** En local, sur CPU, sur les générations rapatriées (`scripts/lfm3-ft.sh pull route`) : `route --split calib`, puis `route --split test`, une fois par modèle.
 - **Pourquoi.** La sonde lit les log-probabilités des jetons : il faut un moteur qui les rende. Aucune API ne sert LFM3 avec ses log-probabilités au 05/11/2026 (`TODO.md` §6). bf16 et 4 bits ne donnent pas exactement les mêmes sorties : les résultats de ce run sont ceux de LFM3-1.7B en bf16, et le rapport le dit.
+
+**Amendement 2 (09/11/2026, avant tout run : seul l'essai de fumée local de 3 questions par mode a tourné, aucun résultat de calibration ni de test n'existe). Retour au protocole local d'origine.**
+
+- **Changement.** L'amendement 1 est annulé (décision de l'utilisateur du 05/11/2026 : « finalement je ferai tout sur mon pc »). Le run se fait comme au §2 : `LiquidAI/LFM3-1.7B-MLX-4bit`, révision `deb2986b`, mlx-vlm 0.7.11, sur le M5, par `scripts/lfm3-s1s2.sh`. Les résultats sont ceux du modèle en 4 bits.
+- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md` : une pause après chaque question. H3 compte des jetons et `seconds` reste le temps de génération : le mode bridé ne change ni l'un ni l'autre.
+- **Le modèle fine-tuné.** Ce qui concerne le modèle fine-tuné est désormais dans l'amendement 1 de `docs/lfm3-ft-prereg.md`. Les générations de la base écrites ici y servent de référence si la règle de conversion de cet amendement le permet.
+- **Ce qui ne change pas.** Les données, le prompt, les modes, le budget et le forçage, l'échantillonnage, les graines, l'extraction et la notation, les 6 traits, le routeur, α = 0,02, le choix de B\*, les critères H1 à H4 et les interdits.

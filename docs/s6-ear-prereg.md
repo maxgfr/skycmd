@@ -97,4 +97,11 @@ Le modèle est publié aux seuils CRC si les portes y tiennent comme à pleine p
 
 ## 8. Amendements
 
-Aucun pour l'instant.
+**Amendement 2 (09/11/2026, avant tout entraînement de s6-ear : seule la recette pico tourne, aucun de ses résultats n'a été lu, aucun score de s6-ear n'existe). La recette et le mode bridé.** Il n'y a jamais eu d'amendement 1 : le numéro 2 est celui que citent déjà `scripts/train-ear.sh` et `scripts/s6-adopt.py`.
+
+- **La recette.** s6-ear tourne après l'ablation pico (`docs/s6-prereg.md`, §3 et §4) et prend ses options (`scripts/s6-adopt.py env s6-ear-nano`), pour le modèle **et** pour son témoin : `CONFIG`, `OPT`, `DECIDE`, `LR_SCALE`.
+- **Le taux.** Le taux du pilote pico est déplacé à d = 144 par μP, comme pour s6-nano : `LR_SCALE` × √(96/144) × le taux par défaut de la phase.
+- **Le curriculum.** Il ordonne des documents texte, et le pré-entraînement audio n'en a pas : il est sans effet ici, donc `PRETRAIN` reste vide.
+- **Le contrôle après le pré-entraînement.** `val_acc_cb0` doit valoir au moins 10/2048 (10 fois le hasard), seuil écrit avant le run. En dessous, c'est un échec technique : il est noté dans le rapport et `decide` n'est pas lancé.
+- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md`. Les budgets en minutes ne comptent que le temps de travail, et le rapport donne le nombre de pas réellement faits.
+- **Ce qui ne change pas.** Données, questions, modèle, budgets, seuils α, portes.

@@ -295,5 +295,26 @@ class EngineDecision(unittest.TestCase):
         self.assertEqual(SM.smoke_items([{"task": "gsm8k", "id": 1}] * 30 + [{"task": "math", "id": 2}] * 30, 20).count({"task": "math", "id": 2}), 10)
 
 
+class LocalMode(unittest.TestCase):
+    """experiments/lfm3-ft/local.py, the M5 (amendment 1): its samples feed distill_targets."""
+
+    def test_sample_record(self):
+        import local as L
+
+        it = {"id": "gsm8k-train-1", "task": "gsm8k", "question": "q", "answer": "4"}
+        r = L.sample_record({"text": "so \\boxed{4}", "think": "t", "tokens": 30, "think_tokens": 20, "forced": False,
+                             "finish": "stop"}, it, 2, 77, 1.5)
+        self.assertEqual((r["answer_tokens"], r["k"], r["seed"], r["mode"], r["correct"]), (10, 2, 77, "s2-1024", True))
+        self.assertEqual(C.distill_targets([r])["gsm8k-train-1"]["nothink"], "so \\boxed{4}")
+
+    def test_user_item_keeps_the_prompts(self):
+        import local as L
+
+        math_item = {"task": "math", "question": "2+2?"}
+        self.assertEqual(L.user_item(math_item)["question"], S.PROMPT.format(q="2+2?"))
+        mc = {"task": "mmlu_pro", "question": "Q?", "options": "(A) x"}
+        self.assertIn("(A) x", L.user_item(mc)["question"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

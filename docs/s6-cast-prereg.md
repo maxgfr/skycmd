@@ -82,3 +82,11 @@ Si la porte n'est pas franchie, le modèle n'est pas publié, et le rapport le d
    - les cibles du professeur sont calculées sur des points de coupe fixes de chaque série (deux par série), et non plus à chaque lot. C'est un changement de débit : 730 fenêtres/s sinon, contre environ 2 000. La part distillée (50 %) et le poids (0,5 → 0) ne changent pas.
 
    Aucun score de s6-cast n'existait.
+
+3. **09/11/2026**, avant tout entraînement (seule la recette pico tourne, aucun de ses résultats n'a été lu) :
+   - s6-cast prend les options de niveau optimiseur que l'ablation pico adopte (`docs/s6-prereg.md`, §4) : Muon ou AdamW, SODA, sans polish, StableQAT, ainsi que XSA par la config dérivée. `scripts/s6-adopt.py env s6-cast-pico` donne `CONFIG` et `CAST_OPT`, sans taux ;
+   - son EMA et sa QAT restent les siennes (§3). Le KD de sortie et le curriculum sont des options des décisions texte, qu'il n'a pas ;
+   - son pilote (§2) décide seul, par ses propres règles : taux gardé à 3e-3 sauf gain d'au moins 2 %, distillation sauf perte de plus de 1 %. `runs/s6-cast-pilot/choice.json` en garde la trace, et `train` le lit ;
+   - le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md`. Les 480 minutes ne comptent que le temps de travail, et le rapport donne le nombre de pas réellement faits.
+
+   Aucun score de s6-cast n'existait.

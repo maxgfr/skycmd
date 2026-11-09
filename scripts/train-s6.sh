@@ -67,8 +67,10 @@ alpha=${ALPHA:-0.02}
 baseline=${BASELINE:-site/public/models/s3-pico.gguf}
 records=data/decisions,data/distill,data/games,data/numeric
 weights=decisions=0.25,distill=0.30,games=0.35,numeric=0.10
-run=runs/$name
-m=models/$name
+# SKY_OUT: a prefix for everything this script writes (scripts/train-all.sh SMOKE=1); empty for a real run.
+out=${SKY_OUT:-}
+run=${out}runs/$name
+m=${out}models/$name
 ckpt=last mode=ternary
 [[ " ${DECIDE:-} " == *" --ema "* ]] && ckpt=last-ema mode=ema-ternary
 case " ${OPT:-} " in
@@ -175,14 +177,14 @@ dagger() {
   local init=$run/decide/$ckpt model=$m/skycmd-$name-ternary.gguf beta=${BETA:-0.2} r s
   s=$(lr_x)
   for r in $(seq 1 "$rounds"); do
-    local dir=$run-g$r data=data/dagger-$name/r$r out=$m/skycmd-$name-g$r-ternary.gguf
+    local dir=$run-g$r data=${out}data/dagger-$name/r$r gguf=$m/skycmd-$name-g$r-ternary.gguf
     echo "== $name round $r: DAgger from $model (oracle share $beta)"
     x "$A" "$model" --dagger "$dagger_n" --seed "$r" --game "$games" --dagger-beta "$beta" --out "$data"
     decide "$init" "$dir/decide" "$round_min" "$s" "$records,$data" \
       "games=0.4,r$r=0.25,decisions=0.1,distill=0.2,numeric=0.05" 1.0
-    post "$dir/decide" "$out"
+    post "$dir/decide" "$gguf"
     init=$dir/decide/$ckpt
-    model=$out
+    model=$gguf
     beta=$(LC_ALL=C awk -v b="$beta" 'BEGIN { printf "%g", b / 2 }')
   done
 }
@@ -260,8 +262,12 @@ eval_() {
   [ "$dry" = 1 ] || [ -d site/public/pkg ] || x scripts/build-wasm.sh
   # A parity failure (exit 1) is kept in wasm.json and read by the gate.
   x sh -c "node crates/sky-web/bench/parity-node.mjs '$model' '$ev/dump-$name.jsonl' --n 200 >'$ev/wasm.json' || true"
+  # A failed gate is a result, not a crash: it stays in results.md and the run goes on.
   x python3 -I scripts/s6-gate.py "$ev" --size "$size" --model "${model%.gguf}" \
-    --pretrain-log "$run/pretrain/log.jsonl" --out "$ev/results.md"
+    --pretrain-log "$run/pretrain/log.jsonl" --out "$ev/results.md" || {
+    [ -s "$ev/results.md" ] || exit 1
+    echo "== $name: gate not passed, see $ev/results.md (not published, docs/s6-gen-prereg.md §6)"
+  }
 }
 
 steps=("$@")

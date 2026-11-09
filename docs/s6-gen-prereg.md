@@ -179,3 +179,9 @@ s3-pico, s4-micro et s5-lite publiés passent sur les mêmes records, à τ = 1.
 - **Changement.** Un lot refusé par la modération est coupé en deux, récursivement, jusqu'à isoler chaque texte refusé seul (`sky-data teacher label-decisions`). Ces textes vont dans `data/teacher/glm_labels.refused.jsonl` et ne sont plus jamais envoyés. Ils gardent leur seule cible or dans `data/decisions` et n'entrent pas dans `data/distill`. Un refus ne compte pas parmi les « 3 lots ratés de suite » qui arrêtent un worker.
 - **Règles inchangées.** La couverture exigée reste de 95 % de la sélection en labels. Les textes refusés comptent comme non labellisés. Le rapport donne leur nombre par source.
 - **Ce qui ne change pas.** La sélection, la question posée, le filtre d'accord, les poids, les modèles, l'évaluation et les portes.
+
+**Amendement 4 (09/11/2026, avant tout entraînement de s6-nano et s6-micro : seule la recette pico tourne, aucun de ses résultats n'a été lu). La recette passe par le fichier, en mode bridé.**
+
+- **La recette.** Le commit manuel du §2 est remplacé par `runs/recipe/recipe.json` et les configs dérivées de `runs/recipe/configs/` (`scripts/s6-adopt.py env s6-nano`, puis `s6-micro`), sans choix à la main (`docs/s6-prereg.md`, amendement 4). `configs/s6-nano.json`, `configs/s6-micro.json` et le test `s6_parameter_counts` ne changent pas.
+- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md`. Les budgets en minutes ne comptent que le temps de travail, et le rapport donne le nombre de pas réellement faits.
+- **Ce qui ne change pas.** Données, tailles, budgets, évaluation et portes.

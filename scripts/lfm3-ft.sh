@@ -15,12 +15,18 @@
 #   route   the S1/S2 router of docs/lfm3-s1s2-prereg.md on base and ft         (local CPU, free)
 #   gate    G1-G3 -> runs/lfm3-ft/gate.json and report.md                       (local CPU, free)
 #
-# DRY_RUN=1 prints the `hf jobs` commands and launches nothing. Without it, each paid job prints its
-# flavor, estimated and maximum cost, and waits for "y" (YES=1 answers for you: only once the user has
-# agreed to that cost). Jobs are detached: follow them with `hf jobs ps` and `hf jobs logs <id>`.
+# MODE=local (the default since docs/lfm3-ft-prereg.md, amendment 1) runs everything on the M5, for
+# nothing, with SKY_DUTY=0.5 and SKY_COOL=45:15 unless set: smoke, gen, sft (then the MLX conversion),
+# eval, route, gate; `pull` has nothing to do. MODE=hf keeps the Hugging Face Jobs below.
+#
+# DRY_RUN=1 prints the commands and launches nothing. With MODE=hf and without DRY_RUN, each paid job
+# prints its flavor, estimated and maximum cost, and waits for "y" (YES=1 answers for you: only once the
+# user has agreed to that cost). Jobs are detached: follow them with `hf jobs ps` and `hf jobs logs <id>`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export LC_ALL=C # awk prints 0.48, not 0,48
+MODE=${MODE:-local}
+case "$MODE" in local | hf) ;; *) echo "MODE must be local or hf, not '$MODE'" >&2; exit 2 ;; esac
 
 BASE=LiquidAI/LFM3-1.7B
 WORK=${WORK:-maxgfr/skycmd-lfm3-ft-work}
@@ -142,8 +148,73 @@ ft_rev() { # the model repo commit written by sft.py (pulled), or $FT_REV
   fi
 }
 
-[ $# -eq 0 ] && { sed -n '2,23p' "$0"; exit 2; }
+[ $# -eq 0 ] && { sed -n '2,27p' "$0"; exit 2; }
+
+# ----------------------------------------------------------------------------- the M5 (amendment 1)
+# Two environments: mlx-vlm generates (as scripts/lfm3-s1s2.sh), the torch stack trains the LoRA.
+run_local() {
+  printf '+'
+  printf ' %q' "$@"
+  printf '\n'
+  [ "$DRY_RUN" = 1 ] || "$@"
+}
+py_mlx() {
+  run_local uv run -q --python 3.12 --with "mlx-vlm==0.7.11" --with "datasets>=3" python "$EXP/local.py" "$@"
+}
+py_lora() {
+  run_local uv run -q --python 3.12 --with torch==2.14.0 --with transformers==5.12.1 --with trl==1.17.1 \
+    --with peft==0.21.2 --with accelerate==1.15.0 --with datasets==5.1.0 --with "huggingface_hub>=1.31,<2" \
+    python "$EXP/local.py" "$@"
+}
+# The bf16 revision the smoke returned, pinned by a dated amendment before `gen` (BASE_REV_PINNED above).
+need_rev() {
+  [ -n "$BASE_REV" ] && return 0
+  if [ "$DRY_RUN" = 1 ]; then
+    BASE_REV="<BASE_REV>"
+  else
+    echo "BASE_REV is not pinned: run the smoke, then pin it by an amendment (docs/lfm3-ft-prereg.md §10)" >&2
+    exit 2
+  fi
+}
+local_step() {
+  case "$1" in
+    smoke)
+      need_data
+      py_lora smoke-lora ${BASE_REV:+--revision "$BASE_REV"}
+      py_mlx smoke-mlx
+      ;;
+    gen)
+      need_data
+      need_rev
+      py_mlx gen
+      ;;
+    sft)
+      need_data
+      need_rev
+      py_lora sft --revision "$BASE_REV"
+      py_mlx convert
+      ;;
+    eval)
+      need_data
+      need_rev
+      for tag in $EVAL_MODELS; do py_mlx eval --tag "$tag"; done
+      ;;
+    pull) echo "== pull: nothing to do on the M5, everything is already in $RUNS" ;;
+  esac
+}
+if [ "$MODE" = local ]; then
+  export SKY_DUTY=${SKY_DUTY:-0.5}
+  export SKY_COOL=${SKY_COOL-45:15}
+fi
+
 for s in "$@"; do
+  # Not inside an `if`: `set -e` has to stop a failed step before the next command of the step.
+  case "$MODE:$s" in
+    local:smoke | local:gen | local:sft | local:eval | local:pull)
+      local_step "$s"
+      continue
+      ;;
+  esac
   case "$s" in
     smoke)
       need_data

@@ -150,4 +150,22 @@ Total estimé : **environ 18 $**, au plus 36 $. Les prix sont ceux de `hf jobs h
 
 ## 10. Amendements
 
-Aucun pour l'instant. Le premier recopiera la révision du modèle de base et le moteur rendus par le smoke (`smoke/report.json`), avant `gen`.
+**Amendement 1 (09/11/2026, avant tout run : aucune génération, aucun entraînement, aucun résultat n'existe). Tout en local, sur le M5.**
+
+- **Calcul.** Le §2 (« Calcul ») et le §8 sont remplacés : tout tourne sur le M5, rien n'est payé, aucun job Hugging Face n'est lancé (décision de l'utilisateur du 05/11/2026). `scripts/lfm3-ft.sh` passe en mode local par défaut. Les artefacts restent dans `runs/lfm3-ft/`, le modèle dans `models/lfm3-ft/`, et les deux dépôts privés du §2 ne servent plus.
+- **Moteur d'inférence.** mlx-vlm 0.7.11 sur `LiquidAI/LFM3-1.7B-MLX-4bit` (révision `deb2986b`), celui de `docs/lfm3-s1s2-prereg.md` : vLLM ne tourne pas sur Mac. Les résultats sont ceux du modèle en 4 bits, et le rapport le dit. Les prompts, les modes, les graines, l'extraction et la notation ne changent pas (les fonctions de `s1s2.py` sont réutilisées).
+- **Plafond de la génération.** La règle de débit du §3 (b) s'applique d'office : 1 000 questions par tâche (`hf_fallback_subset`, graine 1234), 4 échantillons chacune.
+- **La LoRA, règle écrite avant le smoke local.** Elle s'entraîne sur les poids bf16 de `LiquidAI/LFM3-1.7B`, aux hyperparamètres inchangés du §4.
+  1. transformers + peft + TRL sur MPS, si le smoke valide : `lora_targets_match`, le masque du prompt, 2 pas à perte finie sur un lot de la longueur maximale, la fusion et le rechargement.
+  2. Sinon, l'entraîneur LoRA de mlx-vlm, aux mêmes hyperparamètres, s'il charge LFM3 et valide les mêmes points.
+  3. Sinon, on s'arrête et le rapport le dit. Tout autre choix passe par un nouvel amendement.
+  - **Repli mémoire, autorisé d'avance.** Si un lot de 8 à longueur maximale ne tient pas en mémoire, on passe à des lots de 4 avec accumulation 8 : toujours 32 exemples par pas, et le rapport le note.
+- **Checkpoints.** Le §4 (« pas de checkpoint intermédiaire ») reste vrai pour le choix : **le dernier est le modèle**. Des points de sauvegarde techniques existent seulement pour reprendre après un arrêt du Mac. Ils ne sont jamais évalués, et une reprise est notée comme un échec technique.
+- **Conversion du modèle fine-tuné.** Le modèle fusionné est converti en MLX 4 bits (`mlx_vlm.convert -q --q-bits 4 --q-mode affine`) pour être évalué par le même moteur que la base.
+  - **Règle écrite avant le smoke.** Le smoke convertit aussi la base bf16 par la même commande, et compare cette conversion à la base publiée, en s1 (glouton), sur 20 questions de calibration.
+  - Si l'accord atteint au moins 0,8 sur les 64 premiers jetons en moyenne **et** au moins 0,8 sur les réponses (les seuils du §2), la base publiée sert de référence.
+  - Sinon, **la base est réévaluée avec la conversion locale**, pour que les deux modèles aient suivi la même chaîne.
+- **Évaluation de la base.** Si la base publiée sert de référence, ses générations sont celles de `docs/lfm3-s1s2-prereg.md` (`runs/lfm3-s1s2`, mêmes prompts, graines et moteur), copiées telles quelles dans `runs/lfm3-ft/eval/base`. Seules les 500 questions MMLU-Pro en s1 sont générées en plus. Le routeur (`route`) calcule sur ces fichiers ce qu'il a déjà calculé pour le §6 du TODO : aucun nouveau choix n'en dépend.
+- **La révision.** Le smoke local résout la révision de `LiquidAI/LFM3-1.7B` et la rend dans `runs/lfm3-ft/smoke/report.json`. Un amendement daté la recopie, avec la méthode LoRA retenue, avant `gen`.
+- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md` : une pause après chaque échantillon et chaque pas de LoRA. Le temps de génération et le nombre de jetons (`seconds`, `tokens`) n'en dépendent pas.
+- **Ce qui ne change pas.** Le modèle de base, les données, les exclusions, les hyperparamètres de la LoRA, les portes G1 à G3, le verdict, et le §9 : les poids dérivés restent privés tant que l'utilisateur n'a pas donné son accord.
