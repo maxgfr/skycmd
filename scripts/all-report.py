@@ -14,6 +14,7 @@ import re
 # docs/s6-secrets-prereg.md §6 and docs/s6-cast-prereg.md §6.
 SECRETS = {"secret": 0.977, "service": 0.787}
 CAST = {"nGMASE": 0.838, "nWQL": 0.587}
+CAST_CONFIGS = 97
 
 
 def ear(p):
@@ -36,8 +37,16 @@ def size(p, name):
 
 
 def secrets_acc(text, question):
-    """The accuracy of secret_bench:<question> in an s2-eval report (the first number of its row)."""
-    m = re.search(rf"secret_bench:{question}\b[^\n]*?(\d\.\d+)", text)
+    """The accuracy of secret_bench:<question> at the last exit of the GGUF, the variant and depth the
+    gate names (docs/s6-secrets-prereg.md §6). An s2-eval report also has the f32 and fake-quant
+    variants, one table per exit each, so the first row of that source is the wrong one."""
+    sections = text.split("\n## GGUF `")
+    if len(sections) < 2:
+        return None
+    exits = re.findall(r"^#### Exit \d+ .*?(?=^#### |\Z)", sections[-1], flags=re.M | re.S)
+    if not exits:
+        return None
+    m = re.search(rf"^\| secret_bench:{question} \| \d+ \| (\d\.\d+) \|", exits[-1], flags=re.M)
     return float(m.group(1)) if m else None
 
 
@@ -58,8 +67,9 @@ def cast(p):
     if not os.path.exists(path):
         return "not run", path, ""
     s = json.load(open(path))
-    if any(k not in s for k in CAST):
-        return "unreadable", path, str(sorted(s))
+    # A mean over fewer configurations than the bench's is not the published metric.
+    if any(s.get(k) is None or s.get("configs", {}).get(k) != CAST_CONFIGS for k in CAST):
+        return "unreadable", path, str(s)
     ok = all(s[k] <= bar for k, bar in CAST.items())
     return ("PASS" if ok else "FAIL"), path, "; ".join(f"{k} {s[k]:.4f} <= {CAST[k]}" for k in CAST)
 
