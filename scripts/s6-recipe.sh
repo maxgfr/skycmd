@@ -27,7 +27,8 @@ export SKY_DUTY=${SKY_DUTY:-0.5}
 export SKY_COOL=${SKY_COOL-45:15}
 
 if [ -z "${DRY_RUN:-}" ] && [ -z "${S6_RECIPE_WORKER:-}" ]; then
-  stamps() { find "$SKYCMD_STORE/runs/s5-state/s6lr" "$SKYCMD_STORE/runs/s5-state/s6ab" -name '*.done' 2>/dev/null | wc -l || true; }
+  # every stage of this script, the extension included, so that a finished step resets the count
+  stamps() { find "$SKYCMD_STORE/runs/s5-state/s6lr" "$SKYCMD_STORE/runs/s5-state/s6lr-extend" "$SKYCMD_STORE/runs/s5-state/s6ab" -name '*.done' 2>/dev/null | wc -l || true; }
   fails=0
   while :; do
     before=$(stamps)
