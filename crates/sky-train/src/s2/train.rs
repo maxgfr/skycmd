@@ -31,7 +31,7 @@ use crate::{
     sequence::{Tok, QTYPES},
     session::{
         apply_update, keep_going, qat_due, replace_params, sorted_names, stop_step, train_step,
-        CompiledGrad, Progress,
+        Brake, CompiledGrad, Progress,
     },
     train::{source_weights, JsonLog},
 };
@@ -1113,10 +1113,12 @@ pub fn pretrain(a: &S2PretrainArgs) -> Result<()> {
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
     let save = |s: &S2Session| s.save(&last, &[("tokenizer.json", tok_json.clone())]);
     let base = s.state.elapsed_secs;
-    let t0 = Instant::now();
+    let mut t0 = Instant::now();
+    let mut brake = Brake::from_env()?;
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wt, mut ws, mut wtime) = (0.0f64, 0usize, 0u64, Instant::now());
     while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
+        brake.rest(&mut t0);
         let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
         let lr_scale = wsd(frac) as f32;
         let seed = s.state.seed;
@@ -1325,10 +1327,12 @@ fn pretrain_audio(a: &S2PretrainArgs, cfg: S2Config) -> Result<()> {
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
     let save = |s: &S2Session| s.save(&last, &[("tokenizer.json", tok_json.clone())]);
     let base = s.state.elapsed_secs;
-    let t0 = Instant::now();
+    let mut t0 = Instant::now();
+    let mut brake = Brake::from_env()?;
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wt, mut ws, mut wtime) = (0.0f64, 0usize, 0u64, Instant::now());
     while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
+        brake.rest(&mut t0);
         let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
         let lr_scale = wsd(frac) as f32;
         let utts: Vec<&data::MimiUtt> = (0..a.batch)
@@ -1644,7 +1648,8 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
     let save = |s: &S2Session, dir: &Path| s.save(dir, &[("tokenizer.json", tok_json.clone())]);
     let base = s.state.elapsed_secs;
-    let t0 = Instant::now();
+    let mut t0 = Instant::now();
+    let mut brake = Brake::from_env()?;
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wt, mut ws, mut wq, mut wtime) =
         (0.0f64, 0usize, 0u64, 0usize, Instant::now());
@@ -1669,6 +1674,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     };
     let mut seq_loss_sum = (0.0f64, 0usize);
     while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
+        brake.rest(&mut t0);
         let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
         if !s.state.qat && qat_due(frac, a.qat_frac) {
             println!("step {}: starting ternary QAT", s.state.step);

@@ -62,8 +62,10 @@ pub fn extract(text: &str) -> (String, Vec<f32>) {
         if !glued {
             out.push_str(&text[copied..i]);
             out.push_str(NUM_TOKEN);
-            // The match is a valid float literal, so parsing cannot fail.
-            values.push(text[i..j].parse::<f32>().unwrap_or(0.0));
+            // The match is a valid float literal, so parsing cannot fail, but a literal too
+            // large for an f32 parses to infinity, which makes the training loss non-finite.
+            let v = text[i..j].parse::<f32>().unwrap_or(0.0);
+            values.push(if v.is_finite() { v } else { 0.0 });
             copied = j;
         }
         i = j;
@@ -98,6 +100,13 @@ mod tests {
         assert_eq!(ex("7."), ("[NUM].".into(), vec![7.0]));
         assert_eq!(ex("- 3 --4"), ("- [NUM] -[NUM]".into(), vec![3.0, -4.0]));
         assert_eq!(ex(""), (String::new(), vec![]));
+    }
+
+    #[test]
+    fn a_literal_too_large_for_an_f32_is_zero() {
+        let (t, v) = ex(&"9".repeat(45));
+        assert_eq!(t, "[NUM]");
+        assert_eq!(v, [0.0]);
     }
 
     #[test]

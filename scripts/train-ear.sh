@@ -19,6 +19,7 @@
 #   the EMA weights are calibrated and exported)  LR_SCALE (unset: the default rates; set: the
 #   pico pilot's scale moved to d = 144 by muP, LR_SCALE x sqrt(96/144) x the phase's default, as
 #   scripts/train-s6.sh)  TIME_SCALE=1 (multiplies every budget in minutes, scripts/speed-probe.sh)
+#   RESUME=1 (continue from the checkpoints of an interrupted run; unset: start over)
 # Not to be run while another training job uses the GPU.
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -44,6 +45,8 @@ ctl_min=$(tmin "${CTL_MIN:-${DEC_MIN:-60}}")
 read -r -a opt <<<"${OPT:-}"
 read -r -a pre <<<"${PRETRAIN:-}"
 read -r -a dec <<<"${DECIDE:-}"
+resume=()
+[ -n "${RESUME:-}" ] && resume=(--resume)
 ckpt=last
 [[ " ${DECIDE:-} " == *" --ema "* ]] && ckpt=last-ema
 case " ${OPT:-} " in
@@ -101,17 +104,17 @@ data() {
 pretrain() {
   x "$T" s2-pretrain --audio --config "$cfg" --tokenizer "$tok" --text "$ear/mimi" --minutes "$pre_min" \
     --seq "$seq" --batch 64 --out "$run/pretrain" ${pre_lr[@]+"${pre_lr[@]}"} ${opt[@]+"${opt[@]}"} \
-    ${pre[@]+"${pre[@]}"}
+    ${pre[@]+"${pre[@]}"} ${resume[@]+"${resume[@]}"}
 }
 
 # decide_ <out> <minutes> [--init dir]: decision training with QAT over the last 10%.
 decide_() {
   local out=$1 min=$2
   shift 2
-  x rm -rf "$out"
+  [ -n "${RESUME:-}" ] || x rm -rf "$out"
   x "$T" s2-decide --config "$cfg" --tokenizer "$tok" --records "$records" --weights "$weights" \
     --batch "$batch" --minutes "$min" --qat-frac 0.1 --loop-dropout 0.25 --length-pool 16 --pad-to 32 \
-    --out "$out" ${dec_lr[@]+"${dec_lr[@]}"} ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"} "$@"
+    --out "$out" ${dec_lr[@]+"${dec_lr[@]}"} ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"} ${resume[@]+"${resume[@]}"} "$@"
   x "$T" s2-calibrate --run "$out/$ckpt" --records "$records"
 }
 

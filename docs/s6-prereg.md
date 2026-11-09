@@ -114,3 +114,12 @@ Le temps réel compte : les vrais entraînements sont budgétés en minutes, et 
 - **La machine.** Tout tourne sur le M5, la machine des budgets (`TIME_SCALE` = 1).
 - **Ce qui ne change pas.** Données, bras, graines, budgets en pas, métriques et seuils.
 - **Pourquoi.** Un choix fait à la main entre l'ablation et les modèles finaux est un moment où l'on lit les résultats et où l'on peut infléchir une règle. Un script testé l'applique à la lettre.
+
+**Amendement 5 (09/11/2026, avant le pilote : aucun run s6 n'a tourné, aucun résultat n'a été lu). Le mode bridé.**
+
+- **Le constat.** À pleine puissance, le M5 chauffe trop, et il ne reste pas ouvert en permanence. Le run peut être suspendu (écran rabattu) ou arrêté (Mac éteint), et reprendre plus tard.
+- **Le mécanisme.** `SKY_DUTY` (0,5 par défaut dans `scripts/s6-recipe.sh`) est la part du temps où la boucle d'entraînement travaille. Avant chaque pas, elle se repose en proportion du travail écoulé depuis sa dernière pause. `SKY_COOL` (`45:15` par défaut dans le même script) ajoute un repos complet : chaque heure de l'horloge système, 45 min de travail puis 15 min sans calcul GPU.
+- **Le temps mesuré.** Les pauses et les repos sont retirés de l'horloge du run : `train_minutes` (règles 1 et 5 du §4) ne compte que le temps de travail. Le temps où le Mac est en veille n'y entre pas non plus (l'horloge monotone de macOS s'arrête pendant la veille).
+- **Après un arrêt.** Une étape interrompue repart de zéro avec les mêmes graines : l'étape n'a pas de résultat tant qu'elle n'est pas finie. C'est un échec technique au sens du §6, sans lecture de résultat, donc sans biais ; `runs/s5-logs/` en garde la trace, et le rapport le note.
+- **Une correction technique, faite avant tout run.** L'essai du 09/11/2026 a montré que le pré-entraînement mourait au pas 74 (`non-finite loss`), sur tous les bras : un nombre du texte trop grand pour un `f32` (39 chiffres ou plus, 32 lignes du corpus, dont 31 dans `data/text-open`) valait l'infini. Il vaut désormais 0, comme un nombre illisible (`num::extract`, dans ses trois copies). Les fichiers de `data/` ne changent pas.
+- **Ce qui ne change pas.** Données, bras, graines, budgets en pas, métriques et seuils.

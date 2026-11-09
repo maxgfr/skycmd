@@ -22,6 +22,8 @@
 #   PRE_MIN DEC_MIN ROUND_MINUTES LR_MIN   budgets in minutes (nano 90 90 15 20, micro 180 180 20 20)
 #   TIME_SCALE=1    multiplies every budget in minutes (the M5's speed over this host's,
 #                   scripts/speed-probe.sh): the same steps as on the M5 (docs/s6-prereg.md, am. 4)
+#   RESUME=1        continue from the checkpoints of an interrupted run (unset: every training
+#                   starts over). Clear the run directories before changing the budgets
 #   CONFIG          the model config (default configs/s6-$SIZE.json; scripts/s6-adopt.py writes
 #                   the one with Parallax and XSA as the ablation adopted them)
 #   DAGGER_N=15000  decisions collected per DAgger round
@@ -56,6 +58,8 @@ dagger_n=${DAGGER_N:-15000}
 read -r -a opt <<<"${OPT:-}"
 read -r -a pre <<<"${PRETRAIN:-}"
 read -r -a dec <<<"${DECIDE:-}"
+resume=()
+[ -n "${RESUME:-}" ] && resume=(--resume)
 rounds=${ROUNDS:-3}
 games=${GAMES:-flappy,rescue,dodge,doom}
 episodes=${EPISODES:-30}
@@ -115,13 +119,13 @@ mkdir -p "$m"
 pretrain() {
   x "$T" s2-pretrain --config "$cfg" --tokenizer "$tok" --text data/text-open,data/text --minutes "$2" \
     --seq 256 --batch 64 --num-weight 0.05 --numeric data/numeric --numeric-weight 0.1 --out "$1" \
-    "$lr_flag" "$(rate 3e-3 "$3")" ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"}
+    "$lr_flag" "$(rate 3e-3 "$3")" ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"} ${resume[@]+"${resume[@]}"}
 }
 decide() {
-  x rm -rf "$2"
+  [ -n "${RESUME:-}" ] || x rm -rf "$2"
   x "$T" s2-decide --config "$cfg" --init "$1" --tokenizer "$tok" --records "$5" --weights "$6" \
     --batch "$batch" --minutes "$3" --qat-frac "$7" --loop-dropout 0.25 --length-pool 16 --pad-to 32 \
-    --out "$2" "$lr_flag" "$(rate 1e-3 "$4")" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"}
+    --out "$2" "$lr_flag" "$(rate 1e-3 "$4")" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"} ${resume[@]+"${resume[@]}"}
 }
 
 # post <decide dir> <gguf>: calibration, ternary export, play at full depth.

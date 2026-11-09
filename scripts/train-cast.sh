@@ -74,7 +74,7 @@ pilot() {
   local x p=() r
   for x in 1e-3 3e-3 1e-2; do
     r=runs/s6-cast-pilot/lr-$x
-    [ -f "$r/last/state.json" ] || "$B/sky-train" cast-train --config "$cfg" --out "$r" \
+    "$B/sky-train" cast-train --config "$cfg" --out "$r" --resume \
       --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$x" --eval-every 3000 \
       ${copt[@]+"${copt[@]}"}
     p+=("$x=$(final_pinball "$r" f32)")
@@ -89,7 +89,7 @@ b = min(p, key=p.get)
 print(b if p[b] <= 0.98 * p["3e-3"] else "3e-3")' "${p[@]}")
   echo "pre-registered rule: keep 3e-3 unless another rate lowers the pinball by >= 2% -> $best"
   local d=runs/s6-cast-pilot/distill-$best
-  [ -f "$d/last/state.json" ] || "$B/sky-train" cast-train --config "$cfg" --out "$d" \
+  "$B/sky-train" cast-train --config "$cfg" --out "$d" --resume \
     --steps 3000 --batch "$batch" --qat-frac 0 --series data/series --adam-lr "$best" --eval-every 3000 \
     --teacher "$golden" ${copt[@]+"${copt[@]}"}
   local pd pn

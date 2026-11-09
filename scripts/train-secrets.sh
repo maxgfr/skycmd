@@ -14,6 +14,7 @@
 #   PRETRAIN_MIN=8  DECIDE_MIN=15
 #   TIME_SCALE=1    multiplies both budgets (scripts/speed-probe.sh; docs/s6-prereg.md, amendment 4)
 #   CONFIG=configs/s6-secrets-pico.json (scripts/s6-adopt.py writes the adopted one)
+#   RESUME=1        continue from the checkpoints of an interrupted run (unset: start over)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -29,6 +30,8 @@ dec_min=$(tmin "${DECIDE_MIN:-15}")
 read -r -a opt <<<"${OPT:-}"
 read -r -a pre <<<"${PRETRAIN:-}"
 read -r -a dec <<<"${DECIDE:-}"
+resume=()
+[ -n "${RESUME:-}" ] && resume=(--resume)
 records=data/secrets
 run=runs/s6-secrets-pico
 m=models/s6-secrets-pico
@@ -61,12 +64,12 @@ train() {
   $T s2-pretrain --config "$cfg" --tokenizer data/tok/tok-s2-1024.json --text data/text-open,data/text \
     --minutes "$pre_min" --seq 256 --batch 64 --num-weight 0.05 \
     --numeric data/numeric --numeric-weight 0.1 --out "$run/pretrain" \
-    "$lr_flag" "$(rate 3e-3)" ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"}
+    "$lr_flag" "$(rate 3e-3)" ${opt[@]+"${opt[@]}"} ${pre[@]+"${pre[@]}"} ${resume[@]+"${resume[@]}"}
   echo "== s6-secrets-pico: decide ${dec_min}m on $records (QAT after a 10% float warm-up)"
-  rm -rf "$run/decide"
+  [ -n "${RESUME:-}" ] || rm -rf "$run/decide"
   $T s2-decide --config "$cfg" --init "$run/pretrain/init" --records "$records" --batch 64 \
     --minutes "$dec_min" --qat-frac 0.9 --loop-dropout 0.25 --pad-to 32 \
-    --out "$run/decide" "$lr_flag" "$(rate 1e-3)" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"}
+    --out "$run/decide" "$lr_flag" "$(rate 1e-3)" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"} ${resume[@]+"${resume[@]}"}
 }
 
 evaluate() {

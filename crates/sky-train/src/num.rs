@@ -76,7 +76,9 @@ pub fn extract(text: &str) -> Extracted {
         if !letter_before(text, i) {
             out.push_str(&text[copied..i]);
             out.push_str(NUM_TOKEN);
-            values.push(text[i..j].parse::<f32>().unwrap_or(0.0));
+            // A literal too large for an f32 parses to infinity (sky_data::num::extract).
+            let v = text[i..j].parse::<f32>().unwrap_or(0.0);
+            values.push(if v.is_finite() { v } else { 0.0 });
             copied = j;
         }
         i = j;

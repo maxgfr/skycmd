@@ -1,38 +1,49 @@
 # TODO : entraîner les modèles s6, et le routage Système 1 / Système 2 de LFM3-1.7B
 
-## À lancer le 06/11/2026 : la nuit 1 du grand run (la recette s6)
+## À lancer maintenant : la tranche 1 du grand run (la recette s6), en mode bridé
 
-> **Cette nuit n'entraîne pas les s6.** Elle choisit leur recette, c'est-à-dire quelles optimisations garder, et ne produit aucun modèle final. Les 5 modèles s6 demandent environ 48 h de GPU, en 4 nuits :
+> **Le mode bridé (décidé le 09/11/2026 : le Mac chauffe trop, et il ne reste pas ouvert en permanence).** `SKY_DUTY=0.5` fait travailler le GPU la moitié du temps : deux fois moins de puissance moyenne, pour deux fois plus de temps. Le nombre de pas, les graines et les résultats ne changent pas, et les pauses ne comptent ni dans `train_minutes` ni dans les budgets en minutes (`docs/s6-prereg.md`, amendement 5).
 >
-> | nuit | ce qui tourne | durée | prête ? |
-> |---|---|---|---|
-> | 1 | pilote + ablation pico → recette (`scripts/s6-recipe.sh`) | ~17 h 30 | **oui** |
-> | 2 | s6-ear, s6-secrets puis s6-nano | ~11 h | non : il manque des amendements et `train-all.sh` (§9.2) |
-> | 3 | s6-micro | ~11 h | non (§9.2) |
-> | 4 | s6-cast | ~9 h | non (§9.2) |
+> **Des repos complets, en plus (`SKY_COOL=45:15`).** Chaque heure, 45 min de travail bridé puis 15 min sans aucun calcul GPU, pour que la machine refroidisse vraiment. Ces repos non plus ne comptent ni dans `train_minutes` ni dans les budgets.
 >
-> Puis LFM3 S1/S2 et LFM3 fine-tuné (§9.4, nuits 5 et suivantes). Ce qui manque pour les nuits 2 à 4 se fait dans une session Claude Code pendant ou après la nuit 1, sans GPU.
+> **Cette tranche n'entraîne pas les s6.** Elle choisit leur recette, c'est-à-dire quelles optimisations garder, et ne produit aucun modèle final. Les 5 modèles s6 demandent environ 48 h de GPU, soit environ 128 h avec la bride et les repos. Les durées ci-dessous comptent le temps où le Mac est allumé et ouvert, pas le temps calendaire :
+>
+> | tranche | ce qui tourne | à pleine vitesse | bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`) | prête ? |
+> |---|---|---|---|---|
+> | 1 | pilote + ablation pico → recette (`scripts/s6-recipe.sh`) | ~17 h 30 | **~47 h** | **oui** |
+> | 2 | s6-ear, s6-secrets puis s6-nano | ~11 h | ~29 h | non : il manque des amendements et `train-all.sh` (§9.2) |
+> | 3 | s6-micro | ~11 h | ~29 h | non (§9.2) |
+> | 4 | s6-cast | ~9 h | ~24 h | non (§9.2) |
+>
+> Puis LFM3 S1/S2 et LFM3 fine-tuné (§9.4, tranches 5 et suivantes). Ce qui manque pour les tranches 2 à 4 se fait dans une session Claude Code pendant ou après la tranche 1, sans GPU.
 
-Tout est prêt pour cette nuit. Les labels GLM sont finis à 100 %, l'amendement 4 de `docs/s6-prereg.md` est commité, et le dry-run passe. Cette nuit ne lit pas encore `data/distill/glm.jsonl`, qui sert à la nuit 2, mais le mélange est déjà prêt. Dans un terminal, **Mac branché et ouvert** :
+Tout est prêt pour cette tranche : le plantage au pas 74 du pré-entraînement est corrigé (`non-finite loss`, un nombre du texte trop grand pour un `f32` ; `docs/s6-prereg.md`, amendement 5). Les labels GLM sont finis à 100 %, les amendements 4 et 5 de `docs/s6-prereg.md` sont écrits, et le dry-run passe. Cette tranche ne lit pas encore `data/distill/glm.jsonl`, qui sert à la tranche 2, mais le mélange est déjà prêt. Dans un terminal, **de préférence sur secteur** :
 
 ```
 cd ~/Documents/Code/skycmd && git pull
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # Metal (absent du profil du shell)
-caffeinate -i scripts/s6-recipe.sh 2>&1 | tee runs/s6-recipe.log
+caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
 ```
 
 - **Ce que ça fait, sans aucune décision à la main :**
-  - le pilote du taux d'apprentissage (6 runs, environ 2 h 30) ;
+  - le pilote du taux d'apprentissage (6 runs, environ 7 h bridé) ;
   - l'extension, seulement si un choix tombe au bord de la grille ;
-  - l'ablation pico aux échelles du pilote (11 bras × 3 graines, environ 15 h) ;
+  - l'ablation pico aux échelles du pilote (11 bras × 3 graines, environ 40 h bridé) ;
   - puis `scripts/s6-adopt.py adopt`, qui écrit la recette dans `runs/recipe/recipe.json`.
 
-  Au total, environ **17 h 30** : lancer le soir, la fin arrive le lendemain après-midi.
+  Au total, environ **47 h de Mac ouvert**, à étaler sur plusieurs jours.
+- **Régler la chauffe**, avec deux variables à exporter avant la commande (on peut les changer à chaque relance, elles n'entrent pas dans les résultats) :
+  - `SKY_DUTY` est la part du temps où le GPU travaille : `0.3` chauffe moins et prend environ 78 h, `0.7` chauffe plus et prend environ 33 h, `1` est la pleine vitesse ;
+  - `SKY_COOL` est le cycle en minutes, travail puis repos : `40:20` refroidit plus longtemps (environ 53 h), et `SKY_COOL=` (vide) supprime les repos. Le journal affiche `cooling down for … s` à chaque repos ; le run n'est pas bloqué.
+- **Fermer le Mac quand on veut :**
+  - **rabattre l'écran** met le run en pause, et il repart seul à l'ouverture : aucune commande à retaper ;
+  - **éteindre ou redémarrer** arrête le run : relancer la même commande. Les étapes finies sont sautées, seule l'étape en cours repart de son début (30 min au plus à perdre en mode bridé) ;
+  - une erreur, par exemple du GPU au réveil, relance toute seule le script après 60 s. Il abandonne après 5 échecs de suite sans étape finie, et le journal le dit ;
+  - **ne pas utiliser `pmset disablesleep`** dans ce mode : le Mac tournerait écran rabattu, le pire cas pour la chaleur.
 - **Pour suivre :**
   - `tail -f runs/s6-recipe.log` ;
   - les journaux de chaque étape dans `runs/s5-logs/` ;
   - `ls runs/s6lr runs/s6ab`.
-- **En cas d'arrêt** (veille, crash, Mac débranché) : relancer la même commande. xtask reprend là où il s'était arrêté.
 - **Avant, si on veut voir les commandes sans rien lancer :** `DRY_RUN=1 scripts/s6-recipe.sh`.
 - **Après :** ouvrir une session Claude Code pour :
   - lire `runs/recipe/recipe.json` et commiter la recette ;
@@ -44,10 +55,8 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee runs/s6-recipe.log
 - **Le prochain run : tout entraîner, au mieux (§9), sur le M5.** Le 05/11, l'utilisateur avait d'abord parlé de louer des GPU, puis a tranché : « finalement je ferai tout sur mon pc ». Il n'y a donc **ni Mac loué ni HF Jobs**. **La nuit 1, la recette s6, se lance le 06/11** (voir plus haut). Le §9 dit ce qui est prêt et ce qui reste à faire pour les nuits suivantes.
   - **Les 5 modèles s6**, avec les optimisations que le pilote et l'ablation adoptent (règles appliquées automatiquement) : environ 48 h de GPU.
   - **LFM3-1.7B** : le routeur S1/S2 (§6) et le fine-tuning (§6.1), en local. Il faut d'abord les amendements du §9.2 : le §6.1 et l'amendement 1 du §6 visaient HF Jobs.
-  - **La machine va chauffer pendant plusieurs jours.** On découpe en tranches d'une nuit (§9.4) : tout reprend là où ça s'était arrêté.
-  - **Le Mac ne doit pas se mettre en veille.** Dans la nuit du 04 au 05/11, rien n'a tourné : à 22:12, le Mac a été débranché et l'écran rabattu, et il est passé en « Clamshell Sleep ». `caffeinate -i` n'empêche pas cette veille-là.
-    - Le plus simple : le laisser branché et ouvert.
-    - Sinon, l'utilisateur tape lui-même `sudo pmset -a disablesleep 1` avant, puis `sudo pmset -a disablesleep 0` après. C'est un réglage système : Claude ne le fait pas.
+  - **Depuis le 09/11/2026, tout tourne en mode bridé (`SKY_DUTY=0.5 SKY_COOL=45:15`)** : le Mac chauffait trop. Le GPU travaille la moitié du temps, avec 15 min de repos complet par heure, donc tout prend environ 2,7 fois plus de temps sans changer les résultats (voir plus haut). On découpe en tranches (§9.4) : tout reprend là où ça s'était arrêté.
+  - **Le Mac peut se mettre en veille.** Rabattre l'écran suspend le run, qui repart à l'ouverture : ce qui s'est passé dans la nuit du 04 au 05/11 (« Clamshell Sleep » à 22:12) n'est plus un problème, cela coûte seulement du temps. `caffeinate -i` empêche seulement la veille d'inactivité quand l'écran reste ouvert.
 - **Labels GLM-5.3-flash (§1.1) : finis le 05/11/2026 à 19 h 40, à 100 %.** 747 077 labels et 121 textes refusés par la modération, soit les 747 198 records.
   - L'accord avec la bonne réponse est de 560 238 sur 747 077 (0,750).
   - `data/distill/glm.jsonl` est écrit : c'est le mélange final, que `train-s6.sh` attend.
@@ -85,6 +94,7 @@ Ordre (§9, tout sur le M5, une tranche par nuit) : labels GLM (§1.1, finis le 
 - [x] `uv` installé (s6-cast : `scripts/gift-eval.py` tourne sous Python 3.12).
 - [x] `node` et `wasm-pack` (présents le 29/10/2026) : l'étape `eval` de `scripts/train-s6.sh` construit `site/public/pkg` s'il manque (`scripts/build-wasm.sh`) pour mesurer la latence WASM.
 - [x] Place disque : **95 Go libres** le 06/11/2026 (15 Go le 29/10/2026), après suppression du cache de build debug (`target/s3-train/debug`, 9,2 Go, produit par `cargo test` et clippy ; il se reconstruit tout seul). Les scripts d'entraînement n'utilisent que `target/s3-train/release`. Les runs écrivent dans `runs/` et `models/`, et les checkpoints de s6-micro (5,85M paramètres, état d'optimiseur compris) pèsent bien plus que ceux de pico. Revérifier avant 2.5, et supprimer à nouveau `target/s3-train/debug` après des `cargo test`.
+  - **Mesuré le 09/11/2026 : 94 Go libres, pour environ 55 Go à écrire en tout.** L'essentiel, ce sont les caches du texte tokenisé : 866 Mo par pré-entraînement, identiques d'un run à l'autre, soit environ 43 Go pour la cinquantaine de runs. Un checkpoint pico pèse moins de 5 Mo. S'il faut de la place, `find runs -type d -name cache -prune -exec rm -rf {} +` les supprime une fois les étapes finies : ils ne servent plus aux résultats, seulement à recharger plus vite une étape relancée.
 
 ## 1. Données (une seule fois, avant le premier pilote)
 
@@ -285,9 +295,9 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 - **Le 05/11/2026, deux décisions de l'utilisateur se sont succédé.**
   - D'abord « pas en local » : le M5 chauffe trop. L'amendement 1 du pré-enregistrement a fait passer le run à distance (bf16, Hugging Face Jobs, vLLM ou transformers).
   - Puis « finalement je ferai tout sur mon pc ». Il faut donc un **amendement 2** qui annule le 1 et revient au protocole d'origine : MLX-4bit, mlx-vlm et le M5 (§9.2).
-- [ ] **La commande, une nuit (§9.4, nuit 5), après l'amendement 2 :** `caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
-  - Durée estimée : environ 1 h 30 pour s1, 2 h pour s2-256 et 5 à 6 h pour s2-1024, sur 1 600 questions, soit **environ 9 à 10 h**. La calibration passe en premier (600 questions, environ 3 h 30).
-  - Inférence locale sur le GPU du M5 : ça chauffe toute la nuit. Le Mac doit rester branché et ouvert.
+- [ ] **La commande (§9.4, tranche 5), après l'amendement 2 :** `SKY_DUTY=0.5 SKY_COOL=45:15 caffeinate -i scripts/lfm3-s1s2.sh`. Elle enchaîne `data` (déjà fait, sauté), `calib`, `test` puis `route`.
+  - Durée estimée à pleine vitesse : environ 1 h 30 pour s1, 2 h pour s2-256 et 5 à 6 h pour s2-1024, sur 1 600 questions, soit **environ 9 à 10 h, donc 24 à 27 h bridé**. La calibration passe en premier (600 questions, environ 3 h 30 à pleine vitesse).
+  - Inférence locale sur le GPU du M5. `SKY_DUTY` ajoute une pause après chaque question. Le critère H3 compte des jetons, et `seconds` reste le temps de génération : le mode bridé ne change aucun des deux.
   - Tout reprend après une coupure : relancer la même commande, les questions déjà faites sont sautées.
   - La labellisation GLM (§1.1) peut continuer en même temps : elle ne fait que du réseau.
 - [ ] **Au réveil**, lire `runs/lfm3-s1s2/report-calib.md` (calibration) puis `runs/lfm3-s1s2/report.md` (test, avec le verdict). Si la nuit n'a pas suffi, relancer `scripts/lfm3-s1s2.sh calib test route` : ça reprend.
@@ -421,7 +431,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 
 À lancer quand le GPU est libre (pas pendant LFM3), depuis le checkout principal à jour de main, dans un terminal qui reste ouvert :
 
-- [ ] `caffeinate -i scripts/train-ear.sh pretrain decide eval` (`data` est fait), ou une étape à la fois. Il faut compter environ 3 h de GPU : 60 min de pré-entraînement, 60 min de décision, 60 min pour le témoin. Le téléchargement, d'environ 30 Go, se fait au fil de l'eau.
+- [ ] `SKY_DUTY=0.5 SKY_COOL=45:15 RESUME=1 caffeinate -i scripts/train-ear.sh pretrain decide eval` (`data` est fait), ou une étape à la fois. Il faut compter environ 3 h de GPU à pleine vitesse, donc 8 h bridé : 60 min de pré-entraînement, 60 min de décision, 60 min pour le témoin. Le téléchargement, d'environ 30 Go, se fait au fil de l'eau. `RESUME=1` reprend aux checkpoints (toutes les 10 min) après un arrêt : relancer la même commande.
 - [x] Après `data` (04/11/2026, les nombres au §8), mettre dans le rapport :
   - les comptes par set et par split ;
   - le nombre de mots réservés par langue (`data/ear/jev/REPORT.json`, `held_out`) : il en faut 50 par langue. Moins de 50 veut dire que la première archive MSWC ne suffit pas. Il faut alors un amendement daté avec `--mswc-archives 2`, **avant** `pretrain`.
@@ -526,7 +536,9 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
     - `cast` : `pilot train export eval` ;
   - `report`, qui rassemble les portes de chaque modèle dans `runs/all/REPORT.md`.
   - Un mode `SMOKE=1` avec des budgets de quelques minutes, `ROUNDS=1`, `DAGGER_N=200` et `EPISODES=2`.
-- [ ] **Le mode local de `scripts/lfm3-ft.sh`** (`gen`, `sft` et `eval` avec mlx-vlm ou MPS, sans `hf jobs`) et son smoke local.
+  - **Le mode bridé et la reprise, par défaut.** `train-all.sh` exporte `SKY_DUTY=${SKY_DUTY:-0.5}`, `SKY_COOL=${SKY_COOL-45:15}` et `RESUME=1` (`sky-train` et les `train-*.sh` les lisent déjà). Attention : avec `RESUME=1`, un run reprend tout ce qu'il trouve dans son dossier. `SMOKE=1` doit donc écrire ailleurs que `runs/s6-*`, ou nettoyer ses dossiers, sinon les vrais budgets repartiraient d'un checkpoint de fumée.
+- [ ] **Le mode local de `scripts/lfm3-ft.sh`** (`gen`, `sft` et `eval` avec mlx-vlm ou MPS, sans `hf jobs`) et son smoke local. Il doit respecter `SKY_DUTY` et `SKY_COOL` comme `experiments/lfm3-s1s2/s1s2.py`.
+- [ ] **Dans chaque amendement ci-dessus :** une ligne pour dire que le run se fait en mode bridé, comme l'amendement 5 de `docs/s6-prereg.md`.
 - [ ] **Les vérifications :**
   - `cargo test -p xtask` ;
   - `python3 -I scripts/test_s6_adopt.py` ;
@@ -536,12 +548,12 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 
 ### 9.3 Ce que fait l'utilisateur
 
-- [ ] Laisser le Mac **branché et ouvert** pendant chaque tranche, ou bien `sudo pmset -a disablesleep 1` avant et `sudo pmset -a disablesleep 0` après (§ « Où on en est »).
-- [ ] Lancer chaque tranche (§9.4), une commande par nuit, ou laisser Claude la lancer sur demande.
+- [ ] Garder le Mac ouvert quand c'est possible, de préférence sur secteur : le run n'avance que Mac ouvert. Rabattre l'écran le suspend, éteindre l'arrête, et il suffit alors de relancer la même commande (voir en tête du TODO). Pas de `pmset disablesleep`.
+- [ ] Lancer chaque tranche (§9.4), ou laisser Claude la lancer sur demande.
 
-### 9.4 Le run sur le M5, en tranches d'une nuit (une fois le 9.2 fait)
+### 9.4 Le run sur le M5, en tranches (une fois le 9.2 fait)
 
-Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `train-all.sh`, reprise de xtask et des scripts). Les durées sont celles du M5.
+Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `train-all.sh`, reprise de xtask et des scripts). Les durées sont celles du M5 à pleine vitesse : **à multiplier par environ 2,7 en mode bridé (`SKY_DUTY=0.5 SKY_COOL=45:15`)**. Une tranche peut s'étaler sur plusieurs jours, et les « nuits » ci-dessous sont des numéros de tranche.
 
 1. **La fumée `SMOKE=1`**, environ 30 min : les 5 modèles de bout en bout, en quelques minutes chacun, sortent leur GGUF et leurs portes.
 2. **Nuit 1 : le pilote et l'ablation pico, environ 17 h 30, avec `caffeinate -i scripts/s6-recipe.sh`** (le mode d'emploi est en tête du TODO). Le pilote prend environ 2 h 30, plus l'extension si besoin ; l'ablation prend environ 15 h. Puis `adopt`, qui écrit la recette. Elle peut tourner avant la fumée et le reste du §9.2, qui ne servent qu'à partir de la nuit 2.
