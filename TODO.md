@@ -393,7 +393,7 @@ Personne n'a publié ça sur des modèles ternaires.
 - [ ] **7.4 Audit des poids** (la promesse 1). On implante une porte dérobée dans une copie de s6-secrets, par exemple un déclencheur qui fait dire « pas de secret ». On regarde si GLM la trouve en lisant les poids, puis les activations. Il faut un petit entraînement local pour implanter la porte, donc c'est pour plus tard.
 - Hors de portée pour l'instant : la greffe de circuits entre architectures (promesse 4) et l'auto-amélioration récursive libre (promesse 5). L'article ne les montre pas, et 7.3 en est la version testable.
 
-Chaque point passe par un pré-enregistrement figé avant le run, comme pour s6 et le §6.
+Chaque point passe par un pré-enregistrement figé avant le run, comme pour s6 et le §6. **Fait le 09/11/2026 : `docs/weights-prereg.md`** (base s6-nano, bras, règles et verdicts). Le code reste à écrire, après les tranches GPU.
 
 
 ## 8. s6-ear : un s6 qui écoute (`docs/s6-ear-prereg.md`, `docs/SPEC-S6.md` §16)
