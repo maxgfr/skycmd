@@ -47,6 +47,23 @@ BUDGETS = (256, 1024)
 DATA = "data/lfm3"
 RUNS = "runs/lfm3-s1s2"
 PROMPT = "{q}\n\nSolve the problem. Put the final answer in \\boxed{{}}."
+# Thermal brake (TODO.md): the share of the time the GPU works; `seconds` stays the generation time.
+DUTY = float(os.environ.get("SKY_DUTY") or 1)
+if not 0 < DUTY <= 1:
+    sys.exit(f"SKY_DUTY must be in (0, 1], not {DUTY}")
+# SKY_COOL=45:15: 45 min of work, then 15 of complete rest, on the system clock (session.rs, Brake).
+COOL = [float(m) * 60 for m in os.environ.get("SKY_COOL", "").split(":") if m]
+if COOL and (len(COOL) != 2 or min(COOL) <= 0):
+    sys.exit("SKY_COOL must be work:rest in minutes, as 45:15")
+
+
+def rest(seconds):
+    """The thermal brake after `seconds` of generation."""
+    time.sleep(seconds * (1 / DUTY - 1))
+    if COOL:
+        cycle = sum(COOL)
+        while (at := time.time() % cycle) >= COOL[0]:
+            time.sleep(cycle - at)
 
 
 # ----------------------------------------------------------------------------- data
@@ -305,6 +322,7 @@ def cmd_gen(a):
                      correct=correct(it["task"], pred, it["answer"]), seconds=time.time() - t0)
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
             f.flush()
+            rest(r["seconds"])
             n_tok += r["tokens"]
             if (k + 1) % 10 == 0 or k + 1 == len(todo):
                 el = time.time() - t_all

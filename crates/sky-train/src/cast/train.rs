@@ -20,7 +20,7 @@ use crate::{
     optim::{wsd, OptConfig, Optimizer, WdMode},
     params::{self, ParamMap},
     rng::Rng,
-    session::{keep_going, qat_due, stop_step, train_step, Progress},
+    session::{keep_going, qat_due, stop_step, train_step, Brake, Progress},
     train::JsonLog,
 };
 
@@ -442,11 +442,13 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     }
     let stop_at = stop_step(s.state.step, a.stop_after)?;
     let base = s.state.elapsed_secs;
-    let t0 = Instant::now();
+    let mut t0 = Instant::now();
+    let mut brake = Brake::from_env()?;
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wn, mut wtime) = (0.0f64, 0u64, Instant::now());
     let mut consecutive = 0;
     while keep_going(&progress, stop_at, s.state.step, s.state.elapsed_secs) {
+        brake.rest(&mut t0);
         let frac = progress.frac(s.state.step, s.state.elapsed_secs);
         progress_now.store(frac.to_bits(), std::sync::atomic::Ordering::Relaxed);
         if !s.state.qat && qat_due(frac, a.qat_frac) {

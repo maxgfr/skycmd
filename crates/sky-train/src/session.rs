@@ -9,6 +9,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     rc::Rc,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
@@ -96,6 +97,95 @@ pub fn stop_step(start: u64, stop_after: Option<u64>) -> Result<Option<u64>> {
 /// True while the run should take another step.
 pub fn keep_going(progress: &Progress, stop_at: Option<u64>, step: u64, elapsed_secs: f64) -> bool {
     !progress.done(step, elapsed_secs) && stop_at.is_none_or(|s| step < s)
+}
+
+/// The thermal brake (`SKY_DUTY` in (0, 1], the share of the time the training loop works): before
+/// each step, the loop rests in proportion to the work done since its last rest.
+///
+/// The rests are taken out of the run clock, so that `elapsed_secs`, a `--minutes` budget and the
+/// schedule that follows it only ever see working time.
+///
+/// `SKY_COOL=45:15` adds long rests: 45 minutes of work, then 15 of complete rest. The cycle follows
+/// the system clock, so that it holds across the short steps of a stage, each its own process.
+pub struct Brake {
+    rest_per_busy: f64,
+    busy_since: Instant,
+    /// Seconds of work and of complete rest in each cycle (`SKY_COOL`).
+    cool: Option<(u64, u64)>,
+}
+
+/// `work:rest`, in minutes, as seconds.
+fn parse_cool(v: &str) -> Result<(u64, u64)> {
+    let secs = |m: &str| -> Option<u64> {
+        let m: f64 = m.parse().ok()?;
+        (m > 0.0 && m.is_finite()).then(|| (m * 60.0).round() as u64)
+    };
+    v.split_once(':')
+        .and_then(|(w, r)| Some((secs(w)?, secs(r)?)))
+        .with_context(|| format!("SKY_COOL must be work:rest in minutes, as 45:15, not {v}"))
+}
+
+/// Seconds left in the rest part of the cycle at `now`, 0 in its work part.
+fn cool_wait(now: u64, (work, rest): (u64, u64)) -> u64 {
+    let at = now % (work + rest);
+    if at < work {
+        0
+    } else {
+        work + rest - at
+    }
+}
+
+impl Brake {
+    pub fn from_env() -> Result<Self> {
+        let mut brake = match std::env::var("SKY_DUTY") {
+            Ok(v) if !v.is_empty() => Self::new(
+                v.parse()
+                    .with_context(|| format!("SKY_DUTY is not a number: {v}"))?,
+            ),
+            _ => Self::new(1.0),
+        }?;
+        if let Ok(v) = std::env::var("SKY_COOL") {
+            if !v.is_empty() {
+                brake.cool = Some(parse_cool(&v)?);
+            }
+        }
+        Ok(brake)
+    }
+
+    pub fn new(duty: f64) -> Result<Self> {
+        if !(duty > 0.0 && duty <= 1.0) {
+            anyhow::bail!("SKY_DUTY must be in (0, 1], not {duty}");
+        }
+        Ok(Self {
+            rest_per_busy: 1.0 / duty - 1.0,
+            busy_since: Instant::now(),
+            cool: None,
+        })
+    }
+
+    /// Rests, then moves `clock` (the start of the run clock) forward by the time rested.
+    pub fn rest(&mut self, clock: &mut Instant) {
+        if self.rest_per_busy == 0.0 && self.cool.is_none() {
+            return;
+        }
+        let started = Instant::now();
+        std::thread::sleep(self.busy_since.elapsed().mul_f64(self.rest_per_busy));
+        if let Some(cycle) = self.cool {
+            let now = || {
+                let t = SystemTime::now().duration_since(UNIX_EPOCH);
+                t.unwrap_or_default().as_secs()
+            };
+            if cool_wait(now(), cycle) > 0 {
+                println!("cooling down for {} s (SKY_COOL)", cool_wait(now(), cycle));
+            }
+            // A loop, because a Mac put to sleep can wake up in another rest.
+            while cool_wait(now(), cycle) > 0 {
+                std::thread::sleep(Duration::from_secs(cool_wait(now(), cycle)));
+            }
+        }
+        *clock += started.elapsed();
+        self.busy_since = Instant::now();
+    }
 }
 
 /// Replaces every parameter with the one of the same name in `src` (`--init-params`).
@@ -448,6 +538,66 @@ impl Session {
             mlm_fn: None,
             dec_fn: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod brake_tests {
+    use super::{cool_wait, parse_cool, Brake};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn the_cycle_works_then_rests() {
+        let cycle = (45 * 60, 15 * 60);
+        assert_eq!(cool_wait(0, cycle), 0);
+        assert_eq!(cool_wait(45 * 60 - 1, cycle), 0);
+        assert_eq!(cool_wait(45 * 60, cycle), 15 * 60);
+        assert_eq!(cool_wait(59 * 60, cycle), 60);
+        assert_eq!(cool_wait(60 * 60, cycle), 0);
+    }
+
+    #[test]
+    fn parses_work_and_rest_in_minutes() {
+        assert_eq!(parse_cool("45:15").unwrap(), (2700, 900));
+        assert_eq!(parse_cool("0.5:0.25").unwrap(), (30, 15));
+        for bad in ["45", "0:15", "45:0", "a:b", "-1:5", "inf:5"] {
+            assert!(parse_cool(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn refuses_a_duty_outside_0_1() {
+        for d in [0.0, -0.5, 1.5, f64::NAN] {
+            assert!(Brake::new(d).is_err(), "{d}");
+        }
+        assert!(Brake::new(1.0).is_ok());
+    }
+
+    #[test]
+    fn the_rests_stay_out_of_the_run_clock() {
+        let mut clock = Instant::now();
+        let mut brake = Brake::new(0.5).unwrap();
+        let wall = Instant::now();
+        for _ in 0..3 {
+            std::thread::sleep(Duration::from_millis(40));
+            brake.rest(&mut clock);
+        }
+        let (wall, worked) = (wall.elapsed(), clock.elapsed());
+        assert!(wall >= Duration::from_millis(240), "rested: {wall:?}");
+        assert!(
+            worked < wall.mul_f64(0.75),
+            "clock moved: {worked:?} of {wall:?}"
+        );
+    }
+
+    #[test]
+    fn full_duty_does_not_rest() {
+        let start = Instant::now();
+        let mut clock = start;
+        let mut brake = Brake::new(1.0).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        brake.rest(&mut clock);
+        assert_eq!(clock, start);
     }
 }
 
