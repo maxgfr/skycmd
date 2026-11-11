@@ -15,6 +15,8 @@
 > | 3 | s6-micro | ~11 h | ~29 h | oui, après la fumée |
 > | 4 | s6-cast | ~9 h | ~24 h | oui, après la fumée |
 >
+> Then `s6-sleep-nano` (§10, added on 11/11/2026: code, probes and a dated pre-registration first, then about 55 to 80 h throttled), before LFM3.
+>
 > Puis LFM3 S1/S2 et LFM3 fine-tuné (§9.4, tranches 5 et suivantes). Le 09/11/2026, le §9.2 a été écrit pendant la tranche 1 : les amendements, `scripts/train-all.sh` et le mode local de `scripts/lfm3-ft.sh`.
 
 Tout est prêt pour cette tranche : le plantage au pas 74 du pré-entraînement est corrigé (`non-finite loss`, un nombre du texte trop grand pour un `f32` ; `docs/s6-prereg.md`, amendement 5). Les labels GLM sont finis à 100 %, les amendements 4 et 5 de `docs/s6-prereg.md` sont écrits, et le dry-run passe. Cette tranche ne lit pas encore `data/distill/glm.jsonl`, qui sert à la tranche 2, mais le mélange est déjà prêt. Dans un terminal, **de préférence sur secteur** :
@@ -562,6 +564,7 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
 3. **Nuit 2 : s6-ear, s6-secrets puis s6-nano, environ 11 h.** s6-ear prend environ 3 h, s6-secrets environ 30 min et s6-nano environ 7 h. Les labels GLM doivent être finis et mélangés (`data/distill/glm.jsonl`).
 4. **Nuit 3 : s6-micro, environ 11 h.**
 5. **Nuit 4 : s6-cast, environ 9 h** (pilote, puis 8 h d'entraînement).
+   - **Then `s6-sleep-nano` (§10), before step 6.** It is not part of `scripts/train-all.sh`: its code, its probes and its pre-registration are written first, without GPU. The steps below keep their numbers.
 6. **Nuit 5 : LFM3 S1/S2 (§6), environ 9 à 10 h**, avec `caffeinate -i scripts/lfm3-s1s2.sh`.
 7. **Nuits 6 et suivantes : LFM3 fine-tuné (§6.1).** La génération prend de l'ordre de 10 à 15 h, puis viennent la LoRA et l'évaluation des deux modèles.
 8. **Les résultats.** `report` rassemble tout. Chaque porte est lue telle quelle, sans relance pour « voir », et un échec est publié comme tel. On met à jour le TODO, `BENCH.md` et la page Results, et on commite la recette et `REPORT.md`.
