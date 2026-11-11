@@ -123,3 +123,12 @@ Le temps réel compte : les vrais entraînements sont budgétés en minutes, et 
 - **Après un arrêt.** Une étape interrompue repart de zéro avec les mêmes graines : l'étape n'a pas de résultat tant qu'elle n'est pas finie. C'est un échec technique au sens du §6, sans lecture de résultat, donc sans biais ; `runs/s5-logs/` en garde la trace, et le rapport le note.
 - **Une correction technique, faite avant tout run.** L'essai du 09/11/2026 a montré que le pré-entraînement mourait au pas 74 (`non-finite loss`), sur tous les bras : un nombre du texte trop grand pour un `f32` (39 chiffres ou plus, 32 lignes du corpus, dont 31 dans `data/text-open`) valait l'infini. Il vaut désormais 0, comme un nombre illisible (`num::extract`, dans ses trois copies). Les fichiers de `data/` ne changent pas.
 - **Ce qui ne change pas.** Données, bras, graines, budgets en pas, métriques et seuils.
+
+**Amendment 6 (11/11/2026, during the ablation, before the change it describes). Full speed while the Mac is unused.**
+
+- **The request.** The owner asked for full speed (`SKY_DUTY=1`, `SKY_COOL=` empty) whenever the Mac is not in use, starting the night of 11/11/2026, and the throttled mode of amendment 5 the rest of the time.
+- **Why no rule moves.** `train_minutes` feeds rules 1 and 5 of §4 only, through four arms: `softmax-adamw`, `softmax-muon`, `parallax-muon` and `parallax-muon-nopolish`. Their 12 runs were all finished in throttled mode before this amendment (116 of the ablation's steps were done). The arms still to run (`parallax-muon-kd` seeds 11 and 13, `-ema`, `-stableqat`, `-curriculum`) are judged by rule 4, on accuracy, ECE and the arena, with fixed step budgets.
+- **What is reported.** `train_minutes` of the remaining arms stays in the summary, but it mixes two modes from here on and must not be compared with the earlier arms. The report says which runs ran in which mode.
+- **What had been seen.** `runs/s6ab/summary.json` did not exist and no rule had been evaluated. Validation lines of single runs were seen in the log while watching the run. The change follows from the owner's schedule, not from a result.
+- **Mechanics.** The run is stopped between two steps when possible and started again with the same command. A step cut short starts over from zero with the same seeds, as in amendment 5.
+- **What does not change.** Data, arms, seeds, step budgets, metrics and thresholds.
