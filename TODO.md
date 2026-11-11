@@ -52,6 +52,7 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
 
 ## Où on en est (06/11/2026)
 
+- **Next new model, right after tranches 2 to 4: `s6-sleep-nano` (§10).** An s6-nano with a fast-weight memory that "sleeps" between decisions (offline recurrence, arXiv 2605.26099), then the flexible weights of §7.3 consolidated during sleep, with dreaming in the game simulators (arXiv 2606.03979). Added on 11/11/2026; probes and a dated pre-registration come before any training.
 - **Le prochain run : tout entraîner, au mieux (§9), sur le M5.** Le 05/11, l'utilisateur avait d'abord parlé de louer des GPU, puis a tranché : « finalement je ferai tout sur mon pc ». Il n'y a donc **ni Mac loué ni HF Jobs**. **La nuit 1, la recette s6, se lance le 06/11** (voir plus haut). Le §9 dit ce qui est prêt et ce qui reste à faire pour les nuits suivantes.
   - **Les 5 modèles s6**, avec les optimisations que le pilote et l'ablation adoptent (règles appliquées automatiquement) : environ 48 h de GPU.
   - **LFM3-1.7B** : le routeur S1/S2 (§6) et le fine-tuning (§6.1), en local. Il faut d'abord les amendements du §9.2 : le §6.1 et l'amendement 1 du §6 visaient HF Jobs.
@@ -565,3 +566,106 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
 7. **Nuits 6 et suivantes : LFM3 fine-tuné (§6.1).** La génération prend de l'ordre de 10 à 15 h, puis viennent la LoRA et l'évaluation des deux modèles.
 8. **Les résultats.** `report` rassemble tout. Chaque porte est lue telle quelle, sans relance pour « voir », et un échec est publié comme tel. On met à jour le TODO, `BENCH.md` et la page Results, et on commite la recette et `REPORT.md`.
 9. **La publication (§5)** se fait seulement avec l'accord de l'utilisateur, modèle par modèle.
+
+
+## 10. Next model: `s6-sleep-nano`, an s6 that sleeps (added 11/11/2026, nothing written or run)
+
+**Where it goes.** This is the next new model. It comes right after tranches 2 to 4 of the big run, and before the LFM3 tranches and §7, because it needs two things those tranches produce: the adopted recipe (`runs/recipe/recipe.json`) and s6-nano, its baseline.
+
+**Sources.** The figures below were read in the papers themselves (arXiv HTML, 11/11/2026), not only in the video.
+
+- bycloud, ["The Next Scaling Axis of LLM Is… Sleeping?"](https://www.youtube.com/watch?v=rAxTxqIHh9E), 10/11/2026, read with `maxgfr/ultrawatch` (auto-captions).
+- Lee, McLeish, Goldstein, Fanti, *Do Language Models Need Sleep? Offline Recurrence for Improved Online Inference*, [arXiv 2605.26099](https://arxiv.org/abs/2605.26099).
+- Behrouz, Hashemi, Javanmard, Mirrokni, *Language Models Need Sleep: Learning to Self-Modify and Consolidate Memories*, [arXiv 2606.03979](https://arxiv.org/abs/2606.03979).
+- Feng et al., *In-Place Test-Time Training*, ICLR 2026 oral, [arXiv 2604.06169](https://arxiv.org/abs/2604.06169).
+- Hernandez-Garcia, Figliolia, Millidge, *Can Scale Save Us From Plasticity Loss in Large Language Models?*, [arXiv 2606.24752](https://arxiv.org/abs/2606.24752).
+
+### 10.0 What the papers show, and what it means here
+
+- **Sleep as offline recurrence (2605.26099).** This is the core of `s6-sleep-nano`.
+  - **Architecture.** Attention and gated delta network (GDN) blocks alternate. The GDN state is a fixed-size matrix of fast weights, updated as `S_t = α_t·S_{t−1} + β_t·v_t·k_tᵀ` plus a delta-rule correction.
+  - **Sleep.** When the context window is full, the model stops reading and reruns the whole stack N times on the same chunk. Each pass rewrites the fast weights. Then the KV cache is cleared and only the fast weights stay. A prediction is still one forward pass.
+  - **Training.** N is fixed per model, with full backpropagation through every pass (no truncation), Muon, and the loss only on answer tokens.
+  - **Rule 110** (4-layer attention → GDN → attention → GDN hybrid, d = 256, context of 24 tokens, t = 32, about 55B tokens): exact accuracy is about 10% at N = 1, about 20% at N = 2, and above 30% at N = 3 or 4, with the same memory size.
+  - **GSM-Infinite**, without chain of thought:
+    - Jet-Nemotron 2B, 6 operations: 0.742 at N = 1, 0.812 at N = 6;
+    - Ouro 1.4B, 6 operations: 0.419 at N = 1, 0.615 at N = 4.
+  - **Limits stated.** Training cost grows about linearly with N and can be unstable. A reset of the state erases everything.
+- **Sleep as consolidation and dreaming (2606.03979).** This is the idea behind 10.4.
+  - **Knowledge seeding.** At sleep, a new low-rank expert (A, B) is added to the next, slower memory level. Only this expert is trained, so that the model without the temporary memory imitates the model that has it. Old experts are never overwritten, and the temporary experts are reset.
+  - **Dreaming.** The model samples synthetic tasks, fine-tunes one copy per task, and is rewarded with 1 when the copy does better (ReST-EM, as in SEAL).
+  - **Qwen3-1.7B:** AIME-24 goes from 49.8 to 53.2 and AIME-25 from 34.5 to 40.2. The best baseline, OPSD, reaches 51.6 / 40.0.
+  - **SQuAD**, one passage: 31.9 for the base model, 33.4 fine-tuned, 46.7 for SEAL, 48.9 for sleep, and 35.7 for sleep without dreaming. Dreaming carries most of the gain.
+  - **ARC with Llama-3.2-1B:** 0% in context, 10% with test-time training, 80% with sleep.
+  - **Caveats.** No seeds or error bars. Several values the method depends on are not given (expert rank, divergence, reward weights).
+- **In-place TTT (2604.06169).** The down projection of a gated MLP becomes fast weights, updated chunk by chunk with an objective aligned with next-token prediction, as a drop-in on a pretrained model.
+  - **Gains are on long context.** RULER on Qwen3-4B: +4.4 points at 64k, but −0.5 at 4k.
+  - **Implication.** Our tasks are short, so this is the least useful source for skycmd (10.5).
+- **Plasticity loss (2606.24752).** The onset follows `T = 1.3·10⁻⁵ · P^0.8269`, in tasks of 5B tokens each. The 5M model loses plasticity after 6 tasks, that is 30B tokens.
+  - **Implication.** A pretraining run of the s6 recipe sees about 40M tokens (4,800 steps in about 6 minutes at about 105k tokens/s, from `runs/s6-recipe.log`), several hundred times less. Plasticity loss is not a risk for the current runs, and measuring it is not a next step (10.6).
+
+**Why skycmd is a good testbed for 2605.26099.**
+
+- **Almost the same shape.** Its Rule 110 model is a 4-layer attention / GDN hybrid at d = 256. s6-nano applies its blocks 4 times (2 blocks × 2 loops) at d = 144.
+- **Already recurrent.** The s6 encoder loops over shared weights (`state_loops`, SPEC-S3 §2) and carries one latent from frame to frame (`carry_gate`, SPEC-S3 §7).
+- **Idle time for free.** A game has natural moments where no decision is asked, such as level changes or pauses, so sleep costs nothing at decision time.
+
+### 10.1 The model
+
+- [ ] **`configs/s6-sleep-nano.json`**: s6-nano (vocabulary 2,048, d = 144, ff = 288, 2 blocks × 2 loops, exits 1 to 4, 2 heads), with the recipe of tranche 1.
+  - **Memory.** One GDN layer after each of the 2 state blocks, shared across loops like the blocks themselves: attention → GDN → attention → GDN, as in the paper. Each head holds a 72 × 72 fast-weight matrix, so about 10k floats per game stream, kept in f32.
+  - **Parameters.** The new projections (q, k, v, out, gates) add about 170k parameters, roughly +10% over s6-nano's 1.57M. They are ternary like the rest, and the fast-weight state stays f32.
+  - **The memory replaces the carry.** It replaces the single carry vector of SPEC-S3 §7, which remains the baseline arm. A memory that starts at zero is a cold start, so stateless questions (`typed_decisions_bench`) work as before.
+  - **Sleep.** Every K frames of a stream (K = 8, to be fixed in the pre-registration), and at every episode or level boundary, the model reruns the last K frames N times and only the memory changes. Then the frames are dropped.
+  - **Wake decision unchanged.** One forward pass, the same exits and the same CRC thresholds, so the µs budget of the browser does not move.
+- [ ] **Training (sky-train, MLX).**
+  - Sequences of consecutive frames of an episode, as the carry training already does (SPEC-S3 §7), with sleep inserted every K frames.
+  - Full backpropagation through the N passes, as in the paper, and the loss only on decision frames.
+  - The recipe's optimizer, which uses Muon if adopted, as in the paper.
+  - **N.** The primary arms fix N per model, as the paper does: N ∈ {1, 2, 4}. One extra arm draws N from {1, 2, 3, 4} at each batch, in the spirit of `--loop-dropout`, so that a single model could serve every sleep budget.
+- [ ] **Inference (sky-infer, Rust and WASM).**
+  - A GDN kernel, with its golden test against MLX and the ternary export of its projections.
+  - `decide_raw_stream` keeps the memory per `stream_id` (instead of the carry), and a new `sleep(stream_id, n)` runs between decisions.
+  - GameSession calls it at level changes in the browser.
+
+### 10.2 The probes: where memory matters
+
+A null result on the 4 games would say nothing if they never need memory beyond one frame. So, before any training:
+
+- [ ] **A `sky-games` memory task.** A fact shown once (a door colour, a key, the side of a hazard) is hidden, and the decision that depends on it comes more than K frames later. The generator sets the delay, from 1 to 4K frames, so the result can be plotted against the delay.
+- [ ] **Rule 110, at our scale.** The paper's own sanity check, in a reduced form: t ∈ {4, 8} instead of 32, because 55B tokens would take days on the M5. It checks that our GDN learns at all before the games.
+
+### 10.3 Pre-registration and runs
+
+- [ ] **`docs/s6-sleep-prereg.md`, dated, before any training.** Everything below is to fix in it:
+  - **Hypotheses.**
+    - H1: at equal wake latency, the score on the memory task rises with N.
+    - H2: on the arena, `s6-sleep-nano` at its best N does at least as well as s6-nano.
+    - H3: no loss beyond 0.01 on `typed_decisions_bench`.
+  - **Arms and seeds.** Carry baseline, N = 1, 2, 4, and sampled N.
+  - **Choice of N, by rule.** The smallest N within 1 point of the best on the dev seeds of the memory task.
+  - **Test seeds**, read only once.
+  - **Publication gate.** s6-nano's gate, plus H1.
+- [ ] **Pico pilot first** (`s6-sleep-pico`, same changes on s6-pico): about 1 h throttled per run, to validate the code and the probes cheaply.
+- [ ] **Then nano.** The chosen N and the N = 1 control, 3 seeds each.
+- **Cost, to confirm in the pre-registration.** The pilot takes roughly 15 to 20 h throttled. The nano runs take roughly 40 to 60 h throttled, since training grows about linearly with N.
+
+### 10.4 Then: the flexible weights of §7.3 with sleep and dreaming (2606.03979)
+
+- [ ] **§7.3 changed into consolidation.** The vetoes of a session are collected instead of updating the adapter after each one. At sleep, a new rank-4 low-rank expert is grown and trained so that the frozen model with it imitates the frozen model with its temporary adapter. Then the temporary adapter is reset.
+- [ ] **Dreaming without an LLM.** Self-play episodes in the `sky-games` simulators, started around the states of the vetoes. The reward is real: the arena score after consolidation is better, or not. This is where skycmd beats the paper: no synthetic curriculum to invent, and episodes cost µs.
+- **Arms.** Frozen; §7.3 online adapter; sleep without dreaming; sleep with dreaming. Every arm has the same CRC guardrail (α = 0.02).
+- **The paper's lesson.** On SQuAD, dreaming carries most of the gain (48.9 vs 35.7). It is the arm to watch.
+
+### 10.5 Optional: in-place TTT on LFM3-1.7B (2604.06169)
+
+The gains are on long context only (−0.5 at 4k on RULER), and the §6 tasks are short, so the expected value is low.
+
+- **First checks.** That LFM3's hybrid blocks have a gated MLP the method applies to, and that the released code runs on MPS.
+- **When.** Only after §6.1, and only if §6 shows long-context failures.
+
+### 10.6 Not a next step: plasticity loss (2606.24752)
+
+At the measured onset, a 5M model loses plasticity after about 30B tokens, several hundred times what an s6 run sees. Measure it only if a sleeping model is ever trained continuously for a long time, for example in the browser across many sessions.
+
+**Rules.** Each item has a dated pre-registration before any computation. Nothing runs during a GPU tranche, and nothing is published unless it passes its own gate.
