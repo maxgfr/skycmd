@@ -161,4 +161,12 @@ If H1 fails and the rest holds, nothing is published: a model that remembers but
 
 ## 11. Amendments
 
-None to date.
+### Amendment 1 (12/11/2026, the day of the freeze): whole `recall` episodes in training, a slower decay, P3 spelled out
+
+**Before any run.** At this date the two probe games are written and tested (`crates/sky-games/src/recall.rs`, `rule110.rs`, branch `s6-sleep-nano`). No memory layer and no training code exist, and no model has read a probe.
+
+- **`recall` training sequences are whole episodes: 64 frames, 8 sleep periods**, instead of 24 consecutive frames (section 4). *Why:* writing the game showed that a 24-frame window cuts the show frame of most asks of the 17-to-32 bucket. Their target would be a colour the model never saw, which is noise, and the longest delays of the test would never be trained. The sequences of the 4 games stay at 24 frames, and `rule110` at its 8.
+- **The decay gate starts at `α = σ(· + 6)`**, not `+ 4` (section 2). *Why:* at `+ 4`, α is 0.982 per frame, and a memory left untouched keeps 56% of its content after 32 frames, the longest delay of `recall`. At `+ 6` it keeps 92%. The gate stays learned.
+- **P3, "through every pass", detaches nothing**: the gradient flows through every frame and every sleep pass of the whole sequence (section 5). The text did not say whether the memory was detached between sleep periods in P3.
+
+**What does not change.** The model, the probes, the seeds, the arms, the budgets, the pilot rules, the hypotheses and the gate.
