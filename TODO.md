@@ -15,7 +15,7 @@
 > | 3 | s6-micro | ~11 h | ~29 h | oui, après la fumée |
 > | 4 | s6-cast | ~9 h | ~24 h | oui, après la fumée |
 >
-> Then `s6-sleep-nano` (§10, added on 11/11/2026: code, probes and a dated pre-registration first, then about 55 to 80 h throttled), before LFM3.
+> Then `s6-sleep-nano` (§10, added on 11/11/2026: code, probes and a dated pre-registration first, then about 20 to 25 h throttled with the fast path of §10.1), before LFM3.
 >
 > Puis LFM3 S1/S2 et LFM3 fine-tuné (§9.4, tranches 5 et suivantes). Le 09/11/2026, le §9.2 a été écrit pendant la tranche 1 : les amendements, `scripts/train-all.sh` et le mode local de `scripts/lfm3-ft.sh`.
 
@@ -625,9 +625,11 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
   - **Wake decision unchanged.** One forward pass, the same exits and the same CRC thresholds, so the µs budget of the browser does not move.
 - [ ] **Training (sky-train, MLX).**
   - Sequences of consecutive frames of an episode, as the carry training already does (SPEC-S3 §7), with sleep inserted every K frames.
-  - Full backpropagation through the N passes, as in the paper, and the loss only on decision frames.
-  - The recipe's optimizer, which uses Muon if adopted, as in the paper.
-  - **N.** The primary arms fix N per model, as the paper does: N ∈ {1, 2, 4}. One extra arm draws N from {1, 2, 3, 4} at each batch, in the spirit of `--loop-dropout`, so that a single model could serve every sleep budget.
+  - The loss is only on decision frames. The optimizer is the recipe's, AdamW at ×2 (the paper uses Muon).
+  - **Fast path (12/11/2026), three choices that cut the cost by about three.** Each one departs from the paper, so the pico pilot checks it once before the nano runs.
+    - **Truncated backpropagation.** The first N − 1 passes run forward only; the gradient flows through the last pass and the wake frames. The paper uses full backpropagation and names truncation as the way to cut its cost. A step then costs about half of a full one at N = 4.
+    - **One model for every N.** N is drawn from {1, 2, 3, 4} at each batch, in the spirit of `--loop-dropout`. A single training serves every sleep budget, and H1 is read on the same weights. The paper fixes N per model.
+    - **Warm start from s6-nano.** The GDN layers are added to the trained s6-nano of tranche 2 with a zero output projection, so training starts exactly at s6-nano, as the drop-in of 2604.06169 does. No new pretraining, and a decision budget of a third of s6-nano's.
 - [ ] **Inference (sky-infer, Rust and WASM).**
   - A GDN kernel, with its golden test against MLX and the ternary export of its projections.
   - `decide_raw_stream` keeps the memory per `stream_id` (instead of the carry), and a new `sleep(stream_id, n)` runs between decisions.
@@ -647,13 +649,13 @@ A null result on the 4 games would say nothing if they never need memory beyond 
     - H1: at equal wake latency, the score on the memory task rises with N.
     - H2: on the arena, `s6-sleep-nano` at its best N does at least as well as s6-nano.
     - H3: no loss beyond 0.01 on `typed_decisions_bench`.
-  - **Arms and seeds.** Carry baseline, N = 1, 2, 4, and sampled N.
+  - **Arms and seeds.** Two arms, 3 seeds each: s6-nano fine-tuned for the same steps without memory (the control), and `s6-sleep-nano` with sampled N, read at N = 1, 2 and 4.
   - **Choice of N, by rule.** The smallest N within 1 point of the best on the dev seeds of the memory task.
   - **Test seeds**, read only once.
   - **Publication gate.** s6-nano's gate, plus H1.
-- [ ] **Pico pilot first** (`s6-sleep-pico`, same changes on s6-pico): about 1 h throttled per run, to validate the code and the probes cheaply.
-- [ ] **Then nano.** The chosen N and the N = 1 control, 3 seeds each.
-- **Cost, to confirm in the pre-registration.** The pilot takes roughly 15 to 20 h throttled. The nano runs take roughly 40 to 60 h throttled, since training grows about linearly with N.
+- [ ] **Pico pilot first** (`s6-sleep-pico`, same changes on s6-pico), about 1 h throttled per run, 4 runs: the fast path; fixed N = 4 with truncation; fixed N = 4 with full backpropagation; the control. A shortcut is kept only if it loses less than 1 point on the memory task against the paper's way.
+- [ ] **Then nano.** The two arms above, 3 seeds each.
+- **Cost, to confirm in the pre-registration.** About 5 h throttled for the pilot and 15 to 20 h for the nano runs, so 20 to 25 h in all (about 12 h in the night mode), instead of the 55 to 80 h of the first plan. If the pilot rejects a shortcut, the paper's way comes back for it, with its cost.
 
 ### 10.4 Then: the flexible weights of §7.3 with sleep and dreaming (2606.03979)
 
