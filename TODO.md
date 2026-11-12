@@ -574,7 +574,7 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
 9. **La publication (§5)** se fait seulement avec l'accord de l'utilisateur, modèle par modèle.
 
 
-## 10. Next model: `s6-sleep-nano`, an s6 that sleeps (added 11/11/2026, nothing written or run)
+## 10. Next model: `s6-sleep-nano`, an s6 that sleeps (added 11/11/2026; pre-registered 12/11/2026, no code and no run yet)
 
 **Where it goes.** This is the next new model. It comes right after tranches 2 to 4 of the big run, and before the LFM3 tranches and §7, because it needs two things those tranches produce: the adopted recipe (`runs/recipe/recipe.json`) and s6-nano, its baseline.
 
@@ -619,9 +619,9 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
 ### 10.1 The model
 
 - [ ] **`configs/s6-sleep-nano.json`**: s6-nano (vocabulary 2,048, d = 144, ff = 288, 2 blocks × 2 loops, exits 1 to 4, 2 heads), with the recipe of tranche 1.
-  - **Memory.** One GDN layer after each of the 2 state blocks, shared across loops like the blocks themselves: attention → GDN → attention → GDN, as in the paper. Each head holds a 72 × 72 fast-weight matrix, so about 10k floats per game stream, kept in f32.
+  - **Memory.** One GDN layer after each of the 2 state blocks, shared across loops like the blocks themselves: attention → GDN → attention → GDN, as in the paper. Each head holds a 72 × 72 fast-weight matrix per memory layer, so 20,736 floats per game stream, kept in f32.
   - **Parameters.** The new projections (q, k, v, out, gates) add about 170k parameters, roughly +10% over s6-nano's 1.57M. They are ternary like the rest, and the fast-weight state stays f32.
-  - **The memory replaces the carry.** It replaces the single carry vector of SPEC-S3 §7, which remains the baseline arm. A memory that starts at zero is a cold start, so stateless questions (`typed_decisions_bench`) work as before.
+  - **The memory replaces nothing** (corrected 12/11/2026). s6-nano has no temporal carry (`temporal_carry` is off in its config), so the control arm is a model with no memory at all. A memory that starts at zero is a cold start, so stateless questions (`typed_decisions_bench`) work as before.
   - **Sleep.** Every K frames of a stream (K = 8, to be fixed in the pre-registration), and at every episode or level boundary, the model reruns the last K frames N times and only the memory changes. Then the frames are dropped.
   - **Wake decision unchanged.** One forward pass, the same exits and the same CRC thresholds, so the µs budget of the browser does not move.
 - [ ] **Training (sky-train, MLX).**
@@ -645,7 +645,7 @@ A null result on the 4 games would say nothing if they never need memory beyond 
 
 ### 10.3 Pre-registration and runs
 
-- [ ] **`docs/s6-sleep-prereg.md`, dated, before any training.** Everything below is to fix in it:
+- [x] **`docs/s6-sleep-prereg.md`, frozen on 12/11/2026, before any code or training.** It fixes everything below, and it is the reference where it differs from this list (H0 added, budgets in steps, wake frames also write the memory, the two probes and their seeds):
   - **Hypotheses.**
     - H1: at equal wake latency, the score on the memory task rises with N.
     - H2: on the arena, `s6-sleep-nano` at its best N does at least as well as s6-nano.
