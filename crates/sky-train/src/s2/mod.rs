@@ -13,5 +13,6 @@ pub mod memory;
 pub mod model;
 pub mod numeric;
 pub mod play;
+pub mod probe;
 pub mod seq;
 pub mod train;
