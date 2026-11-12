@@ -90,3 +90,5 @@ Si la porte n'est pas franchie, le modèle n'est pas publié, et le rapport le d
    - le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md`. Les 480 minutes ne comptent que le temps de travail, et le rapport donne le nombre de pas réellement faits.
 
    Aucun score de s6-cast n'existait.
+
+4. **12/11/2026, before any training of s6-cast: the recipe is written (`runs/recipe/recipe.json`), no score of s6-cast exists. Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the throttled mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
