@@ -26,6 +26,9 @@
 #                   starts over). Clear the run directories before changing the budgets
 #   CONFIG          the model config (default configs/s6-$SIZE.json; scripts/s6-adopt.py writes
 #                   the one with Parallax and XSA as the ablation adopted them)
+#   STEP_MEM_GB=3   GPU memory one decision step may take: a batch over it is cut into parts of
+#                   rows whose gradients are averaged, the same update with less memory (sky-train
+#                   s2-decide --step-mem-gb; docs/s6-gen-prereg.md, amendment 7). 0: no limit
 #   DAGGER_N=15000  decisions collected per DAgger round
 #   ROUNDS=3  BETA=0.2 (oracle share of round 1)  ALPHA=0.02 (CRC bound)
 #   GAMES=flappy,rescue,dodge,doom  EPISODES=30  BASELINE=site/public/models/s3-pico.gguf
@@ -55,6 +58,7 @@ dec_min=$(tmin "${DEC_MIN:-$bdec}")
 round_min=$(tmin "${ROUND_MINUTES:-$bround}")
 lr_min=$(tmin "${LR_MIN:-20}")
 dagger_n=${DAGGER_N:-15000}
+step_mem=${STEP_MEM_GB:-3}
 read -r -a opt <<<"${OPT:-}"
 read -r -a pre <<<"${PRETRAIN:-}"
 read -r -a dec <<<"${DECIDE:-}"
@@ -127,6 +131,7 @@ decide() {
   [ -n "${RESUME:-}" ] || x rm -rf "$2"
   x "$T" s2-decide --config "$cfg" --init "$1" --tokenizer "$tok" --records "$5" --weights "$6" \
     --batch "$batch" --minutes "$3" --qat-frac "$7" --loop-dropout 0.25 --length-pool 16 --pad-to 32 \
+    --step-mem-gb "$step_mem" \
     --out "$2" "$lr_flag" "$(rate 1e-3 "$4")" ${opt[@]+"${opt[@]}"} ${dec[@]+"${dec[@]}"} ${resume[@]+"${resume[@]}"}
 }
 

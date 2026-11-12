@@ -576,6 +576,8 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
 
 ## 10. Next model: `s6-sleep-nano`, an s6 that sleeps (added 11/11/2026; pre-registered 12/11/2026, no code and no run yet)
 
+**Status (12/11/2026, evening).** On branch `s6-sleep-nano`, not merged while tranches 2 to 4 run (the run rebuilds `main` at each stage): the two probes (`sky-games`: `recall`, `rule110`), the memory layer and the sleep passes (`sky-train`: `s2::memory`), the sleep training (`s2-decide --sleep-records`), the probe reader (`s2-probe`), and the run (`scripts/train-sleep.sh`, `scripts/s6-sleep-report.py`). Unit tests pass and a 40-step code check ran on s6-pico in the three forms (drawn N, fixed N with full gradient, control). `docs/s6-sleep-prereg.md` has amendments 1 and 2, both before any run. **Left:** the pilot and the nano runs, after tranche 4. The `sky-infer` engine, the golden test and the WASM `sleep()` are written only if the hypotheses hold, because they serve the publication gate alone.
+
 **Where it goes.** This is the next new model. It comes right after tranches 2 to 4 of the big run, and before the LFM3 tranches and §7, because it needs two things those tranches produce: the adopted recipe (`runs/recipe/recipe.json`) and s6-nano, its baseline.
 
 **Sources.** The figures below were read in the papers themselves (arXiv HTML, 11/11/2026), not only in the video.

@@ -24,6 +24,7 @@
 #   PICO_BASE      runs/s6lr/softmax-adamw-x2/decide/last (the s6-pico of the adopted recipe)
 #   NANO_BASE      runs/s6-nano-g$ROUNDS/decide/last (the s6-nano of tranche 2)
 #   OPT LR_SCALE   the recipe (eval "$(python3 -I scripts/s6-adopt.py env s6-nano)")
+#   STEP_MEM_GB=3  GPU memory of one stateless step, as scripts/train-s6.sh (same update, in parts)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -124,6 +125,7 @@ run() {
   x "$T" s2-decide --config "$cfg" --init "$base" --tokenizer "$base/tokenizer.json" \
     --records "$records" --weights "$weights" --batch "$batch" "$flag" "$budget" --seed "$seed" \
     --qat-frac 1.0 --loop-dropout 0.25 --length-pool 16 --pad-to 32 --out "$out" \
+    --step-mem-gb "${STEP_MEM_GB:-3}" \
     "$lr_flag" "$lr" ${opt[@]+"${opt[@]}"} ${resume[@]+"${resume[@]}"} \
     --sleep-records "$seq/recall.jsonl,$seq/rule110.jsonl,$seq/flappy.jsonl,$seq/rescue.jsonl,$seq/dodge.jsonl,$seq/doom.jsonl" \
     --sleep-weights recall=0.40,rule110=0.12,flappy=0.12,rescue=0.12,dodge=0.12,doom=0.12 \

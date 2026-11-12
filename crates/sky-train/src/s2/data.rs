@@ -50,6 +50,13 @@ impl Stream {
         }
     }
 
+    /// Drops the spare capacity of the token vectors.
+    pub fn shrink_to_fit(&mut self) {
+        self.ids.shrink_to_fit();
+        self.values.shrink_to_fit();
+        self.has_value.shrink_to_fit();
+    }
+
     /// An audio state of `n` frames `[n][320]` (f32, stored as f16).
     pub fn from_audio(frames: &[f32], n: usize) -> Self {
         let bits = frames[..n * sky_infer::audio::FRAME_DIM]
@@ -236,6 +243,14 @@ pub struct StaticSeq {
 impl StaticSeq {
     pub fn k(&self) -> usize {
         self.markers.len()
+    }
+
+    /// Drops the spare capacity of every vector.
+    pub fn shrink_to_fit(&mut self) {
+        self.tokens.shrink_to_fit();
+        self.seg.shrink_to_fit();
+        self.pos.shrink_to_fit();
+        self.markers.shrink_to_fit();
     }
 }
 
@@ -579,7 +594,9 @@ fn load_impl(
             let opts: Vec<Stream> = (0..o.len())
                 .map(|_| it.next().unwrap_or_default())
                 .collect();
-            data.statics.push(build_static(&head, &opts, head_max_len));
+            let mut st = build_static(&head, &opts, head_max_len);
+            st.shrink_to_fit();
+            data.statics.push(st);
             data.static_keys.push(key);
         }
         let states: Vec<Stream> = if audio {
@@ -601,7 +618,12 @@ fn load_impl(
         } else {
             tokenize(tok, &texts)?
                 .into_iter()
-                .map(|x| build_state(&maybe_fuse(x, fuse), max_state))
+                .map(|x| {
+                    // 1.7 million states stay in memory: no spare capacity in their vectors
+                    let mut s = build_state(&maybe_fuse(x, fuse), max_state);
+                    s.shrink_to_fit();
+                    s
+                })
                 .collect()
         };
         for ((rec, key), state) in kept.into_iter().zip(states) {
@@ -804,6 +826,112 @@ pub fn make_batch_min(
     }
 }
 
+/// The GPU memory one training step needs, as a function of its batch, and the most it may take
+/// (`--step-mem-gb`). A batch over the limit is cut into equal parts of rows whose gradients are
+/// averaged before the update ([`make_parts`]): the loss is a mean over the rows, so the update
+/// is the one of the whole batch, with a fraction of its memory.
+///
+/// Measured on s6-nano (width 144, 4 exits, 2 heads, 2 static layers, ternary QAT), as the peak
+/// of MLX's memory over one step, for rows x state tokens against static streams x static
+/// tokens: 128 x 32 against 128 x 192 takes 2.2 GB, against 128 x 480 4.7 GB, against 128 x 608
+/// 6.3 GB; 128 x 96 against 128 x 704 takes 7.9 GB and against 64 x 704 5.7 GB; 128 x 512 against
+/// 128 x 192 takes 10 GB and against 128 x 960 17 GB. The estimate below is within 10% of each:
+/// 120 kB per row and state token, 22 kB per row and static token, and per static stream 36 kB
+/// per token plus 20 bytes per token squared. The terms are taken to grow with the width (the
+/// activations kept for the backward pass), on the state side with the exits, and for the last
+/// one with the heads and the static layers (attention maps).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct StepMemory {
+    /// Bytes per row and state token.
+    pub per_token: f64,
+    /// Bytes per row and static token.
+    pub per_row_static: f64,
+    /// Bytes per static stream and token.
+    pub per_static_token: f64,
+    /// Bytes per static stream and token squared.
+    pub per_static_cell: f64,
+    /// The limit in bytes; 0 never splits.
+    pub max_bytes: f64,
+}
+
+impl StepMemory {
+    /// No limit: every batch is one part.
+    pub const OFF: Self = Self {
+        per_token: 0.0,
+        per_row_static: 0.0,
+        per_static_token: 0.0,
+        per_static_cell: 0.0,
+        max_bytes: 0.0,
+    };
+
+    /// The estimate for `cfg`, with a limit of `gb` GB (0: no limit).
+    pub fn of(cfg: &crate::s2::config::S2Config, gb: f64) -> Self {
+        let width = cfg.hidden_size as f64;
+        Self {
+            per_token: 208.0 * width * cfg.n_exits() as f64,
+            per_row_static: 153.0 * width,
+            per_static_token: 250.0 * width,
+            per_static_cell: 5.0 * (cfg.n_heads() * cfg.static_layers) as f64,
+            max_bytes: gb.max(0.0) * (1u64 << 30) as f64,
+        }
+    }
+
+    /// Estimated bytes of a step of `rows` rows of `s` state tokens that share `u` static
+    /// streams of `ts` tokens.
+    pub fn bytes(&self, rows: usize, s: usize, u: usize, ts: usize) -> f64 {
+        let (rows, ts) = (rows as f64, ts as f64);
+        rows * (s as f64 * self.per_token + ts * self.per_row_static)
+            + u as f64 * ts * (self.per_static_token + self.per_static_cell * ts)
+    }
+
+    /// The number of equal parts such a batch is cut into: the smallest power of two that
+    /// divides `rows` and brings a part under the limit (or the largest that divides `rows`).
+    /// A part is taken to hold its share of the static streams.
+    pub fn parts(&self, rows: usize, s: usize, u: usize, ts: usize) -> usize {
+        if self.max_bytes <= 0.0 {
+            return 1;
+        }
+        let total = self.bytes(rows, s, u, ts);
+        let mut m = 1;
+        while total / m as f64 > self.max_bytes && rows.is_multiple_of(2 * m) {
+            m *= 2;
+        }
+        m
+    }
+}
+
+/// [`make_batch`] cut into the equal parts of rows `mem` asks for, in the order of `items`
+/// (one part, the batch itself, when it fits).
+pub fn make_parts(
+    statics: &[StaticSeq],
+    items: &[&S2Item],
+    pad_to: usize,
+    mem: &StepMemory,
+) -> Vec<S2Batch> {
+    let s = round_up(
+        items.iter().map(|i| i.state.len()).max().unwrap_or(1),
+        pad_to,
+    );
+    let ts = round_up(
+        items
+            .iter()
+            .map(|i| statics[i.stat].tokens.len())
+            .max()
+            .unwrap_or(1),
+        pad_to,
+    );
+    let u = items
+        .iter()
+        .map(|i| i.stat)
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    let m = mem.parts(items.len(), s, u, ts);
+    items
+        .chunks((items.len() / m).max(1))
+        .map(|c| make_batch(statics, c, pad_to))
+        .collect()
+}
+
 /// Samples a training batch: the group is drawn by `weights`, the item
 /// uniformly within the group. Questions repeated in the batch share their
 /// static stream.
@@ -841,6 +969,23 @@ pub fn sample_batches_by_length(
     rng: &mut Rng,
     pad_to: usize,
 ) -> Vec<S2Batch> {
+    sample_parts_by_length(data, weights, batch, pool, rng, pad_to, &StepMemory::OFF)
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// [`sample_batches_by_length`] with each batch cut into the parts `mem` asks for
+/// ([`make_parts`]). The draws are the same whatever the limit.
+pub fn sample_parts_by_length(
+    data: &S2Data,
+    weights: &[f64],
+    batch: usize,
+    pool: usize,
+    rng: &mut Rng,
+    pad_to: usize,
+    mem: &StepMemory,
+) -> Vec<Vec<S2Batch>> {
     let w: Vec<f64> = weights
         .iter()
         .zip(&data.train)
@@ -853,9 +998,9 @@ pub fn sample_batches_by_length(
         })
         .collect();
     items.sort_by_key(|it| it.state.ids.len());
-    let mut out: Vec<S2Batch> = items
+    let mut out: Vec<Vec<S2Batch>> = items
         .chunks(batch)
-        .map(|c| make_batch(&data.statics, c, pad_to))
+        .map(|c| make_parts(&data.statics, c, pad_to, mem))
         .collect();
     for i in (1..out.len()).rev() {
         out.swap(i, rng.below(i + 1));

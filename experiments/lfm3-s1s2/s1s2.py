@@ -57,13 +57,50 @@ if COOL and (len(COOL) != 2 or min(COOL) <= 0):
     sys.exit("SKY_COOL must be work:rest in minutes, as 45:15")
 
 
+# SKY_BRAKE_FILE: a file holding `<duty> [work:rest]`, read again at every rest, so the brake of a
+# running generation follows what the Mac is doing (scripts/auto-brake.sh; session.rs reads the same).
+BRAKE_FILE = os.environ.get("SKY_BRAKE_FILE") or None
+BRAKE_FILE_PERIOD = 5  # seconds between two reads during a long rest
+
+
+def parse_brake(text):
+    """(duty, [work, rest] in seconds or []) of a brake file line; None when it is not valid."""
+    words = text.split()
+    try:
+        duty = float(words[0])
+        cool = [float(m) * 60 for m in words[1].split(":")] if len(words) > 1 else []
+    except (IndexError, ValueError):
+        return None
+    if len(words) > 2 or not 0 < duty <= 1 or (cool and (len(cool) != 2 or min(cool) <= 0)):
+        return None
+    return duty, cool
+
+
+def brake():
+    """The brake to apply now: the file's when it is set and valid, else the environment's."""
+    if BRAKE_FILE:
+        try:
+            with open(BRAKE_FILE) as f:
+                parsed = parse_brake(f.read())
+        except OSError:
+            parsed = None
+        if parsed:
+            return parsed
+    return DUTY, COOL
+
+
 def rest(seconds):
     """The thermal brake after `seconds` of generation."""
-    time.sleep(seconds * (1 / DUTY - 1))
-    if COOL:
-        cycle = sum(COOL)
-        while (at := time.time() % cycle) >= COOL[0]:
-            time.sleep(cycle - at)
+    duty, cool = brake()
+    time.sleep(seconds * (1 / duty - 1))
+    while cool:
+        cycle = sum(cool)
+        at = time.time() % cycle
+        if at < cool[0]:
+            break
+        # With a file, the long rest is taken in short naps: the file can end it.
+        time.sleep(min(cycle - at, BRAKE_FILE_PERIOD) if BRAKE_FILE else cycle - at)
+        _, cool = brake()
 
 
 # ----------------------------------------------------------------------------- data

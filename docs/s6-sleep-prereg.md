@@ -161,4 +161,30 @@ If H1 fails and the rest holds, nothing is published: a model that remembers but
 
 ## 11. Amendments
 
-None to date.
+### Amendment 1 (12/11/2026, the day of the freeze): whole `recall` episodes in training, a slower decay, P3 spelled out
+
+**Before any run.** At this date the two probe games are written and tested (`crates/sky-games/src/recall.rs`, `rule110.rs`, branch `s6-sleep-nano`). No memory layer and no training code exist, and no model has read a probe.
+
+- **`recall` training sequences are whole episodes: 64 frames, 8 sleep periods**, instead of 24 consecutive frames (section 4). *Why:* writing the game showed that a 24-frame window cuts the show frame of most asks of the 17-to-32 bucket. Their target would be a colour the model never saw, which is noise, and the longest delays of the test would never be trained. The sequences of the 4 games stay at 24 frames, and `rule110` at its 8.
+- **The decay gate starts at `α = σ(· + 6)`**, not `+ 4` (section 2). *Why:* at `+ 4`, α is 0.982 per frame, and a memory left untouched keeps 56% of its content after 32 frames, the longest delay of `recall`. At `+ 6` it keeps 92%. The gate stays learned.
+- **P3, "through every pass", detaches nothing**: the gradient flows through every frame and every sleep pass of the whole sequence (section 5). The text did not say whether the memory was detached between sleep periods in P3.
+
+**What does not change.** The model, the probes, the seeds, the arms, the budgets, the pilot rules, the hypotheses and the gate.
+
+### Amendment 2 (12/11/2026): what writing the code fixed
+
+**Before any run.** At this date the memory layer, the sleep training, the probe reader and the run script are written and unit-tested on branch `s6-sleep-nano` (`crates/sky-train/src/s2/memory.rs`, `s2/probe.rs`, `scripts/train-sleep.sh`, `scripts/s6-sleep-report.py`). The only executions were code checks of a few steps on throwaway folders, with no score read. Each point below was left open by the text, and is now fixed as the code does it.
+
+- **A batch drawn at N = 1 detaches nothing.** It has no sleep pass, so the gradient flows through every wake frame of the sequence. From N = 2, the memory that enters the last pass of each sleep is detached, as section 4 says. *Consequence:* the N = 1 reading is trained with the longest gradient horizon of all, so the truncation cannot favour H1.
+- **What a frame writes.** The write of layer `l` takes the output of block `l` at its last application, before the read is added to it. The two gates read that output as it is, the keys and values read its normalized form (section 2).
+- **Batches.** A step is a sequence batch with probability 0.5, drawn, not one step in two. A sequence batch is 16 sequences of one game; a stateless batch is the one of the base's decision training (128 questions, loop dropout 0.25). N is drawn in both arms, so the control consumes the same random numbers and sees the same batches.
+- **Rate and schedule.** The peak rate is the one of the base's decision training (the recipe's scale, and for nano the scale of its learning-rate pilot), with the same warmup, plateau and decay over the run.
+- **Sequences.** 10,000 episodes of `recall`, 20,000 of `rule110` and 5,000 sequences of 24 frames per game, generated once (`s2-seqgen --seed 61`); the tenth that falls in the validation and test splits is not trained on.
+- **How the readings are taken.** `sky-train s2-probe` plays the checkpoint in closed loop with its ternary weights (the fake quantization of QAT), at the last exit, on the CPU. H2 uses it for the 4 games too (`sky_games::evaluate_with`, veto on, flappy capped at 200 pipes, as `sky-arena`), so both arms go through the same reader. H3 is the ternary row of `s2-eval` on `typed_decisions_bench`. The exported GGUF and `sky-infer` come in only for the publication gate (section 8, items 1 and 3).
+- **The test step runs once.** `scripts/train-sleep.sh test` writes `runs/s6-sleep/test/done` and refuses to run again.
+
+**What does not change.** The model, the probes, the seeds, the arms, the budgets, the pilot rules, the hypotheses and the gate.
+
+### Amendment 3 (13/11/2026): a third brake mode, and the memory of a step
+
+Before any run. **A third brake mode.** At the owner's request, `scripts/auto-brake.sh` writes `1.0 55:5` between 23:00 and 08:00 when the Mac has had no input for 30 minutes and nothing else works on it, and the memory cap needs four readings in a row above 13 GB, as in amendment 7 of `docs/s6-gen-prereg.md`. The stateless half of the batches may use `--step-mem-gb` as the base's decision training does (same amendment): the same update with less memory, in both arms. Budgets in working minutes and in steps are unchanged. Nothing else changes.

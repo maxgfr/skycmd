@@ -11,6 +11,11 @@
 #   route   the router on the test split: runs/lfm3-s1s2/report.md and summary.json
 # Overnight: caffeinate -i scripts/lfm3-s1s2.sh   (prints tok/s and s/question as it goes)
 set -euo pipefail
+# The thermal brake (docs/lfm3-s1s2-prereg.md, amendments 2 and 3): throttled unless set, and the
+# brake file of scripts/auto-brake.sh when it runs (the file wins over the two values).
+export SKY_DUTY=${SKY_DUTY:-0.5}
+export SKY_COOL=${SKY_COOL-45:15}
+export SKY_BRAKE_FILE=${SKY_BRAKE_FILE-$PWD/runs/brake}
 py() {
   uv run -q --python 3.12 --with "mlx-vlm==0.7.11" --with "datasets>=3" \
     python experiments/lfm3-s1s2/s1s2.py "$@"

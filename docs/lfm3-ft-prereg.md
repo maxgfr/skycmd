@@ -169,3 +169,11 @@ Total estimé : **environ 18 $**, au plus 36 $. Les prix sont ceux de `hf jobs h
 - **La révision.** Le smoke local résout la révision de `LiquidAI/LFM3-1.7B` et la rend dans `runs/lfm3-ft/smoke/report.json`. Un amendement daté la recopie, avec la méthode LoRA retenue, avant `gen`.
 - **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md` : une pause après chaque échantillon et chaque pas de LoRA. Le temps de génération et le nombre de jetons (`seconds`, `tokens`) n'en dépendent pas.
 - **Ce qui ne change pas.** Le modèle de base, les données, les exclusions, les hyperparamètres de la LoRA, les portes G1 à G3, le verdict, et le §9 : les poids dérivés restent privés tant que l'utilisateur n'a pas donné son accord.
+
+**Amendment 2 (12/11/2026, before any run: no generation, no training and no result exist). Two brake modes.**
+
+- **Change.** As for the s6 runs (`docs/s6-prereg.md`, amendment 6) and `docs/lfm3-s1s2-prereg.md` (amendment 3), the brake has two modes: `0.5` and `45:15` while the Mac is in use, `0.85` and `50:10` while it is left alone, back to the first under thermal pressure. `scripts/auto-brake.sh` writes the mode to `runs/brake`; the generation and the LoRA callback read it again at every rest (`SKY_BRAKE_FILE`).
+- **Why no result depends on it.** The brake sleeps between two samples and between two optimizer steps. The number of LoRA steps, the batches and the generation settings are fixed in steps and tokens, not in minutes.
+- **What does not change.** Everything else, the three gates and section 9 included: the derived weights stay private until the owner agrees.
+
+**Amendment 3 (13/11/2026, before any run). A third brake mode.** At the owner's request, `scripts/auto-brake.sh` writes `1.0 55:5` between 23:00 and 08:00 when the Mac has had no input for 30 minutes and nothing else works on it, and the memory cap needs four readings in a row above 13 GB, as in amendment 7 of `docs/s6-gen-prereg.md`. The brake only sleeps between two samples and between two optimizer steps. Nothing else changes.
