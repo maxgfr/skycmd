@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 import math
 import os
 import sys
@@ -205,10 +206,27 @@ def metrics():
     ]
 
 
+class Once(logging.Filter):
+    """Lets each distinct message through once. gluonts warns for every forecast that its mean is
+    the median here, millions of lines for one model (432 MB of log in the first smoke run)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen: set[str] = set()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if message in self.seen:
+            return False
+        self.seen.add(message)
+        return True
+
+
 def cmd_score(a) -> None:
     from gluonts.model import evaluate_model
     from gluonts.time_feature import get_seasonality
 
+    logging.getLogger("gluonts.model.forecast").addFilter(Once())
     os.environ["GIFT_EVAL"] = str(Path(a.data).resolve())
     props = properties()
     fdir = Path(a.forecasts)

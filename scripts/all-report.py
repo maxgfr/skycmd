@@ -22,7 +22,10 @@ def ear(p):
     if not os.path.exists(path):
         return "not run", path, ""
     g = json.load(open(path))
-    rows = "; ".join(f"{r['gate']} {r['accuracy']} vs {r['bar']:.4f}" for r in g["gates"])
+    def got(r):
+        return "n/a" if r["accuracy"] is None else f"{r['accuracy']:.4f}"
+
+    rows = "; ".join(f"{r['gate']} {got(r)} (bar >= {r['bar']:.4f})" for r in g["gates"])
     return "PASS" if g["pass"] else "FAIL", path, rows
 
 
@@ -30,10 +33,13 @@ def size(p, name):
     path = f"{p}runs/s6-{name}/eval/results.md"
     if not os.path.exists(path):
         return "not run", path, ""
-    m = re.search(r"^- gate: (.*)$", open(path).read(), flags=re.M)
+    text = open(path).read()
+    m = re.search(r"^- gate: (.*)$", text, flags=re.M)
     if not m:
         return "unreadable", path, ""
-    return ("PASS" if m.group(1).startswith("PASS") else "FAIL"), path, m.group(1)
+    # the two lines that say why: the gate at full depth and at the CRC thresholds
+    why = re.findall(r"^- (gate at [^\n]*)$", text, flags=re.M)
+    return ("PASS" if m.group(1).startswith("PASS") else "FAIL"), path, "; ".join([m.group(1), *why])
 
 
 def secrets_acc(text, question):
@@ -59,7 +65,7 @@ def secrets(p):
     if any(v is None for v in got.values()):
         return "unreadable", path, str(got)
     ok = all(got[q] > bar for q, bar in SECRETS.items())
-    return ("PASS" if ok else "FAIL"), path, "; ".join(f"{q} {got[q]:.4f} > {SECRETS[q]}" for q in SECRETS)
+    return ("PASS" if ok else "FAIL"), path, "; ".join(f"{q} {got[q]:.4f} (bar > {SECRETS[q]})" for q in SECRETS)
 
 
 def cast(p):
@@ -71,7 +77,7 @@ def cast(p):
     if any(s.get(k) is None or s.get("configs", {}).get(k) != CAST_CONFIGS for k in CAST):
         return "unreadable", path, str(s)
     ok = all(s[k] <= bar for k, bar in CAST.items())
-    return ("PASS" if ok else "FAIL"), path, "; ".join(f"{k} {s[k]:.4f} <= {CAST[k]}" for k in CAST)
+    return ("PASS" if ok else "FAIL"), path, "; ".join(f"{k} {s[k]:.4f} (bar <= {CAST[k]})" for k in CAST)
 
 
 def main():
@@ -82,9 +88,9 @@ def main():
     p = a.prefix
     rows = [("s6-ear-nano", *ear(p)), ("s6-secrets-pico", *secrets(p)), ("s6-nano", *size(p, "nano")),
             ("s6-micro", *size(p, "micro")), ("s6-cast-pico", *cast(p))]
-    lines = ["# Le grand run : les portes des modèles s6", "", "| modèle | porte | détail | fichier lu |", "|---|---|---|---|"]
+    lines = ["# The big run: the gates of the s6 models", "", "| model | gate | detail | file read |", "|---|---|---|---|"]
     lines += [f"| {m} | **{v}** | {d} | `{f}` |" for m, v, f, d in rows]
-    lines += ["", "Une porte échouée veut dire que le modèle n'est pas publié ; son résultat reste dans le rapport.", ""]
+    lines += ["", "A failed gate means the model is not published; its result stays in this report.", ""]
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     with open(a.out, "w") as f:
         f.write("\n".join(lines))
