@@ -115,6 +115,7 @@ impl CastConfig {
             fuse_numbers: false,
             state_loops: self.state_loops,
             temporal_carry: false,
+            memory: false,
             parallax: self.parallax,
             xsa: self.xsa,
             ffn_es: None,
