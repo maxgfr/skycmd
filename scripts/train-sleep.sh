@@ -93,7 +93,7 @@ steps_of() {
   python3 -I - "$1" <<'EOF'
 import json, os, sys
 log = os.path.join(sys.argv[1], "log.jsonl")
-done = os.path.exists(log) and any('"final": true' in l for l in open(log))
+done = os.path.exists(log) and any(json.loads(l).get("final") for l in open(log) if l.strip())
 if done:
     print(json.load(open(os.path.join(sys.argv[1], "last", "state.json")))["step"])
 EOF

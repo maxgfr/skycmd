@@ -93,7 +93,41 @@ struct MemPolicy<'a> {
     last_steps: u32,
 }
 
-impl MemPolicy<'_> {
+impl<'a> MemPolicy<'a> {
+    /// A reader of `game` that sleeps `passes - 1` times at each sleep.
+    fn new(
+        cfg: &'a S2Config,
+        p: &'a ParamMap,
+        tok: &'a Tok,
+        game: &str,
+        passes: usize,
+    ) -> Result<Self> {
+        let gm = make_game(game, 0).with_context(|| format!("unknown game {game}"))?;
+        let mut questions = Vec::new();
+        for q in gm.questions() {
+            let t = serde_json::to_value(q.qtype)?
+                .as_str()
+                .unwrap_or("choice")
+                .to_string();
+            questions.push((q.id.to_string(), t, q.instructions().to_string()));
+        }
+        Ok(MemPolicy {
+            cfg,
+            p,
+            tok,
+            questions,
+            how: Sleep {
+                passes,
+                every: SLEEP_EVERY,
+                full: true,
+            },
+            mem: None,
+            next: None,
+            chunk: Vec::new(),
+            last_steps: u32::MAX,
+        })
+    }
+
     fn new_episode(&mut self) {
         self.mem = self
             .cfg
@@ -232,15 +266,6 @@ pub fn probe(a: &ProbeArgs) -> Result<Vec<ProbeReport>> {
         .unwrap_or_else(|| a.run.join("tokenizer.json"));
     let tok = Tok::load(&tok_path)?;
     let probe_game = PROBES.contains(&a.game.as_str());
-    let gm = make_game(&a.game, 0).with_context(|| format!("unknown game {}", a.game))?;
-    let mut questions = Vec::new();
-    for q in gm.questions() {
-        let t = serde_json::to_value(q.qtype)?
-            .as_str()
-            .unwrap_or("choice")
-            .to_string();
-        questions.push((q.id.to_string(), t, q.instructions().to_string()));
-    }
     // Without a memory, sleep passes change nothing: one reading.
     let passes: Vec<usize> = if cfg.memory {
         a.passes.clone()
@@ -252,21 +277,7 @@ pub fn probe(a: &ProbeArgs) -> Result<Vec<ProbeReport>> {
     }
     let mut out = Vec::new();
     for &n in &passes {
-        let mut pol = MemPolicy {
-            cfg: &cfg,
-            p: &p,
-            tok: &tok,
-            questions: questions.clone(),
-            how: Sleep {
-                passes: n,
-                every: SLEEP_EVERY,
-                full: true,
-            },
-            mem: None,
-            next: None,
-            chunk: Vec::new(),
-            last_steps: u32::MAX,
-        };
+        let mut pol = MemPolicy::new(&cfg, &p, &tok, &a.game, n)?;
         let report = mlx_rs::with_device(mlx_rs::Device::cpu(), || -> Result<ProbeReport> {
             let mut r = ProbeReport {
                 game: a.game.clone(),
@@ -347,6 +358,64 @@ pub fn probe(a: &ProbeArgs) -> Result<Vec<ProbeReport>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        s2::{data::tests::s2_tok, golden::golden_params, model::tests::ladder},
+        test_util,
+    };
+
+    /// The logits a reader gives at each frame of one `rule110` episode.
+    fn answers(cfg: &S2Config, p: &ParamMap, tok: &Tok, passes: usize) -> Vec<Vec<f32>> {
+        let mut pol = MemPolicy::new(cfg, p, tok, "rule110", passes).unwrap();
+        let mut g = make_game("rule110", 19).unwrap();
+        let q = &g.questions()[0];
+        let opts = q.canonical_options();
+        pol.new_episode();
+        let mut out = Vec::new();
+        while !g.done() {
+            pol.observe(&*g);
+            let l = pol.decide("rule110", q.id, &g.state_text(), &opts);
+            g.apply(argmax(&l), false);
+            out.push(l);
+        }
+        out
+    }
+
+    fn differ(a: &[f32], b: &[f32]) -> bool {
+        a.iter().zip(b).any(|(x, y)| (x - y).abs() > 1e-4)
+    }
+
+    #[test]
+    fn the_reader_keeps_a_memory_and_sleeps_at_the_pause() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let mut cfg = ladder("s6-nano");
+            cfg.memory = true;
+            cfg.vocab_size = 262;
+            let p = golden_params(&cfg, 7).unwrap();
+            let mut plain = cfg.clone();
+            plain.memory = false;
+            let (none, awake, slept) = (
+                answers(&plain, &p, &tok, 1),
+                answers(&cfg, &p, &tok, 1),
+                answers(&cfg, &p, &tok, 4),
+            );
+            assert_eq!(none.len(), 8);
+            // Frame 0 reads a zero memory: the three readers agree.
+            assert!(!differ(&none[0], &awake[0]) && !differ(&awake[0], &slept[0]));
+            // From frame 1 the memory of frame 0 is read, and the sleep at the pause changed it.
+            for t in 1..8 {
+                assert!(
+                    differ(&none[t], &awake[t]),
+                    "frame {t}: the memory is not read"
+                );
+                assert!(
+                    differ(&awake[t], &slept[t]),
+                    "frame {t}: the sleep changed nothing"
+                );
+            }
+        });
+    }
 
     #[test]
     fn test_seeds_are_the_test_split_in_order() {
