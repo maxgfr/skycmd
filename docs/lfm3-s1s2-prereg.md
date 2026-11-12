@@ -115,3 +115,10 @@ Le rapport donne tout, quel que soit le résultat :
 - **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md` : une pause après chaque question. H3 compte des jetons et `seconds` reste le temps de génération : le mode bridé ne change ni l'un ni l'autre.
 - **Le modèle fine-tuné.** Ce qui concerne le modèle fine-tuné est désormais dans l'amendement 1 de `docs/lfm3-ft-prereg.md`. Les générations de la base écrites ici y servent de référence si la règle de conversion de cet amendement le permet.
 - **Ce qui ne change pas.** Les données, le prompt, les modes, le budget et le forçage, l'échantillonnage, les graines, l'extraction et la notation, les 6 traits, le routeur, α = 0,02, le choix de B\*, les critères H1 à H4 et les interdits.
+
+**Amendment 3 (12/11/2026, before any run: only the local smoke of 3 questions per mode has run, no calibration or test result exists). Two brake modes.**
+
+- **Change.** As for the s6 runs (`docs/s6-prereg.md`, amendment 6), the brake has two modes: `0.5` and `45:15` while the Mac is in use, `0.85` and `50:10` while it is left alone, back to the first under thermal pressure. `scripts/auto-brake.sh` writes the mode to `runs/brake`, and `s1s2.py` reads that file again at every rest (`SKY_BRAKE_FILE`).
+- **Why.** The owner asked for the runs to go faster while the Mac is not used. The two LFM3 tranches are the longest of the big run.
+- **Why no result depends on it.** The brake only sleeps between two questions. H3 counts tokens and `seconds` is the generation time of a question, as amendment 2 says. The only possible effect is the one amendment 2 already accepts: a generation measured while the Mac does something else.
+- **What does not change.** Everything else.
