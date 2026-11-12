@@ -107,11 +107,35 @@ pub fn keep_going(progress: &Progress, stop_at: Option<u64>, step: u64, elapsed_
 ///
 /// `SKY_COOL=45:15` adds long rests: 45 minutes of work, then 15 of complete rest. The cycle follows
 /// the system clock, so that it holds across the short steps of a stage, each its own process.
+///
+/// `SKY_BRAKE_FILE` names a file that sets both while the run goes on, with no restart: one line,
+/// `<duty> [work:rest]` (`0.85 50:10`, or `0.5` alone for no long rests). It is read again every
+/// few seconds and replaces `SKY_DUTY` and `SKY_COOL`; a missing or unreadable file changes
+/// nothing. `scripts/auto-brake.sh` writes it from what the machine is doing.
 pub struct Brake {
     rest_per_busy: f64,
     busy_since: Instant,
     /// Seconds of work and of complete rest in each cycle (`SKY_COOL`).
     cool: Option<(u64, u64)>,
+    /// `SKY_BRAKE_FILE` and when it was last read.
+    file: Option<(std::path::PathBuf, Instant)>,
+}
+
+/// Seconds between two reads of `SKY_BRAKE_FILE`.
+const BRAKE_FILE_PERIOD: Duration = Duration::from_secs(5);
+
+/// The duty and the long rests of a `SKY_BRAKE_FILE` line; `None` when it is not valid.
+fn parse_brake_file(text: &str) -> Option<(f64, Option<(u64, u64)>)> {
+    let mut words = text.split_whitespace();
+    let duty: f64 = words.next()?.parse().ok()?;
+    if !(duty > 0.0 && duty <= 1.0) {
+        return None;
+    }
+    let cool = match words.next() {
+        None => None,
+        Some(w) => Some(parse_cool(w).ok()?),
+    };
+    words.next().is_none().then_some((duty, cool))
 }
 
 /// `work:rest`, in minutes, as seconds.
@@ -149,7 +173,43 @@ impl Brake {
                 brake.cool = Some(parse_cool(&v)?);
             }
         }
+        if let Ok(v) = std::env::var("SKY_BRAKE_FILE") {
+            if !v.is_empty() {
+                brake.file = Some((v.into(), Instant::now()));
+                brake.read_file();
+            }
+        }
         Ok(brake)
+    }
+
+    /// Takes the duty and the long rests from `SKY_BRAKE_FILE`, when it holds a valid line.
+    fn read_file(&mut self) {
+        let Some((path, read_at)) = &mut self.file else {
+            return;
+        };
+        *read_at = Instant::now();
+        let Some((duty, cool)) = std::fs::read_to_string(&*path)
+            .ok()
+            .and_then(|t| parse_brake_file(&t))
+        else {
+            return;
+        };
+        let rest_per_busy = 1.0 / duty - 1.0;
+        if rest_per_busy != self.rest_per_busy || cool != self.cool {
+            let rests = cool.map_or("no long rests".to_string(), |(w, r)| {
+                format!("{} min of work, {} of rest", w / 60, r / 60)
+            });
+            println!("brake: duty {duty}, {rests} ({})", path.display());
+            self.rest_per_busy = rest_per_busy;
+            self.cool = cool;
+        }
+    }
+
+    /// [`Brake::read_file`], at most once every [`BRAKE_FILE_PERIOD`].
+    fn refresh(&mut self) {
+        if matches!(&self.file, Some((_, at)) if at.elapsed() >= BRAKE_FILE_PERIOD) {
+            self.read_file();
+        }
     }
 
     pub fn new(duty: f64) -> Result<Self> {
@@ -160,28 +220,35 @@ impl Brake {
             rest_per_busy: 1.0 / duty - 1.0,
             busy_since: Instant::now(),
             cool: None,
+            file: None,
         })
     }
 
     /// Rests, then moves `clock` (the start of the run clock) forward by the time rested.
     pub fn rest(&mut self, clock: &mut Instant) {
+        self.refresh();
         if self.rest_per_busy == 0.0 && self.cool.is_none() {
             return;
         }
         let started = Instant::now();
         std::thread::sleep(self.busy_since.elapsed().mul_f64(self.rest_per_busy));
-        if let Some(cycle) = self.cool {
-            let now = || {
-                let t = SystemTime::now().duration_since(UNIX_EPOCH);
-                t.unwrap_or_default().as_secs()
+        let now = || {
+            let t = SystemTime::now().duration_since(UNIX_EPOCH);
+            t.unwrap_or_default().as_secs()
+        };
+        let wait = |cool: Option<(u64, u64)>| cool.map_or(0, |cycle| cool_wait(now(), cycle));
+        if wait(self.cool) > 0 {
+            println!("cooling down for {} s (SKY_COOL)", wait(self.cool));
+        }
+        // A loop, because a Mac put to sleep can wake up in another rest. With a brake file the
+        // rest is taken in short naps, so that a new line can end it or shorten it.
+        while wait(self.cool) > 0 {
+            let nap = match self.file {
+                Some(_) => wait(self.cool).min(BRAKE_FILE_PERIOD.as_secs()),
+                None => wait(self.cool),
             };
-            if cool_wait(now(), cycle) > 0 {
-                println!("cooling down for {} s (SKY_COOL)", cool_wait(now(), cycle));
-            }
-            // A loop, because a Mac put to sleep can wake up in another rest.
-            while cool_wait(now(), cycle) > 0 {
-                std::thread::sleep(Duration::from_secs(cool_wait(now(), cycle)));
-            }
+            std::thread::sleep(Duration::from_secs(nap));
+            self.refresh();
         }
         *clock += started.elapsed();
         self.busy_since = Instant::now();
@@ -543,7 +610,7 @@ impl Session {
 
 #[cfg(test)]
 mod brake_tests {
-    use super::{cool_wait, parse_cool, Brake};
+    use super::{cool_wait, parse_brake_file, parse_cool, Brake};
     use std::time::{Duration, Instant};
 
     #[test]
@@ -598,6 +665,43 @@ mod brake_tests {
         std::thread::sleep(Duration::from_millis(20));
         brake.rest(&mut clock);
         assert_eq!(clock, start);
+    }
+
+    #[test]
+    fn parses_a_brake_file_line() {
+        assert_eq!(
+            parse_brake_file("0.85 50:10\n"),
+            Some((0.85, Some((3000, 600))))
+        );
+        assert_eq!(parse_brake_file("0.5"), Some((0.5, None)));
+        assert_eq!(
+            parse_brake_file(" 1 45:15 "),
+            Some((1.0, Some((2700, 900))))
+        );
+        for bad in ["", "fast", "0", "1.5", "0.5 45", "0.5 45:15 more"] {
+            assert_eq!(parse_brake_file(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_brake_file_changes_the_duty_of_a_running_brake() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("brake");
+        let mut brake = Brake::new(1.0).unwrap();
+        brake.file = Some((path.clone(), Instant::now()));
+        // no file yet: nothing changes
+        brake.read_file();
+        assert_eq!((brake.rest_per_busy, brake.cool), (0.0, None));
+        std::fs::write(&path, "0.5 45:15\n").unwrap();
+        brake.read_file();
+        assert_eq!((brake.rest_per_busy, brake.cool), (1.0, Some((2700, 900))));
+        // a line that is not valid keeps the last setting
+        std::fs::write(&path, "soon").unwrap();
+        brake.read_file();
+        assert_eq!((brake.rest_per_busy, brake.cool), (1.0, Some((2700, 900))));
+        std::fs::write(&path, "1").unwrap();
+        brake.read_file();
+        assert_eq!((brake.rest_per_busy, brake.cool), (0.0, None));
     }
 }
 

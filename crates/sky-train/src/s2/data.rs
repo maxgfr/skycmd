@@ -31,6 +31,10 @@ pub struct Stream {
     /// s6-ear (SPEC-S6 §16): the f16 bits of the audio state frames `[len][320]` (the ids are
     /// then `[PAD]` placeholders, one per 80 ms frame).
     pub audio: Option<std::sync::Arc<Vec<u16>>>,
+    /// s6-ear: the log-mel file and the state window the frames are read from when `audio` does
+    /// not hold them ([`Stream::audio_bits`]). The decision sets are loaded this way: their
+    /// frames take about 20 GB, more than the memory of the machine that trains on them.
+    pub audio_file: Option<std::sync::Arc<(std::path::PathBuf, usize)>>,
 }
 
 impl Stream {
@@ -42,6 +46,7 @@ impl Stream {
             values,
             has_value,
             audio: None,
+            audio_file: None,
         }
     }
 
@@ -56,7 +61,34 @@ impl Stream {
             values: vec![0.0; n],
             has_value: vec![false; n],
             audio: Some(std::sync::Arc::new(bits)),
+            audio_file: None,
         }
+    }
+
+    /// True for an s6-ear audio state, whether its frames are in memory or on disk.
+    pub fn is_audio(&self) -> bool {
+        self.audio.is_some() || self.audio_file.is_some()
+    }
+
+    /// The f16 bits of the audio frames: those in memory, else read again from `audio_file`
+    /// (the same bytes [`audio_file_state`] gave when the records were loaded).
+    ///
+    /// Panics when the file can no longer be read: it was read once at load time.
+    pub fn audio_bits(&self) -> Option<std::sync::Arc<Vec<u16>>> {
+        if let Some(bits) = &self.audio {
+            return Some(bits.clone());
+        }
+        let (path, max_state) = &**self.audio_file.as_ref()?;
+        let state = audio_file_state(path, *max_state)
+            .unwrap_or_else(|e| panic!("audio state {}: {e:#}", path.display()));
+        state.audio
+    }
+
+    /// This audio state without its frames in memory: they are read from `path` when needed.
+    pub fn on_disk(mut self, path: std::path::PathBuf, max_state: usize) -> Self {
+        self.audio = None;
+        self.audio_file = Some(std::sync::Arc::new((path, max_state)));
+        self
     }
 
     pub fn len(&self) -> usize {
@@ -450,14 +482,24 @@ pub fn load_cfg(
 /// the directory of the records file, or to `records` itself when it is a directory) as an audio
 /// state stream: the hops stacked by 8, the last `max_state` frames.
 pub fn audio_state(records: &Path, state: &str, max_state: usize) -> Result<Stream> {
-    use sky_infer::audio;
+    audio_file_state(&audio_path(records, state), max_state)
+}
+
+/// The log-mel file of an s6-ear record: `state` relative to the directory of the records file,
+/// or to `records` itself when it is a directory.
+pub fn audio_path(records: &Path, state: &str) -> std::path::PathBuf {
     let base = if records.is_dir() {
         records
     } else {
         records.parent().unwrap_or(Path::new("."))
     };
-    let path = base.join(state);
-    let bytes = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+    base.join(state)
+}
+
+/// [`audio_state`] of the log-mel file at `path`.
+pub fn audio_file_state(path: &Path, max_state: usize) -> Result<Stream> {
+    use sky_infer::audio;
+    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     let (mel, _, cols) =
         audio::read_npy(&bytes).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
     if cols != audio::N_MELS {
@@ -549,7 +591,9 @@ fn load_impl(
                     if let Some(s) = seen.get(t) {
                         return Ok(s.clone());
                     }
-                    let s = audio_state(path, t, max_state)?;
+                    // read once to check the file and count its frames, then left on disk
+                    let file = audio_path(path, t);
+                    let s = audio_file_state(&file, max_state)?.on_disk(file, max_state);
                     seen.insert(t.clone(), s.clone());
                     Ok(s)
                 })
@@ -724,10 +768,10 @@ pub fn make_batch_min(
         }
     }
     let fdim = sky_infer::audio::FRAME_DIM;
-    let audio = if items.iter().any(|it| it.state.audio.is_some()) {
+    let audio = if items.iter().any(|it| it.state.is_audio()) {
         let mut a = vec![0f32; b * s * fdim];
         for (r, it) in items.iter().enumerate() {
-            if let Some(bits) = &it.state.audio {
+            if let Some(bits) = it.state.audio_bits() {
                 for (o, &h) in a[r * s * fdim..].iter_mut().zip(bits.iter()) {
                     *o = sky_gguf::f16_to_f32(h);
                 }
@@ -1322,6 +1366,53 @@ pub(crate) mod tests {
             target: vec![1.0; opts.len()],
             split: "train".into(),
         }
+    }
+
+    #[test]
+    fn audio_states_stay_on_disk_and_give_the_same_batch() {
+        use sky_infer::audio;
+        let (dir, tok) = s2_tok();
+        // 300 hops stack into 37 frames, more than the state window of 16
+        let hops = 300;
+        let mel: Vec<f32> = (0..hops * audio::N_MELS)
+            .map(|i| (i * 37 % 101) as f32 / 50.0 - 1.0)
+            .collect();
+        std::fs::write(
+            dir.path().join("clip.npy"),
+            audio::write_npy_f16(&mel, hops, audio::N_MELS),
+        )
+        .unwrap();
+        let line = r#"{"src":"ear:keyword","t":"choice","ins":"Which word?","opts":["yes","no"],"state":"clip.npy","target":[1.0,0.0],"split":"train"}"#;
+        let records = dir.path().join("keyword.jsonl");
+        std::fs::write(&records, format!("{line}\n{line}\n")).unwrap();
+        let data = load_impl(std::slice::from_ref(&records), &tok, 96, 16, false, true).unwrap();
+        let items = &data.train[0];
+        assert_eq!(items.len(), 2);
+        assert!(
+            items
+                .iter()
+                .all(|it| it.state.audio.is_none() && it.state.is_audio()),
+            "the frames must not be kept in memory"
+        );
+        let in_memory = audio_state(&records, "clip.npy", 16).unwrap();
+        assert_eq!(items[0].state.len(), 16);
+        assert_eq!(items[0].state.ids, in_memory.ids);
+        assert_eq!(items[0].state.audio_bits(), in_memory.audio);
+        let _g = crate::test_util::lock();
+        let kept = S2Item {
+            stat: items[0].stat,
+            state: in_memory,
+            qtype: items[0].qtype,
+            target: items[0].target.clone(),
+            src: items[0].src.clone(),
+            group: 0,
+        };
+        let lazy = make_batch(&data.statics, &[&items[0], &items[1]], 1);
+        let eager = make_batch(&data.statics, &[&kept, &kept], 1);
+        lazy.audio.eval().unwrap();
+        eager.audio.eval().unwrap();
+        assert_eq!(lazy.audio.shape(), &[2, 16, audio::FRAME_DIM as i32]);
+        assert_eq!(lazy.audio.as_slice::<f32>(), eager.audio.as_slice::<f32>());
     }
 
     #[test]

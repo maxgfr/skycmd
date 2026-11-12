@@ -11,6 +11,9 @@
 #                   runs/all-smoke/, never in runs/s6-*: with RESUME=1 a real run would otherwise
 #                   continue from a smoke checkpoint
 #   SKY_DUTY=0.5  SKY_COOL=45:15  RESUME=1   the defaults here; RESUME= (empty) starts each training over
+#   SKY_BRAKE_FILE=runs/brake                a file that sets the brake while the run goes on, written by
+#                                            scripts/auto-brake.sh (0.85 and 50:10 when the Mac is left alone)
+#   SKY_MLX_CACHE_GB=2                       cap of MLX's buffer cache
 #
 # Each step is idempotent: it leaves a marker in runs/all/done/ and a log in runs/all/. A step cut by
 # a shutdown starts again and continues from its checkpoints. A gate that fails is a result: it goes
@@ -22,6 +25,10 @@ export SKYCMD_STORE=${SKYCMD_STORE:-$PWD}
 export SKY_DUTY=${SKY_DUTY:-0.5}
 export SKY_COOL=${SKY_COOL-45:15}
 export RESUME=${RESUME-1}
+# A 16 GB machine: without a cap, MLX keeps every freed buffer for reuse.
+export SKY_MLX_CACHE_GB=${SKY_MLX_CACHE_GB:-2}
+# scripts/auto-brake.sh writes this file while the run goes on; without it SKY_DUTY and SKY_COOL apply.
+export SKY_BRAKE_FILE=${SKY_BRAKE_FILE:-$PWD/runs/brake}
 dry=${DRY_RUN:-0}
 all=runs/all
 if [ -n "${SMOKE:-}" ]; then
