@@ -743,6 +743,12 @@ pub(crate) fn state_run(
     Ok(state_run_mem(p, cfg, x, valid, exits, None)?.0)
 }
 
+/// What each state block writes to the memory after a frame: its output at its last application,
+/// `None` for a block the frame did not run.
+pub(crate) type Written = Vec<Option<Array>>;
+/// Per exit, the normalized hidden states and the raw ones.
+pub(crate) type ExitStates = Vec<(Array, Array)>;
+
 /// [`state_run`] with a fast-weight memory (`s2::memory`, one matrix stack per state block):
 /// after every application of block `l`, the hidden states read `mem[l]`, before the exit of
 /// that application is taken. Also returns, per block, its output at its last application
@@ -754,7 +760,7 @@ pub(crate) fn state_run_mem(
     valid: &Array,
     exits: &[usize],
     mem: Option<&[Array]>,
-) -> R<(Vec<(Array, Array)>, Vec<Option<Array>>)> {
+) -> R<(ExitStates, Written)> {
     let mask = padding_mask(valid)?;
     let rope = Rope::Sequential(cfg.rope_theta, cfg.head_dim() as i32);
     let last_app = exits
@@ -764,7 +770,7 @@ pub(crate) fn state_run_mem(
         .unwrap_or(cfg.depth());
     let nb = cfg.state_layers;
     let mut out = Vec::with_capacity(exits.len());
-    let mut written: Vec<Option<Array>> = vec![None; nb];
+    let mut written: Written = vec![None; nb];
     for a in 0..last_app {
         let (lp, l) = (a / nb, a % nb);
         if l == 0 && lp > 0 {
@@ -940,7 +946,7 @@ pub(crate) fn state_written(
     cfg: &S2Config,
     b: &S2Batch,
     mem: &[Array],
-) -> R<Vec<Option<Array>>> {
+) -> R<Written> {
     let x = embed_state(p, cfg, b)?;
     Ok(state_run_mem(p, cfg, x, &b.valid, &[cfg.n_exits() - 1], Some(mem))?.1)
 }
@@ -954,7 +960,7 @@ pub(crate) fn forward_prepared_mem(
     n: usize,
     carry: Option<Carry<'_>>,
     mem: Option<&[Array]>,
-) -> R<(Array, Vec<Array>, Vec<Option<Array>>)> {
+) -> R<(Array, Vec<Array>, Written)> {
     let st = static_encode(
         p,
         cfg,

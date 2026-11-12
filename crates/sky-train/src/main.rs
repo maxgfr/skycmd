@@ -400,6 +400,24 @@ enum Cmd {
         /// Probability that a warm frame starts cold anyway.
         #[arg(long, default_value_t = 0.3)]
         carry_drop: f64,
+        /// docs/s6-sleep-prereg.md: whole-sequence files (s2-seqgen output, one per game,
+        /// comma-separated). A step is a sequence batch with probability --seq-frac. With
+        /// `memory` in the config the model keeps a memory and sleeps; without it, each frame
+        /// is answered alone (the control arm, on the same batches).
+        #[arg(long, value_delimiter = ',')]
+        sleep_records: Vec<PathBuf>,
+        /// Shares of the games among the sequence batches: game=w,... (default: equal).
+        #[arg(long)]
+        sleep_weights: Option<String>,
+        /// Sequences per sequence batch.
+        #[arg(long, default_value_t = 16)]
+        sleep_batch: usize,
+        /// Sleep passes N drawn for each sequence batch (comma-separated; one value fixes N).
+        #[arg(long, value_delimiter = ',', default_value = "1,2,3,4")]
+        sleep_passes: Vec<usize>,
+        /// Backpropagate through every sleep pass instead of the last one only.
+        #[arg(long)]
+        sleep_full: bool,
         #[arg(long, default_value_t = 20)]
         log_every: u64,
         #[arg(long, default_value_t = 1000)]
@@ -805,6 +823,11 @@ fn main() -> Result<()> {
             seq_records,
             seq_frac,
             carry_drop,
+            sleep_records,
+            sleep_weights,
+            sleep_batch,
+            sleep_passes,
+            sleep_full,
             log_every,
             eval_every,
             checkpoint_minutes,
@@ -837,6 +860,11 @@ fn main() -> Result<()> {
             seq_records,
             seq_frac,
             carry_drop,
+            sleep_records,
+            sleep_weights,
+            sleep_batch,
+            sleep_passes,
+            sleep_full,
             dis,
             exit_kd: exit_kd.map(|weight| ExitKd {
                 weight,
