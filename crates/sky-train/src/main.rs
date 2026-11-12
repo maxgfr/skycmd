@@ -388,6 +388,11 @@ enum Cmd {
         /// own longest state (1: every batch drawn alone).
         #[arg(long, default_value_t = 1)]
         length_pool: usize,
+        /// GPU memory one step may take, in GB (0: no limit). A batch whose step would need more
+        /// is cut into parts of rows whose gradients are averaged before the update: the same
+        /// update, with less memory. Needs --length-pool above 1.
+        #[arg(long, default_value_t = 0.0)]
+        step_mem_gb: f64,
         /// Padding multiple of the training batch shapes (32: coarser buckets, fewer compiles).
         #[arg(long, default_value_t = 16)]
         pad_to: usize,
@@ -801,6 +806,7 @@ fn main() -> Result<()> {
             ema,
             qat_grad_a,
             length_pool,
+            step_mem_gb,
             pad_to,
             seq_records,
             seq_frac,
@@ -845,6 +851,7 @@ fn main() -> Result<()> {
             ema,
             qat_grad_a,
             length_pool,
+            step_mem_gb,
         })?,
         Cmd::S2Calibrate {
             run,

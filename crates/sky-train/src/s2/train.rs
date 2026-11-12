@@ -30,8 +30,8 @@ use crate::{
     },
     sequence::{Tok, QTYPES},
     session::{
-        apply_update, keep_going, qat_due, replace_params, sorted_names, stop_step, train_step,
-        Brake, CompiledGrad, Progress,
+        apply_update, keep_going, loss_and_grads, qat_due, replace_params, sorted_names, stop_step,
+        train_step, Brake, CompiledGrad, Progress,
     },
     train::{source_weights, JsonLog},
 };
@@ -260,11 +260,77 @@ impl S2Session {
         qat: bool,
         n_exits: Option<usize>,
     ) -> Result<StepStats> {
+        self.decision_step_parts(std::slice::from_ref(batch), lr_scale, qat, n_exits)
+    }
+
+    /// [`Self::decision_step_exits`] on a batch cut into parts of rows (`data::make_parts`):
+    /// one update from the gradients of the parts averaged by their rows. The loss is a mean
+    /// over the rows, so this is the step of the whole batch, with the memory of one part.
+    pub fn decision_step_parts(
+        &mut self,
+        parts: &[S2Batch],
+        lr_scale: f32,
+        qat: bool,
+        n_exits: Option<usize>,
+    ) -> Result<StepStats> {
         let n = n_exits
             .unwrap_or(self.cfg.n_exits())
             .clamp(1, self.cfg.n_exits());
+        let (loss, grads) = self.parts_grads(parts, qat, n)?;
+        let (loss, grad_norm) =
+            apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?;
+        self.state.step += 1;
+        Ok(StepStats {
+            loss,
+            grad_norm,
+            tokens: parts.iter().map(|b| b.n_tokens).sum(),
+        })
+    }
+
+    /// The loss and the gradients of a batch given as parts of rows: those of each part
+    /// ([`Self::decision_grads`]) averaged by its share of the rows.
+    fn parts_grads(&mut self, parts: &[S2Batch], qat: bool, n: usize) -> Result<(Array, ParamMap)> {
+        if let [one] = parts {
+            return self.decision_grads(one, qat, n);
+        }
+        let rows: usize = parts.iter().map(|b| b.n_rows).sum();
+        let mut sum: Option<(Array, ParamMap)> = None;
+        for b in parts {
+            let share = Array::from_f32(b.n_rows as f32 / rows as f32);
+            let (l, g) = self.decision_grads(b, qat, n)?;
+            let l = l.multiply(&share)?;
+            let next = match sum.take() {
+                None => {
+                    let mut g0 = ParamMap::new();
+                    for (k, v) in &g {
+                        g0.insert(k.clone(), v.multiply(&share)?);
+                    }
+                    (l, g0)
+                }
+                Some((l0, mut g0)) => {
+                    for (k, v) in &g {
+                        let acc = g0[k].add(v.multiply(&share)?)?;
+                        g0.insert(k.clone(), acc);
+                    }
+                    (l0.add(l)?, g0)
+                }
+            };
+            // Evaluated part by part: the graph of a part is freed before the next one.
+            mlx_rs::transforms::eval(next.1.values().chain([&next.0]))?;
+            sum = Some(next);
+        }
+        sum.context("a decision step with no batch")
+    }
+
+    /// The decision loss of `batch` over its first `n` exits and its gradients, with no update.
+    fn decision_grads(
+        &mut self,
+        batch: &S2Batch,
+        qat: bool,
+        n: usize,
+    ) -> Result<(Array, ParamMap)> {
         let wv = model::exit_weight_vec(&self.cfg, Some(n));
-        let (loss, grad_norm) = if self.compile {
+        if self.compile {
             let names = sorted_names(&self.params);
             let cfg = self.cfg.clone();
             let dis = self.dis_beta.is_some();
@@ -288,8 +354,7 @@ impl S2Session {
             if let Some(beta) = &self.dis_beta {
                 inputs.push(Array::from_slice(beta, &[beta.len() as i32]));
             }
-            let (loss, grads) = f.call(&self.params, inputs)?;
-            apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?
+            f.call(&self.params, inputs)
         } else if let Some(kd) = self.exit_kd {
             let cfg = &self.cfg;
             let wts = Array::from_slice(&wv, &[wv.len() as i32]);
@@ -297,28 +362,22 @@ impl S2Session {
                 .dis_beta
                 .as_ref()
                 .map(|b| Array::from_slice(b, &[b.len() as i32]));
-            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+            loss_and_grads(&self.params, batch, |p, b| {
                 model::decision_loss_kd(p, cfg, b, qat, &wts, beta.as_ref(), kd)
-            })?
+            })
         } else if let Some(beta) = &self.dis_beta {
             let cfg = &self.cfg;
             let wts = Array::from_slice(&wv, &[wv.len() as i32]);
             let beta = Array::from_slice(beta, &[beta.len() as i32]);
-            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+            loss_and_grads(&self.params, batch, |p, b| {
                 model::decision_loss_dis(p, cfg, b, qat, &wts, &beta)
-            })?
+            })
         } else {
             let cfg = &self.cfg;
-            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+            loss_and_grads(&self.params, batch, |p, b| {
                 model::decision_loss_exits(p, cfg, b, qat, Some(n))
-            })?
-        };
-        self.state.step += 1;
-        Ok(StepStats {
-            loss,
-            grad_norm,
-            tokens: batch.n_tokens,
-        })
+            })
+        }
     }
 
     /// One temporal step (SPEC-S3 §7): `K` frames, frame 0 cold, later
@@ -1460,6 +1519,10 @@ pub struct S2DecideArgs {
     pub qat_grad_a: f32,
     /// Batches drawn at once and grouped by state length (1: every batch drawn alone).
     pub length_pool: usize,
+    /// GPU memory one decision step may take, in GB (`data::StepMemory`; 0: no limit). A batch
+    /// over it is cut into parts of rows whose gradients are averaged: the same update with
+    /// less memory. Needs `length_pool > 1`.
+    pub step_mem_gb: f64,
 }
 
 /// Validation summary of one model mode.
@@ -1653,7 +1716,12 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wt, mut ws, mut wq, mut wtime) =
         (0.0f64, 0usize, 0u64, 0usize, Instant::now());
-    let mut pending: std::collections::VecDeque<S2Batch> = Default::default();
+    let mut pending: std::collections::VecDeque<Vec<S2Batch>> = Default::default();
+    let step_mem = data::StepMemory::of(&s.cfg, a.step_mem_gb);
+    if a.step_mem_gb > 0.0 && a.length_pool <= 1 {
+        bail!("--step-mem-gb needs --length-pool above 1");
+    }
+    let mem_trace = std::env::var_os("SKY_MEM_TRACE").is_some();
     let (mut skipped, mut consecutive) = (0usize, 0usize);
     let seqs = match &a.seq_records {
         Some(path) => {
@@ -1716,22 +1784,33 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             }
         }
         if !seq_step {
-            let batch = if a.length_pool > 1 {
+            // A batch is one part, or several of equal rows when its step would not fit in
+            // `--step-mem-gb` (`data::StepMemory`); the update is the same either way.
+            let parts = if a.length_pool > 1 {
                 if pending.is_empty() {
-                    pending = data::sample_batches_by_length(
+                    pending = data::sample_parts_by_length(
                         &data,
                         &weights,
                         a.batch,
                         a.length_pool,
                         &mut s.state.rng,
                         a.pad_to,
+                        &step_mem,
                     )
                     .into();
                 }
                 pending.pop_front().expect("a pooled batch")
             } else {
-                data::sample_batch(&data, &weights, a.batch, &mut s.state.rng, a.pad_to)
+                vec![data::sample_batch(
+                    &data,
+                    &weights,
+                    a.batch,
+                    &mut s.state.rng,
+                    a.pad_to,
+                )]
             };
+            let rows: usize = parts.iter().map(|b| b.n_rows).sum();
+            let batch = parts.last().expect("a part");
             let n_exits = s.cfg.n_exits();
             let used = if n_exits > 1 && a.loop_dropout > 0.0 && s.state.rng.f64() < a.loop_dropout
             {
@@ -1739,7 +1818,20 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             } else {
                 None
             };
-            let st = s.decision_step_exits(&batch, lr_scale, qat, used)?;
+            let st = s.decision_step_parts(&parts, lr_scale, qat, used)?;
+            if mem_trace {
+                // SKY_MEM_TRACE=1: the peak of MLX's memory of each step, with the shapes that
+                // cost it (rows x state tokens, static streams x static tokens).
+                let peak = mlx_rs::memory::peak_memory().unwrap_or(0) as f64 / 1e6;
+                mlx_rs::memory::reset_peak_memory()?;
+                println!(
+                    "mem step {} peak {peak:.0} MB parts {} state {:?} static {:?} exits {used:?}",
+                    s.state.step,
+                    parts.len(),
+                    batch.ids.shape(),
+                    batch.st_ids.shape()
+                );
+            }
             if !st.loss.is_finite() {
                 // The update was not applied (`apply_update`): skip the batch, unless the
                 // training itself has diverged.
@@ -1748,7 +1840,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 println!(
                 "step {}: non-finite loss, batch skipped ({} rows, state shape {:?}, static shape {:?})",
                 s.state.step,
-                batch.n_rows,
+                rows,
                 batch.ids.shape(),
                 batch.st_ids.shape()
             );
@@ -1766,12 +1858,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 continue;
             }
             consecutive = 0;
-            (wl, wt, ws, wq) = (
-                wl + st.loss as f64,
-                wt + st.tokens,
-                ws + 1,
-                wq + batch.n_rows,
-            );
+            (wl, wt, ws, wq) = (wl + st.loss as f64, wt + st.tokens, ws + 1, wq + rows);
             let step = s.state.step;
             if step % a.log_every == 0 {
                 let dt = wtime.elapsed().as_secs_f64();
@@ -1781,7 +1868,8 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 let mut rec = json!({"step": step, "loss": wl / ws as f64, "grad_norm": st.grad_norm, "lr_scale": lr_scale, "qat": qat,
                 "tok_s": wt as f64 / dt, "q_s": wq as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0,
                 "mlx_active_mb": mb(mlx_rs::memory::active_memory()),
-                "mlx_cache_mb": mb(mlx_rs::memory::cache_memory())});
+                "mlx_cache_mb": mb(mlx_rs::memory::cache_memory()),
+                "mlx_peak_mb": mb(mlx_rs::memory::peak_memory())});
                 if let Some(n) = s.state.steps {
                     rec["steps"] = n.into();
                     rec["frac"] = frac.into();
@@ -1979,6 +2067,102 @@ mod tests {
             let bs = data::sample_batches_by_length(&data, &[1.0], 8, 4, &mut Rng::new(2), 16);
             assert_eq!(bs.len(), 4);
             assert!(bs.iter().all(|b| b.n_rows == 8));
+        });
+    }
+
+    /// A batch cut into parts of rows gives the loss and the gradients of the whole batch
+    /// (`--step-mem-gb`), compiled or not, with QAT or not, with fewer exits or all.
+    #[test]
+    fn a_step_in_parts_is_the_step_of_the_whole_batch() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let cfg = S2Config {
+                hidden_size: 64,
+                intermediate_size: 32,
+                ..S2Config::tiny(262)
+            };
+            let data = synthetic(&tok, &cfg, 60, 1);
+            let mut rng = Rng::new(7);
+            let items: Vec<&S2Item> = (0..16)
+                .map(|_| &data.train[0][rng.below(data.train[0].len())])
+                .collect();
+            let whole = data::make_parts(&data.statics, &items, 16, &data::StepMemory::OFF);
+            assert_eq!(whole.len(), 1);
+            // A limit of one byte: as many parts as halving allows.
+            let tight = data::StepMemory {
+                max_bytes: 1.0,
+                ..data::StepMemory::of(&cfg, 1.0)
+            };
+            let parts = data::make_parts(&data.statics, &items, 16, &tight);
+            assert_eq!(parts.len(), 16);
+            let four = data::StepMemory {
+                max_bytes: tight.bytes(16, 16, 16, 16) / 4.0,
+                ..tight
+            };
+            assert_eq!(four.parts(16, 16, 16, 16), 4);
+            assert_eq!(
+                four.parts(16, 16, 4, 16),
+                4,
+                "fewer static streams, still over"
+            );
+            assert_eq!(four.parts(6, 64, 6, 64), 2, "6 rows halve only once");
+            assert_eq!(data::StepMemory::OFF.parts(128, 512, 128, 960), 1);
+            // s6-nano: the estimate against the peaks measured on whole batches, in GB.
+            let nano: S2Config =
+                serde_json::from_str(include_str!("../../../../configs/s6-nano.json")).unwrap();
+            let nano = data::StepMemory::of(&nano, 3.0);
+            for (rows, s, u, ts, seen) in [
+                (128, 32, 128, 192, 2.2),
+                (128, 32, 128, 480, 4.7),
+                (128, 32, 128, 608, 6.3),
+                (128, 96, 128, 704, 7.9),
+                (128, 96, 64, 704, 5.7),
+                (128, 512, 128, 192, 10.0),
+                (128, 512, 128, 960, 17.0),
+            ] {
+                let est = nano.bytes(rows, s, u, ts) / 1e9;
+                assert!(
+                    (est / seen - 1.0).abs() < 0.1,
+                    "{rows}x{s} {u}x{ts}: {est} vs {seen}"
+                );
+            }
+            assert_eq!(nano.parts(128, 32, 128, 192), 1);
+            assert_eq!(nano.parts(128, 32, 128, 608), 2);
+            assert_eq!(nano.parts(128, 512, 128, 192), 4);
+            assert_eq!(nano.parts(128, 512, 128, 960), 8);
+            for (compile, qat, exits) in [
+                (false, false, None),
+                (false, true, Some(1)),
+                (true, true, None),
+                (true, false, Some(1)),
+            ] {
+                let p = model::init(&cfg, S2Parts::DECISION, 3).unwrap();
+                let mut s =
+                    S2Session::new(cfg.clone(), p, OptConfig::default(), "s2-decide", 5, 60.0);
+                s.compile = compile;
+                let n = exits.unwrap_or(cfg.n_exits());
+                let (l0, g0) = s.parts_grads(&whole, qat, n).unwrap();
+                for cut in [
+                    &parts[..],
+                    &[parts[..8].to_vec(), parts[8..].to_vec()].concat(),
+                ] {
+                    let (l1, g1) = s.parts_grads(cut, qat, n).unwrap();
+                    let (a, b) = (l0.item_exact::<f32>(), l1.item_exact::<f32>());
+                    assert!((a - b).abs() < 1e-5 * a.abs().max(1.0), "loss {a} vs {b}");
+                    for (k, v) in &g0 {
+                        assert!(
+                            v.all_close(&g1[k], 1e-3, 1e-6, None).unwrap(),
+                            "{k} (compile {compile}, qat {qat}, exits {exits:?})"
+                        );
+                    }
+                }
+                // One update from the parts counts as one step.
+                let st = s.decision_step_parts(&parts, 1.0, qat, exits).unwrap();
+                assert!(st.loss.is_finite());
+                assert_eq!(s.state.step, 1);
+                assert_eq!(st.tokens, parts.iter().map(|b| b.n_tokens).sum::<usize>());
+            }
         });
     }
 

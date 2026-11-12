@@ -122,3 +122,5 @@ Le rapport donne tout, quel que soit le résultat :
 - **Why.** The owner asked for the runs to go faster while the Mac is not used. The two LFM3 tranches are the longest of the big run.
 - **Why no result depends on it.** The brake only sleeps between two questions. H3 counts tokens and `seconds` is the generation time of a question, as amendment 2 says. The only possible effect is the one amendment 2 already accepts: a generation measured while the Mac does something else.
 - **What does not change.** Everything else.
+
+**Amendment 4 (13/11/2026, before any run). A third brake mode.** At the owner's request, `scripts/auto-brake.sh` writes `1.0 55:5` between 23:00 and 08:00 when the Mac has had no input for 30 minutes and nothing else works on it, and the memory cap needs four readings in a row above 13 GB, as in amendment 7 of `docs/s6-gen-prereg.md`. The brake only sleeps between two questions. Nothing else changes.

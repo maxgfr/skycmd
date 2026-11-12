@@ -416,11 +416,20 @@ pub fn train_step<B>(
     lr_scale: f32,
     loss: impl Fn(&ParamMap, &B) -> R<Array>,
 ) -> Result<(f32, f32)> {
+    let (loss, grads) = loss_and_grads(params, batch, loss)?;
+    apply_update(params, opt, loss, &grads, lr_scale)
+}
+
+/// The loss and its gradients with respect to every parameter, with no update.
+pub(crate) fn loss_and_grads<B>(
+    params: &ParamMap,
+    batch: &B,
+    loss: impl Fn(&ParamMap, &B) -> R<Array>,
+) -> Result<(Array, ParamMap)> {
     let f = |p: HashMap<Rc<str>, Array>, b: &B| -> R<Vec<Array>> { Ok(vec![loss(&p, b)?]) };
     let mut vg = keyed_value_and_grad(f);
     let (values, grads) = vg(params.clone(), batch)?;
-    let loss = values.into_iter().next().expect("loss output");
-    apply_update(params, opt, loss, &grads, lr_scale)
+    Ok((values.into_iter().next().expect("loss output"), grads))
 }
 
 impl Session {
