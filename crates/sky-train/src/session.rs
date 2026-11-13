@@ -334,6 +334,13 @@ pub(crate) type CompiledFn = Box<dyn for<'a> FnMut(&'a [Array]) -> R<Vec<Array>>
 /// tokens all vary), so its memory grows by a few megabytes per shape, with no bound: s6-nano went
 /// from 11 to 14 GB in 70 minutes. Emptying the cache makes the next call of each shape compile
 /// again (about 50 ms), which gives the same graph and the same values.
+///
+/// This bounds the cache, not the process: measured on s6-micro (14/11/2026), a decision batch
+/// has hundreds of distinct shapes in its first minutes (rows, state tokens, static streams,
+/// static tokens and options), a graph of that model takes 8,400 heap blocks, and emptying the
+/// cache gives back two thirds of them: every compilation leaves about 0.4 MB behind. A run
+/// whose shapes vary that much is better off uncompiled (`--no-compile`: its heap stays flat,
+/// `heap_mb` in the logs); a run with a few shapes never reaches the limit.
 struct CompiledShapes {
     /// Graphs compiled since the cache was last emptied.
     count: usize,
@@ -409,7 +416,19 @@ impl CompiledGrad {
                 return;
             }
             if c.limit > 0 && c.count >= c.limit {
+                let before = crate::heap::in_use();
                 mlx_rs::transforms::compile::clear_cache();
+                if std::env::var_os("SKY_MEM_TRACE").is_some() {
+                    let after = crate::heap::in_use();
+                    println!(
+                        "compiled graphs emptied after {} shapes: heap {:.0} -> {:.0} MB, {} -> {} blocks",
+                        c.count,
+                        before.1 as f64 / 1e6,
+                        after.1 as f64 / 1e6,
+                        before.0,
+                        after.0
+                    );
+                }
                 c.count = 0;
                 c.epoch += 1;
                 self.seen.clear();
@@ -731,6 +750,7 @@ mod compiled_shapes_tests {
             assert_eq!(kept[1], (1.25, vec![5.0]));
         });
     }
+
 }
 
 #[cfg(test)]
