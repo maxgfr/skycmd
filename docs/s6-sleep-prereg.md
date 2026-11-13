@@ -188,3 +188,7 @@ If H1 fails and the rest holds, nothing is published: a model that remembers but
 ### Amendment 3 (13/11/2026): a third brake mode, and the memory of a step
 
 Before any run. **A third brake mode.** At the owner's request, `scripts/auto-brake.sh` writes `1.0 55:5` between 23:00 and 08:00 when the Mac has had no input for 30 minutes and nothing else works on it, and the memory cap needs four readings in a row above 13 GB, as in amendment 7 of `docs/s6-gen-prereg.md`. The stateless half of the batches may use `--step-mem-gb` as the base's decision training does (same amendment): the same update with less memory, in both arms. Budgets in working minutes and in steps are unchanged. Nothing else changes.
+
+### Amendment 4 (13/11/2026): the cache of compiled graphs
+
+Before any run. `sky-train` empties MLX's cache of compiled graphs every 256 new input shapes (`SKY_COMPILE_SHAPES`), in both arms, as amendment 8 of `docs/s6-gen-prereg.md` describes: MLX keeps one graph per shape for the life of the process, which made the memory of a long run grow without bound. A shape met again is compiled again into the same graph: no value changes. Nothing else changes.

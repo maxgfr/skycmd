@@ -1629,7 +1629,10 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     };
     let tok = load_tok(&tok_path, &cfg)?;
     let t_load = Instant::now();
-    let data = data::load_cfg(&a.records, &tok, &cfg)?;
+    let mut data = data::load_cfg(&a.records, &tok, &cfg)?;
+    // Only s2-eval reads the texts of the questions (its coherence measure): the training does
+    // not keep half a million of them in memory.
+    data.static_keys = Vec::new();
     let weights = source_weights(&data.groups, a.weights.as_deref())?;
     for (g, (name, w)) in data.groups.iter().zip(&weights).enumerate() {
         println!(
