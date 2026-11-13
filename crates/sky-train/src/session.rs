@@ -724,7 +724,10 @@ mod compiled_shapes_tests {
             for n in 1..=shapes {
                 let x: Vec<f32> = (0..n).map(|i| i as f32 + 1.0).collect();
                 let (loss, grads) = f.call(&params, vec![Array::from_slice(&x, &[n])]).unwrap();
-                out.push((loss.as_slice::<f32>()[0], grads[&name].as_slice::<f32>().to_vec()));
+                out.push((
+                    loss.as_slice::<f32>()[0],
+                    grads[&name].as_slice::<f32>().to_vec(),
+                ));
             }
         }
         (out, COMPILED_SHAPES.with(|c| c.borrow().epoch))
@@ -750,7 +753,6 @@ mod compiled_shapes_tests {
             assert_eq!(kept[1], (1.25, vec![5.0]));
         });
     }
-
 }
 
 #[cfg(test)]
