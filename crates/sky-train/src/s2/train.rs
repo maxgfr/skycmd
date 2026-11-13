@@ -2225,6 +2225,16 @@ mod tests {
             // s6-nano: the estimate against the peaks measured on whole batches, in GB.
             let nano: S2Config =
                 serde_json::from_str(include_str!("../../../../configs/s6-nano.json")).unwrap();
+            // The state side counts the layers a token goes through, not the exits: 4 and 4 in
+            // s6-nano, 6 layers for 3 exits in s6-micro.
+            let micro: S2Config =
+                serde_json::from_str(include_str!("../../../../configs/s6-micro.json")).unwrap();
+            assert_eq!((nano.depth(), nano.n_exits()), (4, 4));
+            assert_eq!((micro.depth(), micro.n_exits()), (6, 3));
+            assert_eq!(
+                data::StepMemory::of(&micro, 3.0).per_token,
+                208.0 * 256.0 * 6.0
+            );
             let nano = data::StepMemory::of(&nano, 3.0);
             for (rows, s, u, ts, seen) in [
                 (128, 32, 128, 192, 2.2),
