@@ -7,7 +7,7 @@
 #   in use        IN_USE="0.5 45:15"   a key or the pointer moved in the last IDLE_MIN minutes, a video
 #                                      or a call keeps the display awake, or the Mac is on battery
 #   left alone    AWAY="0.85 50:10"    none of the above (the pre-registrations' "two modes")
-#   night         FULL="1.0 55:5"      left alone for FULL_IDLE_MIN minutes (30), between the hours
+#   night         FULL="0.95 55:5"     left alone for FULL_IDLE_MIN minutes (30), between the hours
 #                                      FULL_HOURS (23-8, from 23:00 to 08:00), with the other
 #                                      programs using less than OTHER_CPU percent of one core
 #                                      (60): the owner sleeps and nothing else works. FULL="" turns
@@ -25,7 +25,7 @@ file=${1:-runs/brake}
 log=$file.log
 in_use=${IN_USE:-0.5 45:15}
 away=${AWAY:-0.85 50:10}
-full=${FULL-1.0 55:5}
+full=${FULL-0.95 55:5}
 full_idle_min=${FULL_IDLE_MIN:-30}
 full_hours=${FULL_HOURS:-23-8}
 other_cpu=${OTHER_CPU:-60}

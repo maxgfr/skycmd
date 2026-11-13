@@ -215,3 +215,5 @@ s3-pico, s4-micro et s5-lite publiés passent sur les mêmes records, à τ = 1.
 - **The fix.** The estimate counts the depth (state layers times loops). Nothing changes for s6-nano; for s6-micro more batches are cut into parts, which is the same update (amendment 7). The run also printed its validation accuracy at the start of QAT, as every run does; nothing was decided from it.
 - **What it applies to.** The binary built at the launch of the first run of s6-micro, and what follows. The three rates of the s6-micro pilot run in one launch, with the binary built before this fix: they are compared with the same estimate.
 - **What does not change.** Data, models, budgets, the pilot rule, the gates, the limit of 3 GB, the 13 GB cap.
+
+**Amendment 10 (13/11/2026, during the rate pilot of s6-micro). The night mode at 95%.** At the owner's request (13/11/2026), the night mode of `scripts/auto-brake.sh` is `0.95 55:5` instead of `1.0 55:5`, from the night of 13/11 on. Budgets still count working time only: nothing else changes.

@@ -177,3 +177,5 @@ Total estimé : **environ 18 $**, au plus 36 $. Les prix sont ceux de `hf jobs h
 - **What does not change.** Everything else, the three gates and section 9 included: the derived weights stay private until the owner agrees.
 
 **Amendment 3 (13/11/2026, before any run). A third brake mode.** At the owner's request, `scripts/auto-brake.sh` writes `1.0 55:5` between 23:00 and 08:00 when the Mac has had no input for 30 minutes and nothing else works on it, and the memory cap needs four readings in a row above 13 GB, as in amendment 7 of `docs/s6-gen-prereg.md`. The brake only sleeps between two samples and between two optimizer steps. Nothing else changes.
+
+**Amendment 4 (13/11/2026, before any run). The night mode at 95%.** At the owner's request (13/11/2026), the night mode of `scripts/auto-brake.sh` is `0.95 55:5` instead of `1.0 55:5`, from the night of 13/11 on. Budgets still count working time only: nothing else changes.
