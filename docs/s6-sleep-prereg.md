@@ -192,3 +192,7 @@ Before any run. **A third brake mode.** At the owner's request, `scripts/auto-br
 ### Amendment 4 (13/11/2026): the cache of compiled graphs
 
 Before any run. `sky-train` empties MLX's cache of compiled graphs every 256 new input shapes (`SKY_COMPILE_SHAPES`), in both arms, as amendment 8 of `docs/s6-gen-prereg.md` describes: MLX keeps one graph per shape for the life of the process, which made the memory of a long run grow without bound. A shape met again is compiled again into the same graph: no value changes. Nothing else changes.
+
+### Amendment 5 (13/11/2026): the night mode at 95%
+
+Before any run. At the owner's request (13/11/2026), the night mode of `scripts/auto-brake.sh` is `0.95 55:5` instead of `1.0 55:5`, from the night of 13/11 on. Budgets still count working time only: nothing else changes.
