@@ -6,7 +6,7 @@
 //! phase-specific files (tokenizer, `rl_agent_config.json`).
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -327,10 +327,41 @@ pub struct Session {
 /// A compiled `[params..., batch...] -> [loss, grads...]` function.
 pub(crate) type CompiledFn = Box<dyn for<'a> FnMut(&'a [Array]) -> R<Vec<Array>>>;
 
+/// How many graphs the compiled functions of this thread may hold before MLX's cache is emptied.
+///
+/// MLX compiles one graph per input shape and keeps every one of them for the life of the process.
+/// A decision run meets new batch shapes for hours (rows, state tokens, static streams and static
+/// tokens all vary), so its memory grows by a few megabytes per shape, with no bound: s6-nano went
+/// from 11 to 14 GB in 70 minutes. Emptying the cache makes the next call of each shape compile
+/// again (about 50 ms), which gives the same graph and the same values.
+struct CompiledShapes {
+    /// Graphs compiled since the cache was last emptied.
+    count: usize,
+    /// The cache is emptied when `count` reaches this (0: never). `SKY_COMPILE_SHAPES`, 256 by
+    /// default.
+    limit: usize,
+    /// Goes up each time the cache is emptied: a function that sees a new value forgets its shapes.
+    epoch: u64,
+}
+
+thread_local! {
+    static COMPILED_SHAPES: std::cell::RefCell<CompiledShapes> = std::cell::RefCell::new(CompiledShapes {
+        count: 0,
+        limit: std::env::var("SKY_COMPILE_SHAPES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(256),
+        epoch: 0,
+    });
+}
+
 /// Compiled loss + gradient over a fixed parameter order.
 pub(crate) struct CompiledGrad {
     names: Vec<Rc<str>>,
     f: CompiledFn,
+    /// The batch shapes compiled since the cache was last emptied (`epoch`).
+    seen: HashSet<Vec<i32>>,
+    epoch: u64,
 }
 
 impl CompiledGrad {
@@ -355,7 +386,38 @@ impl CompiledGrad {
         Self {
             names,
             f: Box::new(mlx_rs::transforms::compile::compile(step, false)),
+            seen: HashSet::new(),
+            epoch: 0,
         }
+    }
+
+    /// Counts the shape of `batch` if it is a new one, and empties MLX's cache of compiled graphs
+    /// first when it is full (see [`CompiledShapes`]).
+    fn note_shape(&mut self, batch: &[Array]) {
+        let mut shape = Vec::new();
+        for a in batch {
+            shape.extend_from_slice(a.shape());
+            shape.push(-1);
+        }
+        COMPILED_SHAPES.with(|c| {
+            let mut c = c.borrow_mut();
+            if self.epoch != c.epoch {
+                self.seen.clear();
+                self.epoch = c.epoch;
+            }
+            if self.seen.contains(&shape) {
+                return;
+            }
+            if c.limit > 0 && c.count >= c.limit {
+                mlx_rs::transforms::compile::clear_cache();
+                c.count = 0;
+                c.epoch += 1;
+                self.seen.clear();
+                self.epoch = c.epoch;
+            }
+            c.count += 1;
+            self.seen.insert(shape);
+        });
     }
 
     /// Returns the loss and the gradients keyed by parameter name.
@@ -364,6 +426,7 @@ impl CompiledGrad {
         params: &ParamMap,
         batch: Vec<Array>,
     ) -> Result<(Array, ParamMap)> {
+        self.note_shape(&batch);
         let mut args: Vec<Array> = self.names.iter().map(|k| params[k].clone()).collect();
         args.extend(batch);
         let mut out = (self.f)(&args)?.into_iter();
@@ -614,6 +677,59 @@ impl Session {
             mlm_fn: None,
             dec_fn: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod compiled_shapes_tests {
+    use super::{CompiledGrad, COMPILED_SHAPES};
+    use crate::params::ParamMap;
+    use mlx_rs::Array;
+    use std::rc::Rc;
+
+    /// The loss and the gradient of `sum((w * x)^2)` over batches of 1 to `shapes` elements, twice
+    /// over, with the cache emptied every `limit` graphs; and how many times it was emptied.
+    fn run(limit: usize, shapes: i32) -> (Vec<(f32, Vec<f32>)>, u64) {
+        COMPILED_SHAPES.with(|c| {
+            let mut c = c.borrow_mut();
+            (c.count, c.limit, c.epoch) = (0, limit, 0);
+        });
+        let name: Rc<str> = Rc::from("w");
+        let mut params = ParamMap::new();
+        params.insert(name.clone(), Array::from_slice(&[0.5f32], &[1]));
+        let mut f = CompiledGrad::new(vec![name.clone()], |p, b| {
+            p["w"].multiply(&b[0])?.square()?.sum(None)
+        });
+        let mut out = Vec::new();
+        for _ in 0..2 {
+            for n in 1..=shapes {
+                let x: Vec<f32> = (0..n).map(|i| i as f32 + 1.0).collect();
+                let (loss, grads) = f.call(&params, vec![Array::from_slice(&x, &[n])]).unwrap();
+                out.push((loss.as_slice::<f32>()[0], grads[&name].as_slice::<f32>().to_vec()));
+            }
+        }
+        (out, COMPILED_SHAPES.with(|c| c.borrow().epoch))
+    }
+
+    /// Emptying the cache of compiled graphs changes no value: a shape compiled again gives the
+    /// loss and the gradient it gave the first time.
+    #[test]
+    fn emptying_the_cache_of_compiled_graphs_changes_no_value() {
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (kept, never) = run(0, 7);
+            assert_eq!(never, 0);
+            // 14 calls over 7 shapes with room for 3: emptied after the 3rd, 6th, 9th and 12th new
+            // shape (the second pass finds none of its shapes left).
+            let (emptied, times) = run(3, 7);
+            assert_eq!(times, 4);
+            assert_eq!(kept, emptied);
+            // Room for every shape: compiled once each, never emptied.
+            let (all, times) = run(7, 7);
+            assert_eq!(times, 0);
+            assert_eq!(kept, all);
+            // sum((w x)^2) = w^2 sum(x^2) and its gradient 2 w sum(x^2), at w = 0.5 and x = 1, 2.
+            assert_eq!(kept[1], (1.25, vec![5.0]));
+        });
     }
 }
 
