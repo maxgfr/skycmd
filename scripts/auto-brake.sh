@@ -101,8 +101,10 @@ while :; do
   else
     set_brake "$away" "no input for $idle_min min"
   fi
-  gb=$(train_gb)
-  if [ "$gb" -ge "$mem_stop_gb" ]; then
+  # A training that ends between the two commands of train_gb makes `top` fail: that reading is 0,
+  # and the daemon goes on (it used to end there, silently, under `set -e`).
+  gb=$(train_gb) || gb=0
+  if [ "${gb:-0}" -ge "$mem_stop_gb" ]; then
     over=$((over + 1))
     if [ "$over" -ge "$mem_stop_n" ]; then
       echo "$(date '+%F %T') sky-train holds $gb GB (limit $mem_stop_gb): training stopped" >>"$log"
