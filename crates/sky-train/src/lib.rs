@@ -13,6 +13,7 @@ pub mod cast;
 pub mod config;
 pub mod decision;
 pub mod export;
+pub mod heap;
 pub mod metrics;
 pub mod mlm;
 pub mod model;

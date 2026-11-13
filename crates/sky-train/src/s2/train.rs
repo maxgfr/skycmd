@@ -1938,9 +1938,11 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 // cost it (rows x state tokens, static streams x static tokens).
                 let peak = mlx_rs::memory::peak_memory().unwrap_or(0) as f64 / 1e6;
                 mlx_rs::memory::reset_peak_memory()?;
+                let (blocks, bytes) = crate::heap::in_use();
                 println!(
-                    "mem step {} peak {peak:.0} MB parts {} state {:?} static {:?} exits {used:?}",
+                    "mem step {} peak {peak:.0} MB heap {:.0} MB {blocks} blocks parts {} state {:?} static {:?} exits {used:?}",
                     s.state.step,
+                    bytes as f64 / 1e6,
                     parts.len(),
                     batch.ids.shape(),
                     batch.st_ids.shape()
@@ -1983,7 +1985,8 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 "tok_s": wt as f64 / dt, "q_s": wq as f64 / dt, "elapsed_min": s.state.elapsed_secs / 60.0,
                 "mlx_active_mb": mb(mlx_rs::memory::active_memory()),
                 "mlx_cache_mb": mb(mlx_rs::memory::cache_memory()),
-                "mlx_peak_mb": mb(mlx_rs::memory::peak_memory())});
+                "mlx_peak_mb": mb(mlx_rs::memory::peak_memory()),
+                "heap_mb": crate::heap::mb()});
                 if let Some(n) = s.state.steps {
                     rec["steps"] = n.into();
                     rec["frac"] = frac.into();
