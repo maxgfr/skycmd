@@ -60,9 +60,12 @@ night() {
     [ "$h" -ge "$from" ] || [ "$h" -lt "$to" ]
   fi
 }
-# True when the programs other than the training use less than OTHER_CPU percent of one core.
+# True when the programs other than the training use less than OTHER_CPU percent of one core
+# (twice that once the night mode is on, so that a short burst does not switch it off and on).
 others_quiet() {
-  LC_ALL=C ps -A -o %cpu=,comm= | LC_ALL=C awk -v max="$other_cpu" '
+  local max=$other_cpu
+  [ "$(cat "$file" 2>/dev/null)" = "$full" ] && max=$((other_cpu * 2))
+  LC_ALL=C ps -A -o %cpu=,comm= | LC_ALL=C awk -v max="$max" '
     $2 !~ /(sky-train|sky-arena|sky-eval|python[0-9.]*)$/ { sum += $1 }
     END { exit !(sum < max) }'
 }
