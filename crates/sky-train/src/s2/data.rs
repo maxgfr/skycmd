@@ -831,15 +831,17 @@ pub fn make_batch_min(
 /// averaged before the update ([`make_parts`]): the loss is a mean over the rows, so the update
 /// is the one of the whole batch, with a fraction of its memory.
 ///
-/// Measured on s6-nano (width 144, 4 exits, 2 heads, 2 static layers, ternary QAT), as the peak
+/// Measured on s6-nano (width 144, depth 4, 2 heads, 2 static layers, ternary QAT), as the peak
 /// of MLX's memory over one step, for rows x state tokens against static streams x static
 /// tokens: 128 x 32 against 128 x 192 takes 2.2 GB, against 128 x 480 4.7 GB, against 128 x 608
 /// 6.3 GB; 128 x 96 against 128 x 704 takes 7.9 GB and against 64 x 704 5.7 GB; 128 x 512 against
 /// 128 x 192 takes 10 GB and against 128 x 960 17 GB. The estimate below is within 10% of each:
 /// 120 kB per row and state token, 22 kB per row and static token, and per static stream 36 kB
 /// per token plus 20 bytes per token squared. The terms are taken to grow with the width (the
-/// activations kept for the backward pass), on the state side with the exits, and for the last
-/// one with the heads and the static layers (attention maps).
+/// activations kept for the backward pass), on the state side with the depth (state layers
+/// times loops), and for the last one with the heads and the static layers (attention maps).
+/// The depth, not the number of exits: s6-nano has 4 of each, s6-micro 6 layers for 3 exits, and
+/// the first steps of its pilot took 6.3 GB under a limit of 3 counted with its exits.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct StepMemory {
     /// Bytes per row and state token.
@@ -868,7 +870,7 @@ impl StepMemory {
     pub fn of(cfg: &crate::s2::config::S2Config, gb: f64) -> Self {
         let width = cfg.hidden_size as f64;
         Self {
-            per_token: 208.0 * width * cfg.n_exits() as f64,
+            per_token: 208.0 * width * cfg.depth() as f64,
             per_row_static: 153.0 * width,
             per_static_token: 250.0 * width,
             per_static_cell: 5.0 * (cfg.n_heads() * cfg.static_layers) as f64,
