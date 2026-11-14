@@ -80,12 +80,10 @@ def gates(scores, issues, clean, latency, model):
         for part, label in PARTS:
             m = line_f1(scores, model, part)
             refs = reference(part)
-            if m is None:
-                g["why"].append(f"no result of {model}")
-                g["holds"] = False
-                continue
-            if refs is None:
-                g["why"].append(f"{label}: no result of the reference")
+            if m is None or refs is None:
+                why = f"no result of {model}" if m is None else "no result of the reference"
+                if why not in g["why"]:
+                    g["why"].append(why)
                 g["holds"] = False
                 continue
             ref_name, ref = refs
