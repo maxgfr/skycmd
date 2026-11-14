@@ -1,0 +1,338 @@
+# s6-secrets v2 (s6-secrets-verify-pico): pre-registration
+
+**Status: frozen on 14/11/2026, before any download of a test file.** No CredData file or issue-report file has been downloaded. No candidate exists, no baseline has run, no line of the experiment's code is written. The results are read through this text. Three things are fixed later by rules written here, each before any test file is read: the generator (§2.4), the state window (§4.3) and the list of files of the clean-text corpus (§7.7).
+
+**Why this experiment.** On 14/11/2026 the published s6-secrets-pico was measured on real text for the first time and flagged 59.8% of 719 clean files at p ≥ 0.9 (`docs/s6-secrets-prereg.md`, amendment 6). It passed its gate on a generated bench and cannot be used on real files. v2 is a different task, judged on real repositories.
+
+**Changes to this file:**
+
+- every amendment is committed, dated and justified in §13;
+- an amendment comes before the run or the measurement it concerns;
+- an amendment never moves a threshold after a test score has been read;
+- measurements on training and validation repositories (generator recall, truncation, the value-only probe) are allowed before the freeze of §2.4 and §4. They are written down with their date and never touch a test file.
+
+Background and sources: `docs/research-s6-usefulness.md` §1, §7, §8.1, §10, and the feasibility study, `docs/s6-secrets2-feasibility.md`, committed with this file.
+
+## 1. The question
+
+s6-secrets-pico (`docs/s6-secrets-prereg.md`) reads a whole short text and asks whether it exposes a secret. It was trained and tested on synthetic data only, and its line answer is weak (0.6859, `BENCH.md`).
+
+v2 changes the job. A high-recall rule finds a candidate span, and the model judges that one candidate in its context. The rule gives the span, so the model never outputs one. The intended host is secretgate's rule engine (§2).
+
+For each candidate, two typed questions:
+
+- **real** (noul, gated): "Is this value a real credential that should be revoked?" T rows are true; F and X rows are false (§3.1).
+- **kind** (choice, 3 options, reported only):
+  - a real credential;
+  - an example, test value or placeholder (CredData `X`);
+  - not a credential (CredData `F`).
+
+**What the gate asks.** On public data with real repository structure, does a 250 KB ternary verifier placed behind secretgate's rules:
+
+- beat the rule scanners clearly;
+- come within reach of the open 17M span model (cbx-secrets-detector-17M, 67 MB);
+- beat a simple model of the same size;
+- keep that advantage on real (not obfuscated) values;
+- stay calibrated and under a few milliseconds per candidate;
+- and stay quiet on real files that hold no secret, where v1 failed?
+
+## 2. The candidate generator (`sg-cand-1`)
+
+### 2.1 Definition
+The generator is secretgate's own engine (https://github.com/maxgfr/secretgate, `src/engine/scanner.ts`), pinned at a commit, in a **candidate mode**:
+
+- **Rules.** All rules of `rules/gitleaks.toml`: gitleaks commit `09242ce9c8a60d9b051fc2d166f9e849b88c7ac0`, 222 rules (`rules/UPSTREAM`). Plus secretgate's built-in rules (`scanner.ts`, `BUILTIN_RULES`).
+- **What stays on.** The keyword prefilter, the global path allowlist (images, fonts, lock files, `node_modules`, vendored Go modules), the `post` and `postMatch` gates of the built-in rules (Luhn and IIN for card numbers, the URL username test), and the `dedupe` precedence.
+- **What is turned off.** The filters the verifier is meant to replace:
+  - the entropy gates;
+  - `looksLikePlaceholder`;
+  - the per-rule allowlists and the 1,456 stopwords of `generic-api-key`;
+  - the global allowlist regexes and stopwords.
+
+  The values they would have dropped become candidates. Each candidate records which of these filters it would have failed, as hand features (§4.2).
+- **One new rule, `generic-keyword`**, modelled on CredSweeper's keyword template (`credsweeper/common/keyword_pattern.py`, v1.19.6):
+  1. a variable name that contains one of `password, passwd, pwd, pass, secret, token, key, api, auth, credential, cred, nonce, salt`;
+  2. an optional quote;
+  3. a separator: `:`, `=`, `:=`, `=>`, `==`, `!=`;
+  4. an optional quote;
+  5. a value of 4 to 256 characters, up to the closing quote or the first whitespace, `;`, `,` or end of line.
+
+  Case-insensitive. It is the high-recall rule that gitleaks' rules lack (feasibility §3.2).
+- **Candidate record**: rule id, value, the variable or key name, the value's line and columns, the line, the previous line and the next line, path scope and extension (§4.1), and the engine's entropy.
+
+The candidate mode and `generic-keyword` are code in the secretgate repository, pinned by commit: either a mode of the engine or a development script that calls the engine's own matching functions. The experiment calls that code through Node and never re-implements the matching, so the generator that is evaluated is the one a release would ship. By default the export masks each value (same length and character classes); the experiment uses the unmasked mode locally, and its files are never committed.
+
+### 2.2 Recall check, on training and validation repositories only
+Before the freeze, the generator runs on the CredData training and validation repositories (§3.1).
+
+- **Recall** = share of T rows whose value span is overlapped by at least one candidate.
+- **Volume** = candidates per 1,000 lines.
+
+The target is a recall **≥ 0.95**. If the first version is under it, one revision of `generic-keyword` is allowed: keywords, separators, value length. It is dated in §13 with the misses it addressed (read from training and validation rows only). After that the generator is frozen whatever its recall, and the number is reported.
+
+### 2.3 Why the recall is not a gate
+Every system's line-level recall includes the generator's misses (§7.1), so a weak generator costs the gate directly. CredData's labels come from CredSweeper's candidates (`Category` column), so CredData favours a CredSweeper-like generator; the issue-report set (TruffleHog-derived regexes) is a second view.
+
+### 2.4 Freeze
+The secretgate commit, a hash of the rules file, and the generator's recall and volume on training and validation are written to `runs/s6-secrets2/generator.json` and committed before any test file is read.
+
+## 3. Data and splits (by repository, never by line)
+
+### 3.1 CredData
+- **Source**: https://github.com/Samsung/CredData, pinned at the full SHA of HEAD on the day of download (`01e3d135a9…` on 12/11/2026), with the MD5 of `meta/`.
+- **Download**: `download_data.py` in a Linux container, `--noise` left at its default. The transient clones hold the real values before obfuscation: they are made in a folder outside the repository and deleted when the script ends. Only the obfuscated `data/` is kept, outside the repository, and it is never committed.
+- **Labels**: one per value from the meta rows (`GroundTruth`).
+  - `T` → real = true, kind = real credential;
+  - `X` → false, example/test/placeholder;
+  - `F` → false, not a credential.
+- **Matching a candidate to a row**:
+  - on a labelled line, a candidate takes the label of the row whose `[ValueStart, ValueEnd)` its value overlaps;
+  - a whole-line row (`ValueStart` empty or -1, F only) labels every candidate of its line false;
+  - a candidate on a labelled line that overlaps no labelled value is dropped from training and evaluation, and counted.
+- **Candidates on unlabelled lines of the training repositories are weak negatives**: real = false, kind = not a credential. CredData's labels cover the lines that one of seven tools flagged, so these are lines none of them flagged, and they are the ordinary assignments a deployed generator proposes all day; v1 never saw such text and failed on it. They are drawn at random (seed 1234) up to **25% of the CredData training items**, and tagged so that every training count separates them. Before training, 200 of them drawn at random are read by hand and the share that looks like a real credential is reported (label noise); they are used whatever that share. On validation and test repositories, candidates on unlabelled lines are never scored as negatives: they are counted (§7.3).
+- **Training repositories**: the 116 repositories of cbx's `training_data_sources.csv` (HF repo `CobuildX-AI/cbx-secrets-detector-17M`, pinned commit), at their listed commits.
+  - Each is kept only if the LICENSE copied by `collect_licenses()` at its pinned commit is MIT, Apache-2.0, BSD-2/3-Clause or ISC; the others are dropped and listed.
+  - **Validation** is 16 of them, chosen by the lowest sha256 of the repository name with the seed 1234 appended (fixed now, before any download).
+  - The rest are training.
+- **Test repositories**: every other CredData repository at the pinned meta (about 221), whatever its licence. Testing does not redistribute them. cbx-17M never trained on any of them, so cbx can be rerun there fairly. This is **not** cbx's 168-repository test set, which is not public (feasibility §1.4). The card's numbers (0.805 and so on) are context only; every compared number is rerun through our scorer.
+- **Decontamination**: every training or validation candidate whose normalised line also occurs in a test repository is removed. Normalised means trimmed, inner whitespace collapsed, and, for T rows, the value replaced by its length. This reads test inputs, never test labels. The number removed is reported.
+
+### 3.2 The issue-report set (Zenodo 10.5281/zenodo.19622962, CC BY 4.0)
+- **Download**: `Secret-Leak-Detection-Issue-Report.zip`, 134,502,037 bytes, version 19622962, with its sha256 recorded. It goes to a folder outside the repository; it is never committed and never sent to any remote service.
+- **Splits**: the paper's (Table 7: train 40,593 / val 5,432 / test 8,123 candidates; 4,377 / 586 / 888 secrets). They are random per candidate, not by issue. The counts are checked on download, and any difference is written in §13 before training.
+- **Decontamination**: every train or val row whose issue text also occurs in a test row is removed from train or val. The test is never touched.
+- **Training values**: each real secret in train or val is replaced by a **word-preserving shape replacement**:
+  - letter runs of 4 or more characters that are dictionary words become another word of the same length and case pattern;
+  - every other character becomes a random one of its class;
+  - known provider prefixes and separators are kept.
+  The dictionary is fixed before the freeze (`/usr/share/dict/words`, lowercase, 4–12 letters). The replacement is not CredData's obfuscation on purpose: it keeps the "a word inside a password" shape that CredData destroys (§10).
+- **Test values stay as published**. They are already public, and they are the point of this set: real values. Logs and reports show only hashes and lengths, never a value.
+
+### 3.3 Synthetic candidates
+- **Source**: a new `sky-data secret-cand` mode of the existing generator (`crates/sky-data/src/secrets.rs`, seed 1234), writing candidate records, not whole texts. Every key follows a public provider format with a random body; nothing is real.
+- **Share**: at most **25%** of training items.
+- **Positives**:
+  - provider-format keys under their usual names;
+  - **word-based passwords**: one or two dictionary words with digits and a symbol, under password-like names in assignments. CredData cannot provide these (§10).
+- **Hard negatives**, following GitHub's list (13 Oct 2026 post) and the jev's own classes:
+  - test and publishable keys;
+  - placeholders and masked values (`xxxx`, `<your-key>`, `changeme`-like words, env and template references);
+  - public keys and certificates;
+  - checksums and integrity hashes (sha1, sha256, sha512 in lock-file and `integrity=` lines);
+  - UUIDs;
+  - git commit ids;
+  - base64 image or font data;
+  - documentation lines;
+  - test fixtures under a `test` scope;
+  - **near-miss pairs**: the same line once with a random secret and once with a placeholder or reference.
+- **Never used**: the synthetic set never enters a test.
+
+### 3.4 Mix and sizes
+- **Decision training** draws from CredData training, issue-report train and synthetic with weights **0.45 / 0.35 / 0.20**.
+- **Validation** is CredData validation, issue-report val and 2,000 synthetic candidates, kept apart by source.
+- **Expected sizes (estimates)**:
+  - CredData training: about 7,000 labelled values (cbx counts 7,244 training rows over the 116 repositories);
+  - issue-report train: about 40,000;
+  - synthetic: about 20,000.
+  The actual counts are reported.
+
+## 4. The model
+
+### 4.1 Input (the state)
+One state per candidate, in this order, because the state is truncated from the end (`crates/sky-infer/src/s2/prompt.rs:182-206`):
+
+1. **Header**: `rule <rule id>`, then `path <scope> <extension>`. The scope is CredData's `word_in_path.json` mapping (`test`, `docs`, `src`, `security`, `build`, `other`), computed the same way at deployment from the real path, since CredData's paths keep only the scope and the extension.
+2. **Key**: the variable or key name, at most 40 characters.
+3. **Value**: the whole value if it has 64 characters or fewer, else its first 32 and last 32 characters with a marker between them.
+4. **Features** (§4.2), as `name value` pairs (one fused value per pair, SPEC-S3 §1).
+5. **Line**: the candidate's line with the value replaced by a short marker, at most 120 characters centred on the value.
+6. **Context**: the previous and next lines, each cut to 100 characters.
+
+The questions (§1) go in the head stream, word for word in English.
+
+### 4.2 Hand features
+These are computed by one shared definition with a fixture file that the Rust trainer and the TypeScript host must both pass (as `num_extract.json` does for numbers):
+
+- value length;
+- Shannon entropy of the value (bits per character, as in `src/engine/entropy.ts`);
+- characters per token of the value under the model's own BPE (token efficiency, after Betterleaks);
+- counts of digits, upper-case letters, lower-case letters and other characters;
+- length of the longest dictionary-word run;
+- 0/1 flags for each turned-off filter the value would have failed (§2.1): entropy gate, placeholder, stopword, allowlist.
+
+### 4.3 Size and windows
+- **s6-secrets-pico's graph as it is**: s3-pico, 1 state block × 4 loops, exits after each loop, d 96, vocabulary 1,024 (`data/tok/tok-s2-1024.json`), `fuse_numbers`, no Parallax (as adopted). That is 445,345 parameters and a ternary GGUF of about 250 KB.
+- **State window rule**, decided before training:
+  - `sky-train s2-truncation` runs on the training and validation candidate records;
+  - if more than 5% of states are truncated at 320 tokens, the window becomes 384; otherwise it stays at 320;
+  - the head window stays at 192.
+  - RoPE has no position table, so the parameter count does not change.
+  - Estimated need (feasibility §5): about 215 tokens before the neighbouring lines, so 320 is expected to hold.
+- **Why not nano**:
+  - s6-nano (1,486,225 parameters, 715 KB) takes a median 1,488 µs natively and 14.6–15.2 ms in WASM per decision on long states (`BENCH.md`, s6-nano). That is too slow for a hook judging tens of candidates per payload.
+  - The job is narrower than general decisions.
+  - Nano is the next step only if gate G2 fails while G3 and G4 pass (§11).
+
+## 5. The run (`scripts/train-secrets2.sh`, to be written)
+
+- **MLM pretraining, 12 minutes**:
+  - starts from the parameters of `runs/s6-secrets-pico/pretrain/init` (start-from-parameters option of `s2-pretrain`, `init_params` in `crates/sky-train/src/s2/train.rs`);
+  - text: `data/text-open`, `data/text`, and the obfuscated files of the CredData *training* repositories, 30% of sequences;
+  - plus 10% numeric curriculum;
+  - sequences of 256 tokens, batch 64.
+- **Decision training, 30 minutes**:
+  - on the §3.4 mix, batch 64;
+  - QAT ternary after a 10% float warm-up, loop dropout 0.25;
+  - the recipe of `runs/recipe/recipe.json` (`scripts/s6-adopt.py env s6-secrets-pico`), with no hand choice;
+  - `--no-compile` (amendment 11 of `docs/s6-gen-prereg.md`).
+  - About 900,000 questions at s6-secrets-pico's rate, so about 10 passes over the data.
+- **Seed and brake**: seed 0, one run. Only a technical failure justifies a restart, and the report says so. The brake modes of `docs/s6-gen-prereg.md` amendments 5, 6 and 10 apply. Budgets count working minutes, and the report gives the steps done.
+- **Calibration**: `s2-calibrate` on the CredData validation candidates, then ternary export.
+- **Operating threshold τ\***: the threshold on P(real) that maximises F1 on CredData validation candidates. Presets for F0.5 and F2 are chosen the same way. All three are stored in the GGUF metadata before any test file is read.
+- **Checkpoint**: `last` (or `last-ema` if the recipe adopts EMA). No intermediate checkpoint is considered.
+
+## 6. Baselines (all rerun on the same test files, through the same scorer)
+
+| baseline | version | how it runs | unit |
+|---|---|---|---|
+| generator alone | `sg-cand-1` | every candidate accepted | line, candidate |
+| secretgate default engine | the pinned commit, filters on | `scan()` per file, with the path | line, span |
+| Gitleaks | 8.30.1 (installed) | `gitleaks dir --report-format json`, default config | line, span |
+| Betterleaks | 1.10.1 | `betterleaks dir`, default config | line, span |
+| detect-secrets | 1.5.0 | `scan --all-files`, default plugins | line |
+| CredSweeper | 1.19.6 | ML at its default threshold (medium, 0.622), and ML off (`--ml_threshold 0`) | line, span |
+| cbx-secrets-detector-17M | pinned HF commit | `cbx_secrets.py`, CPU, default config; a line is flagged if a predicted span overlaps it | line, span |
+| size-matched LR | fixed now | hashed character 1–5-grams of the same state text (2^18 weights, int8 after training, 256 KiB) plus the §4.2 features; logistic regression (scikit-learn 1.9.1, `SGDClassifier`, log loss, L2, the regularisation strength chosen among 1e-7, 1e-6, 1e-5, 1e-4 on validation F1) trained on the same training candidates, weak negatives included; threshold maximising F1 on the same validation | line, candidate |
+| potion-base-2M + LR | model2vec 0.10.0 | the state text embedded, LR on top (7.6 MB) | line, candidate (reported only) |
+
+- **CredSweeper's ML was trained on a random 85% of all CredData lines** (`experiment/train.py`). Its CredData numbers are in-sample, reported with that mention, and enter no gate. On the issue-report set it is out of sample.
+- **The rule scanners give no score**, so they enter at their default operating point.
+
+## 7. Metrics
+
+### 7.1 CredData test, line level (the gated unit)
+- **Universe**: labelled lines of the test repositories (one per `FileID`, `LineStart`).
+- **A line is positive** if it has a T row.
+- **A system flags a line** if it accepts at least one candidate on it (for the model: P(real) ≥ τ\*), or, for a span tool, if a reported span overlaps the line.
+- **Metrics**: precision, recall and F1.
+- **False-alarm rate**: the share of F/X lines flagged, as the cbx card defines it.
+- Generator misses count as false negatives.
+
+### 7.2 CredData test, candidate level
+- **A candidate is positive** if its value overlaps a T value span.
+- **Metrics**:
+  - precision, recall and F1 at τ\*;
+  - PR-AUC;
+  - recall at a 1% false-alarm rate;
+  - **ECE**, 15 bins, over all test candidates on labelled lines, for the real question.
+
+### 7.3 Unlabelled-line alarms
+Accepted candidates on lines with no meta row, per 1,000 test files, for every system. Reported, not scored: CredData never judged those lines.
+
+### 7.4 Issue-report test (real values)
+**Candidate level**: the dataset's own `candidate_string` in its text. The model judges it with the state built from its line and neighbouring lines (no path, scope `other`). A rule scanner flags a candidate if one of its findings overlaps it in the text. Precision, recall, F1, ECE.
+
+**Also reported**:
+- **end to end**: `sg-cand-1` and the model on the issue texts, with the dataset's positives as the reference;
+- **obfuscation sensitivity**: the F1 difference between the test values as published and the same values passed through CredData's `get_obfuscated_value`.
+
+### 7.5 Latency and size
+- **Native**: `sky-eval` over the CredData test candidates at full depth, median µs per candidate. Also at the first exit.
+- **WASM**: `crates/sky-web/bench/parity-node.mjs` on 200 test candidates, on a copy whose thresholds are set to 1 (amendment 13 of `docs/s6-gen-prereg.md`). Reported: max |p_wasm − p_native|, argmax agreement, median µs.
+- **Size**: GGUF bytes.
+- **CPU time** of each baseline over the test files.
+
+### 7.6 Uncertainty
+A paired bootstrap over test repositories (1,000 resamples, 95%) for the F1 differences of G1–G3 and for ECE. Reported, not gates.
+
+### 7.7 Clean real text (where v1 failed)
+- **Corpus**: the census corpus of secretgate's comparison (`docs/model-comparison.md` in that repository, section 5: real source, configuration and documentation files of secretgate, of its dependency tree and of this repository; 8,821 files on 14/11/2026, in which its default rules raise 65 findings in 17 files, none a real credential on inspection). None of these files is in CredData or in the issue-report set, and none is used for training. The list of files and their hashes are written to `runs/s6-secrets2/clean-corpus.json` when the generator is frozen (§2.4), before training.
+- **Measure**: the share of files with at least one accepted candidate (generator `sg-cand-1`, then P(real) ≥ τ\*), and the same share for secretgate's default engine and for the generator alone. Every accepted candidate of the model is then read by hand, and the report says how many look like a real credential; the gate uses the raw share.
+
+## 8. Gate (ternary GGUF, full depth, τ\* from validation)
+
+The model is published as `s6-secrets-verify-pico` only if **all** of these hold:
+
+| | condition | at today's published numbers this means about |
+|---|---|---|
+| **G1** | CredData line F1 ≥ F1 of the best rule scanner (max of Gitleaks 8.30.1, Betterleaks 1.10.1, secretgate default) **+ 0.15** | ≥ 0.59 if the best rule scanner stays near Gitleaks' 0.442 |
+| **G2** | CredData line F1 ≥ F1 of cbx-secrets-detector-17M **− 0.10** | ≥ 0.70 if cbx stays near 0.805 |
+| **G3** | CredData line F1 **>** F1 of the size-matched LR | — |
+| **G4** | issue-report test candidate F1 ≥ Gitleaks 8.30.1 F1 on the same candidates **+ 0.08** | ≥ 0.76 if Gitleaks stays near 0.678 |
+| **G5** | ECE ≤ **0.05** on CredData test candidates | — |
+| **G6** | native median latency ≤ **3 ms** per candidate, full depth (Apple M5) | — |
+| **G7** | clean real text (§7.7): files with at least one accepted candidate ≤ **1.0%** | the default rules flag 0.19% of these files (17 of 8,821); v1 flagged 59.8% of a 719-file subset |
+
+**Announced goal, not a gate**: G2 at −0.05 (within 0.05 of cbx-17M at about 1/270 of its file size).
+
+**Why these numbers.**
+
+- **G1, +0.15.** On the cbx card, Gitleaks is at 0.442 and cbx-17M at 0.805. +0.15 is about 40% of that gap. A smaller gain would not justify adding a model to a hook whose rules already run. Gitleaks' precision is 0.90 at recall 0.29, so the gain has to come from recall without giving back precision. The best of three scanners is taken so that the bar is the strongest rule set available, including secretgate's own.
+- **G2, −0.10.** The model is about 270× smaller than cbx-17M (about 250 KB against 67,220,156 bytes) and needs no torch. At −0.10 it still sits in the upper part of the rules-to-cbx range, and a hook author choosing between the two could reasonably take it. A larger gap would make the cbx model the right recommendation wherever 67 MB fits. The number is a judgement, not derived from a source.
+- **G3, strict.** If a hashed n-gram LR of the same size and the same features matches the transformer, the transformer has no reason to exist and the LR should ship instead.
+- **G4, +0.08.** This is the guard against learning CredData's obfuscation: the issue-report values are real.
+  - cbx-17M is +0.158 above Gitleaks there.
+  - The split is random per candidate, which favours trained models (they see sibling candidates of the same issues) and does nothing for rules, so the margin is set above a token +0.05.
+  - The gate asks for about half of cbx's margin.
+- **G5, 0.05.** This is a binary question in distribution, with a temperature fitted on validation. s6-secrets-pico reached 0.0009 on its synthetic bench. The general s6 guard (0.08) was set for a pool of zero-shot multi-class sources. 0.05 is a guard, not a target, and the report gives the exact value.
+- **G7, 1.0%.** This is the failure that ended v1, so it is a gate and not a reported number. The generator's candidate mode turns the rules' filters off and adds a keyword rule, so it proposes many values in clean files; the model has to reject nearly all of them. 1.0% is about five times the rate of the default rules on the same files, the price accepted for the recall asked by G1, and sixty times under v1. The number is a judgement.
+- **G6, 3 ms.** secretgate's whole engine runs in about 50 ms per scan (secretgate `README.md:70`). Ten candidates at 3 ms add 30 ms natively.
+  - s6-secrets-pico takes a median 789 µs natively with states of 93 tokens at the median (`BENCH.md`).
+  - States here are 2–3× longer, so 1.5–2.5 ms is expected.
+  - The WASM figure is reported, not gated.
+
+## 9. Reported, not gated
+- Generator recall and volume (train, val, test).
+- Kind accuracy.
+- Accuracy and ECE per exit, and the early-exit rate at the stored thresholds.
+- Every metric of §7 for every baseline, including span-level F1 in the cbx sense (overlap with a T value, label-agnostic) and CredSweeper's in-sample CredData number.
+- Results by CredData category (Password, Token, Key, Secret, API, Auth, other), and by scope (`test` vs `src`).
+- The value-only probe: an LR on the value features alone, trained on CredData training and scored on CredData validation. A high score means the value shape alone separates T from F/X, i.e. the obfuscation is readable.
+- Obfuscation sensitivity (§7.4).
+- The end-to-end issue-report run.
+- Decontamination counts and the licence-dropped repositories.
+- Truncation share, steps done, minutes and brake modes.
+- The latency of the whole secretgate scan with the verifier, on secretgate's FP corpus (`tests/fixtures/fp-corpus`): candidates per file and added ms.
+
+## 10. What this benchmark does not say
+- CredData's true values are random characters of the right classes, lengths and prefixes, while its false values are raw (`obfuscate_creds.py`). A good CredData score can partly come from reading that difference. G4 and the sensitivity measure test for it; no claim about word-based passwords is made from CredData.
+- The issue-report test shares issues with its training split; its numbers are optimistic for every trained system, ours included.
+- Recall is that of the system (generator plus model), on lines CredData chose to label. Nothing is claimed for secrets in lines that no rule flags.
+- The test is not cbx's test; our numbers and the card's are not interchangeable.
+
+## 11. What a failure would mean
+- **G1 fails**: on real repositories the verifier adds too little to the rules it filters. s6-secrets is not continued in this form.
+- **G2 fails, the others pass**: the design works but 445K parameters with this input are short of the 17M model. A next attempt (s6-nano graph or a 384/512 window, pre-registered anew) is justified. This model is not published.
+- **G3 fails**: a linear model on n-grams and features does as well at the same size. The report says so, and whether to ship that LR in secretgate becomes a separate decision, outside this file.
+- **G4 fails while G1–G2 pass**: the model learned CredData's obfuscation, or does not transfer to real values. More real-value training data is needed before any further attempt.
+- **G7 fails**: the verifier is too noisy on ordinary files to sit in a firewall, whatever its benchmark scores. Not published; real clean text has to weigh more in training before any further attempt.
+- **G5 or G6 fails alone**: not published. The report gives the numbers. Calibration or speed work comes before a new pre-registration; this run is not repeated.
+- **Whatever the result**, the report gives every number of §7 and §9, and a failure is written into `BENCH.md` as plainly as a pass.
+
+## 12. Forbidden
+- Reading any test file (CredData test repositories, the issue-report test) before §2.4 and §5 are frozen, except to decontaminate (§3.1) without labels.
+- Revising the generator after its single allowed revision, or after any test read.
+- Choosing τ\*, a preset, a checkpoint or a window on test data.
+- Running again to "see".
+- Training on a copyleft repository or on any test repository.
+- Writing any real value into a log, a report, a commit or a model card.
+
+## 13. Amendments
+None yet.
+
+## 14. Choices made at the freeze
+The feasibility study listed alternatives; these are the ones taken, with the alternative that was left.
+
+1. **State window**: 320, with the 5% rule of §4.3 (left: 384 fixed).
+2. **Size**: pico, 445K (left: the s6-nano graph, too slow in WASM for a hook).
+3. **Training repositories**: the 116 of cbx, licence-checked, so that cbx-17M can be rerun fairly on the test repositories (left: every permissive non-test repository).
+4. **Unlabelled candidates of training repositories**: weak negatives, capped at 25% of the CredData training items, with a hand-read sample (§3.1). The draft excluded them; they are in because v1 failed on text it had never seen. The size-matched baseline gets the same items.
+5. **Teacher**: none (left: soft labels from cbx-17M, which would be another experiment).
+6. **Symmetric obfuscation**: no; the value-only probe (§9) and G4 measure the artefact instead.
+7. **Issue-report test values**: kept as published, on the local disk only, never in a log, a commit or a remote service.
+8. **Size-matched baseline**: scikit-learn in a pinned `uv` environment (left: Rust in `sky-data`).
+9. **τ\***: F1-optimal on CredData validation, with F0.5 and F2 presets stored next to it.
+10. **X labels**: negative for the real question.
+11. **Decision budget**: 30 working minutes.
+12. **Kind question**: asked, reported, not gated.
+13. **Mix weights**: 0.45 / 0.35 / 0.20 (CredData with its weak negatives / issue reports / synthetic).
