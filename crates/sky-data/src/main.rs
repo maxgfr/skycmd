@@ -30,6 +30,82 @@ struct Cli {
     cmd: Cmd,
 }
 
+/// The steps of the s6-secrets v2 data build. `--data` is the data folder (outside every
+/// repository: `creddata/`, `gen/`, `issues/`, `splits.json`), `--out` its build folder.
+#[derive(Subcommand)]
+enum Secrets2Step {
+    /// CredData candidates of the training and validation repositories: frozen labels checked,
+    /// decontamination against the test repositories, weak negatives.
+    Creddata {
+        #[arg(long)]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Issue-report train and validation splits: decontamination against the test split, every
+    /// positive value replaced, candidate records.
+    Issues {
+        #[arg(long)]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value = "/usr/share/dict/words")]
+        dict: PathBuf,
+    },
+    /// States, decision records (<out>/records/<source>/{train,val}.jsonl) and the tables of
+    /// the baselines.
+    Mix {
+        #[arg(long)]
+        out: PathBuf,
+        /// The model's tokenizer (data/tok/tok-s2-1024.json).
+        #[arg(long)]
+        tokenizer: PathBuf,
+        #[arg(long, default_value = "/usr/share/dict/words")]
+        dict: PathBuf,
+    },
+    /// The CredData share of the pretraining text: files of the training repositories, as MLM
+    /// records, sized against the text the pretraining already reads.
+    PretrainText {
+        #[arg(long)]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        tokenizer: PathBuf,
+        /// The text the pretraining already reads (data/text-open,data/text).
+        #[arg(long, value_delimiter = ',', required = true)]
+        text: Vec<PathBuf>,
+        /// Share of the text sequences the CredData text is to be.
+        #[arg(long, default_value_t = 0.30)]
+        share: f64,
+    },
+    /// The sample of weak negatives that is read by hand (it stays in the data folder).
+    HandRead {
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// <out>/BUILD.json: every count, the hashes of the inputs and of the outputs.
+    Manifest {
+        #[arg(long)]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        tokenizer: PathBuf,
+        #[arg(long, default_value = "/usr/share/dict/words")]
+        dict: PathBuf,
+        /// The report of `sky-train s2-truncation --json` on the records.
+        #[arg(long)]
+        truncation: Option<PathBuf>,
+        /// The result of the reading by hand (default: <out>/handread/result.json when there).
+        #[arg(long)]
+        hand_read: Option<PathBuf>,
+        /// The model configuration the truncation was measured with.
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
+}
+
 #[derive(Subcommand)]
 enum Cmd {
     /// Download decision datasets and write one SPEC decision JSONL per source.
@@ -155,6 +231,29 @@ enum Cmd {
         /// Validation fraction (by text).
         #[arg(long, default_value_t = 0.05)]
         val_frac: f64,
+    },
+    /// s6-secrets v2 (`docs/s6-secrets2-prereg.md`, 3.3): synthetic candidates in the record
+    /// format of the candidate generator (provider-format keys, word-based passwords, and the
+    /// hard negatives), written to <out>/candidates/synth-{train,val}.jsonl.
+    SecretCand {
+        /// The build folder.
+        #[arg(long)]
+        out: PathBuf,
+        /// Training candidates (default: 20,000, or a third of the candidates of the two other
+        /// sources read from <out>/counts when that is fewer).
+        #[arg(long)]
+        n_train: Option<usize>,
+        #[arg(long, default_value_t = sky_data::secrets2::synth::VAL_CANDIDATES)]
+        n_val: usize,
+        /// Word list of the dictionary (lower-case entries of 4 to 12 letters are kept).
+        #[arg(long, default_value = "/usr/share/dict/words")]
+        dict: PathBuf,
+    },
+    /// s6-secrets v2: the data between the frozen candidate generator and the trainer
+    /// (`scripts/build-secrets2-data.sh` runs the steps in order).
+    Secrets2 {
+        #[command(subcommand)]
+        step: Secrets2Step,
     },
     /// s6-ear: audio clips → log-mel features (`sky_infer::audio`), test WAVs and clip manifests
     /// under --out (`docs/s6-ear-prereg.md`). Sets: smart-turn, speech-commands, mswc, mimi
@@ -591,6 +690,82 @@ fn main() -> Result<()> {
                     r.src, r.raw, r.duplicates, r.train, r.val, r.test
                 );
             }
+        }
+        Cmd::SecretCand {
+            out,
+            n_train,
+            n_val,
+            dict,
+        } => {
+            use sky_data::secrets2::{load_words, synth};
+            let c = synth::write(&out, cli.seed, n_train, n_val, &load_words(&dict)?)?;
+            println!("{}", serde_json::to_string_pretty(&c)?);
+        }
+        Cmd::Secrets2 { step } => {
+            use sky_data::secrets2::{self as s2, load_tokenizer, load_words};
+            let report = match step {
+                Secrets2Step::Creddata { data, out } => s2::cred::build(&s2::cred::CredOptions {
+                    data,
+                    out,
+                    seed: cli.seed,
+                })?,
+                Secrets2Step::Issues { data, out, dict } => {
+                    s2::issues::build(&s2::issues::IssueOptions {
+                        data,
+                        out,
+                        seed: cli.seed,
+                        words: load_words(&dict)?,
+                    })?
+                }
+                Secrets2Step::Mix {
+                    out,
+                    tokenizer,
+                    dict,
+                } => s2::mix::build(&s2::mix::MixOptions {
+                    out,
+                    tokenizer: load_tokenizer(&tokenizer)?,
+                    words: load_words(&dict)?,
+                })?,
+                Secrets2Step::PretrainText {
+                    data,
+                    out,
+                    tokenizer,
+                    text,
+                    share,
+                } => s2::pretext::build(&s2::pretext::PretextOptions {
+                    data,
+                    out,
+                    seed: cli.seed,
+                    tokenizer: load_tokenizer(&tokenizer)?,
+                    text,
+                    share,
+                })?,
+                Secrets2Step::HandRead { out } => s2::build::hand_read_sample(&out, cli.seed)?,
+                Secrets2Step::Manifest {
+                    data,
+                    out,
+                    tokenizer,
+                    dict,
+                    truncation,
+                    hand_read,
+                    config,
+                } => {
+                    let hand_read = hand_read.or_else(|| Some(out.join("handread/result.json")));
+                    s2::build::manifest(&s2::build::ManifestOptions {
+                        data,
+                        out,
+                        seed: cli.seed,
+                        dict,
+                        tokenizer,
+                        truncation,
+                        hand_read,
+                        config,
+                    })?;
+                    serde_json::json!({"written": "BUILD.json"})
+                }
+            };
+            // counts only: no step prints a value or a line
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Cmd::FetchAudio {
             set,

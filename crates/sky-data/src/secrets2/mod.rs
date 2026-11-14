@@ -6,7 +6,10 @@
 //! - [`issues`]: the issue-report train and validation splits as candidate records, their
 //!   decontamination against the test split and the replacement of every real value (3.2);
 //! - [`replace`]: the word-preserving shape replacement;
-//! - [`synth`]: synthetic candidates (3.3).
+//! - [`synth`]: synthetic candidates, `sky-data secret-cand` (3.3);
+//! - [`mix`]: states, decision records and the tables the baselines read (3.4, 4.1);
+//! - [`pretext`]: the pretraining text of section 5;
+//! - [`build`], which writes `BUILD.json`.
 //!
 //! One record format serves the three sources: the candidate record of the generator
 //! `sg-cand-1` ([`CandRecord`]), and one state builder, `sky_infer::secret_cand`, which the
@@ -16,8 +19,11 @@
 //! (synthetic), and the lines around them are real text: every output goes to the data folder,
 //! outside any repository, and nothing here prints a value or a line.
 
+pub mod build;
 pub mod cred;
 pub mod issues;
+pub mod mix;
+pub mod pretext;
 pub mod replace;
 pub mod synth;
 
