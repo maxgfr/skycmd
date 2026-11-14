@@ -1,0 +1,17 @@
+{
+ "what": "s6-secrets v2 (docs/s6-secrets2-prereg.md): the hashes the evaluation refuses to run without. The generator's own hashes are in runs/s6-secrets2/generator.json. Hashes only: the files stay in the data folder, outside every repository.",
+ "splits.json": {
+  "sha256": "b81d50dd1bfc31a29cfe5250f05126702d7eaf9e9224c52f4cdde0245987555e"
+ },
+ "creddata": {
+  "commit": "01e3d135a90f46c9a7965683b24a05d12e136b33",
+  "meta": "the files of meta/ as that commit has them (git status of the checkout)",
+  "data_listing_sha256": "2c571331f4b1861c3b42608076e51689568997aff8dd7c7e9ccb2b4dc0b81f22"
+ },
+ "issues": {
+  "train.csv": "8ab02c027759ac1544c770e8c2915eb696324f3b6f32dd65806fd32d7981660e",
+  "val.csv": "7b890f83bf790f5ad108a41ad7d746ad5bfe11403bc5cbfd42e2a814d747f012",
+  "test.csv": "40d1fb5469b5ceb855bb642bafa6dc124930518df37b98181cba69c1b211cd34",
+  "test_wild.csv": "44ac8e311e49339d1cd6d39938c5070f1935b92d0449bdc87af39d1e6e53b2ed"
+ }
+}
