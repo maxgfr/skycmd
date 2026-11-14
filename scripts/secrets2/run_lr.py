@@ -180,6 +180,19 @@ def table_files(tables):
     return {f"{s}-{k}.jsonl": os.path.join(tables, f"{s}-{k}.jsonl") for s in MIX for k in ("train", "val")}
 
 
+def check_build(tables, files):
+    """sha256 of the BUILD.json next to the tables; the tables must be the ones it names."""
+    path = os.path.join(os.path.dirname(os.path.abspath(tables)), "BUILD.json")
+    if not os.path.isfile(path):
+        return None
+    outputs = common.load_json(path)["outputs"]
+    for name, p in files.items():
+        want = outputs.get(f"tables/{name}", {}).get("sha256")
+        if want != common.sha256_file(p):
+            raise common.Refused(f"{p} is not the table BUILD.json names (sha256 {want})")
+    return common.sha256_file(path)
+
+
 def train(tables, out, kind):
     files = table_files(tables)
     rows = [r for s in MIX for r in candidates.read_table(files[f"{s}-train.jsonl"])]
@@ -191,7 +204,7 @@ def train(tables, out, kind):
         if r.get("split") != "val" or r.get("source") != "creddata":
             raise common.Refused(f"{r['id']} is not a CredData validation candidate")
     os.makedirs(out, exist_ok=True)
-    report = {"baseline": kind, "seed": SEED, "mix": MIX,
+    report = {"baseline": kind, "seed": SEED, "mix": MIX, "build_json_sha256": check_build(tables, files),
               "training_candidates": {s: sum(1 for r in rows if r["source"] == s) for s in MIX},
               "weak_negatives": sum(1 for r in rows if r.get("weak")), "positives": sum(int(r["real"]) for r in rows),
               "validation_candidates": {"n": len(val), "positives": sum(int(r["real"]) for r in val), "what": "tables/creddata-val.jsonl"},

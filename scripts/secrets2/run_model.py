@@ -19,7 +19,7 @@ format. The engine is the shipping one (`sky-eval`, native), at full depth.
   run_model.py convert --model M.gguf --dump DIR/model-dump.jsonl --table T.jsonl
                        --corpus creddata:validation --out FLAGS [--system model]
       one flag per candidate with score = P(real), the threshold being tau* read from the
-      model's metadata (`skycmd-secrets2.tau`, stored before any test file is read). Writes
+      model's metadata (`skycmd-s2.secrets2.tau_f1`, stored before any test file is read). Writes
       FLAGS/model.flags.jsonl; FLAGS must hold the generator's flags of the same corpus.
 
 The records and the table come from the data side (records/<source>/<split>.jsonl and

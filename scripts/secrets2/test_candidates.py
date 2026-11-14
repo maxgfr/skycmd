@@ -18,6 +18,7 @@ import candidates  # noqa: E402
 import common  # noqa: E402
 import run_lr  # noqa: E402
 import run_model  # noqa: E402
+import states  # noqa: E402
 
 HAS_SKLEARN = importlib.util.find_spec("sklearn") is not None
 OPTS = ["false: no, the statement does not hold", "true: yes, the statement holds"]
@@ -108,6 +109,22 @@ class Dump(unittest.TestCase):
         self.assertEqual((lat["early_exit_rate_at_stored_thresholds"], lat["bytes"], lat["tau"]), (0.25, 4, 0.4))
         with self.assertRaises(common.Refused):
             run_model.real_rows({"sources": {"all": {"n": 1}}})
+
+
+class States(unittest.TestCase):
+    def test_envelope(self):
+        rec = {"generator": "sg-cand-1", "file": "data/bbbbbbbb/src/conf/ffffffff.py", "rule": "generic-keyword", "value": "v" * 8}
+        source, item = states.envelope("creddata:validation", 7, rec)
+        # the record goes in as it is; the label is a placeholder and only the real question is asked
+        self.assertEqual((source, item["id"], item["source"], item["split"], item["kind"], item["rec"]), ("creddata", "cred:val:7", "creddata", "val", False, rec))
+        self.assertEqual(states.envelope("creddata:test", 7, rec)[1]["id"], "cred:test:7")
+        # a licence copy directly under the repository's folder has no scope directory: no state
+        self.assertIsNone(states.envelope("creddata:validation", 0, dict(rec, file="data/bbbbbbbb/LICENSE.txt")))
+        # the clean-text corpus: the path inside its repository (a "secretgate/" prefix would read as a scope word)
+        source, item = states.envelope("clean", 3, dict(rec, file="secretgate/src/engine/scanner.ts"))
+        self.assertEqual((source, item["id"], item["rec"]["file"]), ("synth", "clean:all:3", "src/engine/scanner.ts"))
+        with self.assertRaises(common.Refused):
+            states.envelope("issues:validation", 0, rec)
 
 
 @unittest.skipUnless(HAS_SKLEARN, "scikit-learn is not installed in this interpreter")

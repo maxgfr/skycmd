@@ -46,10 +46,10 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 FROZEN = os.path.join(HERE, "frozen.json")
 GENERATOR_JSON = os.path.join(REPO, "runs", "s6-secrets2", "generator.json")
 TEST_OPEN = os.path.join(REPO, "runs", "s6-secrets2", "TEST-OPEN")
-# The metadata key of the operating threshold tau* in the model's GGUF (section 5); the F0.5
-# and F2 presets sit next to it.
-TAU_KEY = "skycmd-secrets2.tau"
-TAU_PRESET_KEYS = {"f0.5": "skycmd-secrets2.tau_f0.5", "f2": "skycmd-secrets2.tau_f2"}
+# The metadata keys of the operating thresholds in the model's GGUF (section 5): tau*, the
+# F1-optimal one the gate reads, and the F0.5 and F2 presets next to it.
+TAU_KEY = "skycmd-s2.secrets2.tau_f1"
+TAU_PRESET_KEYS = {"f0.5": "skycmd-s2.secrets2.tau_f05", "f2": "skycmd-s2.secrets2.tau_f2"}
 CREDDATA_SPLITS = ("training", "validation", "test")
 ISSUE_SPLITS = {"training": "train", "validation": "val", "test": "test"}
 

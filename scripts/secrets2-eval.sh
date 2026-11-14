@@ -4,7 +4,7 @@
 # gate, for one split. Everything runs at `nice -n 19`, one tool at a time.
 #
 # Usage: scripts/secrets2-eval.sh <validation|test> [step ...]
-#   steps (default: all, in this order)
+#   steps (default: all, in this order; `clean` before `states`, which reads its export)
 #     tools      the pinned tools: downloads checked against scripts/secrets2/pins.json, uv
 #                environments from their locks, the two containers; <data>/eval/DOWNLOADS.json
 #     creddata   on the CredData repositories of the split: the generator alone, the default
@@ -12,6 +12,8 @@
 #                cbx-secrets-detector-17M
 #     issues     the issue-report split as texts, as published and through CredData's
 #                obfuscation, and the scanners on both
+#     states     the state of every candidate of the split and of the clean-text corpus, from
+#                the data side's own builder (scripts/secrets2/states.py; SKY_DATA)
 #     trained    the size-matched LR and potion-base-2M + LR: trained once (validation run),
 #                then scored on the split's candidates
 #     model      the model (MODEL=...): sky-eval at full depth, its answers as flags
@@ -20,7 +22,7 @@
 #     gate       scripts/s6-secrets2-gate.py: results.md and gate.json
 #
 #   MODEL=models/.../x-ternary.gguf   the trained ternary GGUF; its metadata holds tau*
-#                                     (skycmd-secrets2.tau), stored before any test file is read
+#                                     (skycmd-s2.secrets2.tau_f1), stored before any test file is read
 #   SEAT=model                        the system the gate judges (SEAT=lr rehearses it without a model)
 #   SECRETS2_DATA, SECRETS2_SECRETGATE  the data folder and the frozen secretgate checkout
 #                                       (defaults in scripts/secrets2/common.py)
@@ -33,16 +35,16 @@
 # when a frozen hash differs: splits.json, the generator's files, the CredData checkout and
 # its file listing, the issue-report split file. Every runner checks the split again.
 #
-# The candidates the model and the trained baselines judge come as tables of states. On
-# validation the data side's build has them for the labelled candidates it kept
-# (BUILD/tables/creddata-val.jsonl, issues-val.jsonl). For EVERY candidate of a split (the
-# test, the unlabelled lines, the clean-text corpus) the states are expected in
-#   <data>/eval/<split>/states/{creddata,issues,issues-obfuscated}.jsonl      tables
-#   <data>/eval/<split>/states/{creddata,issues,issues-obfuscated}.records.jsonl  decision records
-#   <data>/eval/clean/states/clean.{jsonl,records.jsonl}
-# built by the data side's state builder from the raw exports this script writes
-# (<data>/eval/<split>/flags/raw/candidates.raw.jsonl and its siblings). A system whose
-# states are missing is skipped and said so; the gate then fails on the missing result.
+# The candidates the model and the trained baselines judge come as tables of states, all from
+# the data side's state builder. For the CredData candidates of the split and for the
+# clean-text corpus, the `states` step builds them from the generator's raw exports:
+#   <data>/eval/<split>/states/creddata.{jsonl,records.jsonl}    <data>/eval/clean/states/clean.*
+# For the issue reports the dataset's own candidates need the data side's record builder: on
+# validation its build has them (BUILD/tables/issues-val.jsonl, values replaced as in training);
+# for the test, and for the obfuscated texts, they are expected in
+#   <data>/eval/<split>/states/{issues,issues-obfuscated}.{jsonl,records.jsonl}
+# A system whose states are missing is skipped and said so; the gate then fails on the missing
+# result.
 #
 # Outputs, all in the data folder (outside every repository): <data>/eval/<split>/. Nothing
 # written there or printed holds a value except the raw exports under raw/, which stay there.
@@ -54,13 +56,13 @@ split=${1:-}
 case "$split" in
   validation | test) ;;
   *)
-    echo "usage: scripts/secrets2-eval.sh <validation|test> [tools creddata issues trained model clean score gate]" >&2
+    echo "usage: scripts/secrets2-eval.sh <validation|test> [tools creddata issues clean states trained model score gate]" >&2
     exit 2
     ;;
 esac
 shift
 steps=("$@")
-[ ${#steps[@]} -eq 0 ] && steps=(tools creddata issues trained model clean score gate)
+[ ${#steps[@]} -eq 0 ] && steps=(tools creddata issues clean states trained model score gate)
 
 S=scripts/secrets2
 py() { nice -n 19 python3 -I "$@"; }
@@ -77,8 +79,6 @@ out=$E/$split
 flags=$out/flags
 iss=$E/issues/$split
 build=${BUILD:-$data/build}
-short=val
-[ "$split" = test ] && short=test
 mkdir -p "$flags"
 
 # table <name>: the table of states of a set of candidates of this split, or nothing.
@@ -132,6 +132,11 @@ issues() {
   done
 }
 
+states() {
+  py $S/states.py --corpus "creddata:$split" --candidates "$flags/raw/candidates.raw.jsonl" --out "$out/states/creddata" --build "$build"
+  py $S/states.py --corpus clean --candidates "$E/clean/flags/raw/candidates.raw.jsonl" --out "$E/clean/states/clean" --build "$build"
+}
+
 trained() {
   local kind name t corpus dir
   for kind in lr potion; do
@@ -171,13 +176,13 @@ model() {
       echo "== model on $corpus: no table or records of states ($out/states/$t.jsonl, $t.records.jsonl): skipped"
       continue
     fi
-    py $S/run_model.py eval --model "$MODEL" --records "$(records "$t")" --split "$short" --out "$out/model/$t" >/dev/null
+    py $S/run_model.py eval --model "$MODEL" --records "$(records "$t")" --split val --out "$out/model/$t" >/dev/null
     py $S/run_model.py convert --model "$MODEL" --dump "$out/model/$t/model-dump.jsonl" --table "$(table "$t")" --corpus "$corpus" --out "$dir"
     # the WASM figure is reported, not gated: a parity failure stays in model-wasm.json
     [ "$t" != creddata ] || py $S/run_model.py wasm --model "$MODEL" --dump "$out/model/$t/model-dump.jsonl" --out "$out/model/$t" >/dev/null || true
   done < <(corpora)
   if [ -f "$E/clean/states/clean.jsonl" ] && [ -f "$E/clean/states/clean.records.jsonl" ]; then
-    py $S/run_model.py eval --model "$MODEL" --records "$E/clean/states/clean.records.jsonl" --split "$short" --out "$E/clean/model" >/dev/null
+    py $S/run_model.py eval --model "$MODEL" --records "$E/clean/states/clean.records.jsonl" --split val --out "$E/clean/model" >/dev/null
     py $S/run_model.py convert --model "$MODEL" --dump "$E/clean/model/model-dump.jsonl" --table "$E/clean/states/clean.jsonl" --corpus clean --out "$E/clean/flags"
   else
     echo "== model on the clean-text corpus: no states ($E/clean/states/clean.jsonl): skipped"
@@ -218,12 +223,12 @@ gate() {
 
 for s in "${steps[@]}"; do
   case "$s" in
-    tools | creddata | issues | trained | model | clean | score | gate)
+    tools | creddata | issues | clean | states | trained | model | score | gate)
       echo "== secrets2-eval $split: $s"
       "$s"
       ;;
     *)
-      echo "unknown step $s (tools, creddata, issues, trained, model, clean, score, gate)" >&2
+      echo "unknown step $s (tools, creddata, issues, clean, states, trained, model, score, gate)" >&2
       exit 2
       ;;
   esac
