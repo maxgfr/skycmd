@@ -14,7 +14,7 @@ s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://gi
 ### In short
 
 - **s6-nano passes its gate** and is published, at full depth. 1,486,225 ternary parameters (715 KB): 0.480 on `typed_decisions_bench`, above the majority class (0.398) where s3-pico (0.382) and s4-micro (0.352 on the same records) stayed below it, with an ECE of 0.0479, while it still plays every game at the oracle's level.
-- **s6-secrets-pico passes its gate** and is published, at full depth. 445,345 ternary parameters (250 KB): on a synthetic bench of file types it never saw, secret 0.9990 and service 0.9795, where a gitleaks-style rule scanner scores 0.977 and 0.787. Its line answer is weak (0.6859), and the bench says nothing about real leaks.
+- **s6-secrets-pico passes its gate** and is published, at full depth. 445,345 ternary parameters (250 KB): on a synthetic bench of file types it never saw, secret 0.9990 and service 0.9795, where a gitleaks-style rule scanner scores 0.977 and 0.787. Its line answer is weak (0.6859). **On real text it fails:** measured after publication on 719 real files with no secret, it flags 59.8% of them at p ≥ 0.9 and 49.4% at p ≥ 0.999. It stays published as the result of its pre-registration, not as a scanner ([below](#s6-secrets-real-text)).
 - **s6-micro fails on calibration only.** 0.547 on the bench (gate 0.45 and announced goal 0.50 both met), but ECE 0.0821 at full depth and 0.0804 at its conformal thresholds, above the 0.08 guard. It is not published.
 - **s6-ear-nano fails three of its four gates.** End of turn 0.5681 against 0.8518 for Smart Turn v3.2, and its own control without the Mimi pretraining does better on all four sets. It is not published.
 - **The s6 additions were not adopted.** The pre-registered pico ablation kept none of them: no Muon, no Parallax, no XSA, no SODA, no exit distillation, no EMA, no StableQAT, no curriculum. s6-nano is the s3 architecture at language scale, as in s4, trained with AdamW. What changed from s3-pico and s4-micro is the pretraining (0.87B tokens, 588 per parameter), the GLM-5.3-flash teacher, a larger tokenizer and wider windows. No ablation separates these causes, so none of them is claimed on its own.
@@ -39,9 +39,9 @@ Test sets, at most 2,000 questions per source, ternary GGUF of the last DAgger r
 - **Truncation** (result): 1.4 % of the bench states are cut at 512 tokens. s3-pico's windows cut 96.8 % of the bench sequences ([chapter 12](/tutorial/12-size-ladder)).
 - **In the browser** (result). WASM matches the native engine on the first 200 bench questions to 9.5e-7, with the same answer on all 200. A long JSON state of the bench takes about 15 ms per decision under Node, a Flappy frame 0.44 ms. Try it on [Live](/live/#s6-nano-the-questions-it-was-trained-for) and [Play](/play/).
 
-### s6-secrets-pico: passed, published at full depth
+### s6-secrets-pico: passed on its bench, fails on real text {#s6-secrets-pico-passed-published-at-full-depth}
 
-It reads a short text (a config file, a `.env`, code) and answers four typed questions: is a usable secret exposed, which service issued it, what kind of value it is (secret, test key, publishable key, placeholder, not a credential), and on which line. The bench, `secret_bench`, has 1,996 texts in four file types the training never shows (docker-compose, toml, go, ini). Ternary GGUF, last exit, full depth (`runs/s6-secrets-pico/report.md`); the rule scanner on the same texts (`runs/s6-secrets-pico/baseline.txt`, measured before any training):
+It reads a short text (a config file, a `.env`, code) and answers four typed questions: is a usable secret exposed, which service issued it, what kind of value it is (secret, test key, publishable key, placeholder, not a credential), and on which line. The bench, `secret_bench`, has 1,996 texts in four file types the training never shows (docker-compose, toml, go, ini). Ternary GGUF, last exit, full depth (`runs/s6-secrets-pico/report.md`); the rule scanner on the same texts (`runs/s6-secrets-pico/baseline.txt`, measured before any training). These are bench scores, on our own generator's texts; on real files the model flags most clean files ([real text](#s6-secrets-real-text)).
 
 | question | s6-secrets-pico | rule scanner |
 |---|---:|---:|
@@ -56,7 +56,21 @@ It reads a short text (a config file, a `.env`, code) and answers four typed que
 - **Validation** (result): 0.998 on the seen templates (ternary, pooled over the four questions; per question not computed).
 - **Early exit** (result). At the thresholds the calibration stored (0.5 / 0.9 / 0.5), every question stops after the first of 4 passes: secret and kind keep 0.9990, service drops to 0.9775 and line to 0.6227. The gate was read at full depth, so the published file has its thresholds set to 1, as for s6-nano.
 - **Size and latency** (result): 445,345 parameters, 250,272 bytes. Median 786 to 789 µs per decision natively over the 7,984 bench questions, 1,420 to 1,427 µs in WASM under Node on the first 200, where WASM matches the native engine to 1.2e-6 with the same answer on all 200. These times were measured on the build machine (Apple M5) while a GPU training was running. Try it on [Live](/live/#s6-secrets-pico-is-a-secret-exposed-in-this-text).
-- **What this bench does not say.** It is synthetic: the formats, the file templates and the class shares are our generator's, and the keys are fake, with random bodies. Beating the scanner here shows that the model reads formats and context in file types it never saw. It says nothing about real leaks in real repositories.
+- **What this bench does not say.** It is synthetic: the formats, the file templates and the class shares are our generator's, and the keys are fake, with random bodies. Beating the scanner here shows that the model reads formats and context in file types it never saw. It does not show that the model works on real files, and the next measurement shows that it does not.
+
+#### Real text (14/11, after publication) {#s6-secrets-real-text}
+
+After the gate was read and the model published, the published file was run on real files outside its generator, for a possible use in [secretgate](https://github.com/maxgfr/secretgate), a rule-based secrets firewall for coding agents (measurement, script and limits: [secretgate pull request 19](https://github.com/maxgfr/secretgate/pull/19); [amendment 6](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md)). 719 real source, configuration and documentation files in which a rule scanner finds nothing were cut into 22,433 chunks of at most 7 lines and 300 characters, the length of the training texts, and the secret question was asked on each chunk. Every flag is a false positive:
+
+| threshold | chunks flagged | files flagged |
+|---|---:|---:|
+| p ≥ 0.9 | 10.6% | 59.8% |
+| p ≥ 0.999 | 5.9% | 49.4% |
+
+- **The flagged chunks are ordinary text** (imports, prose, JSON). The probabilities are not calibrated outside the generator: over the clean chunks the median is 0.00009 and the 90th percentile 0.93.
+- **The gate stays passed**: it is on `secret_bench`, and nothing in it is reread or changed. But the model cannot be used to scan real files. It stays published as the result of its pre-registration, not as a tool.
+- **Not measured:** recall on real secrets (no real secret is in that corpus).
+- **Next.** A second version would be a different task (a rule finds the candidate, the model judges it in its context), with its own pre-registration. Nothing is promised.
 
 ### s6-micro: failed on calibration only
 
