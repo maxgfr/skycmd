@@ -17,15 +17,22 @@ tags:
 
 # s6-secrets-pico
 
-**A 250 KB ternary model that reads a short text and says whether it exposes a secret.** 445,345
-parameters. Paste a config file, a `.env` or a few lines of code: it answers four typed questions,
-each with calibrated probabilities in one forward pass. Is a usable secret exposed, which service
-issued it, what kind of value it is, and on which line. On a synthetic bench of file types it never
-saw in training, it beats a gitleaks-style rule scanner on the two questions the scanner answers. It
-passed a publication gate fixed before training.
+> **Not a scanner. Do not use it on real files.** Measured after publication on 719 real source,
+> configuration and documentation files that hold no secret, the model flags 59.8% of the files at
+> p ≥ 0.9 and 49.4% at p ≥ 0.999. Its bench scores below stand, but they come from our own
+> generator and do not carry over to real text. Measurement:
+> [maxgfr/secretgate pull request 19](https://github.com/maxgfr/secretgate/pull/19); details in
+> [On real text](#on-real-text-measured-after-publication).
+
+**A 250 KB ternary model trained to say whether a short generated text exposes a secret.** 445,345
+parameters. It answers four typed questions in one forward pass: is a usable secret exposed, which
+service issued it, what kind of value it is, and on which line. On a synthetic bench of file types it
+never saw in training, it beats a gitleaks-style rule scanner on the two questions the scanner
+answers, and it passed a publication gate fixed before training. It is published as the result of
+that pre-registration, not as a tool.
 
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-secrets-pico](https://huggingface.co/spaces/{{USER}}/s6-secrets-pico)
-  (paste a text; everything runs in your browser, nothing is sent anywhere)
+  (presets from the generator's bench; everything runs in your browser, nothing is sent anywhere)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 - **Pre-registration:** [docs/s6-secrets-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md)
 - **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
@@ -49,7 +56,33 @@ texts, measured before any training:
   on the secret question for all 46 of those texts. It is wrong on 2 texts the scanner gets right:
   an `x_api_key` with a hex value in an ini file, which it calls not a credential.
 - **Validation** (seen file types): 0.998, pooled over the four questions.
-- **Calibration** (ECE, test): secret 0.0009, service 0.0154, kind 0.0010, line 0.3051.
+- **Calibration** (ECE, test): secret 0.0009, service 0.0154, kind 0.0010, line 0.3051. This
+  holds on the generator's texts only (see below).
+
+## On real text (measured after publication)
+
+On 14/11, after the gate was read and the model published, the published file was run on real
+files outside its generator (amendment 6 of the
+[pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md); the
+measurement, its script and its limits are in
+[maxgfr/secretgate pull request 19](https://github.com/maxgfr/secretgate/pull/19)). 719 real
+source, configuration and documentation files in which a rule scanner finds nothing were cut into
+22,433 chunks of at most 7 lines and 300 characters, the length of the training texts, and the
+secret question was asked on each chunk. Every flag is a false positive:
+
+| threshold | chunks flagged | files flagged |
+|---|---:|---:|
+| p ≥ 0.9 | 10.6% | 59.8% |
+| p ≥ 0.999 | 5.9% | 49.4% |
+
+- The flagged chunks are ordinary text (imports, prose, JSON).
+- The probabilities are not calibrated outside the generator: over the clean chunks the median
+  P(secret) is 0.00009 and the 90th percentile 0.93.
+- The gate, on `secret_bench`, stays passed: nothing in it is changed. But the model cannot be used
+  to scan real files.
+- Recall on real secrets was not measured.
+- A second version, if one is made, would be a different task (a rule finds the candidate, the
+  model judges it in its context), with its own pre-registration. Nothing is promised.
 
 Latency, measured by us on an Apple M5 while a GPU training was running (an idle machine may be
 faster): median 786 to 789 µs per decision natively over the 7,984 bench questions, 1,420 to
@@ -91,8 +124,8 @@ The model only knows the questions of its training data. Ask them with exactly t
 - **The bench is synthetic.** Its formats, file templates and class shares are those of our own
   generator, and every key is a provider's public format with a random body. Beating the scanner
   there shows that the model reads formats and context (the variable name, a test or publishable
-  key, a placeholder) in file types it never saw. It says nothing about real leaks in real
-  repositories. Do not use it as your only secret scanner.
+  key, a placeholder) in file types it never saw. On real files it fails (see
+  [On real text](#on-real-text-measured-after-publication)): do not use it as a secret scanner.
 - **The line answer does not work yet.** 0.6859 overall, and confident when wrong (ECE 0.3051). On
   the 1,010 bench texts that expose a secret it names the right line 383 times; the texts without
   one, where `none` is right, carry the score.
