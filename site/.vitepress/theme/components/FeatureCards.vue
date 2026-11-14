@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { withBase } from 'vitepress'
 import { live } from '../lib/store'
-import { formatInt } from '../lib/wasm'
+import { formatInt, WASM_BUILD_LABEL, wasmBuild } from '../lib/wasm'
 
 const tiny = computed(() =>
   live.status === 'model'
@@ -11,7 +11,7 @@ const tiny = computed(() =>
 )
 const fast = computed(() =>
   live.medianUs > 0 && live.status === 'model'
-    ? `${formatInt(live.medianUs)} µs per decision right now, in WASM with SIMD128, on the main thread.`
+    ? `${formatInt(live.medianUs)} µs per decision right now, in WASM with ${WASM_BUILD_LABEL[wasmBuild() ?? 'simd128']}, on the main thread.`
     : 'One forward pass per question, no token generation: s3-pico takes 49.6 µs per Flappy frame (two questions and the physics) in WASM with SIMD128, under Node on the build machine.',
 )
 </script>
