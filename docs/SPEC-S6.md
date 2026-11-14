@@ -1,6 +1,8 @@
 # skycmd-s6: Parallax attention and the Muon v2 recipe (an extension of s3)
 
-s6 is **s3 with one new option** in the same `skycmd-s2` GGUF architecture, plus a new optimizer recipe for training. Everything in `docs/SPEC-S2.md` and `docs/SPEC-S3.md` still holds unless this file says otherwise. A GGUF without the new key behaves exactly as before, so every s2 and s3 file and test stays valid. No s6 model is trained yet (issue #34): this file fixes the format, the recipe and the ablation that will decide whether s6 ships.
+s6 is **s3 with one new option** in the same `skycmd-s2` GGUF architecture, plus a new optimizer recipe for training. Everything in `docs/SPEC-S2.md` and `docs/SPEC-S3.md` still holds unless this file says otherwise. A GGUF without the new key behaves exactly as before, so every s2 and s3 file and test stays valid. This file was written before any s6 model was trained (issue #34) and fixes the format, the recipe and the ablation that decides what s6 ships.
+
+**Status on 14/11/2026.** The pico ablation (§4) has run, and its pre-registered rules adopted none of the additions: AdamW, learning-rate scale 2.0, no Parallax, no XSA (`runs/recipe/recipe.json`). The trained models therefore have no probe rows and fewer parameters than the counts below, which were fixed with Parallax on. s6-nano (1,486,225 parameters) and s6-secrets-pico (445,345) passed their gates and are published at full depth; s6-micro (5,587,201) failed its calibration guard (ECE 0.0821 against 0.08) and is not published; s6-ear-nano (1,532,449) failed three of its four gates and is not published; s6-cast is still training. Results: `BENCH.md`.
 
 What motivates each part:
 - **Parallax** (arXiv 2605.29157, Zuo et al., Northwestern / Tilde Research). Softmax attention is a local *constant* estimator; local linear attention (LLA) fits a local *linear* one and has strictly smaller integrated error, but needs a solver per query. Parallax learns the probe instead of solving for it. Its gain over softmax attention shows up under Muon and mostly vanishes under AdamW (§4.3 of the paper).
@@ -41,7 +43,11 @@ There is one recipe in the code. A checkpoint written by recipe 1 has no `recipe
 - **Logit margin** (`Metrics.margin`, in every metrics JSON): the gold option's raw logit minus the best other logit, averaged over questions with two options or more. A larger margin leaves more room before noise flips the answer.
 - **Effective rank** (`erank` in the s2 `log.jsonl` at every validation): `exp(H)`, with H the entropy of the normalized singular values of the raw state latents of each exit. It is computed over the valid state tokens of the first 128 validation items, from the `d × d` Gram matrix on the CPU. A low value means the representation collapses onto a few directions.
 
-## 4. Ablation (`cargo xtask s6ab [--arms a,b]`, not run yet)
+## 4. Ablation (`cargo xtask s6ab [--arms a,b]`)
+
+Run before any s6 size was trained. Its rules adopted no arm: each missed its pre-registered gain or lost a game (`runs/recipe/recipe.json`, `BENCH.md`).
+
+
 A 2 × 2 grid on the s3-pico shape, then each change of §8–10 alone against it:
 
 | arm | config | optimizer | decide |
@@ -76,11 +82,11 @@ Eleven arms × 3 seeds is 33 runs of about 27 minutes on an M5, so about 15 hour
 | s6-femto | s3-femto + `parallax` | golden only |
 | s6-femto-xsa | s6-femto + `xsa` | golden only |
 | s3-pico-xsa | s3-pico + `xsa` | 445,345 / 203,393 (no new tensor) |
-| s6-secrets-pico | s6-pico with a 320-token state and a 192-token head (§14) | 463,969 / 212,705 (RoPE: no new tensor) |
-| s6-nano | general-purpose, vocabulary 2,048, d 144, 512 / 160 windows (§15) | 1,569,457 / 778,065 |
-| s6-micro | s4-micro + `parallax` (§15) | 5,849,601 / 2,960,769 (s4-micro: 5,587,201) |
+| s6-secrets-pico | s6-pico with a 320-token state and a 192-token head (§14) | 463,969 / 212,705 (RoPE: no new tensor); trained without Parallax: 445,345 / 203,393 |
+| s6-nano | general-purpose, vocabulary 2,048, d 144, 512 / 160 windows (§15) | 1,569,457 / 778,065; trained without Parallax: 1,486,225 |
+| s6-micro | s4-micro + `parallax` (§15) | 5,849,601 / 2,960,769 (s4-micro: 5,587,201); trained without Parallax: 5,587,201 |
 
-Each encoder block gains `d²` probe weights and `head_dim` norm weights: 9,312 per block for s6-pico (one state block, one static block).
+Each encoder block gains `d²` probe weights and `head_dim` norm weights: 9,312 per block for s6-pico (one state block, one static block). The counts with Parallax are those fixed before the ablation; the trained models have `parallax` off (§4).
 
 ## 6. Cost (Apple M5, measured on random data)
 | | s3-pico | s6-pico |
@@ -151,7 +157,10 @@ Pacing-based sampling (arXiv 2506.11300).
 - **Numeric rows**: the numeric curriculum rows (`--numeric`) are unaffected.
 - **Reproducibility**: the draws use the session's RNG, so a run is reproducible and resumes exactly.
 
-## 14. s6-secrets: API-key and secret detection (`configs/s6-secrets-pico.json`, not trained yet)
+## 14. s6-secrets: API-key and secret detection (`configs/s6-secrets-pico.json`)
+
+**Trained and published.** s6-secrets-pico was trained once (seed 0) with the recipe of §4, so without Parallax: 445,345 parameters, a 250,272-byte ternary GGUF. It passed its gate on `secret_bench` (ternary, full depth): secret 0.9990 against the scanner's 0.977, service 0.9795 against 0.787. Its line answer is weak (0.6859), and the bench is synthetic. Details: `BENCH.md`, section "s6-secrets-pico".
+
 
 A model of its own, with the s6-pico architecture, specialized in one task: telling whether a short text (an `.env` file, code, a config, a `curl` command, a log, a diff) exposes a usable secret. The protocol and the publication gate are in `docs/s6-secrets-prereg.md`.
 
@@ -162,11 +171,13 @@ A model of its own, with the s6-pico architecture, specialized in one task: tell
   - **line** (choice): which line exposes the secret?
 - **Generated, never real.** Keys follow each provider's public format with random bodies. Half the texts expose a secret; the rest are the negatives a scanner has to tell apart, often under a secret-sounding name.
 - **A bench of unseen contexts.** `secret_synth` (50,000 texts) draws from 9 contexts; `secret_bench` (2,000 texts) from 4 others (docker-compose, toml, go, ini).
-- **Wider windows, same weights.** With the s6 tokenizer a random key costs about one token per character: states run to 93 tokens (median) and 312 (max), and the service question with its options to 179. The config widens the state window to 320 tokens and the head to 192. RoPE has no position table, so the parameter count is s6-pico's. The jev stays out of `data/decisions`: the general s6, with 64 state tokens, would read it cut off before the key.
+- **Wider windows, same weights.** With the s6 tokenizer a random key costs about one token per character: states run to 93 tokens (median) and 312 (max), and the service question with its options to 179. The config widens the state window to 320 tokens and the head to 192. RoPE has no position table, so the parameter count is that of the pico graph (s6-pico's with Parallax; s3-pico's, 445,345, as trained). The jev stays out of `data/decisions`: the general s6, with 64 state tokens, would read it cut off before the key.
 - **The bar: a rule scanner** (`sky-data secret-baseline`). It combines gitleaks-style prefixes for 20 formats, connection strings with an inline password, and an entropy rule on secret-sounding names, with allowlists for documentation, test and publishable keys. On `secret_bench` it scores 0.977 on the secret question (precision 0.966, recall 0.989) and 0.787 on the service question. All 35 of its false positives are random non-credentials under names like `CACHE_KEY`.
-- **Training** (`scripts/train-secrets.sh data train eval`, prepared and not run): numeric MLM pretraining in 256-token sequences, decision training with QAT on `data/secrets` alone, then calibration, ternary export and `s2-eval`.
+- **Training** (`scripts/train-secrets.sh data train eval`, run once): numeric MLM pretraining in 256-token sequences, decision training with QAT on `data/secrets` alone, then calibration, ternary export and `s2-eval`.
 
-## 15. General-purpose sizes: s6-nano and s6-micro (not trained yet)
+## 15. General-purpose sizes: s6-nano and s6-micro
+
+**Trained.** s6-nano passed its gate and is published at full depth: 0.480 on `typed_decisions_bench` (gate > 0.398), ECE 0.0479, no game below s3-pico; its conformal thresholds were rejected by the arena check. s6-micro reached 0.547 (gate ≥ 0.45) but failed the ECE guard, 0.0821 at full depth and 0.0804 at its conformal thresholds, against 0.08: it is not published, and a second version is pre-registered (`docs/s6-gen-prereg.md`, amendment 12). Both were trained without Parallax (§4). Details: `BENCH.md`.
 
 The s6 that ships is general-purpose: the four games and multiple-choice questions in free text. It comes in two sizes and replaces the s6-pico final model. The pico pilot and ablation (§4) still run, but only to choose the recipe the two sizes inherit. The protocol and the publication gates are in `docs/s6-gen-prereg.md`.
 
@@ -175,8 +186,10 @@ The s6 that ships is general-purpose: the four games and multiple-choice questio
 | s6-nano | 2,048 | 144 / 288 | 2 × 2 (exits 1, 2, 3, 4) | 2 | 512 / 160 | 1,569,457 / 778,065 |
 | s6-micro | 4,096 | 256 / 768 | 2 × 3 (exits 2, 4, 6) | 4 | 384 / 128 | 5,849,601 / 2,960,769 |
 
+These counts include the Parallax probe rows. As trained, without them: s6-nano 1,486,225, s6-micro 5,587,201 (the s4-micro shape).
+
 - **Why not a pico.** With 1,024 tokens and windows of 64/96, 96.8% of the decision sequences are truncated, and s3-pico (same size as s6-pico) scores 0.382 on `typed_decisions_bench`, below the majority class (0.398). s4-micro (5.6M, same shape as s6-micro without Parallax) failed at 0.343 after only 30 minutes of MLM pretraining on 150 MB.
-- **Inherited recipe.** Both configs have `parallax` and `fuse_numbers`. Before the first run, `parallax` and `xsa` are set from the ablation's adoption rules (`docs/s6-prereg.md` §4), and so are the training variables `OPT`, `LR_SCALE`, `PRETRAIN` and `DECIDE`.
+- **Inherited recipe.** Both configs have `parallax` and `fuse_numbers`. Before the first run, `parallax` and `xsa` are set from the ablation's adoption rules (`docs/s6-prereg.md` §4), and so are the training variables `OPT`, `LR_SCALE`, `PRETRAIN` and `DECIDE`. The rules gave AdamW (`--no-muon`), `LR_SCALE` 2.0, `parallax` and `xsa` off, and no `PRETRAIN` or `DECIDE` option (`runs/recipe/recipe.json`); the size pilots kept ×1 for s6-nano and ×0.5 for s6-micro.
 - **GLM teacher** (`scripts/distill-glm.sh`; `docs/s6-gen-prereg.md`, amendment 1). The teacher is GLM-5.3-flash, an open-weight model (MIT, `zai-org/GLM-5.3-Flash`), called through the z.ai API. `sky-data teacher label-decisions` asks it for one probability per option on every train record of `data/decisions`: 747,198 records, 37,360 calls of 20. The benchmark, held-out and GLM-generated sources are never sent. Four workers call the endpoint in parallel (z.ai throttles beyond: about 2.5 labels/s whatever the number of workers, so about 80 hours). A worker stops after 3 failed batches in a row, and the file of labels resumes after an interruption. A batch the z.ai moderation refuses (HTTP 400, code 1301) is halved until each refused text stands alone; those go to `data/teacher/glm_labels.refused.jsonl`, keep their gold target and are never sent again (`docs/s6-gen-prereg.md`, amendment 3). `scripts/distill-glm.sh loop` repeats the passes across the 5-hour usage windows of a z.ai plan until 99% of the selection is labelled. `sky-data teacher mix-labels` keeps the labels whose argmax is the gold answer and writes `0.5 · gold + 0.5 · teacher` to `data/distill/glm.jsonl`, with the agreement per source. The teacher runs remotely, so labelling puts no load on the machine.
 - **Tokenizers.** `data/tok/tok-s6-2048.json` and `tok-s6-4096.json` (`sky-data train-tokenizer --num` on `data/text`, `data/text-open`, `data/decisions`, `data/games`), written by `scripts/prepare-data.sh`.
 - **Training** (`SIZE=nano|micro scripts/train-s6.sh [lr] [train] [dagger] [exit] [eval]`). The steps:
@@ -188,14 +201,16 @@ The s6 that ships is general-purpose: the four games and multiple-choice questio
 - **Learning rates.** `LR_SCALE` × √(96/d) × the size's pilot scale × each phase's default (3e-3 pretraining, 1e-3 decision), on `--muon-lr`, or on `--adam-lr` with `--no-muon`. `OPT` carries no rate. √(96/d) moves the pico rate to width d as the spectral μP condition predicts for AdamW-matched Muon (×0.816 nano, ×0.612 micro); the pilot then tries ×0.5, ×1 and ×2 of that centre.
 - **Test sets:**
   - `typed_decisions_bench`;
-  - MASSIVE en/fr intents (`data/s4/heldout`, written by `sky-data s4-corpus --only-heldout`): zero-shot, since MASSIVE is not in `data/decisions`;
+  - MASSIVE en/fr intents (`data/s4/heldout`, written by `sky-data s4-corpus --only-heldout`). French is zero-shot. English is not: `data/decisions` holds 3,113 training questions of a source derived from MASSIVE (`calibrated:mteb/amazon_massive_intent`, 3 options), and 206 of the 2,000 English test utterances are also states of training questions (`docs/s6-gen-prereg.md`, amendment 14);
   - notam, test only;
   - the When2Call test split.
 
   Banking77 is now in `data/decisions`, so it is trained on: it is reported as in-distribution and never counted as zero-shot.
 - **Truncation report** (`sky-train s2-truncation --config C --tokenizer T --records R [--per-source 500] [--json out]`): the share of records whose state passes `max_state_tokens`, and whose head or an option passes `max_head_tokens` or the 48-token option cap. It reads the first records of each source, applies the config's number fusion, and reports per source and overall.
 
-## 16. s6-ear: an s6 that listens (`configs/s6-ear-nano.json`, not trained yet)
+## 16. s6-ear: an s6 that listens (`configs/s6-ear-nano.json`)
+
+**Trained once, gates failed.** s6-ear-nano was trained without Parallax (§4): 1,532,449 parameters. It failed three of its four gates (end of turn 0.5681 against 0.8518 for Smart Turn v3.2; Speech Commands 0.8885 against 0.90; French zero-shot keywords 0.1330 against 0.20) and is not published. Details: `BENCH.md`, section "s6-ear-nano".
 
 An s6 whose state stream is **audio** instead of text: it hears 10 s of speech and answers typed questions about it, with the same engine, the same GGUF format, the same early exits and the same WASM build as the game models. The protocol and the gates are in `docs/s6-ear-prereg.md`.
 
@@ -219,6 +234,6 @@ An s6 whose state stream is **audio** instead of text: it hears 10 s of speech a
   |---|---|---|---:|---|---:|
   | s6-ear-nano | 144 / 288 | 2 × 2 (exits 1, 2, 3, 4), Parallax | 2 | 128 frames / 160 | 1,615,681 / 821,552 |
 
-  The decision model is s6-nano plus `audio_proj` (46,224). It is 1/5 of Smart Turn v3.2 (8M, Whisper-tiny encoder).
+  The decision model is s6-nano plus `audio_proj` (46,224). It is 1/5 of Smart Turn v3.2 (8M, Whisper-tiny encoder). As trained, without Parallax: 1,532,449 (1,486,225 + 46,224).
 - **System 1 with a guarantee.** Exit thresholds by conformal risk control as in §9, on the val split of the jev (`scripts/ear-gate.py crc`). A second threshold ρ per type, chosen by the same scan, hands a clip to a larger model ("I don't know": Whisper, Smart Turn) when the top probability is below ρ, with the error among the answered decisions bounded by α. That is the System 1 / System 2 routing of LFM3-1.7B, for a voice agent: s6-ear decides every 80 ms whether to keep listening, acknowledge or answer, and calls the System 2 only when an answer is needed (MoshiRAG, arXiv 2604.12928, does it with a 7B frontal model).
-- **Training** (`scripts/train-ear.sh [data] [pretrain] [decide] [eval]`, prepared, not run): the data, 60 min of Mimi pretraining, 60 min of decision training with QAT (10%), the control without pretraining, calibration, ternary export, CRC, then the test split, the Smart Turn baseline (`scripts/ear-baseline.py`), the WASM parity on 20 clips and the gates (`scripts/ear-gate.py gate`).
+- **Training** (`scripts/train-ear.sh [data] [pretrain] [decide] [eval]`, run once): the data, 60 min of Mimi pretraining, 60 min of decision training with QAT (10%), the control without pretraining, calibration, ternary export, CRC, then the test split, the Smart Turn baseline (`scripts/ear-baseline.py`), the WASM parity on 20 clips and the gates (`scripts/ear-gate.py gate`).
