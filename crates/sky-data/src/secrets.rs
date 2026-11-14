@@ -24,31 +24,32 @@ use crate::record::{one_hot, Question};
 use crate::rng::Rng;
 use crate::typed::state_group;
 
-const UPPER_DIGITS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-const ALNUM: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-const ALPHA: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const URLSAFE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-const B64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const HEX: &[u8] = b"0123456789abcdef";
-const DIGITS: &[u8] = b"0123456789";
+pub(crate) const UPPER_DIGITS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+pub(crate) const ALNUM: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+pub(crate) const ALPHA: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+pub(crate) const URLSAFE: &[u8] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+pub(crate) const B64: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+pub(crate) const HEX: &[u8] = b"0123456789abcdef";
+pub(crate) const DIGITS: &[u8] = b"0123456789";
 
-fn rand_str(rng: &mut Rng, set: &[u8], n: usize) -> String {
+pub(crate) fn rand_str(rng: &mut Rng, set: &[u8], n: usize) -> String {
     (0..n).map(|_| set[rng.below(set.len())] as char).collect()
 }
 
 /// `min + below(spread)` characters of `set`.
-fn rand_var(rng: &mut Rng, set: &[u8], min: usize, spread: usize) -> String {
+pub(crate) fn rand_var(rng: &mut Rng, set: &[u8], min: usize, spread: usize) -> String {
     let n = min + rng.below(spread);
     rand_str(rng, set, n)
 }
 
 /// A Stripe key body: 24, 61 or 98 characters.
-fn stripe_body(rng: &mut Rng) -> String {
+pub(crate) fn stripe_body(rng: &mut Rng) -> String {
     let n = 24 + rng.below(3) * 37;
     rand_str(rng, ALNUM, n)
 }
 
-fn pick<'a, T: ?Sized>(rng: &mut Rng, xs: &[&'a T]) -> &'a T {
+pub(crate) fn pick<'a, T: ?Sized>(rng: &mut Rng, xs: &[&'a T]) -> &'a T {
     xs[rng.below(xs.len())]
 }
 
@@ -142,7 +143,13 @@ const OTHER_VARS: [&str; 10] = [
 ];
 
 /// A live secret of `svc` and the provider's variable name.
-fn live(rng: &mut Rng, svc: &str) -> (String, &'static str) {
+///
+/// Known flaw, kept on purpose: the AWS access key id is drawn over `A-Z0-9`, while the body of a
+/// real one is base32 (`A-Z` and `2-7`), so half of these ids hold a digit AWS never issues. The
+/// published s6-secrets-pico bench is this generator at seed 1234 and must stay reproducible
+/// (`tests::the_published_jev_is_pinned`): the fix is in the candidate mode of s6-secrets v2
+/// only (`crate::secrets2::synth::aws_access_key_id`).
+pub(crate) fn live(rng: &mut Rng, svc: &str) -> (String, &'static str) {
     match svc {
         "aws" => {
             if rng.f64() < 0.5 {
@@ -375,11 +382,11 @@ pub fn value(rng: &mut Rng, kind: Kind) -> Value {
 }
 
 /// `SNAKE_CASE` → `snake_case` and `camelCase`.
-fn lower(var: &str) -> String {
+pub(crate) fn lower(var: &str) -> String {
     var.to_ascii_lowercase()
 }
 
-fn camel(var: &str) -> String {
+pub(crate) fn camel(var: &str) -> String {
     let mut out = String::new();
     for (i, part) in var.split('_').filter(|p| !p.is_empty()).enumerate() {
         let p = part.to_ascii_lowercase();
@@ -397,7 +404,7 @@ fn camel(var: &str) -> String {
 }
 
 /// A context: lines around the value, and the index of the value's line.
-type Template = fn(&mut Rng, &Value) -> (Vec<String>, usize);
+pub(crate) type Template = fn(&mut Rng, &Value) -> (Vec<String>, usize);
 
 fn with_filler(
     rng: &mut Rng,
@@ -987,6 +994,28 @@ mod tests {
         }
         // three or four questions per text, all on the same state group
         assert!(a.len() >= 900 && a.len() <= 1200, "{}", a.len());
+    }
+
+    /// The published s6-secrets-pico bench is `secret-jev` at seed 1234: its output must not
+    /// move. The candidate mode of s6-secrets v2 (`crate::secrets2::synth`) has its own draws.
+    #[test]
+    fn the_published_jev_is_pinned() {
+        let digest = |src: &str, n: usize, templates: &[(&'static str, Template)]| {
+            let mut h = 0u64;
+            for it in generate(src, 1234, n, templates) {
+                let line = serde_json::to_string(&it.rec).unwrap();
+                h = crate::rng::hash64(format!("{h:016x}{line}").as_bytes());
+            }
+            h
+        };
+        assert_eq!(
+            digest("secret_synth", 500, &TRAIN_TEMPLATES),
+            17_265_108_392_931_931_675
+        );
+        assert_eq!(
+            digest("secret_bench", 500, &BENCH_TEMPLATES),
+            11_221_404_803_931_567_248
+        );
     }
 
     #[test]
