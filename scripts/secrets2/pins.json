@@ -1,0 +1,189 @@
+{
+ "what": "s6-secrets v2 (docs/s6-secrets2-prereg.md, section 6): the files the baselines need that no package index pins. scripts/secrets2/setup_tools.py fetches each into <data>/eval/downloads/<group>/ and refuses a file whose size or sha256 differs.",
+ "images": {
+  "python": "python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
+  "python_tag": "python:3.12-slim",
+  "uv": "ghcr.io/astral-sh/uv@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85",
+  "uv_tag": "ghcr.io/astral-sh/uv:0.13.8",
+  "alpine": "alpine@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f",
+  "alpine_tag": "alpine:3.22"
+ },
+ "host": {
+  "gitleaks": "8.30.1",
+  "uv": "0.13.8",
+  "python": "3.12"
+ },
+ "artifacts": [
+  {
+   "group": "betterleaks",
+   "file": "betterleaks_1.10.1_linux_arm64.tar.gz",
+   "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.10.1/betterleaks_1.10.1_linux_arm64.tar.gz",
+   "version": "1.10.1",
+   "licence": "MIT",
+   "bytes": 9404283,
+   "sha256": "62a63199f9f61a6b5e5a6f58f048493db20fbc8c770014f4d903a4d97886e1bf"
+  },
+  {
+   "group": "betterleaks",
+   "file": "checksums.txt",
+   "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.10.1/checksums.txt",
+   "version": "1.10.1",
+   "licence": "MIT",
+   "bytes": 618,
+   "sha256": "8feef090f9f95bb4a44d8f25a720da99b728605872c8dd1fcd4ea15d1b92f3ce"
+  },
+  {
+   "group": "cbx",
+   "file": "cbx_secrets.py",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/cbx_secrets.py",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 6803,
+   "sha256": "48a3f8f83b20e7de9cd519cbc50b93fd03498ed2287596e0aa4d4f8daf7868bc"
+  },
+  {
+   "group": "cbx",
+   "file": "config.json",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/config.json",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 1588,
+   "sha256": "c9575ab17d4b116c452875b0be97909603ae41d460444b83368ea2e645370dcb"
+  },
+  {
+   "group": "cbx",
+   "file": "secrets_config.json",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/secrets_config.json",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 973,
+   "sha256": "678b156b4c192f42339a6d342df9351316eaebee055c8a9e45b641a82787a892"
+  },
+  {
+   "group": "cbx",
+   "file": "tokenizer.json",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/tokenizer.json",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 3583228,
+   "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30"
+  },
+  {
+   "group": "cbx",
+   "file": "tokenizer_config.json",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/tokenizer_config.json",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 379,
+   "sha256": "5926e6ec4294f80294bd98d9176defa9fbae7f140525d06a1da987488e74a973"
+  },
+  {
+   "group": "cbx",
+   "file": "model.safetensors",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/model.safetensors",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 67220156,
+   "sha256": "c537bad4df7f4ba4d70799cbf22a2344e6321279aa2355cd2e6fe37a5ed37dd5"
+  },
+  {
+   "group": "cbx",
+   "file": "requirements.txt",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/requirements.txt",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 46,
+   "sha256": "d627202186ac558015cdf9ca91d34389b908d81b6d17b079661110b8e91dbef5"
+  },
+  {
+   "group": "cbx",
+   "file": "README.md",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/README.md",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 8189,
+   "sha256": "c26392249e47cb18af1e49c8c71e075727ba3754164076100174569b71ef906a"
+  },
+  {
+   "group": "cbx",
+   "file": "example.py",
+   "url": "https://huggingface.co/CobuildX-AI/cbx-secrets-detector-17M/resolve/89362a0938f9459e5706e703e2a91c5cf2ffe40e/example.py",
+   "version": "89362a0938f9459e5706e703e2a91c5cf2ffe40e",
+   "licence": "Apache-2.0",
+   "bytes": 1323,
+   "sha256": "ece263a938dc33c23d6ff130230b75c57dbed37a1a16836e7796562574feb653"
+  },
+  {
+   "group": "potion",
+   "file": "config.json",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/config.json",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 200,
+   "sha256": "b2a89173391ca774c2d7323090a993a9a1553faa5b40eb37bb7cec6685fbea47"
+  },
+  {
+   "group": "potion",
+   "file": "model.safetensors",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/model.safetensors",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 7559256,
+   "sha256": "f95ffde02ad06f63ae38eb9d400038cd5ccaf8411ec3cb650c6025113f96cbb8"
+  },
+  {
+   "group": "potion",
+   "file": "modules.json",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/modules.json",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 278,
+   "sha256": "a68dcbed0429dcdd5bfdca92b0b03cc30d09122c0a3fcf4758787d4b244e45b2"
+  },
+  {
+   "group": "potion",
+   "file": "special_tokens_map.json",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/special_tokens_map.json",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 134,
+   "sha256": "a9e8fb6f99fb0b8803f0e6942fdf4d95d6645204620b67dc3310a1024bcbac59"
+  },
+  {
+   "group": "potion",
+   "file": "tokenizer.json",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/tokenizer.json",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 683666,
+   "sha256": "e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50"
+  },
+  {
+   "group": "potion",
+   "file": "tokenizer_config.json",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/tokenizer_config.json",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 1431,
+   "sha256": "6725995e3ab3039857ff5bd99178a7cdf42863abb04449e7bb31feb1f55fe567"
+  },
+  {
+   "group": "potion",
+   "file": "vocab.txt",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/vocab.txt",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 219690,
+   "sha256": "1394523a67ddd404a825428018c0582a6998bcfa044ecbcbf1f4d71adb94c61c"
+  },
+  {
+   "group": "potion",
+   "file": "README.md",
+   "url": "https://huggingface.co/minishlab/potion-base-2M/resolve/389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da/README.md",
+   "version": "389b9f64be5aa4ae7a6bc6fe95ef20ce485ae5da",
+   "licence": "MIT",
+   "bytes": 5202,
+   "sha256": "38af170acce93b5eb0c4e18659ab0b30581b2f6860f3e12d8ba8b8751e249363"
+  }
+ ]
+}

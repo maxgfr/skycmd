@@ -1,0 +1,11 @@
+# s6-secrets v2 (docs/s6-secrets2-prereg.md, section 6): the pinned environment of one baseline.
+# The lock next to this file is the record of what is installed; the environment itself is
+# created outside the repository (UV_PROJECT_ENVIRONMENT, see scripts/secrets2/common.py).
+[project]
+name = "secrets2-credsweeper"
+version = "0"
+requires-python = "==3.12.*"
+dependencies = ["credsweeper==1.19.6"]
+
+[tool.uv]
+package = false

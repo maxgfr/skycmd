@@ -1,0 +1,119 @@
+{
+ "experiment": "s6-secrets v2 (docs/s6-secrets2-prereg.md, section 8)",
+ "split": "validation",
+ "model": "lr",
+ "is_the_pre_registered_gate": false,
+ "universe_of_G1_G2_G3_G5": "gated",
+ "uuid_choice": "Gated universe: the rows whose CredData category is exactly `UUID` are removed, for every system (amendment 2). That choice was made after reading the training and validation rows and before any test file was read. Full universe: every meta row.",
+ "thresholds": {
+  "G1": 0.15,
+  "G2": 0.1,
+  "G2_goal": 0.05,
+  "G4": 0.08,
+  "G5": 0.05,
+  "G6_us": 3000.0,
+  "G7": 0.01
+ },
+ "gates": {
+  "G1": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "model": 0.859392575928009,
+     "reference": "secretgate-default",
+     "reference_f1": 0.5196850393700787,
+     "holds": true,
+     "model_full_universe": 0.7541954590325766,
+     "reference_full_universe": 0.4347826086956522
+    },
+    "without_largest": {
+     "model": 0.7936507936507936,
+     "reference": "secretgate-default",
+     "reference_f1": 0.6136363636363636,
+     "holds": true,
+     "model_full_universe": 0.7154213036565978,
+     "reference_full_universe": 0.5378486055776892
+    }
+   }
+  },
+  "G2": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "model": 0.859392575928009,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8872901678657074,
+     "holds": true,
+     "model_full_universe": 0.7541954590325766,
+     "reference_full_universe": 0.7724425887265136
+    },
+    "without_largest": {
+     "model": 0.7936507936507936,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8190854870775348,
+     "holds": true,
+     "model_full_universe": 0.7154213036565978,
+     "reference_full_universe": 0.7292035398230089
+    }
+   }
+  },
+  "G3": {
+   "holds": false,
+   "why": [
+    "every repository: 0.8594 <= lr 0.8594",
+    "without the largest repository: 0.7937 <= lr 0.7937"
+   ],
+   "parts": {
+    "all": {
+     "model": 0.859392575928009,
+     "reference": "lr",
+     "reference_f1": 0.859392575928009,
+     "holds": false,
+     "model_full_universe": 0.7541954590325766,
+     "reference_full_universe": 0.7541954590325766
+    },
+    "without_largest": {
+     "model": 0.7936507936507936,
+     "reference": "lr",
+     "reference_f1": 0.7936507936507936,
+     "holds": false,
+     "model_full_universe": 0.7154213036565978,
+     "reference_full_universe": 0.7154213036565978
+    }
+   }
+  },
+  "G4": {
+   "holds": false,
+   "why": [
+    "0.6217 < Gitleaks 0.6805 + 0.08"
+   ],
+   "model": 0.6217044757817289,
+   "gitleaks": 0.6804550155118925
+  },
+  "G5": {
+   "holds": false,
+   "why": [
+    "ECE 0.0677 > 0.05"
+   ],
+   "ece": 0.06772972119168058,
+   "ece_full_universe": 0.06613301292861161
+  },
+  "G6": {
+   "holds": false,
+   "why": [
+    "no native latency"
+   ]
+  },
+  "G7": {
+   "holds": false,
+   "why": [
+    "no clean-text result of lr"
+   ]
+  }
+ },
+ "announced_goal_met": true,
+ "all_hold": false,
+ "verdict": "REHEARSAL on validation: the gate would not hold on these numbers; nothing is decided before the test"
+}
