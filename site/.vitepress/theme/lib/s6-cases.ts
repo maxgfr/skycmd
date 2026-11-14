@@ -381,3 +381,188 @@ export const S6_CASES: DemoCase[] = [
     "lang": "fr"
   }
 ]
+
+// s6-secrets-pico on /live/ and in its Space: the four questions of the API-key jev, asked with the
+// generator's own instruction and option texts (`sky-data secret-jev`, crates/sky-data/src/secrets.rs:
+// Q_SECRET, Q_SERVICE, Q_KIND, Q_LINE, SERVICES, KINDS), the only ones the model was trained on.
+
+export type SecretQuestionId = 'secret' | 'service' | 'kind' | 'line'
+
+export interface SecretQuestion {
+  id: SecretQuestionId
+  t: 'choice' | 'noul'
+  ins: string
+  /** Option texts as the records give them (`key: definition`, or the key alone). */
+  opts: string[]
+}
+
+/** The services of the "which service" question, in the generator's order (`none` last). */
+export const SECRET_SERVICES = [
+  'aws',
+  'github',
+  'gitlab',
+  'stripe',
+  'slack',
+  'openai',
+  'anthropic',
+  'google',
+  'huggingface',
+  'sendgrid',
+  'npm',
+  'private_key: a PEM private key',
+  'database: a connection string with its password',
+  'generic: a key or token of another service',
+  'none: no actual key or token',
+]
+
+export const SECRET_KINDS = [
+  'secret: a live, usable credential',
+  'test: a test or sandbox credential',
+  'public: a publishable key meant to be public',
+  'placeholder: a placeholder, an example, a redacted value or a reference',
+  'other: not a credential, even if it looks random',
+]
+
+/** The four questions on a text. The line question has one option per line plus `none`, and is
+ * asked only for texts of two lines or more, as in the generator. */
+export function secretQuestions(state: string): SecretQuestion[] {
+  const qs: SecretQuestion[] = [
+    {
+      id: 'secret',
+      t: 'noul',
+      ins: 'Does the text expose a usable secret (an API key, token, password or private key) that should be revoked?',
+      opts: ['false: no, the statement does not hold', 'true: yes, the statement holds'],
+    },
+    { id: 'service', t: 'choice', ins: 'Which service issued the key or token in the text?', opts: SECRET_SERVICES },
+    { id: 'kind', t: 'choice', ins: 'What kind of value is assigned or sent in the text?', opts: SECRET_KINDS },
+  ]
+  const n = state.split('\n').length
+  if (n >= 2) {
+    const opts = Array.from({ length: n }, (_, i) => `line ${i + 1}`)
+    opts.push('none: no line exposes a secret')
+    qs.push({ id: 'line', t: 'choice', ins: 'Which line exposes the secret?', opts })
+  }
+  return qs
+}
+
+export interface SecretCase {
+  label: string
+  /** The rule that picked this text. */
+  why: string
+  state: string
+  /** Expected option index per question (`secret`: 1 = true). */
+  gold: Record<SecretQuestionId, number>
+  /** The rule scanner (`sky-data secret-baseline`) on this text: the service it flags, or null. */
+  scanner: string | null
+}
+
+// Presets: texts of secret_bench (data/secrets/secret_bench.jsonl, the test bench: docker-compose,
+// toml, go and ini files the training never shows), in the order of the file, taken by rule and kept
+// whatever the model answers: the first text of each kind, the first text where the rule scanner is
+// wrong on the secret question and the model right on secret and service, and the first text where
+// the model is wrong on secret, service or kind. Every key is the generator's kind: a provider's public
+// format with a random body, never a real key (the Stripe-format bodies are drawn again in the
+// browser, see below). Native answers of the published file on the bench's own texts (sky-eval, full
+// depth): 25 of the 28 expected options; the misses are the line of "live secret", and the service
+// and line of "the model is wrong". The scanner verdicts come from a port of its rules checked against
+// its published counts on the bench (999 / 35 / 11 / 951).
+// The three presets with a Stripe-format key carry no key here: `{{rand:N}}` stands for the N random
+// characters of its body, drawn in the browser when the page loads, as the generator draws them. No
+// key-like value is stored in the source, and the keys shown never existed.
+function drawBodies(text: string): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  return text.replace(/\{\{rand:(\d+)\}\}/g, (_, n) => {
+    const bytes = new Uint32Array(Number(n))
+    globalThis.crypto.getRandomValues(bytes)
+    return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+  })
+}
+
+const SECRET_PRESETS: SecretCase[] = [
+  {
+    "label": "live secret",
+    "why": "the first text of the bench whose value is a live secret",
+    "state": "[mailer]\nhost = smtp.example.com\nport = 587\nstripe_secret_key = sk_live_{{rand:61}}\nuse_tls = true",
+    "gold": {
+      "secret": 1,
+      "service": 3,
+      "kind": 0,
+      "line": 3
+    },
+    "scanner": "stripe"
+  },
+  {
+    "label": "test key",
+    "why": "the first text whose value is a test key",
+    "state": "[mailer]\nport = 587\nstripe_secret_key = sk_test_{{rand:98}}",
+    "gold": {
+      "secret": 0,
+      "service": 3,
+      "kind": 1,
+      "line": 3
+    },
+    "scanner": null
+  },
+  {
+    "label": "public key",
+    "why": "the first text whose value is a publishable key",
+    "state": "[mailer]\nport = 587\nstripe_publishable_key = pk_test_{{rand:98}}\nuse_tls = true",
+    "gold": {
+      "secret": 0,
+      "service": 3,
+      "kind": 2,
+      "line": 4
+    },
+    "scanner": null
+  },
+  {
+    "label": "placeholder",
+    "why": "the first text whose value is a placeholder",
+    "state": "[api]\nendpoint = \"https://api.example.com\"\ndatabase_url = \"{{ secrets.DATABASE_URL }}\"\ntimeout = 30",
+    "gold": {
+      "secret": 0,
+      "service": 14,
+      "kind": 3,
+      "line": 4
+    },
+    "scanner": null
+  },
+  {
+    "label": "not a credential",
+    "why": "the first text whose value is not a credential",
+    "state": "func main() {\n\ttraceId := \"SHA256:QSU3p2VyXzMviZ4GtgajPAGifVTQ8Pl3fZM+BG3Fy6m\"\n\tclient := api.New(traceId)",
+    "gold": {
+      "secret": 0,
+      "service": 14,
+      "kind": 4,
+      "line": 3
+    },
+    "scanner": null
+  },
+  {
+    "label": "the scanner is wrong",
+    "why": "the first text where the rule scanner is wrong on the secret question and the model right on secret and service",
+    "state": "services:\n  api:\n    image: acme/api:1.4\n    environment:\n      - NODE_ENV=production\n      - CACHE_KEY=418d111d31d10c3f583984bdee1b85c537790088\n      - PORT=3000",
+    "gold": {
+      "secret": 0,
+      "service": 14,
+      "kind": 4,
+      "line": 7
+    },
+    "scanner": "generic"
+  },
+  {
+    "label": "the model is wrong",
+    "why": "the first text where the model is wrong on secret, service or kind",
+    "state": "services:\n  api:\n    image: acme/api:1.4\n    environment:\n      - X_API_KEY=6vd6Ckus6ICLi7Cck3vcHRWbwFaK8lwpQvfYy1li\n      - PORT=3000",
+    "gold": {
+      "secret": 1,
+      "service": 13,
+      "kind": 0,
+      "line": 4
+    },
+    "scanner": "generic"
+  }
+]
+
+export const SECRET_CASES: SecretCase[] = SECRET_PRESETS.map((c) => ({ ...c, state: drawBodies(c.state) }))

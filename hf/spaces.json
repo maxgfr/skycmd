@@ -13,6 +13,20 @@
     ]
   },
   {
+    "model": "s6-secrets-pico",
+    "kind": "secrets",
+    "emoji": "🔑",
+    "color_from": "yellow",
+    "color_to": "red",
+    "tagline": "A 250 KB ternary model that reads a pasted text and says whether it exposes a secret, which service issued it, what kind of value it is and on which line.",
+    "short_description": "250 KB model that spots exposed secrets in a text",
+    "notes": [
+      "On a synthetic bench of file types it never saw, it beats a gitleaks-style rule scanner: secret 0.9990 against 0.977, service 0.9795 against 0.787. The bench comes from our own generator: it says nothing about real leaks in real repositories.",
+      "The line answer is weak (0.6859 on the bench): do not rely on it.",
+      "The preset keys are fake, generated in each provider's public format with a random body. Everything runs in your browser: nothing you paste is sent anywhere."
+    ]
+  },
+  {
     "model": "s5-lite",
     "kind": "decision",
     "proofs": true,

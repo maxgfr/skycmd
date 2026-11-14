@@ -42,6 +42,16 @@
     "file": "s6-nano.gguf"
   },
   {
+    "name": "s6-secrets-pico",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "secrets",
+    "full_depth": true,
+    "params": 445345,
+    "bytes": 250272,
+    "file": "s6-secrets-pico.gguf"
+  },
+  {
     "name": "s1-pico",
     "arch": "modern-bert",
     "weight_format": "f16",

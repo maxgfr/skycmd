@@ -230,7 +230,7 @@ Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` 
 
 | source | license | how it is used |
 |---|---|---|
-| `secret_synth`, `secret_bench` | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | generated locally from the seed. Keys follow each provider's public format with random bodies, so none is a real key. 50,000 training texts (95/5 train/val by text) and 2,000 bench texts in contexts the training never shows. Never committed. |
+| `secret_synth`, `secret_bench` | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | generated locally from the seed. Keys follow each provider's public format with random bodies, so none is a real key. 50,000 training texts (95/5 train/val by text) and 2,000 bench texts in contexts the training never shows. Never committed, except seven bench texts copied as the presets of the site demo (`site/.vitepress/theme/lib/s6-cases.ts`). |
 
 ## LFM3-1.7B System 1 / System 2 and its fine-tune (`data/lfm3/`, `scripts/lfm3-s1s2.sh`, `scripts/lfm3-ft.sh`, `docs/lfm3-s1s2-prereg.md`, `docs/lfm3-ft-prereg.md`)
 

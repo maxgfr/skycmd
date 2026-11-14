@@ -4,7 +4,7 @@ title: What we bring
 
 # What skycmd brings
 
-*Updated on 14 November 2026: section 8 gives what the first trained s6 models show. s6-nano passes its pre-registered gate and is published; s6-micro and s6-ear-nano fail theirs. Sections 1 to 7 date from 14 October 2026, after three nights of experiments (s3, s4, s5).*
+*Updated on 14 November 2026: section 8 gives what the first trained s6 models show. s6-nano and s6-secrets-pico pass their pre-registered gates and are published; s6-micro and s6-ear-nano fail theirs. Sections 1 to 7 date from 14 October 2026, after three nights of experiments (s3, s4, s5).*
 
 **In short:** a System One decision model, the kind of model Jev, Laya and Julia-1 introduced in September 2026, fits in **251 KB**. It was trained **from scratch in under an hour** on a laptop and plays four control games **at the level of an exact oracle**, in about **50 µs per frame in a web browser**. Around it, skycmd brings a decision format that is invariant to the order and names of the options by construction, a calibration lesson for early exits, experiments whose criteria were fixed before any test, and a whole chain in Rust that runs in the browser. As far as we could find, nothing this small exists in this format, and none of it uses Python.
 
@@ -88,12 +88,13 @@ Its failure is a lesson too: without language pretraining, loops cannot make up 
 
 ## 8. What s6 adds (trained in November 2026)
 
-Each s6 model has a pre-registration with its gate. Three are trained: their numbers are on the [Results](/results/#s6-november-2026) page and in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), and the points below come from there. s6-cast is still training, and s6-secrets-pico's result comes with its publication.
+Each s6 model has a pre-registration with its gate. Four are trained: their numbers are on the [Results](/results/#s6-november-2026) page and in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), and the points below come from there. s6-cast is still training.
 
 **What the trained models show.**
 - **One 715 KB file for the games and for questions in free text.** s6-nano (1,486,225 ternary parameters) plays all four games at the oracle's score and reaches 0.480 on `typed_decisions_bench`, above the majority class (0.398). The earlier small models stayed below it: s3-pico 0.382 and s4-micro 0.352 on the same records. Its ECE over all the test sources is 0.0479. It runs in this browser on [Live](/live/#s6-nano-the-questions-it-was-trained-for) and [Play](/play/), and its WASM answers match the native engine to 9.5e-7 on 200 bench questions.
 - **No architectural change was adopted.** The pre-registered pico ablation adopted none of the additions listed below. Each needed a validation gain of 0.01 (0.005 for the training options) with no game lost: Muon brought 0.0051 and lost Flappy score, Parallax 0.0054, XSA 0.0081, and SODA, exit distillation, the EMA, StableQAT and the curriculum all lowered accuracy (`runs/recipe/recipe.json`). This is the outcome the literature warned about: gains over AdamW shrink once AdamW is tuned as carefully ([Fantastic Pretraining Optimizers](https://arxiv.org/abs/2509.02046)), and at equal time AdamW can beat Muon on small language models ([When Does Muon Actually Win?](https://arxiv.org/abs/2610.21555)). What changed from s4-micro is the pretraining: 0.87B tokens, 588 per parameter, against 30 minutes on 150 MB for s4-micro. An MLM encoder wants far more tokens per parameter than a decoder (Training compute-optimal transformer encoder models, EMNLP 2025). The GLM-5.3-flash teacher, the tokenizer and the 512-token windows changed too, and no ablation separates these causes.
 - **A guarantee checked by playing, and rejected.** Conformal risk control (α = 0.02; [Fast yet Safe](https://arxiv.org/abs/2405.20915), CALM at NeurIPS 2022) cut s6-nano's depth to 1.01 to 1.83 of its 4 passes per game. In closed loop, Rescue fell to 93 % and the Dodge vetoes rose from 23 to 1,016. The pre-registered rule allows 2 %, so the model ships at full depth. The guarantee holds on held-out questions, not on the states that playing with early exits leads to: the lesson of section 3, met again with a better tool.
+- **A 250 KB secret detector that beats a rule scanner on file types it never saw.** s6-secrets-pico (445,345 ternary parameters, the s3-pico graph with a 320-token state) reads a short text and answers four typed questions with the same engine as the games. On its synthetic bench of docker-compose, toml, go and ini files, none of them in its training, it scores 0.9990 on "is a usable secret exposed?" and 0.9795 on "which service issued it?", where a gitleaks-style rule scanner scores 0.977 and 0.787 on the same texts. It is right on all 46 texts the scanner gets wrong, the random values under secret-sounding names among them. Two limits come with it: the bench is synthetic, so this shows that the model reads formats and context, not that it finds real leaks; and its line answer is weak (0.6859, right on 383 of the 1,010 texts that expose a secret). It runs on [Live](/live/#s6-secrets-pico-is-a-secret-exposed-in-this-text), about 1.4 ms per decision in WASM under Node.
 - **Failures published as results.** s6-micro reaches 0.547 on the bench, which meets its gate and its announced goal of 0.50, but it misses the ECE guard (0.0821, then 0.0804 at its conformal thresholds), so it is not published. s6-ear-nano fails three of its four gates, and its control without the Mimi pretraining does better on all four sets. Every amendment is dated and says what had been seen when it was written.
 
 What follows is how the code differs, and why. The trained models use the data, the teacher and the conformal tool; the encoder and optimizer additions stay in the code, unadopted.
@@ -112,7 +113,7 @@ What follows is how the code differs, and why. The trained models use the data, 
 
 **Small specialists on the same engine.**
 - **s6-cast:** a probabilistic forecaster, 388K parameters, pretrained on synthetic series only.
-- **s6-secrets:** API-key detection. Its synthetic keys follow each provider's public format, and its bench uses file types the training never shows. The bar is a gitleaks-style rule scanner.
+- **s6-secrets:** API-key detection. Its synthetic keys follow each provider's public format, and its bench uses file types the training never shows. The bar is a gitleaks-style rule scanner, and s6-secrets-pico clears it (above).
 
 **System 1 first, System 2 only when needed.** The same idea as the early exits, one level up. For LFM3-1.7B, a 6-coefficient confidence probe decides, question by question, whether the model should think before answering. Thinking can make a small model abandon a good first answer.
 
@@ -132,6 +133,7 @@ What follows is how the code differs, and why. The trained models use the data, 
 - **No pre-registered claim for s5.** None of the three bets is claimed: the iso format missed its calibration margin, the coherence losses improved only the identities they were trained on, and 8-bit quantization could not be shown non-inferior for lack of power.
 - **s5 is a small English model.** There is no French version.
 - **The results are not peer-reviewed.** They come from our own benchmarks, with single runs for s3 and s4, three seeds for s5, and one run per size for s6.
+- **s6-secrets-pico is measured on our own generator only.** Its bench is synthetic (our formats, file templates and class shares, fake keys with random bodies), so its scores say nothing about real leaks in real repositories. It cannot be trusted to locate a leak: line 0.6859, and confident when wrong (ECE 0.3051).
 - **s6-nano is a modest generalist.** 0.480 on `typed_decisions_bench` clears the majority class, but s5-lite reaches 0.696 and oscar-1-17m 0.6775. It fails on NOTAM (0.055 on the subject question) and stays at 0.404 on When2Call. Its English MASSIVE score is not strictly zero-shot: 206 of the 2,000 test utterances also appear in the training split, 201 of them in a source derived from MASSIVE.
 
 ## What would turn this into a paper

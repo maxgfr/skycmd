@@ -67,7 +67,7 @@ The script assembles everything under `target/hf/` first, so you can inspect it.
 - **the Space** gets `README.md` (`sdk: static`), the demo app, the wasm module, `models/` with the GGUF files and a manifest, the Freedoom textures for the games, and `space.json`;
 - **both** are created if missing, then uploaded with `huggingface_hub`.
 
-The s5-lite Space also carries s4-micro, the model that reads the keys, for the "keys and order" proof. The s6-nano Space is a game Space whose model also answers typed questions: its manifest entry says `task: general`, and the app then shows the typed-question demo under the games.
+The s5-lite Space also carries s4-micro, the model that reads the keys, for the "keys and order" proof. The s6-nano Space is a game Space whose model also answers typed questions: its manifest entry says `task: general`, and the app then shows the typed-question demo under the games. The s6-secrets-pico Space has `kind: secrets` in `hf/spaces.json`: it shows only the secret-detection demo, and its manifest entry says `task: secrets`, which keeps the model out of the game and free-question lists.
 
 Keep the token in your own terminal, never in a chat or a commit. `hf auth login` stores it in `~/.cache/huggingface/token`, and the script reads it from there without printing it.
 

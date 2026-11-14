@@ -12,7 +12,8 @@ interface SpaceConfig {
   model: string
   title: string
   tagline: string
-  kind: 'decision' | 'game'
+  /** `secrets`: the API-key demo of s6-secrets-pico (manifest `task: secrets`). */
+  kind: 'decision' | 'game' | 'secrets'
   proofs?: boolean
   model_repo: string
   notes?: string[]
@@ -119,6 +120,25 @@ onMounted(async () => {
             <LiveProof :mode="p.mode" />
           </section>
         </template>
+      </template>
+      <template v-else-if="cfg.kind === 'secrets'">
+        <section>
+          <h2>Is a secret exposed in this text?</h2>
+          <p>
+            Paste a short text: a config file, a <code>.env</code>, a few lines of code. The model answers the four
+            questions it was trained for, each in one forward pass: is a usable secret exposed, which service issued
+            it, what kind of value it is, and on which line. The presets are texts of the test bench taken by a fixed
+            rule (the first of each kind, the first where the rule scanner is wrong, the first where the model is
+            wrong), kept whatever the model answers.
+          </p>
+          <LiveDecide mode="secrets" :prefer="cfg.model" />
+          <p class="space-note">
+            The bench is synthetic: our generator's formats, file templates and class shares, with fake keys. Beating
+            the rule scanner there shows that the model reads formats and context in file types it never saw; it says
+            nothing about real leaks in real repositories. The line answer is weak (0.686 on the bench, and right on
+            383 of the 1,010 texts that do expose a secret): do not rely on it.
+          </p>
+        </section>
       </template>
       <template v-else>
         <section>

@@ -9,11 +9,12 @@ Every model on this page was judged against criteria fixed before any test run, 
 
 ## s6 (November 2026)
 
-s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md), both frozen before any s6 training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). s6-cast is still training, and s6-secrets-pico's result will be published with the model.
+s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md) and s6-secrets-pico in [`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md), all frozen before their training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). s6-cast is still training.
 
 ### In short
 
 - **s6-nano passes its gate** and is published, at full depth. 1,486,225 ternary parameters (715 KB): 0.480 on `typed_decisions_bench`, above the majority class (0.398) where s3-pico (0.382) and s4-micro (0.352 on the same records) stayed below it, with an ECE of 0.0479, while it still plays every game at the oracle's level.
+- **s6-secrets-pico passes its gate** and is published, at full depth. 445,345 ternary parameters (250 KB): on a synthetic bench of file types it never saw, secret 0.9990 and service 0.9795, where a gitleaks-style rule scanner scores 0.977 and 0.787. Its line answer is weak (0.6859), and the bench says nothing about real leaks.
 - **s6-micro fails on calibration only.** 0.547 on the bench (gate 0.45 and announced goal 0.50 both met), but ECE 0.0821 at full depth and 0.0804 at its conformal thresholds, above the 0.08 guard. It is not published.
 - **s6-ear-nano fails three of its four gates.** End of turn 0.5681 against 0.8518 for Smart Turn v3.2, and its own control without the Mimi pretraining does better on all four sets. It is not published.
 - **The s6 additions were not adopted.** The pre-registered pico ablation kept none of them: no Muon, no Parallax, no XSA, no SODA, no exit distillation, no EMA, no StableQAT, no curriculum. s6-nano is the s3 architecture at language scale, as in s4, trained with AdamW. What changed from s3-pico and s4-micro is the pretraining (0.87B tokens, 588 per parameter), the GLM-5.3-flash teacher, a larger tokenizer and wider windows. No ablation separates these causes, so none of them is claimed on its own.
@@ -37,6 +38,25 @@ Test sets, at most 2,000 questions per source, ternary GGUF of the last DAgger r
 - **Not strictly zero-shot** (found afterwards). 206 of the 2,000 English MASSIVE test utterances also appear in the training split, 201 of them in a decision source derived from MASSIVE; none of the French ones does. The model was also trained on 3,113 questions of that source, MASSIVE intents asked with 3 options instead of 8, so the English MASSIVE score is partly in distribution. The seen utterances are not answered better: s6-nano gets 0.393 on the 206 and 0.429 on the 1,794 others, s6-micro 0.495 and 0.521; without them the ECE over all sources is 0.0486 and 0.0837, so neither gate changes ([amendment 14](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)). Banking77, trained on, is reported apart: 0.631.
 - **Truncation** (result): 1.4 % of the bench states are cut at 512 tokens. s3-pico's windows cut 96.8 % of the bench sequences ([chapter 12](/tutorial/12-size-ladder)).
 - **In the browser** (result). WASM matches the native engine on the first 200 bench questions to 9.5e-7, with the same answer on all 200. A long JSON state of the bench takes about 15 ms per decision under Node, a Flappy frame 0.44 ms. Try it on [Live](/live/#s6-nano-the-questions-it-was-trained-for) and [Play](/play/).
+
+### s6-secrets-pico: passed, published at full depth
+
+It reads a short text (a config file, a `.env`, code) and answers four typed questions: is a usable secret exposed, which service issued it, what kind of value it is (secret, test key, publishable key, placeholder, not a credential), and on which line. The bench, `secret_bench`, has 1,996 texts in four file types the training never shows (docker-compose, toml, go, ini). Ternary GGUF, last exit, full depth (`runs/s6-secrets-pico/report.md`); the rule scanner on the same texts (`runs/s6-secrets-pico/baseline.txt`, measured before any training):
+
+| question | s6-secrets-pico | rule scanner |
+|---|---:|---:|
+| secret: is a usable secret exposed? | **0.9990** | 0.977 |
+| service: which service issued it? (15 options) | **0.9795** | 0.787 |
+| kind (5 options) | 0.9990 | not asked |
+| line | 0.6859 | not asked |
+
+- **The gate** (result): secret 0.9990 > 0.977 and service 0.9795 > 0.787, ternary, full depth. The scanner combines gitleaks-style prefixes for 20 formats, connection strings with a password and an entropy rule on secret-sounding names; its 35 false positives are random values that are not credentials, and its 11 misses generic secrets. The model is right on the secret question for all 46 of those texts, and wrong on 2 texts that the scanner gets right, both an `x_api_key` with a hex value in an ini file, which it calls not a credential.
+- **Line is weak** (result). 0.6859, and confident when wrong (ECE 0.3051, against 0.0009 for the secret question). On the 1,010 texts that do expose a secret it names the right line 383 times; the 986 texts without one, where `none` is right, carry the score. Line localisation does not work yet.
+- **Where service fails** (result). 41 misses, 34 of them in Go code, where it names `database` for keys of other services.
+- **Validation** (result): 0.998 on the seen templates (ternary, pooled over the four questions; per question not computed).
+- **Early exit** (result). At the thresholds the calibration stored (0.5 / 0.9 / 0.5), every question stops after the first of 4 passes: secret and kind keep 0.9990, service drops to 0.9775 and line to 0.6227. The gate was read at full depth, so the published file has its thresholds set to 1, as for s6-nano.
+- **Size and latency** (result): 445,345 parameters, 250,272 bytes. Median 786 to 789 µs per decision natively over the 7,984 bench questions, 1,420 to 1,427 µs in WASM under Node on the first 200, where WASM matches the native engine to 1.2e-6 with the same answer on all 200. These times were measured on the build machine (Apple M5) while a GPU training was running. Try it on [Live](/live/#s6-secrets-pico-is-a-secret-exposed-in-this-text).
+- **What this bench does not say.** It is synthetic: the formats, the file templates and the class shares are our generator's, and the keys are fake, with random bodies. Beating the scanner here shows that the model reads formats and context in file types it never saw. It says nothing about real leaks in real repositories.
 
 ### s6-micro: failed on calibration only
 

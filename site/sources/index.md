@@ -158,6 +158,7 @@ What the pre-registrations rest on ([`docs/s6-prereg.md`](https://github.com/max
 - **Pretraining budget and QAT:** Training compute-optimal transformer encoder models (EMNLP 2025), on how many tokens per parameter an MLM encoder wants; [16-bit → 1.58-bit continual QAT](https://arxiv.org/abs/2502.11895), for the float warm-up before ternary training.
 - **Conformal exit thresholds:** [Fast yet Safe](https://arxiv.org/abs/2405.20915) and CALM (NeurIPS 2022), for α = 0.02. They were tested on s6-nano in closed loop and rejected.
 - **DAgger with a per-turn mixture:** [Revisiting DAgger in the Era of LLM-Agents](https://arxiv.org/abs/2605.12913).
+- **s6-secrets-pico's bar:** a rule scanner in the style of [gitleaks](https://github.com/gitleaks/gitleaks) (MIT): prefix rules for 20 key formats, connection strings with a password, an entropy rule on secret-sounding names and allowlists, written in Rust (`sky-data secret-baseline`), not gitleaks itself. Its data is synthetic and generated locally ([`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md); licence in [`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)), and it pretrains on the same text as s6-nano.
 
 ### s5
 - **Option isolation and shared positions:** [arXiv 2610.01601](https://arxiv.org/abs/2610.01601) (§ III, positions; § V-C, ablations).

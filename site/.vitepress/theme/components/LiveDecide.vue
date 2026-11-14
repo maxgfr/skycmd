@@ -5,14 +5,34 @@
 // model, and a state is encoded once for every question asked about it. The presets are the
 // demo cases the models are evaluated on (eval/s5/demo-cases.jsonl, lib/demo-cases.ts). The `s6`
 // mode asks s6-nano the game and numeric questions it was trained for (lib/s6-cases.ts), with the
-// options of each record, `noul` answers included.
-import { computed, onMounted, ref, watch } from 'vue'
+// options of each record, `noul` answers included. The `secrets` mode asks s6-secrets-pico the four
+// questions of its jev about a pasted text, with the generator's own texts (lib/s6-cases.ts).
+// Times: the first call of a demo pays the module start-up and the first encodings, so it is shown
+// apart, and the median covers the warm calls after it (lib/wasm.ts, DecisionTimes).
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
-import { formatInt, loadEngine, loadManifest, questionModels, type ModelEntry, type WasmEngine } from '../lib/wasm'
+import {
+  clockStepMicros,
+  DecisionTimes,
+  formatInt,
+  formatMicros,
+  loadEngine,
+  loadManifest,
+  questionModels,
+  type ModelEntry,
+  type WasmEngine,
+} from '../lib/wasm'
 import { DEMO_CASES, type DemoCase } from '../lib/demo-cases'
-import { S6_CASES } from '../lib/s6-cases'
+import {
+  S6_CASES,
+  SECRET_CASES,
+  SECRET_SERVICES,
+  secretQuestions,
+  type SecretQuestion,
+  type SecretQuestionId,
+} from '../lib/s6-cases'
 
-type Mode = 'playground' | 'tools' | 'triage' | 'guard' | 's6'
+type Mode = 'playground' | 'tools' | 'triage' | 'guard' | 's6' | 'secrets'
 type QT = 'choice' | 'score' | 'noul'
 
 /** `prefer`: the model selected first, by name (default: the iso model, else the first one). */
@@ -29,14 +49,19 @@ interface Answer {
 }
 
 /** Demo-case sources of each mode (English: s5 is a small English model, with no French version). */
-const SOURCES: Record<Exclude<Mode, 's6'>, string[]> = {
+const SOURCES: Record<Exclude<Mode, 's6' | 'secrets'>, string[]> = {
   playground: ['demo_playground_en', 'demo_score_en'],
   tools: ['demo_tools_en'],
   triage: ['demo_triage_en'],
   guard: ['demo_guard_en'],
 }
+const isSecrets = props.mode === 'secrets'
 const examples: DemoCase[] =
-  props.mode === 's6' ? S6_CASES : DEMO_CASES.filter((c) => SOURCES[props.mode as Exclude<Mode, 's6'>].includes(c.src))
+  props.mode === 's6'
+    ? S6_CASES
+    : isSecrets
+      ? []
+      : DEMO_CASES.filter((c) => SOURCES[props.mode as Exclude<Mode, 's6' | 'secrets'>].includes(c.src))
 /** Modes whose `noul` answers are written in the form (the records' own texts) instead of fixed. */
 const ownNoul = props.mode === 'guard' || props.mode === 's6'
 
@@ -49,12 +74,12 @@ function linesOf(c: DemoCase): string {
   return c.opts.map(([k, d]) => (d ? `${k}: ${d}` : k)).join('\n')
 }
 
-const first = examples[0]
+const first: DemoCase | undefined = examples[0]
 const caseIdx = ref(0)
-const qtype = ref<QT>(first.t)
-const ins = ref(first.ins)
-const optionsText = ref(linesOf(first))
-const state = ref(first.state)
+const qtype = ref<QT>(first?.t ?? 'choice')
+const ins = ref(first?.ins ?? '')
+const optionsText = ref(first ? linesOf(first) : '')
+const state = ref(first?.state ?? '')
 const lang = ref<'en' | 'fr'>('en')
 const adaptive = ref(true)
 
@@ -64,8 +89,9 @@ const engine = ref<WasmEngine | null>(null)
 const status = ref('Loading the model…')
 const answer = ref<Answer | null>(null)
 const error = ref('')
-const median = ref<number | null>(null)
-const samples: number[] = []
+const times = reactive(new DecisionTimes())
+/** The browser clock's step in µs, shown when it is coarse (measured on the client, at mount). */
+const clockStep = ref(0)
 
 const isIso = computed(() => model.value?.arch === 'skycmd-iso')
 /** Early exit can be switched on: an s2 file published with its exit thresholds. */
@@ -129,15 +155,18 @@ const abstains = computed(() => {
 const violation = computed(() => (props.mode === 'guard' && answer.value ? answer.value.probs[1] : null))
 
 onMounted(async () => {
+  clockStep.value = clockStepMicros()
   const all = await loadManifest()
-  models.value = questionModels(all)
+  models.value = isSecrets ? all.filter((m) => m.task === 'secrets') : questionModels(all)
   model.value =
     models.value.find((m) => m.name === props.prefer) ??
     models.value.find((m) => m.arch === 'skycmd-iso') ??
     models.value[0] ??
     null
   if (!model.value) {
-    status.value = 'No generic decision model is published on this site yet.'
+    status.value = isSecrets
+      ? 'The secret-detection model is not published on this site.'
+      : 'No generic decision model is published on this site yet.'
     return
   }
   await load()
@@ -145,9 +174,8 @@ onMounted(async () => {
 
 async function load() {
   if (!model.value) return
-  // The median is per model.
-  samples.length = 0
-  median.value = null
+  // The times are per model.
+  times.reset()
   status.value = `Loading ${model.value.name} (${formatInt(model.value.bytes / 1024)} KB)…`
   try {
     engine.value = await loadEngine(model.value)
@@ -159,6 +187,7 @@ async function load() {
 }
 
 function run() {
+  if (isSecrets) return runSecrets()
   const e = engine.value
   if (!e) return
   error.value = ''
@@ -172,16 +201,106 @@ function run() {
       e.decide(qtype.value, ins.value.trim(), JSON.stringify(rendered.value), state.value),
     ) as Answer
     answer.value = a
-    samples.push(a.micros)
-    if (samples.length > 50) samples.shift()
-    const s = [...samples].sort((x, y) => x - y)
-    median.value = s[Math.floor(s.length / 2)]
+    times.add(a.micros)
   } catch (err) {
     error.value = (err as Error).message
   }
 }
 
+// ---- secrets mode: one pasted text, the four questions of the jev
+
+const secretIdx = ref(0)
+const snippet = ref(SECRET_CASES[0]?.state ?? '')
+interface SecretAnswer {
+  q: SecretQuestion
+  a: Answer
+}
+const secretAnswers = ref<SecretAnswer[]>([])
+/** The text the shown answers are about (the textarea may be ahead of them while debounced). */
+const answeredState = ref('')
+/** The text as the model reads it: trailing blank lines dropped, so they do not count as lines. */
+const secretState = computed(() => snippet.value.replace(/\s+$/, ''))
+const secretLines = computed(() => secretState.value.split('\n').length)
+/** The preset while the text is unmodified. */
+const secretCase = computed(() => {
+  const c = SECRET_CASES[secretIdx.value]
+  return c && c.state === secretState.value ? c : null
+})
+/** The preset the shown answers are about, if any: expected answers are marked only then. */
+const answeredCase = computed(() => {
+  const c = secretCase.value
+  return c && c.state === answeredState.value ? c : null
+})
+const QUESTION_LABEL: Record<SecretQuestionId, string> = {
+  secret: 'Is a usable secret exposed?',
+  service: 'Which service issued it?',
+  kind: 'What kind of value?',
+  line: 'Which line?',
+}
+
+function pickSecret(i: number) {
+  secretIdx.value = i
+  snippet.value = SECRET_CASES[i].state
+}
+
+function runSecrets() {
+  const e = engine.value
+  if (!e) return
+  error.value = ''
+  if (!secretState.value.trim()) {
+    secretAnswers.value = []
+    answeredState.value = ''
+    error.value = 'Paste a text first.'
+    return
+  }
+  try {
+    e.setExitThreshold(1.0)
+    const out: SecretAnswer[] = []
+    for (const q of secretQuestions(secretState.value)) {
+      const a = JSON.parse(e.decide(q.t, q.ins, JSON.stringify(q.opts), secretState.value)) as Answer
+      times.add(a.micros)
+      out.push({ q, a })
+    }
+    secretAnswers.value = out
+    answeredState.value = secretState.value
+  } catch (err) {
+    error.value = (err as Error).message
+  }
+}
+
+/** One answer card: the options sorted by probability (at most `top`), the expected one marked. */
+function secretRows(sa: SecretAnswer, top = 3) {
+  const g = answeredCase.value?.gold[sa.q.id]
+  const gold = g !== undefined && g < sa.q.opts.length ? g : null
+  const best = sa.a.probs.indexOf(Math.max(...sa.a.probs))
+  const all = sa.q.opts.map((o, i) => {
+    const [key, ...rest] = o.split(': ')
+    return { i, key, desc: rest.join(': '), p: sa.a.probs[i] ?? 0, best: i === best, gold: i === gold }
+  })
+  const shown = [...all].sort((x, y) => y.p - x.p).slice(0, top)
+  // the expected option stays visible even when the model ranks it low
+  if (gold !== null && !shown.some((r) => r.gold)) shown.push(all[gold])
+  return { rows: shown, best: all[best], gold: gold === null ? null : all[gold], hidden: all.length - shown.length }
+}
+
+const secretTotal = computed(() => secretAnswers.value.reduce((s, x) => s + x.a.micros, 0))
+
+/** The scanner's verdict on the preset, judged against the expected answers. */
+const scannerVerdict = computed(() => {
+  const c = answeredCase.value
+  if (!c) return null
+  const flagged = c.scanner !== null
+  const secretOk = flagged === (c.gold.secret === 1)
+  const service = c.scanner ?? 'none'
+  const serviceOk = service === SECRET_SERVICES[c.gold.service].split(':')[0]
+  return { flagged, secretOk, service, serviceOk }
+})
+
 let timer: ReturnType<typeof setTimeout> | null = null
+watch(snippet, () => {
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(run, 120)
+})
 watch([qtype, ins, optionsText, state, adaptive, model], () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(run, 120)
@@ -209,7 +328,7 @@ function caseLabel(c: DemoCase) {
 <template>
   <div class="live">
     <div class="live-row live-top">
-      <label v-if="mode !== 's6'">Language
+      <label v-if="mode !== 's6' && !isSecrets">Language
         <select v-model="lang">
           <option value="en">English</option>
           <option value="fr">Français</option>
@@ -238,7 +357,35 @@ function caseLabel(c: DemoCase) {
       <a :href="withBase('/results/')">les résultats</a>. La démo reste sur les presets anglais.
     </p>
 
-    <div class="live-examples">
+    <template v-if="isSecrets">
+      <p class="live-banner live-safe">
+        The keys in the presets are fake: each is a provider's public format with a random body, as the bench
+        generator writes them, and the Stripe-format ones are drawn again in your browser at each page load. Everything runs locally in your browser; nothing you paste is sent anywhere.
+      </p>
+      <div class="live-examples">
+        <span>Bench texts:</span>
+        <button
+          v-for="(c, i) in SECRET_CASES"
+          :key="i"
+          type="button"
+          :class="{ on: i === secretIdx && secretCase !== null }"
+          :title="c.why"
+          @click="pickSecret(i)"
+        >{{ c.label }}</button>
+      </div>
+      <div class="live-form">
+        <label>Text to check (a config file, a .env, code)
+          <textarea v-model="snippet" rows="8" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <p v-if="secretCase" class="live-meta">Preset: {{ secretCase.why }}.</p>
+      <p v-if="secretLines > 7" class="live-meta">
+        {{ secretLines }} lines: the training texts have 2 to 7, and the state window holds 320 tokens, so the line
+        question (and a long text) is outside what the model has seen.
+      </p>
+    </template>
+
+    <div v-if="!isSecrets" class="live-examples">
       <span>Examples:</span>
       <button
         v-for="(c, i) in examples"
@@ -250,7 +397,7 @@ function caseLabel(c: DemoCase) {
       >{{ caseLabel(c) }}</button>
     </div>
 
-    <div class="live-form">
+    <div v-if="!isSecrets" class="live-form">
       <label>{{ mode === 'guard' ? 'Statement to check' : qtype === 'noul' ? 'Statement' : 'Question' }}
         <input v-model="ins" type="text" />
       </label>
@@ -274,7 +421,60 @@ function caseLabel(c: DemoCase) {
     <p v-if="status" class="live-status">{{ status }}</p>
     <p v-if="error" class="live-error">{{ error }}</p>
 
-    <div v-if="answer && !status" class="live-out">
+    <div v-if="isSecrets && secretAnswers.length && !status" class="live-out">
+      <div class="live-cards">
+        <section v-for="sa in secretAnswers" :key="sa.q.id" class="live-card">
+          <h4>{{ QUESTION_LABEL[sa.q.id] }}</h4>
+          <template v-for="v in [secretRows(sa, sa.q.id === 'secret' ? 2 : 3)]" :key="sa.q.id">
+            <p class="live-answer">
+              <strong>{{ sa.q.id === 'secret' ? (v.best.i === 1 ? 'yes' : 'no') : v.best.key }}</strong>
+              {{ pct(v.best.p) }}
+              <template v-if="v.gold">
+                · expected <strong>{{ sa.q.id === 'secret' ? (v.gold.i === 1 ? 'yes' : 'no') : v.gold.key }}</strong>
+                · <span :class="v.gold.best ? 'ok' : 'miss'">{{ v.gold.best ? 'the model agrees' : 'the model disagrees' }}</span>
+              </template>
+            </p>
+            <ul class="live-bars">
+              <li v-for="r in v.rows" :key="r.i" :class="{ best: r.best }">
+                <span class="k" :title="r.desc">{{ sa.q.id === 'secret' ? (r.i === 1 ? 'yes' : 'no') : r.key }}<template v-if="r.gold"> ✓</template></span>
+                <span class="bar"><span :style="{ width: pct(r.p) }" /></span>
+                <span class="p">{{ pct(r.p) }}</span>
+              </li>
+            </ul>
+            <p class="live-meta">
+              <template v-if="v.hidden > 0">{{ v.hidden }} other options below · </template>{{ formatMicros(sa.a.micros) }}
+              · question {{ sa.a.static_hit ? 'cached' : 'encoded' }}
+            </p>
+          </template>
+        </section>
+        <section v-if="secretLines < 2" class="live-card">
+          <h4>{{ QUESTION_LABEL.line }}</h4>
+          <p class="live-meta">Not asked: a one-line text, as in the generator.</p>
+        </section>
+      </div>
+      <p v-if="scannerVerdict" class="live-meta">
+        Rule scanner (<code>sky-data secret-baseline</code>) on this text:
+        <template v-if="scannerVerdict.flagged">flags it as <strong>{{ scannerVerdict.service }}</strong></template>
+        <template v-else>flags nothing</template>
+        · secret question <span :class="scannerVerdict.secretOk ? 'ok' : 'miss'">{{ scannerVerdict.secretOk ? 'right' : 'wrong' }}</span>
+        · service <span :class="scannerVerdict.serviceOk ? 'ok' : 'miss'">{{ scannerVerdict.serviceOk ? 'right' : 'wrong' }}</span>
+        <template v-if="!scannerVerdict.flagged && !scannerVerdict.serviceOk"> (it names a service only for what it flags)</template>
+      </p>
+      <p class="live-meta">
+        {{ secretAnswers.length }} decisions, {{ formatMicros(secretTotal) }} for this text · all 4 block passes (full depth, as published)
+        <template v-if="model"> · {{ model.name }}, {{ formatInt(model.bytes / 1024) }} KB</template>
+      </p>
+      <p class="live-meta live-times">
+        <template v-if="times.warmMedian !== null">
+          warm median <strong>{{ formatMicros(times.warmMedian) }}</strong> per decision ({{ times.warmCount }} {{ times.warmCount === 1 ? 'decision' : 'decisions' }} after the first)
+          ·
+        </template>
+        first call {{ times.first !== null ? formatMicros(times.first) : '…' }} (module start-up and first encodings included)
+        <template v-if="clockStep >= 20"> · this browser's clock counts in steps of {{ formatInt(clockStep) }} µs, so each time is rounded to a step</template>
+      </p>
+    </div>
+
+    <div v-if="!isSecrets && answer && !status" class="live-out">
       <div v-if="violation !== null" class="live-verdict" :class="{ bad: violation >= 0.5 }">
         p(true) = <strong>{{ pct(violation) }}</strong>
         <span>{{ violation >= 0.5 ? 'flag it' : 'let it through' }}</span>
@@ -300,8 +500,20 @@ function caseLabel(c: DemoCase) {
           <template v-if="answer.layers_used !== null"> · {{ answer.layers_used }} block passes</template>
           · question {{ answer.static_hit ? 'cached' : 'encoded' }}
         </template>
-        · {{ formatInt(answer.micros) }} µs<template v-if="median !== null"> (median {{ formatInt(median) }} µs)</template>
         <template v-if="model"> · {{ model.name }}, {{ formatInt(model.bytes / 1024) }} KB</template>
+      </p>
+      <p class="live-meta live-times">
+        this decision <strong>{{ formatMicros(answer.micros) }}</strong>
+        <template v-if="times.warmCount === 0 && times.first !== null">
+          (the first call: it includes the module start-up and the first encodings)
+        </template>
+        <template v-else>
+          <template v-if="times.warmMedian !== null">
+            · warm median {{ formatMicros(times.warmMedian) }} ({{ times.warmCount }} {{ times.warmCount === 1 ? 'decision' : 'decisions' }} after the first)
+          </template>
+          · first call {{ formatMicros(times.first ?? 0) }}
+        </template>
+        <template v-if="clockStep >= 20"> · this browser's clock counts in steps of {{ formatInt(clockStep) }} µs, so each time is rounded to a step</template>
       </p>
     </div>
   </div>
@@ -468,5 +680,39 @@ function caseLabel(c: DemoCase) {
   font-size: 13px;
   color: var(--vp-c-text-2);
   font-variant-numeric: tabular-nums;
+}
+.live-times {
+  margin-top: 4px;
+}
+.live-safe {
+  background: var(--vp-c-tip-soft);
+}
+.live-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.live-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--vp-c-bg);
+}
+.live-card h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.live-card .live-meta {
+  margin-top: 8px;
+}
+.live-answer {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.live .ok {
+  color: var(--vp-c-green-1, var(--vp-c-brand-1));
+}
+.live .miss {
+  color: var(--vp-c-danger-1);
 }
 </style>

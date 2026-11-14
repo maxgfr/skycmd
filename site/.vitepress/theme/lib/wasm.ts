@@ -60,7 +60,8 @@ export interface ModelEntry {
   /** `f32`, `f16`, `q8_0` or `ternary`. */
   weight_format?: string
   /** `generic`: a decision model for free-text questions (s4, s5: the Live page), not for the games.
-   * `general`: both, the games and free-text questions (s6-nano). Absent: the games only. */
+   * `general`: both, the games and free-text questions (s6-nano). `secrets`: the four questions of
+   * the API-key jev only (s6-secrets-pico, its own demo). Absent: the games only. */
   task?: string
   /** Published at full depth: the file's exit thresholds are 1, so early exit is off. */
   full_depth?: boolean
@@ -75,9 +76,9 @@ export function playsGame(entry: Pick<ModelEntry, 'games'>, game: string): boole
   return !entry.games || entry.games.includes(game)
 }
 
-/** The models that play the games (every manifest entry but the generic ones). */
+/** The models that play the games: entries without a task, and the `general` ones. */
 export function gameModels(list: ModelEntry[]): ModelEntry[] {
-  return list.filter((m) => m.task !== 'generic')
+  return list.filter((m) => !m.task || m.task === 'general')
 }
 
 /** The models that answer free-text questions (the Live page): `generic` and `general` entries. */
@@ -234,6 +235,63 @@ export class RateMeter {
 
 export function formatInt(n: number): string {
   return Math.round(n).toLocaleString('en-US')
+}
+
+let clockStep: number | null = null
+
+/** The step of the browser clock in µs (`performance.now`). Browsers coarsen it: Chrome counts in
+ * 100 µs steps on a page that is not cross-origin isolated, such as a GitHub Pages site, so a
+ * single decision faster than that reads as 0 or 100 µs. */
+export function clockStepMicros(): number {
+  if (clockStep === null) {
+    let step = Infinity
+    let prev = performance.now()
+    for (let i = 0; i < 20000 && step > 1; i++) {
+      const t = performance.now()
+      if (t > prev) step = Math.min(step, t - prev)
+      prev = t
+    }
+    clockStep = Number.isFinite(step) ? Math.round(step * 1000) : 0
+  }
+  return clockStep
+}
+
+/** A duration given in µs, readable: `412 µs`, `1.42 ms`, `22.1 ms`. A duration under the step of
+ * the browser clock reads `< 100 µs` (or the step there), never `0 µs`. */
+export function formatMicros(us: number): string {
+  const step = typeof performance === 'undefined' ? 0 : clockStepMicros()
+  if (step > 1 && us < step) return `< ${formatMicros(step)}`
+  if (us < 1000) return `${Math.round(us)} µs`
+  const ms = us / 1000
+  return `${ms < 10 ? ms.toFixed(2) : ms.toFixed(1)} ms`
+}
+
+/** Decision times of one demo: the first call apart (it pays the module start-up, compilation and
+ * the first encodings), and the median of the warm calls after it (the last 50). */
+export class DecisionTimes {
+  first: number | null = null
+  last: number | null = null
+  private warm: number[] = []
+  add(us: number): void {
+    this.last = us
+    if (this.first === null) this.first = us
+    else {
+      this.warm.push(us)
+      if (this.warm.length > 50) this.warm.shift()
+    }
+  }
+  get warmCount(): number {
+    return this.warm.length
+  }
+  get warmMedian(): number | null {
+    if (!this.warm.length) return null
+    const s = [...this.warm].sort((x, y) => x - y)
+    return s[Math.floor(s.length / 2)]
+  }
+  reset(): void {
+    this.first = this.last = null
+    this.warm = []
+  }
 }
 
 export function formatKB(bytes: number): string {

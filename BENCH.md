@@ -343,6 +343,45 @@ At full depth s6-nano plays at the oracle's score in every game: 0 crashes, Resc
 
 **WASM (s6-nano, the published file).** `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-nano.gguf runs/s6-nano/eval/dump-s6-nano.jsonl --n 200` on the first 200 bench questions: max |p_wasm − p_native| 9.5e-7, argmax agreement 200 of 200, median 14.6 to 15.2 ms per decision under Node in two runs (long JSON states; natively 7,385 µs on the same source). On short game states, `bench-node.mjs --game flappy` gives 436 µs per Flappy frame (two questions and the physics step, full depth). The WASM line of the results files was measured with early exits at 0.5 against a full-depth native dump, so it does not describe a published configuration and is not quoted here.
 
+## s6-secrets-pico: API-key and secret detection, pre-registered
+
+Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate in §6, amendments 1 to 5. Results: `runs/s6-secrets-pico/report.md` (`s2-eval`), the rule scanner's score `runs/s6-secrets-pico/baseline.txt` (written before any training), and the run log `runs/all/secrets-train.log`.
+
+**Model and recipe.** The s3-pico graph (1 state block × 4 loops, exits after each pass, d 96, vocabulary 1,024) with a 320-token state window and a 192-token head window: 445,345 parameters (203,393 in the pretraining stack), the same count as s3-pico, since the ablation did not adopt Parallax. Recipe from `runs/recipe/recipe.json`: AdamW, learning-rate scale 2.0, no EMA, so `last` is the exported checkpoint. Ternary GGUF: 250,272 bytes.
+
+**Run.** Seed 0, one run, in a throttled mode, so the budgets count working minutes; the log records two cooling pauses (582 s and 900 s) but does not name the modes in force. Steps actually done (`runs/all/secrets-train.log`):
+
+| phase | budget | steps |
+|---|---:|---:|
+| MLM pretraining, sequences of 256 tokens (`data/text-open`, `data/text`, numeric curriculum) | 8 min | 6,336 (final val loss 2.2398) |
+| decision training on `data/secrets` (183,712 training questions), QAT after a 10 % float warm-up, loop dropout 0.25 | 15 min | 7,555 |
+
+**Test bench.** `secret_bench`: 1,996 texts in four file types the training never shows (docker-compose, toml, go, ini), 7,984 questions. Ternary GGUF, last exit, full depth (`report.md`, section GGUF, "Exit 3"); the rule scanner on the same texts:
+
+| question | n | s6-secrets-pico | rule scanner | ECE |
+|---|---:|---:|---:|---:|
+| secret (noul) | 1,996 | **0.9990** | 0.977 (precision 0.966, recall 0.989) | 0.0009 |
+| service (15 options) | 1,996 | **0.9795** | 0.787 | 0.0154 |
+| kind (5 options) | 1,996 | 0.9990 | not asked | 0.0010 |
+| line (3 to 8 options) | 1,996 | 0.6859 | not asked | 0.3051 |
+| all | 7,984 | 0.9158 | | 0.0804 |
+
+**Gate** (§6): secret > 0.977 and service > 0.787 with the ternary GGUF at full depth. **Passed.** The published file `site/public/models/s6-secrets-pico.gguf` has the evaluated weights byte for byte, with its three exit thresholds set to 1 (`gguf-set`, checked with `gguf-inspect`), as amendment 13 of [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md) defines a publication at full depth.
+
+- **Per exit** (GGUF, after 1, 2, 3, 4 passes): secret 0.9990 at every exit; kind 0.9990 at every exit; service 0.9775, 0.9790, 0.9800, 0.9795; line 0.6227, 0.6628, 0.6844, 0.6859; all 0.8995, 0.9099, 0.9156, 0.9158.
+- **Early exit.** At the calibrated thresholds stored by the run (0.5 / 0.9 / 0.5), every question stops after the first pass (early-exit rate 1.000): secret 0.9990, kind 0.9990, service 0.9775, line 0.6227, all 0.8995. The first exit already gives the full-depth score on secret and kind; the gate was read at full depth, and that is the published setting.
+- **Validation** (seen templates, the `secret_synth` val split): ternary 0.998 at every exit, on the 4,000 val questions the training log evaluates, pooled over the four questions (per question: not computed); ECE 0.0010 after calibration on the 9,546 val questions. The latent f32 master weights score 0.756 on val and 0.7124 on test: the trained model is the ternary one (QAT over the last 90 %).
+- **The rule scanner** (`sky-data secret-baseline`): its 35 false positives are all random values that are not credentials, under secret-sounding names; its 11 misses are all generic secrets. The model gets the secret question right on all 46 texts the scanner gets wrong. It is wrong on 2 texts, both `x_api_key` with a 32-digit hex value in an ini file, which it calls not a credential; the scanner is right on both. These head-to-head counts come from the native dump of the published file and a port of the scanner's rules that reproduces its published counts (999 / 35 / 11 / 951 and 0.787) exactly.
+- **Where service fails.** 41 misses, 34 of them in Go code, where the model names `database` for generic (15), AWS (13), Slack (5) and npm (1) keys; 4 in docker-compose (generic keys named `aws`) and 3 in ini files.
+- **Line is weak, and overconfident.** On the 1,010 texts that expose a secret, the model names the right line 383 times; on the 986 texts that expose none, `none` is right every time, and those carry the 0.6859. Most misses point one line (327) or three lines (261) above the exposed one. These breakdowns are computed from the native dump; the pre-registration does not ask for them.
+
+**Size and latency.** 445,345 parameters, 250,272 bytes. Measured on 14/11 on the Apple M5 while a GPU training was running, so an idle machine may be faster:
+
+- native, `sky-eval` over the 7,984 bench questions at full depth: median 789 and 786 µs per decision in two runs (771 to 818 µs per question type);
+- WASM, `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-secrets-pico.gguf <dump> --n 200` (Node 24) on the first 200 bench questions: max |p_wasm − p_native| 1.2e-6, argmax agreement 200 of 200, median 1,420 and 1,427 µs per decision in two runs.
+
+**What this bench does not say** (§6). It is synthetic: the formats, the file templates and the class shares are our generator's, and every key is a provider's public format with a random body. Beating the scanner here shows that the model reads formats and context (the variable name, a test or publishable key, a placeholder) in file types it never saw. It says nothing about its recall on real repositories, and no such conclusion is drawn.
+
 ## s6-ear-nano: first run, gates failed
 
 Pre-registration: [`docs/s6-ear-prereg.md`](docs/s6-ear-prereg.md), gates in §6, amendments 2 to 4. Gate file: `runs/s6-ear-nano/eval/gate.json` (`scripts/ear-gate.py gate`); measurements: `runs/s6-ear-nano/eval/eval-{full,crc,control}.json` and `runs/all/ear-train.log`.
