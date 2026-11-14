@@ -270,8 +270,13 @@ eval_() {
   x "$T" s2-truncation --config "$cfg" --tokenizer "$tok" --records "$records,data/s4/heldout" \
     --json "$ev/truncation.json"
   [ "$dry" = 1 ] || [ -d site/public/pkg ] || x scripts/build-wasm.sh
+  # The dump is the native model at full depth, so the WASM side runs a copy of the file with
+  # its exit thresholds at 1: the file itself carries the calibration default (0.5), and the
+  # browser engine would exit early where the native dump did not (amendment 13).
+  x "$B/gguf-set" "$model" "$ev/full-depth.gguf" skycmd-s2.exit_threshold.choice=1 \
+    skycmd-s2.exit_threshold.score=1 skycmd-s2.exit_threshold.noul=1
   # A parity failure (exit 1) is kept in wasm.json and read by the gate.
-  x sh -c "node crates/sky-web/bench/parity-node.mjs '$model' '$ev/dump-$name.jsonl' --n 200 >'$ev/wasm.json' || true"
+  x sh -c "node crates/sky-web/bench/parity-node.mjs '$ev/full-depth.gguf' '$ev/dump-$name.jsonl' --n 200 >'$ev/wasm.json' || true"
   # A failed gate is a result, not a crash: it stays in results.md and the run goes on.
   x python3 -I scripts/s6-gate.py "$ev" --size "$size" --model "${model%.gguf}" \
     --pretrain-log "$run/pretrain/log.jsonl" --out "$ev/results.md" || {
