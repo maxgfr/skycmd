@@ -79,7 +79,7 @@ Frames: Flappy Drone state `vy -2 dx 35 up 20 dn -5 nxt -18 alt 32 t N` (a new s
 | Doom: s2-nano-doom ternary | – | 740 / 752 | 1601 / 1623 | 1282 / 1303 | 1002 / 1043 | 4 / 4 |
 | Doom: s3-pico ternary (trained) | – | 77 / 80 | – | 138 / 149 | 109 / 118 | 1.11 / 4 |
 
-The old engine cannot load s3 files; the old `sky-bench` has no Doom preset. "WASM relaxed SIMD" is the same module built with `-C target-feature=+simd128,+relaxed-simd` (`f32x4.relaxed_madd`, fused on arm64): Chrome, Edge and Node run it, Safari does not, so a site would load it behind feature detection. `SkyEngine` has no option for the int8 path, hence no WASM row for it.
+The old engine cannot load s3 files; the old `sky-bench` has no Doom preset. "WASM relaxed SIMD" is the same module built with `-C target-feature=+simd128,+relaxed-simd` (`f32x4.relaxed_madd`, fused on arm64). Since 14/11/2026 `scripts/build-wasm.sh` builds the site module both ways (`sky_web_bg.wasm` and `sky_web_relaxed_bg.wasm`, one shared `sky_web.js`), and `loadWasm()` loads the relaxed one when `WebAssembly.validate` accepts a relaxed instruction, falling back to SIMD128 if it does not or if the relaxed file fails to load. The WebAssembly feature table ([webassembly.org/features](https://webassembly.org/features/), as updated on 10/11/2026) lists relaxed SIMD in Chrome from 114, Firefox from 145 and Node from 21, and in Safari only behind a JavaScriptCore flag; other browsers get the SIMD128 module. `SkyEngine` has no option for the int8 path, hence no WASM row for it.
 
 What made it faster (s3-pico frame at the first exit: ~0.9 M multiply-adds, ~75% of the time in matrix products):
 - **Panel kernel for few rows** (`kernels::PanelMatrix`): f32 weights are repacked k-major in panels of 8 outputs, and an outer-product micro-kernel keeps 16-24 independent accumulators whatever the row count (balanced tiles of 3-5 rows x 2 panels, 2-3 rows x 3-4 panels; inputs loaded 4 at a time and broadcast by lane, `fmla v, v, v.s[l]` on NEON, a lane shuffle that V8 turns into `fmul` by element on wasm32; `relaxed_madd` behind `cfg(target_feature = "relaxed-simd")`). On 6-11 rows the 4 x 4 dot-product tiles fell to 30-43 GMAC/s (the remainder tiles are latency-bound); the panels hold 55-62 GMAC/s natively, about 80% of the M5's FMA peak, for every row count.
@@ -341,7 +341,17 @@ At full depth s6-nano plays at the oracle's score in every game: 0 crashes, Resc
 
 **From nano to micro:** bench accuracy 0.480 → 0.547, ECE 0.0479 → 0.0821, median native latency 1,488 → 7,346 µs per decision, file 715,136 → 2,420,032 bytes.
 
-**WASM (s6-nano, the published file).** `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-nano.gguf runs/s6-nano/eval/dump-s6-nano.jsonl --n 200` on the first 200 bench questions: max |p_wasm − p_native| 9.5e-7, argmax agreement 200 of 200, median 14.6 to 15.2 ms per decision under Node in two runs (long JSON states; natively 7,385 µs on the same source). On short game states, `bench-node.mjs --game flappy` gives 436 µs per Flappy frame (two questions and the physics step, full depth). The WASM line of the results files was measured with early exits at 0.5 against a full-depth native dump, so it does not describe a published configuration and is not quoted here.
+**WASM (s6-nano, the published file).** `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-nano.gguf runs/s6-nano/eval/dump-s6-nano.jsonl --n 200` on the first 200 bench questions, SIMD128 build: max |p_wasm − p_native| 9.5e-7, argmax agreement 200 of 200, median 14.6 to 15.2 ms per decision under Node in two runs (long JSON states; natively 7,385 µs on the same source). On short game states, `bench-node.mjs --game flappy` gives 436 µs per Flappy frame (two questions and the physics step, full depth, SIMD128 build).
+
+Both builds, three alternating runs each (`--relaxed` for the relaxed module), on 14/11 on the Apple M5 while a GPU training was running, Node 24:
+
+| s6-nano | SIMD128: median (range) | relaxed SIMD: median (range) |
+|---|---:|---:|
+| first 200 bench questions (`parity-node.mjs`) | 15.8 ms (15.6 to 16.2) | 12.5 ms (12.0 to 13.1) |
+| max \|p_wasm − p_native\|, argmax agreement | 9.5e-7, 200 / 200 | 8.9e-7, 200 / 200 |
+| Flappy frame (`bench-node.mjs --game flappy`) | 445 µs (424 to 450) | 358 µs (340 to 364) |
+
+The relaxed build is 1.26x faster on the bench questions and 1.24x on a Flappy frame here. In the same session s3-pico took 55.4 µs (53.6 to 58.4) per Flappy frame with SIMD128 and 47.9 µs with relaxed SIMD (two runs at 47.6 and 47.9 µs, one outlier at 98.5 µs). The WASM line of the results files was measured with early exits at 0.5 against a full-depth native dump, so it does not describe a published configuration and is not quoted here.
 
 ## s6-secrets-pico: API-key and secret detection, pre-registered
 
@@ -378,7 +388,8 @@ Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate
 **Size and latency.** 445,345 parameters, 250,272 bytes. Measured on 14/11 on the Apple M5 while a GPU training was running, so an idle machine may be faster:
 
 - native, `sky-eval` over the 7,984 bench questions at full depth: median 789 and 786 µs per decision in two runs (771 to 818 µs per question type);
-- WASM, `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-secrets-pico.gguf <dump> --n 200` (Node 24) on the first 200 bench questions: max |p_wasm − p_native| 1.2e-6, argmax agreement 200 of 200, median 1,420 and 1,427 µs per decision in two runs.
+- WASM, `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-secrets-pico.gguf <dump> --n 200` (Node 24) on the first 200 bench questions, SIMD128 build: max |p_wasm − p_native| 1.2e-6, argmax agreement 200 of 200, median 1,420 and 1,427 µs per decision in two runs;
+- both builds later the same day, three alternating runs each, a training still running: SIMD128 1,580 µs (1,577 to 1,581), max gap 1.2e-6; relaxed SIMD 1,219 µs (1,196 to 1,237), max gap 6.0e-7; argmax agreement 200 of 200 in every run.
 
 **What this bench does not say** (§6). It is synthetic: the formats, the file templates and the class shares are our generator's, and every key is a provider's public format with a random body. Beating the scanner here shows that the model reads formats and context (the variable name, a test or publishable key, a placeholder) in file types it never saw. It says nothing about its recall on real repositories, and no such conclusion is drawn.
 
