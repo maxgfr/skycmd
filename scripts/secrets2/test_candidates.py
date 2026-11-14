@@ -76,6 +76,11 @@ class Dump(unittest.TestCase):
         for bad in ([("cred:val:7", 0.5)], [("issue:val:1", 0.5)], [("cred:val", 0.5)], [("cred:val:x", 0.5)]):
             with self.assertRaises(common.Refused):
                 list(candidates.to_flags("creddata:validation", bad, gen))
+        # the clean-text corpus: the same way, with its own ids
+        clean = [common.flag("clean", "secretgate/src/a.ts", 2, 2, 1, 9, id=0)]
+        self.assertEqual(list(candidates.to_flags("clean", [("clean:all:0", 0.5)], clean)), [{**clean[0], "score": 0.5}])
+        with self.assertRaises(common.Refused):
+            list(candidates.to_flags("clean", [("cred:val:0", 0.5)], clean))
         rows = [{"row": 4, "text": "1" * 16, "label": 1, "start": 0, "end": 3}]
         flags = list(candidates.to_flags("issues:validation", [("issue:val:4", 0.25)], issue_candidates=rows))
         self.assertEqual(flags, [{"repo": "issues", "file": "texts/" + "1" * 16 + ".txt", "line": 1, "score": 0.25, "id": 4}])

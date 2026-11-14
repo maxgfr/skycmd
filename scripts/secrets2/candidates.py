@@ -7,7 +7,8 @@ The table of a set of candidates is the data side's `tables/<source>-<split>.jso
 (crates/sky-data/src/secrets2/mix.rs): one JSON line per candidate, in the order of the
 decision records, with
   id        `cred:<train|val|test>:<index>`: the index of the candidate in the generator's
-            export of its split; `issue:<split>:<row>`: the row of the issue-report split file
+            export of its split; `issue:<split>:<row>`: the row of the issue-report split file;
+            `clean:all:<index>`: the index in the generator's export of the clean-text corpus
   state     the state text the model reads (sky_infer::secret_cand)
   features  the hand features of section 4.2 by name
   label     T, X or F when known (training and validation), `real` 0/1, `weak`, `source`
@@ -56,10 +57,11 @@ def to_flags(corpus_name, scored, generator_flags=None, issue_candidates=None):
     corpora: `issue_candidates` are the rows of candidates.jsonl (issues.py prepare); the flag
     is the judgement of one row, read by its `id` (its `line` is not a place: the row's own
     span, in candidates.jsonl, is)."""
-    if corpus_name.startswith("creddata:"):
+    if corpus_name.startswith("creddata:") or corpus_name == "clean":
+        kind = "clean" if corpus_name == "clean" else "cred"
         places = {x["id"]: x for x in generator_flags}
         for row_id, p in scored:
-            x = places.get(index_of(row_id, "cred"))
+            x = places.get(index_of(row_id, kind))
             if x is None:
                 raise common.Refused(f"{row_id}: no candidate of that index in the generator's export of {corpus_name}")
             yield {**x, "score": round(float(p), 6)}
@@ -81,7 +83,7 @@ def write_scored(out_dir, system, corpus_name, scored, threshold, run, generator
     if corpus_name.startswith("issues:"):
         with open(os.path.join(common.issues_dir(corpus_name.split(":")[1]), "candidates.jsonl")) as f:
             issue_candidates = [json.loads(line) for line in f if line.strip()]
-    if corpus_name.startswith("creddata:"):
+    if corpus_name.startswith("creddata:") or corpus_name == "clean":
         gen_run, generator_flags = common.read_flags(generator_dir or out_dir, "generator")
         if gen_run.get("corpus") != corpus_name:
             raise common.Refused(f"the generator's flags are of {gen_run.get('corpus')}, not {corpus_name}")
