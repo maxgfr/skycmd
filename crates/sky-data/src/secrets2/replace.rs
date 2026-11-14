@@ -11,13 +11,15 @@
 //! - **A dictionary word stays a word**: a maximal run of ASCII letters of 4 characters or more
 //!   that is a word of the dictionary becomes another word of the same length, in the same case
 //!   pattern. This is what CredData's obfuscation does not do.
-//! - **A context word is kept as it is** (amendment 4): a candidate of the issue-report set is a
-//!   regular expression's match and often holds its key name (`token`, `password`, `secret`),
-//!   which the word rule would turn into another word in positives and never in negatives. A
-//!   dictionary-word run that occurs, as a whole run and without regard to case, in at least
-//!   [`KEPT_MIN_STRINGS`] distinct negative candidate strings of the training split is left
-//!   untouched ([`KeptRuns`]). Only the dictionary-word runs are concerned: a run of letters
-//!   that is no dictionary word is drawn again in its class, as before.
+//! - **A context run is kept as it is** (amendments 4 and 5): a candidate of the issue-report
+//!   set is a regular expression's match and often holds its key name (`token`, `password`,
+//!   `api_key`), which would otherwise be rewritten in positives and never in negatives. A whole
+//!   run of letters is left untouched when it occurs, as a whole run and without regard to
+//!   case, in at least [`KEPT_MIN_STRINGS`] distinct negative candidate strings of the training
+//!   split, and either it is a dictionary word, or it has at least [`KEPT_MIN_LETTERS`] letters
+//!   and contains one of the generator's keywords or scheme words ([`CONTEXT_WORDS`]). The
+//!   second case asks for a keyword so that a short random run of a real value is not kept
+//!   because it happens to be common ([`KeptRuns`]).
 //! - **Every other letter or digit becomes a random one of its class**, the classes being
 //!   CredData's: a run of letters and digits written in lower-case hexadecimal stays so, as does
 //!   upper-case hexadecimal and base32 (`A-Z`, `2-7`); otherwise a lower-case letter becomes a
@@ -36,21 +38,58 @@ use sky_infer::secret_cand::{letter_runs, WordSet};
 use super::sha256_hex;
 use crate::rng::Rng;
 
-/// Distinct negative candidate strings a word must occur in, as a whole run of letters, to be
+/// Distinct negative candidate strings a run must occur in, as a whole run of letters, to be
 /// kept as it is (amendment 4).
 pub const KEPT_MIN_STRINGS: usize = 5;
 
-/// The dictionary-word runs that are kept as they are: those of at least [`KEPT_MIN_STRINGS`]
-/// distinct negative candidate strings, in lower case.
+/// Letters a run that is no dictionary word must have to be kept (amendment 5).
+pub const KEPT_MIN_LETTERS: usize = 3;
+
+/// The keywords of the candidate generator (`generic-keyword`) and its scheme words: a run that
+/// is no dictionary word is kept only if it holds one of them (amendment 5).
+pub const CONTEXT_WORDS: [&str; 18] = [
+    "password",
+    "passwd",
+    "pwd",
+    "pass",
+    "secret",
+    "token",
+    "key",
+    "api",
+    "auth",
+    "credential",
+    "cred",
+    "nonce",
+    "salt",
+    "bearer",
+    "basic",
+    "digest",
+    "negotiate",
+    "apikey",
+];
+
+/// Whether a run of letters may be kept if the negatives hold it often enough: a dictionary
+/// word, or a run of at least [`KEPT_MIN_LETTERS`] letters that contains a context word.
+pub fn may_be_kept(run: &str, words: &WordSet) -> bool {
+    if words.is_word(run) {
+        return true;
+    }
+    let low = run.to_ascii_lowercase();
+    low.len() >= KEPT_MIN_LETTERS && CONTEXT_WORDS.iter().any(|w| low.contains(w))
+}
+
+/// The runs of letters that are kept as they are, in lower case, and for the counts every run
+/// of at least [`KEPT_MIN_LETTERS`] letters that the negatives hold as often.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct KeptRuns {
     runs: HashSet<String>,
+    common: HashSet<String>,
 }
 
 impl KeptRuns {
     /// From the negative candidate strings of the training split (after its decontamination):
-    /// each distinct string counts once for each dictionary-word run it holds, whatever the
-    /// case of the run.
+    /// each distinct string counts once for each run of letters it holds, whatever the case of
+    /// the run. A run of at least [`KEPT_MIN_STRINGS`] strings is kept if [`may_be_kept`].
     pub fn from_negatives<'a>(
         negatives: impl IntoIterator<Item = &'a str>,
         words: &WordSet,
@@ -59,26 +98,36 @@ impl KeptRuns {
         let mut strings: HashMap<String, usize> = HashMap::new();
         for s in distinct {
             let runs: HashSet<String> = letter_runs(s)
-                .map(|(a, b)| &s[a..b])
-                .filter(|run| words.is_word(run))
-                .map(str::to_ascii_lowercase)
+                .map(|(a, b)| s[a..b].to_ascii_lowercase())
+                .filter(|run| run.len() >= KEPT_MIN_LETTERS)
                 .collect();
             for run in runs {
                 *strings.entry(run).or_default() += 1;
             }
         }
+        let common: HashSet<String> = strings
+            .into_iter()
+            .filter(|(_, n)| *n >= KEPT_MIN_STRINGS)
+            .map(|(run, _)| run)
+            .collect();
         Self {
-            runs: strings
-                .into_iter()
-                .filter(|(_, n)| *n >= KEPT_MIN_STRINGS)
-                .map(|(run, _)| run)
+            runs: common
+                .iter()
+                .filter(|run| may_be_kept(run, words))
+                .cloned()
                 .collect(),
+            common,
         }
     }
 
     /// Whether a run of letters is kept, without regard to its case.
     pub fn contains(&self, run: &str) -> bool {
         !self.runs.is_empty() && self.runs.contains(&run.to_ascii_lowercase())
+    }
+
+    /// Whether at least [`KEPT_MIN_STRINGS`] negatives hold the run, kept or not.
+    pub fn is_common(&self, run: &str) -> bool {
+        !self.common.is_empty() && self.common.contains(&run.to_ascii_lowercase())
     }
 
     pub fn len(&self) -> usize {
@@ -94,10 +143,13 @@ impl KeptRuns {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Replacement {
     pub text: String,
-    /// The dictionary-word runs kept as they are, in lower case, one entry per run.
+    /// The runs of letters kept as they are, in lower case, one entry per run.
     pub kept: Vec<String>,
     /// Dictionary-word runs replaced by another word.
     pub replaced: usize,
+    /// Runs that the negatives hold as often as a kept run and that are drawn again all the
+    /// same: no dictionary word, no keyword in them.
+    pub redrawn_common: usize,
 }
 
 /// Prefixes kept where a token starts.
@@ -476,11 +528,13 @@ fn replace_with(value: &str, words: &WordSet, keep: &KeptRuns, rng: &mut Rng) ->
                 t += 1;
             }
             let run = &value[s..t];
-            if words.is_word(run) && keep.contains(run) {
-                // a context word: not a character of it changes
+            if keep.contains(run) {
+                // a context run: not a character of it changes
                 kept[s..t].fill(true);
                 report.kept.push(run.to_ascii_lowercase());
-            } else if words.is_word(run) {
+            } else if !words.is_word(run) {
+                report.redrawn_common += keep.is_common(run) as usize;
+            } else {
                 let pool = words.of_len(run.len());
                 let lower = run.to_ascii_lowercase();
                 if pool.len() > 1 {
@@ -706,10 +760,56 @@ mod tests {
             (r.text.as_str(), r.kept.len(), r.replaced),
             ("password: PASSWORD", 2, 0)
         );
-        // only dictionary words are concerned: `pwd` in five negatives is still drawn again
-        let keep = KeptRuns::from_negatives(["pwd 1", "pwd 2", "pwd 3", "pwd 4", "pwd 5"], &w);
-        assert!(keep.is_empty());
-        assert!(!replace_value("pwd=Xk42", &w, &keep, 7).starts_with("pwd"));
+    }
+
+    #[test]
+    fn a_key_name_that_is_no_dictionary_word_is_kept_when_it_holds_a_keyword() {
+        let w = words();
+        // amendment 5: five distinct negatives each hold `api`, `key`, `apikey`, `pwd`,
+        // `accesstoken`, `com` and `id` as whole runs; four hold `authz`
+        let negatives: Vec<String> = (0..5)
+            .map(|i| {
+                format!(
+                    "api_key={i} apikey pwd accessToken example.com id {}",
+                    if i < 4 { "authz" } else { "" }
+                )
+            })
+            .collect();
+        let keep = KeptRuns::from_negatives(negatives.iter().map(String::as_str), &w);
+        for run in ["api", "KEY", "apikey", "ApiKey", "pwd", "accesstoken"] {
+            assert!(keep.contains(run), "{run}");
+        }
+        // common, but no dictionary word and no keyword in it; or too short; or too rare
+        assert!(keep.is_common("com") && !keep.contains("com"));
+        assert!(keep.is_common("example") && !keep.contains("example"));
+        assert!(!keep.contains("id") && !keep.is_common("id"));
+        assert!(!keep.contains("authz") && !keep.is_common("authz"));
+        assert_eq!(keep.len(), 5);
+        assert!(
+            may_be_kept("passwd", &w) && may_be_kept("XApiKey", &w) && may_be_kept("winter", &w)
+        );
+        assert!(!may_be_kept("ke", &w) && !may_be_kept("qzv", &w) && !may_be_kept("mongodb", &w));
+
+        let secret = "api_key=Qz81mfa22Lx; apikey: Winter-77 (pwd) example.com authz";
+        let r = replace_value_report(secret, &w, &keep, 7);
+        assert!(
+            r.text.starts_with("api_key=")
+                && r.text.contains("; apikey: ")
+                && r.text.contains(" (pwd) ")
+        );
+        assert_eq!(r.kept, ["api", "key", "apikey", "pwd"]);
+        // the value is still drawn again, its word replaced by a word; `com`, `example` and
+        // `authz` are drawn again too, the first two although the negatives hold them
+        assert!(!r.text.contains("Qz81mfa22Lx") && !r.text.contains("Winter"));
+        assert!(!r.text.contains("example") && !r.text.ends_with("authz"));
+        assert_eq!((r.replaced, r.redrawn_common), (1, 2));
+        assert_eq!(shape(&r.text), shape(secret));
+        // a run is kept as a whole run only: `mykey` is not `key`
+        let r = replace_value_report("mykey=Qz81", &w, &keep, 7);
+        assert!(!r.text.starts_with("mykey") && r.kept.is_empty());
+        // with amendment 4 alone (dictionary words only) these names were drawn again
+        let before = KeptRuns::from_negatives(["winter 1"], &w);
+        assert!(!replace_value("api_key=Qz81", &w, &before, 7).starts_with("api_key"));
     }
 
     #[test]

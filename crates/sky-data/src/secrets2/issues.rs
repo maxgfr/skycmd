@@ -255,8 +255,9 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
         kept.push((split, rows));
     }
 
-    // the context words (amendment 4): the dictionary-word runs of at least five distinct
-    // negative candidate strings of the training split, after its decontamination
+    // the context runs (amendments 4 and 5): the runs of letters of at least five distinct
+    // negative candidate strings of the training split, after its decontamination, that are a
+    // dictionary word or hold a keyword
     let negatives: HashSet<&str> = kept
         .iter()
         .filter(|(split, _)| *split == "train")
@@ -269,6 +270,7 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
     let mut replacement: HashMap<String, String> = HashMap::new();
     let mut unchanged = 0usize;
     let (mut with_replaced, mut with_kept, mut kept_runs) = (0usize, 0usize, 0usize);
+    let mut with_redrawn_common = 0usize;
     let mut kept_words: BTreeMap<String, usize> = BTreeMap::new();
     for (_, rows) in &kept {
         for r in rows.iter().filter(|r| r.positive) {
@@ -279,6 +281,7 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
             unchanged += (new.text == r.candidate) as usize;
             with_replaced += (new.replaced > 0) as usize;
             with_kept += !new.kept.is_empty() as usize;
+            with_redrawn_common += (new.redrawn_common > 0) as usize;
             kept_runs += new.kept.len();
             // a word counts once for each distinct positive string that holds it
             for w in new.kept.iter().collect::<HashSet<_>>() {
@@ -292,7 +295,7 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
     let most: Vec<serde_json::Value> = most
         .iter()
         .take(10)
-        .map(|(w, n)| json!({"word": w, "positive_strings": n}))
+        .map(|(w, n)| json!({"run": w, "positive_strings": n}))
         .collect();
     let positives = Positives::new(&replacement);
 
@@ -385,12 +388,13 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
             "distinct_positive_strings": replacement.len(),
             "unchanged_made_of_kept_words_and_separators": unchanged,
             "distinct_negative_strings_of_the_training_split": negatives.len(),
-            "kept_words_of_the_training_negatives": keep.len(),
+            "kept_runs_of_the_training_negatives": keep.len(),
             "positive_strings_with_a_replaced_word_run": with_replaced,
-            "positive_strings_with_a_kept_word_run": with_kept,
+            "positive_strings_with_a_redrawn_run_that_5_negatives_hold": with_redrawn_common,
+            "positive_strings_with_a_kept_run": with_kept,
             "kept_runs_in_the_positive_strings": kept_runs,
-            "distinct_kept_words_in_the_positive_strings": kept_words.len(),
-            "ten_most_frequent_kept_words": most,
+            "distinct_kept_runs_in_the_positive_strings": kept_words.len(),
+            "ten_most_frequent_kept_runs": most,
             "published_positive_strings_left_in_a_record": left_in_records,
         },
         "splits": counts,

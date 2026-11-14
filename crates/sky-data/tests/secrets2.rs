@@ -246,7 +246,7 @@ fn fixture(root: &Path) -> Fixture {
     // the issue-report splits
     let (p1, p2, p3) = (
         format!("Winter-{}", value("p1", 14)),
-        value("p2", 32),
+        format!("api_key={}", value("p2", 32)),
         format!("token: {}", value("p3", 24)),
     );
     let shared = "a text that is also in the test split";
@@ -255,10 +255,11 @@ fn fixture(root: &Path) -> Fixture {
     let t1 = format!("It fails.\r\nconfig:\r\n  password = {p1}\r\nThanks");
     let t2 = format!("Same key as in the other issue: {p1} (please rotate)\nbuild 4f2a9c\n");
     let t3 = format!("log line\nkey={p2}\nend");
-    // five distinct negatives hold `token` as a whole run: a context word (amendment 4)
+    // five distinct negatives hold `token`, `api` and `key` as whole runs: a context word
+    // (amendment 4) and a key name that is no dictionary word (amendment 5)
     let context: String = (5..10)
         .map(|i| {
-            let c = format!("token: n{i}");
+            let c = format!("api_key={i}x token: n{i}");
             row(i, &c, &format!("an issue\n  {c}\nno secret here"), 0)
         })
         .collect();
@@ -471,16 +472,27 @@ fn the_build_does_what_the_pre_registration_asks() {
     let r = &i["replacement"];
     assert_eq!(r["published_positive_strings_left_in_a_record"], 0);
     assert_eq!(r["unchanged_made_of_kept_words_and_separators"], 0);
-    // the word rule (amendment 4): `token` stands in five distinct negatives of the training
-    // split and is kept in the positive that holds it; `Winter` is still replaced
-    assert_eq!(r["kept_words_of_the_training_negatives"], 1);
-    assert_eq!(r["positive_strings_with_a_kept_word_run"], 1);
+    // the word rule (amendments 4 and 5): `token`, `api` and `key` stand in five distinct
+    // negatives of the training split and are kept in the positives that hold them; `Winter`
+    // is still replaced
+    assert_eq!(r["kept_runs_of_the_training_negatives"], 3);
+    assert_eq!(r["positive_strings_with_a_kept_run"], 2);
     assert_eq!(r["positive_strings_with_a_replaced_word_run"], 1);
-    assert_eq!(r["kept_runs_in_the_positive_strings"], 1);
+    assert_eq!(r["kept_runs_in_the_positive_strings"], 3);
     assert_eq!(
-        r["ten_most_frequent_kept_words"],
-        json!([{"word": "token", "positive_strings": 1}])
+        r["ten_most_frequent_kept_runs"],
+        json!([
+            {"run": "api", "positive_strings": 1},
+            {"run": "key", "positive_strings": 1},
+            {"run": "token", "positive_strings": 1},
+        ])
     );
+    let key = items(&out, "issues-train");
+    assert!(
+        key[2].rec.value.starts_with("api_key="),
+        "the key name stays"
+    );
+    assert_ne!(key[2].rec.value, f.published[1]);
     let v = items(&out, "issues-val");
     assert_eq!(v[0].label, Label::T);
     assert!(
