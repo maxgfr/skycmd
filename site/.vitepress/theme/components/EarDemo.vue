@@ -6,7 +6,7 @@
 // page. Below the System 2 threshold the demo says it would hand the clip to a larger model.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { formatInt, loadManifest, loadWasm, type ModelEntry, type WasmEngine } from '../lib/wasm'
+import { engineLabel, formatInt, loadManifest, loadWasm, type ModelEntry, type WasmEngine } from '../lib/wasm'
 
 const RATE = 16000
 const WINDOW = 163840 // 128 frames of 80 ms = 10.24 s
@@ -284,7 +284,7 @@ onMounted(async () => {
     const e = new mod.Engine(new Uint8Array(await res.arrayBuffer()))
     if (!e.isAudio()) throw new Error(`${found.name} is not an audio (s6-ear) model`)
     engine.value = e
-    status.value = `${e.name()} · ${formatInt(e.n_params())} parameters · ${(e.file_bytes() / 1024).toFixed(0)} KB`
+    status.value = `${e.name()} · ${formatInt(e.n_params())} parameters · ${(e.file_bytes() / 1024).toFixed(0)} KB · ${engineLabel()}`
   } catch (err) {
     error.value = String(err)
     status.value = ''

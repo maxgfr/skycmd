@@ -151,15 +151,65 @@ export interface Question {
   options: string[]
 }
 
+/** The build of the module in use: `relaxed` (SIMD128 + relaxed SIMD, `f32x4.relaxed_madd`) or
+ * `simd128` (the baseline every browser with WebAssembly SIMD runs). Both come from the same
+ * sources and share one JS glue (scripts/build-wasm.sh). */
+export type WasmBuild = 'relaxed' | 'simd128'
+
+export const WASM_BUILD_LABEL: Record<WasmBuild, string> = {
+  relaxed: 'relaxed SIMD',
+  simd128: 'SIMD128',
+}
+
+let build: WasmBuild | null = null
+
+/** The build `loadWasm` instantiated (null before it resolves). */
+export function wasmBuild(): WasmBuild | null {
+  return build
+}
+
+/** `engine: relaxed SIMD` or `engine: SIMD128`, for the timing lines; empty before the load. */
+export function engineLabel(): string {
+  return build ? `engine: ${WASM_BUILD_LABEL[build]}` : ''
+}
+
+// A function `() -> v128` returning `i8x16.relaxed_swizzle` of two `i8x16.splat`: it validates only
+// where relaxed SIMD is supported.
+const RELAXED_PROBE = new Uint8Array([
+  0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 15, 1, 13, 0, 65, 1, 253, 15, 65, 2, 253, 15,
+  253, 128, 2, 11,
+])
+
+/** Whether this engine validates relaxed-SIMD instructions. */
+export function relaxedSimdSupported(): boolean {
+  try {
+    return typeof WebAssembly === 'object' && WebAssembly.validate(RELAXED_PROBE)
+  } catch {
+    return false
+  }
+}
+
 let modPromise: Promise<SkyWeb> | null = null
 
-/** Loads and instantiates the wasm module once. */
+/** Loads and instantiates the wasm module once: the relaxed-SIMD build where the browser supports
+ * it, else (or if that file cannot be fetched or instantiated: an older deploy, a missing file)
+ * the SIMD128 build. */
 export function loadWasm(): Promise<SkyWeb> {
   if (!modPromise) {
     modPromise = (async () => {
       const url = withBase('/pkg/sky_web.js')
       const mod = await import(/* @vite-ignore */ url)
+      if (relaxedSimdSupported()) {
+        try {
+          await mod.default({ module_or_path: withBase('/pkg/sky_web_relaxed_bg.wasm') })
+          build = 'relaxed'
+          return mod as unknown as SkyWeb
+        } catch (e) {
+          console.warn('sky-web: the relaxed-SIMD module did not load, using the SIMD128 one.', e)
+        }
+      }
       await mod.default({ module_or_path: withBase('/pkg/sky_web_bg.wasm') })
+      build = 'simd128'
       return mod as unknown as SkyWeb
     })()
     modPromise.catch(() => {

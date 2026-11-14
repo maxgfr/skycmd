@@ -8,12 +8,14 @@
 // options of each record, `noul` answers included. The `secrets` mode asks s6-secrets-pico the four
 // questions of its jev about a pasted text, with the generator's own texts (lib/s6-cases.ts).
 // Times: the first call of a demo pays the module start-up and the first encodings, so it is shown
-// apart, and the median covers the warm calls after it (lib/wasm.ts, DecisionTimes).
+// apart, and the median covers the warm calls after it (lib/wasm.ts, DecisionTimes). The timing
+// lines name the build of the module in use (relaxed SIMD or SIMD128, lib/wasm.ts loadWasm).
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
 import {
   clockStepMicros,
   DecisionTimes,
+  engineLabel,
   formatInt,
   formatMicros,
   loadEngine,
@@ -470,6 +472,7 @@ function caseLabel(c: DemoCase) {
           ·
         </template>
         first call {{ times.first !== null ? formatMicros(times.first) : '…' }} (module start-up and first encodings included)
+        <template v-if="engineLabel()"> · {{ engineLabel() }}</template>
         <template v-if="clockStep >= 20"> · this browser's clock counts in steps of {{ formatInt(clockStep) }} µs, so each time is rounded to a step</template>
       </p>
     </div>
@@ -513,6 +516,7 @@ function caseLabel(c: DemoCase) {
           </template>
           · first call {{ formatMicros(times.first ?? 0) }}
         </template>
+        <template v-if="engineLabel()"> · {{ engineLabel() }}</template>
         <template v-if="clockStep >= 20"> · this browser's clock counts in steps of {{ formatInt(clockStep) }} µs, so each time is rounded to a step</template>
       </p>
     </div>

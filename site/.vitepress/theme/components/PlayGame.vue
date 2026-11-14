@@ -3,6 +3,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { GameRunner, newHud, type GameKind, type Hud, type Mode } from '../lib/runner'
 import {
+  engineLabel,
   FAMILY_LABEL,
   familyOf,
   formatInt,
@@ -450,6 +451,7 @@ function pct(p: number) {
             <div class="ml">score · best {{ hud.best }}</div>
           </div>
         </div>
+        <div v-if="mode === 'ai' && engine && engineLabel()" class="ml engine">{{ engineLabel() }}</div>
         <div v-if="info" class="depth" aria-label="Model depth and caches">
           <template v-if="info.family === 's2'">
             <div class="drow">
@@ -776,6 +778,9 @@ function pct(p: number) {
 .ml {
   font-size: 11px;
   color: var(--vp-c-text-3);
+}
+.engine {
+  margin: -4px 0 10px;
 }
 .depth {
   margin: 0 0 10px;

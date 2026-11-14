@@ -3,7 +3,7 @@
 // in-browser benchmark of every published model through the wasm `bench()` export.
 import { computed, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { familyOf, formatInt, loadEngine, loadManifest, loadWasm, type ModelEntry } from '../lib/wasm'
+import { engineLabel, familyOf, formatInt, loadEngine, loadManifest, loadWasm, type ModelEntry } from '../lib/wasm'
 
 interface BenchRow {
   name: string
@@ -90,7 +90,7 @@ async function runBench() {
       local.value = { ...local.value, [m.name]: JSON.parse(mod.bench(engine, 300)) }
     }
     progress.value = manifest.value.length
-      ? `Done: 300 decisions per model on ${navigator.hardwareConcurrency ?? '?'}-thread ${navigator.platform || 'device'}.`
+      ? `Done: 300 decisions per model on ${navigator.hardwareConcurrency ?? '?'}-thread ${navigator.platform || 'device'}, ${engineLabel()}.`
       : 'No model is published yet: nothing to benchmark.'
   } catch (e) {
     progress.value = `Benchmark failed: ${(e as Error).message}`
