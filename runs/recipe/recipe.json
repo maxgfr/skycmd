@@ -1,0 +1,128 @@
+{
+  "about": "s6 recipe by the pre-registered rules (docs/s6-prereg.md \u00a74, amendment 4), from the pico pilot and ablation",
+  "optimizer": "adamw",
+  "lr_scale": 2.0,
+  "parallax": false,
+  "xsa": false,
+  "opt": [
+    "--no-muon"
+  ],
+  "pretrain": [],
+  "decide": [],
+  "ema": false,
+  "rules": {
+    "1_muon": {
+      "arm": "softmax-muon",
+      "against": "softmax-adamw",
+      "gain": 0.00508333333333344,
+      "need": 0.01,
+      "std": [
+        0.003278719262150978,
+        0.004303583777891774
+      ],
+      "arena_loss": [
+        "flappy 91.43 < 141.7"
+      ],
+      "adopted": false,
+      "overhead": 0.006200383279653998
+    },
+    "2_parallax": {
+      "arm": "parallax-adamw",
+      "against": "softmax-adamw",
+      "gain": 0.005416666666666736,
+      "need": 0.01,
+      "std": [
+        0.0034125992049071747,
+        0.004303583777891774
+      ],
+      "arena_loss": [],
+      "adopted": false
+    },
+    "3_xsa": {
+      "arm": "xsa-muon",
+      "against": "softmax-muon",
+      "gain": 0.00808333333333322,
+      "need": 0.01,
+      "std": [
+        0.0037859388972001857,
+        0.003278719262150978
+      ],
+      "arena_loss": [],
+      "adopted": false
+    },
+    "4_soda": {
+      "arm": "parallax-muon-soda",
+      "against": "parallax-muon",
+      "gain": -0.0060833333333334405,
+      "need": 0.005,
+      "ece_delta": 0.0019470465823011214,
+      "arena_loss": [],
+      "adopted": false
+    },
+    "4_exit_kd": {
+      "arm": "parallax-muon-kd",
+      "against": "parallax-muon",
+      "gain": -0.002083333333333437,
+      "need": 0.005,
+      "ece_delta": 0.0032989828531295486,
+      "arena_loss": [
+        "flappy 44.07 < 71.78"
+      ],
+      "adopted": false
+    },
+    "4_ema": {
+      "arm": "parallax-muon-ema",
+      "against": "parallax-muon",
+      "gain": -0.002666666666666706,
+      "need": 0.005,
+      "ece_delta": -0.0008514590569089105,
+      "arena_loss": [
+        "rescue 1.211 < 2.956"
+      ],
+      "adopted": false
+    },
+    "4_stableqat": {
+      "arm": "parallax-muon-stableqat",
+      "against": "parallax-muon",
+      "gain": -0.006166666666666654,
+      "need": 0.005,
+      "ece_delta": -0.0021678489678102694,
+      "arena_loss": [
+        "rescue 2.122 < 2.956"
+      ],
+      "adopted": false
+    },
+    "4_curriculum": {
+      "arm": "parallax-muon-curriculum",
+      "against": "parallax-muon",
+      "gain": -0.0033333333333334103,
+      "need": 0.005,
+      "ece_delta": 0.0021366007910243977,
+      "arena_loss": [
+        "flappy 5.944 < 71.78",
+        "rescue 2.7 < 2.956"
+      ],
+      "adopted": false
+    },
+    "5_nopolish": {
+      "arm": "parallax-muon-nopolish",
+      "against": "parallax-muon",
+      "gain": -0.0028333333333334654,
+      "speedup": 0.24569099969951458,
+      "adopted": false,
+      "note": "AdamW kept by rule 1: the Newton-Schulz polish is not used"
+    }
+  },
+  "inputs": {
+    "/Users/maxime/Documents/Code/skycmd/runs/s6lr/summary.json": "29a9e49317a7ec3f2a68233269b776a1e65a232253436d6723fd631895a75059",
+    "/Users/maxime/Documents/Code/skycmd/runs/s6ab/summary.json": "f2a42568c009b5825b5c866cf8829dd38f8c0a8f616b61f4ce1e53520f80c8b3"
+  },
+  "written": "2026-11-12T03:43:31+00:00",
+  "configs": {
+    "s6-nano": "/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-nano.json",
+    "s6-micro": "/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-micro.json",
+    "s6-secrets-pico": "/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-secrets-pico.json",
+    "s6-ear-nano": "/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-ear-nano.json",
+    "s6-cast-pico": "/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-cast-pico.json"
+  }
+}
