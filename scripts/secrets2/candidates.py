@@ -8,7 +8,8 @@ The table of a set of candidates is the data side's `tables/<source>-<split>.jso
 decision records, with
   id        `cred:<train|val|test>:<index>`: the index of the candidate in the generator's
             export of its split; `issue:<split>:<row>`: the row of the issue-report split file;
-            `clean:all:<index>`: the index in the generator's export of the clean-text corpus
+            `clean:all:<index>`: the index in the generator's export of the clean-text corpus;
+            `issue-e2e:<split>:<index>`: the index in the generator's export of the issue texts
   state     the state text the model reads (sky_infer::secret_cand)
   features  the hand features of section 4.2 by name
   label     T, X or F when known (training and validation), `real` 0/1, `weak`, `source`
@@ -16,7 +17,10 @@ decision records, with
 A score is P(real). On a CredData corpus a scored candidate becomes a flag at the place of the
 generator's candidate of the same index (DIR/generator.flags.jsonl, written by
 run_secretgate.py generator); on an issue corpus it becomes the judgement of the dataset's own
-candidate of that row (run.json: judges = dataset-candidates).
+candidate of that row (run.json: judges = dataset-candidates). End to end (section 7.4), the
+candidates are the generator's on the issue texts: a scored candidate is a flag at the place of
+the generator's candidate, as on CredData, and the system is scored like one that reads the
+texts.
 """
 import json
 import os
@@ -49,7 +53,7 @@ def index_of(row_id, kind):
     return int(parts[2])
 
 
-def to_flags(corpus_name, scored, generator_flags=None, issue_candidates=None):
+def to_flags(corpus_name, scored, generator_flags=None, issue_candidates=None, e2e=False):
     """Flags of `scored`, an iterable of (id, P(real)).
 
     CredData: `generator_flags` are the generator's flags of the same corpus, whose `id` is the
@@ -57,8 +61,8 @@ def to_flags(corpus_name, scored, generator_flags=None, issue_candidates=None):
     corpora: `issue_candidates` are the rows of candidates.jsonl (issues.py prepare); the flag
     is the judgement of one row, read by its `id` (its `line` is not a place: the row's own
     span, in candidates.jsonl, is)."""
-    if corpus_name.startswith("creddata:") or corpus_name == "clean":
-        kind = "clean" if corpus_name == "clean" else "cred"
+    if corpus_name.startswith("creddata:") or corpus_name == "clean" or e2e:
+        kind = "clean" if corpus_name == "clean" else "issue-e2e" if e2e else "cred"
         places = {x["id"]: x for x in generator_flags}
         for row_id, p in scored:
             x = places.get(index_of(row_id, kind))
@@ -77,17 +81,22 @@ def to_flags(corpus_name, scored, generator_flags=None, issue_candidates=None):
         raise common.Refused(f"unknown corpus {corpus_name!r}")
 
 
-def write_scored(out_dir, system, corpus_name, scored, threshold, run, generator_dir=None):
-    """Writes the flags and run.json of a system that scored candidates."""
+def write_scored(out_dir, system, corpus_name, scored, threshold, run, generator_dir=None, e2e=False):
+    """Writes the flags and run.json of a system that scored candidates. `e2e`: the candidates
+    are the generator's on the texts of an issue corpus, not the dataset's own."""
     generator_flags = issue_candidates = None
-    if corpus_name.startswith("issues:"):
+    if e2e and not (corpus_name.startswith("issues:") and not corpus_name.endswith(":obfuscated")):
+        raise common.Refused(f"end to end is read on the issue texts as published, not on {corpus_name}")
+    if corpus_name.startswith("issues:") and not e2e:
         with open(os.path.join(common.issues_dir(corpus_name.split(":")[1]), "candidates.jsonl")) as f:
             issue_candidates = [json.loads(line) for line in f if line.strip()]
-    if corpus_name.startswith("creddata:") or corpus_name == "clean":
+    if corpus_name.startswith("creddata:") or corpus_name == "clean" or e2e:
         gen_run, generator_flags = common.read_flags(generator_dir or out_dir, "generator")
         if gen_run.get("corpus") != corpus_name:
             raise common.Refused(f"the generator's flags are of {gen_run.get('corpus')}, not {corpus_name}")
     meta = {**run, "corpus": corpus_name, "unit": "candidate", "scored": True, "threshold": threshold}
-    if corpus_name.startswith("issues:"):
+    if corpus_name.startswith("issues:") and not e2e:
         meta["judges"] = "dataset-candidates"
-    return common.write_flags(out_dir, system, to_flags(corpus_name, scored, generator_flags, issue_candidates), meta)
+    if e2e:
+        meta["judges"] = "generator-candidates"
+    return common.write_flags(out_dir, system, to_flags(corpus_name, scored, generator_flags, issue_candidates, e2e), meta)

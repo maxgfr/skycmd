@@ -291,18 +291,18 @@ def load(model_dir, kind):
         return Potion(pickle.load(f), potion_dir()), report
 
 
-def score(model_dir, kind, table, corpus_name, out, system=None):
+def score(model_dir, kind, table, corpus_name, out, system=None, e2e=False):
     model, report = load(model_dir, kind)
     rows = list(candidates.read_table(table))
     with common.Clock() as clock:
         scores = model.scores(rows) if rows else []
-    name = system or ("lr" if kind == "lr" else "potion-lr")
+    name = system or ("lr" if kind == "lr" else "potion-lr") + ("-e2e" if e2e else "")
     return candidates.write_scored(out, name, corpus_name, [(r["id"], float(p)) for r, p in zip(rows, scores)], report["threshold"], {
         "version": (f"scikit-learn {report['scikit_learn']}, SGDClassifier alpha {report['alpha']}, 2^18 int8 weights" if kind == "lr"
                     else f"model2vec {report['model2vec']} potion-base-2M, scikit-learn {report['scikit_learn']} LogisticRegression"),
         "how": "the state text of each candidate; threshold maximising F1 on the CredData validation candidates",
         "table": {"name": os.path.basename(table), "sha256": common.sha256_file(table), "candidates": len(rows)},
-        "cpu_seconds": round(clock.own + clock.children, 1), "wall_seconds": round(clock.wall, 1)})
+        "cpu_seconds": round(clock.own + clock.children, 1), "wall_seconds": round(clock.wall, 1)}, e2e=e2e)
 
 
 def main():
@@ -314,6 +314,7 @@ def main():
     ap.add_argument("--table")
     ap.add_argument("--corpus")
     ap.add_argument("--system")
+    ap.add_argument("--e2e", action="store_true", help="the table holds the generator's candidates on the issue texts (end to end)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     try:
@@ -325,7 +326,7 @@ def main():
         else:
             if a.corpus != "clean":
                 common.corpus(a.corpus)  # the guard of the split
-            meta = score(a.model, a.kind, a.table, a.corpus, a.out, a.system)
+            meta = score(a.model, a.kind, a.table, a.corpus, a.out, a.system, a.e2e)
             common.log(f"{meta['system']}: {meta['flags']} candidates scored on {meta['corpus']}, threshold {meta['threshold']}")
     except common.Refused as e:
         common.log(f"run_lr: refused: {e}")

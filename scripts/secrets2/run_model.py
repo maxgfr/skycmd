@@ -179,12 +179,12 @@ def wasm(model, dump, out, n=200):
     return result
 
 
-def convert(model, dump, table, corpus_name, out, system):
+def convert(model, dump, table, corpus_name, out, system, e2e=False):
     tau = common.model_tau(model)
     scores, kind = dump_to_scores(candidates.read_table(table), read_jsonl(dump))
     meta = candidates.write_scored(out, system, corpus_name, scores, tau, {
         "version": f"{os.path.basename(model)} sha256 {common.sha256_file(model)}", "how": "sky-eval --dump at full depth, P(real) >= tau* of the file's metadata",
-        "kind_question": {**kind, "accuracy": kind["correct"] / kind["n"] if kind["n"] else None}})
+        "kind_question": {**kind, "accuracy": kind["correct"] / kind["n"] if kind["n"] else None}}, e2e=e2e)
     return meta
 
 
@@ -198,6 +198,7 @@ def main():
     ap.add_argument("--table")
     ap.add_argument("--corpus")
     ap.add_argument("--system", default="model")
+    ap.add_argument("--e2e", action="store_true", help="the table holds the generator's candidates on the issue texts (end to end)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     try:
@@ -208,7 +209,7 @@ def main():
         else:
             if a.corpus != "clean":
                 common.corpus(a.corpus)  # the guard of the split
-            meta = convert(a.model, a.dump, a.table, a.corpus, a.out, a.system)
+            meta = convert(a.model, a.dump, a.table, a.corpus, a.out, a.system + ("-e2e" if a.e2e else ""), a.e2e)
             common.log(f"{meta['system']}: {meta['flags']} candidates scored on {meta['corpus']}, tau* {meta['threshold']}")
     except common.Refused as e:
         common.log(f"run_model: refused: {e}")

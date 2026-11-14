@@ -12,8 +12,10 @@
 #                cbx-secrets-detector-17M
 #     issues     the issue-report split as texts, as published and through CredData's
 #                obfuscation, and the scanners on both
-#     states     the state of every candidate of the split and of the clean-text corpus, from
-#                the data side's own builder (scripts/secrets2/states.py; SKY_DATA)
+#     states     the state of every candidate of the split (CredData, the issue reports as
+#                published, obfuscated and end to end) and of the clean-text corpus, from the
+#                data side's own builder (scripts/secrets2/states.py: sky-data secrets2 states;
+#                SKY_DATA names the binary)
 #     trained    the size-matched LR and potion-base-2M + LR: trained once (validation run),
 #                then scored on the split's candidates
 #     model      the model (MODEL=...): sky-eval at full depth, its answers as flags
@@ -36,15 +38,16 @@
 # its file listing, the issue-report split file. Every runner checks the split again.
 #
 # The candidates the model and the trained baselines judge come as tables of states, all from
-# the data side's state builder. For the CredData candidates of the split and for the
-# clean-text corpus, the `states` step builds them from the generator's raw exports:
-#   <data>/eval/<split>/states/creddata.{jsonl,records.jsonl}    <data>/eval/clean/states/clean.*
-# For the issue reports the dataset's own candidates need the data side's record builder: on
-# validation its build has them (BUILD/tables/issues-val.jsonl, values replaced as in training);
-# for the test, and for the obfuscated texts, they are expected in
-#   <data>/eval/<split>/states/{issues,issues-obfuscated}.{jsonl,records.jsonl}
-# A system whose states are missing is skipped and said so; the gate then fails on the missing
-# result.
+# the data side's state builder (`sky-data secrets2 states`), written by the `states` step:
+#   <data>/eval/<split>/states/creddata.{jsonl,records.jsonl}   the generator's candidates on the
+#                                                               split's repositories
+#   <data>/eval/<split>/states/issues.*              the dataset's candidates, values as published
+#   <data>/eval/<split>/states/issues-obfuscated.*   the same through CredData's obfuscation
+#   <data>/eval/<split>/states/issues-e2e.*          the generator's candidates on the issue texts
+#   <data>/eval/clean/states/clean.*                 the generator's candidates on the clean text
+# The issue-report states need the `issues` step first (the texts and the generator's export on
+# them). A system whose states are missing is skipped and said so; the gate then fails on the
+# missing result.
 #
 # Outputs, all in the data folder (outside every repository): <data>/eval/<split>/. Nothing
 # written there or printed holds a value except the raw exports under raw/, which stay there.
@@ -96,11 +99,14 @@ records() {
     echo "$build/records/$1/val.jsonl"
   fi
 }
-# corpora: <table name> <corpus> <flags folder>
+# corpora: <table name> <corpus> <flags folder> [e2e]. The last one is the end-to-end run of
+# section 7.4: the generator's candidates on the issue texts, judged and written as flags at
+# their places (system <name>-e2e).
 corpora() {
   echo "creddata creddata:$split $flags"
   echo "issues issues:$split $iss/flags"
   echo "issues-obfuscated issues:$split:obfuscated $iss/flags-obfuscated"
+  echo "issues-e2e issues:$split $iss/flags e2e"
 }
 
 tools() {
@@ -135,10 +141,27 @@ issues() {
 states() {
   py $S/states.py --corpus "creddata:$split" --candidates "$flags/raw/candidates.raw.jsonl" --out "$out/states/creddata" --build "$build"
   py $S/states.py --corpus clean --candidates "$E/clean/flags/raw/candidates.raw.jsonl" --out "$E/clean/states/clean" --build "$build"
+  # the issue reports: the dataset's candidates as published and through CredData's
+  # obfuscation, and the generator's candidates on the texts (end to end)
+  if [ ! -f "$iss/candidates.jsonl" ]; then
+    echo "== states of the issue reports: no texts in $iss (the issues step writes them): skipped"
+    return
+  fi
+  py $S/states.py --corpus "issues:$split" --out "$out/states/issues" --build "$build"
+  if [ -d "$iss/texts-obfuscated" ]; then
+    py $S/states.py --corpus "issues:$split:obfuscated" --out "$out/states/issues-obfuscated" --build "$build"
+  else
+    echo "== states of the obfuscated issue texts: no $iss/texts-obfuscated: skipped"
+  fi
+  if [ -f "$iss/flags/raw/candidates.raw.jsonl" ]; then
+    py $S/states.py --corpus "issues:$split:e2e" --candidates "$iss/flags/raw/candidates.raw.jsonl" --out "$out/states/issues-e2e" --build "$build"
+  else
+    echo "== states of the generator's candidates on the issue texts: no export in $iss/flags/raw: skipped"
+  fi
 }
 
 trained() {
-  local kind name t corpus dir
+  local kind name t corpus dir mode
   for kind in lr potion; do
     name=$kind
     [ "$kind" = potion ] && name=potion-lr
@@ -155,12 +178,12 @@ trained() {
       echo "== $name: not trained (run the validation split first): skipped"
       continue
     fi
-    while read -r t corpus dir; do
+    while read -r t corpus dir mode; do
       if [ -z "$(table "$t")" ]; then
-        echo "== $name on $corpus: no table of states ($out/states/$t.jsonl): skipped"
+        echo "== $name on $corpus${mode:+ ($mode)}: no table of states ($out/states/$t.jsonl): skipped"
         continue
       fi
-      nice -n 19 "$E/envs/$kind/bin/python" -I $S/run_lr.py score --kind "$kind" --model "$E/$kind" --table "$(table "$t")" --corpus "$corpus" --out "$dir"
+      nice -n 19 "$E/envs/$kind/bin/python" -I $S/run_lr.py score --kind "$kind" --model "$E/$kind" --table "$(table "$t")" --corpus "$corpus" --out "$dir" ${mode:+--e2e}
     done < <(corpora)
   done
 }
@@ -170,14 +193,14 @@ model() {
     echo "== model: no MODEL given: skipped"
     return
   fi
-  local t corpus dir
-  while read -r t corpus dir; do
+  local t corpus dir mode
+  while read -r t corpus dir mode; do
     if [ -z "$(table "$t")" ] || [ -z "$(records "$t")" ]; then
-      echo "== model on $corpus: no table or records of states ($out/states/$t.jsonl, $t.records.jsonl): skipped"
+      echo "== model on $corpus${mode:+ ($mode)}: no table or records of states ($out/states/$t.jsonl, $t.records.jsonl): skipped"
       continue
     fi
     py $S/run_model.py eval --model "$MODEL" --records "$(records "$t")" --split val --out "$out/model/$t" >/dev/null
-    py $S/run_model.py convert --model "$MODEL" --dump "$out/model/$t/model-dump.jsonl" --table "$(table "$t")" --corpus "$corpus" --out "$dir"
+    py $S/run_model.py convert --model "$MODEL" --dump "$out/model/$t/model-dump.jsonl" --table "$(table "$t")" --corpus "$corpus" --out "$dir" ${mode:+--e2e}
     # the WASM figure is reported, not gated: a parity failure stays in model-wasm.json
     [ "$t" != creddata ] || py $S/run_model.py wasm --model "$MODEL" --dump "$out/model/$t/model-dump.jsonl" --out "$out/model/$t" >/dev/null || true
   done < <(corpora)

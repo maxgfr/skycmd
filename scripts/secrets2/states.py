@@ -5,29 +5,38 @@ candidates of a split, not only the labelled ones the training build keeps.
 
   states.py --corpus creddata:validation --candidates FLAGS/raw/candidates.raw.jsonl --out DIR/creddata
   states.py --corpus clean --candidates <data>/eval/clean/flags/raw/candidates.raw.jsonl --out <data>/eval/clean/states/clean
+  states.py --corpus issues:validation --out DIR/issues
+  states.py --corpus issues:validation:obfuscated --out DIR/issues-obfuscated
+  states.py --corpus issues:validation:e2e --candidates ISSUES/flags/raw/candidates.raw.jsonl --out DIR/issues-e2e
 
-writes OUT.jsonl (the table: id, state, features, one line per candidate, in the export's
-order), OUT.records.jsonl (the decision records of the real question, same order, split "val")
-and OUT.states.json (what built them: hashes only).
+writes OUT.jsonl (the table: id, state, features, one line per candidate, in the order of the
+input), OUT.records.jsonl (the decision records, same order, split "val": the real question,
+and the kind question of a CredData candidate whose label is known) and OUT.states.json (what
+built them: hashes and counts only).
 
-Nothing of the state is computed here. Each generator record is put, as it is, in the item
-envelope the data side reads (crates/sky-data/src/secrets2: id, source, split, label, rec) and
-`sky-data secrets2 mix` of the data side's build turns the items into states and records, with
-the tokenizer and the dictionary whose hashes BUILD.json names (anything else is refused). The
-envelope's label is a placeholder (F): the truth of a candidate is not known here, the scorer
-reads it from the meta rows. Ids: `cred:<val|test>:<index>` on CredData, `clean:all:<index>`
-on the clean-text corpus, the index being the candidate's line in the export.
+Nothing of the state is computed here: `sky-data secrets2 states` of the data side
+(crates/sky-data/src/secrets2/states.rs) builds the table and the records, with the tokenizer
+and the dictionary whose hashes BUILD.json names (anything else is refused). Ids:
+`cred:<val|test>:<index>` on CredData and `clean:all:<index>` on the clean-text corpus, the
+index being the candidate's line in the generator's export; `issue:<val|test>:<row>` for the
+dataset's own candidates of the issue reports, as published or through CredData's obfuscation
+(issues.py prepare and obfuscate wrote the texts and the places); `issue-e2e:<val|test>:<index>`
+for the generator's candidates on the issue texts.
 
-A CredData candidate in a file directly under its repository's folder (a licence copy) has no
-scope directory: the data side's builder refuses such a path, so these candidates get no state
-and are counted (they sit on unlabelled lines).
+A CredData candidate takes its label from the meta rows (the data side's matching rules); the
+candidates no row labels, and those of the clean-text corpus and of the end-to-end run, have
+none: the scorer reads the truth itself. A CredData candidate in a file directly under its
+repository's folder (a licence copy) has no scope directory: it gets no state and is counted.
 
-SKY_DATA names the binary (default: target/release/sky-data of the data side's worktree).
+The test split goes through two guards: this script's (common.py) and the command's own, which
+is given the model and runs/s6-secrets2/TEST-OPEN.
+
+SKY_DATA names the binary (default: target/s3-train/release/sky-data of the main checkout,
+as scripts/build-secrets2-data.sh builds it).
 """
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 
@@ -35,11 +44,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
 SEED = "1234"
-SLOTS = [(s, k) for s in ("creddata", "issues", "synth") for k in ("train", "val")]
 
 
 def sky_data():
-    return os.environ.get("SKY_DATA") or os.path.join(common.main_checkout(), ".claude", "worktrees", "secrets2", "target", "release", "sky-data")
+    return os.environ.get("SKY_DATA") or os.path.join(common.main_checkout(), "target", "s3-train", "release", "sky-data")
 
 
 def build_inputs(build):
@@ -58,18 +66,8 @@ def build_inputs(build):
             "dictionary": dic["path"], "dictionary_sha256": dic["file"]["sha256"]}
 
 
-def envelope(corpus_name, index, rec):
-    """(slot source, item) of one generator record, or None for a record the builder cannot place."""
-    if corpus_name.startswith("creddata:"):
-        if rec["file"].count("/") < 3:
-            return None
-        short = "test" if corpus_name.endswith(":test") else "val"
-        return "creddata", {"id": f"cred:{short}:{index}", "source": "creddata", "split": "val", "label": "F", "kind": False, "rec": rec}
-    if corpus_name == "clean":
-        # the path inside its repository: the first component of the corpus path names the repository
-        rec = {**rec, "file": rec["file"].split("/", 1)[1]}
-        return "synth", {"id": f"clean:all:{index}", "source": "synth", "split": "val", "label": "F", "kind": False, "rec": rec}
-    raise common.Refused(f"no states for the corpus {corpus_name!r}")
+def needs_export(corpus_name):
+    return corpus_name == "clean" or corpus_name.startswith("creddata:") or corpus_name.endswith(":e2e")
 
 
 def build_states(corpus_name, candidates, out, build):
@@ -77,48 +75,32 @@ def build_states(corpus_name, candidates, out, build):
     exe = sky_data()
     if not os.path.isfile(exe):
         raise common.Refused(f"{exe}: no sky-data of the data side (SKY_DATA)")
-    work = out + ".work"
-    shutil.rmtree(work, ignore_errors=True)
-    os.makedirs(os.path.join(work, "candidates"), mode=0o700)
-    ids, skipped, source = [], 0, None
-    try:
-        files = {slot: open(os.open(os.path.join(work, "candidates", f"{slot[0]}-{slot[1]}.jsonl"), os.O_WRONLY | os.O_CREAT, 0o600), "w") for slot in SLOTS}
-        try:
-            with open(candidates) as f:
-                for index, line in enumerate(l for l in f if l.strip()):
-                    item = envelope(corpus_name, index, json.loads(line))
-                    if item is None:
-                        skipped += 1
-                        continue
-                    source = item[0]
-                    files[(source, "val")].write(json.dumps(item[1]) + "\n")
-                    ids.append(item[1]["id"])
-        finally:
-            for f in files.values():
-                f.close()
-        r = subprocess.run(common.nice([exe, "--seed", SEED, "secrets2", "mix", "--out", work, "--tokenizer", inputs["tokenizer"], "--dict", inputs["dictionary"]]),
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            raise common.Refused(f"sky-data secrets2 mix failed (exit {r.returncode}): {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ''}")
-        os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-        table, records = out + ".jsonl", out + ".records.jsonl"
-        if ids:
-            shutil.move(os.path.join(work, "tables", f"{source}-val.jsonl"), table)
-            shutil.move(os.path.join(work, "records", source, "val.jsonl"), records)
-        else:
-            open(table, "w").close()
-            open(records, "w").close()
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    if needs_export(corpus_name) and not (candidates and os.path.isfile(candidates)):
+        raise common.Refused(f"{corpus_name}: no export of the generator ({candidates})")
+    cmd = [exe, "--seed", SEED, "secrets2", "states", "--data", common.data_root(), "--corpus", corpus_name, "--out", out,
+           "--tokenizer", inputs["tokenizer"], "--dict", inputs["dictionary"], "--test-open", common.TEST_OPEN]
+    if needs_export(corpus_name):
+        cmd += ["--candidates", candidates]
+    if os.environ.get("SECRETS2_MODEL"):
+        cmd += ["--model", os.environ["SECRETS2_MODEL"]]
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    r = subprocess.run(common.nice(cmd), capture_output=True, text=True)
+    if r.returncode != 0:
+        raise common.Refused(f"sky-data secrets2 states failed (exit {r.returncode}): {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ''}")
+    counts = json.loads(r.stdout)
+    table, records = out + ".jsonl", out + ".records.jsonl"
+    for path, key in ((table, "table"), (records, "records_file")):
+        if common.sha256_file(path) != counts[key]["sha256"]:
+            raise common.Refused(f"{path} is not the file the command wrote")
     with open(table) as f:
-        got = [json.loads(line)["id"] for line in f if line.strip()]
-    with open(records) as f:
-        n_records = sum(1 for line in f if line.strip())
-    if got != ids or n_records != len(ids):
-        raise common.Refused(f"{table}: not one state and one record per candidate, in the export's order")
-    meta = {"corpus": corpus_name, "candidates": len(ids) + skipped, "states": len(ids), "without_a_scope_directory": skipped,
-            "export_sha256": common.sha256_file(candidates), "table_sha256": common.sha256_file(table), "records_sha256": common.sha256_file(records),
-            "state_builder": {"binary": os.path.basename(exe), "binary_sha256": common.sha256_file(exe), "command": "sky-data secrets2 mix"},
+        n_rows = sum(1 for line in f if line.strip())
+    if n_rows != counts["states"]:
+        raise common.Refused(f"{table}: not one state per candidate")
+    meta = {"corpus": corpus_name, "candidates": counts["candidates"], "states": counts["states"],
+            "without_a_scope_directory": counts["without_a_scope_directory"], "not_found_in_their_text": counts["not_found_in_their_text"],
+            "records": counts["records"], "labels": counts["labels"],
+            "input_sha256": counts["input"]["sha256"], "table_sha256": counts["table"]["sha256"], "records_sha256": counts["records_file"]["sha256"],
+            "state_builder": {"binary": os.path.basename(exe), "binary_sha256": common.sha256_file(exe), "command": "sky-data secrets2 states"},
             **{k: v for k, v in inputs.items() if k.endswith("sha256")}}
     common.write_json(out + ".states.json", meta)
     return meta
@@ -127,18 +109,20 @@ def build_states(corpus_name, candidates, out, build):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--corpus", required=True)
-    ap.add_argument("--candidates", required=True)
+    ap.add_argument("--candidates")
     ap.add_argument("--out", required=True)
     ap.add_argument("--build", default=os.path.join(common.data_root(), "build"))
     a = ap.parse_args()
     try:
         if a.corpus != "clean":
-            common.corpus(a.corpus)  # the guard of the split
+            # the guard of the split (the end-to-end candidates are those of the issue texts)
+            common.corpus(a.corpus[: -len(":e2e")] if a.corpus.endswith(":e2e") else a.corpus)
         meta = build_states(a.corpus, a.candidates, a.out, a.build)
     except common.Refused as e:
         common.log(f"states: refused: {e}")
         return 3
-    common.log(f"states of {meta['corpus']}: {meta['states']} of {meta['candidates']} candidates ({meta['without_a_scope_directory']} in a file with no scope directory)")
+    common.log(f"states of {meta['corpus']}: {meta['states']} of {meta['candidates']} candidates "
+               f"({meta['without_a_scope_directory']} in a file with no scope directory, {meta['not_found_in_their_text']} not found in their text)")
     return 0
 
 

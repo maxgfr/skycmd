@@ -89,6 +89,21 @@ class Dump(unittest.TestCase):
         self.assertTrue(flags[0]["file"].startswith("texts-obfuscated/"))
         with self.assertRaises(common.Refused):
             list(candidates.to_flags("issues:validation", [("issue:val:5", 0.25)], issue_candidates=rows))
+        # end to end: the generator's candidates on the issue texts, flags at their places
+        gen = [common.flag("issues", "texts/" + "1" * 16 + ".txt", 2, 2, 7, 19, rule="generic-keyword", id=0)]
+        flags = list(candidates.to_flags("issues:validation", [("issue-e2e:val:0", 0.9)], gen, e2e=True))
+        self.assertEqual(flags, [{**gen[0], "score": 0.9}])
+        for bad in ([("issue:val:0", 0.9)], [("issue-e2e:val:3", 0.9)], [("cred:val:0", 0.9)]):
+            with self.assertRaises(common.Refused):
+                list(candidates.to_flags("issues:validation", bad, gen, e2e=True))
+        with tempfile.TemporaryDirectory() as d:
+            common.write_flags(d, "generator", gen, {"version": "t", "corpus": "issues:validation", "unit": "candidate"})
+            meta = candidates.write_scored(d, "lr-e2e", "issues:validation", [("issue-e2e:val:0", 0.9)], 0.5, {"version": "t"}, e2e=True)
+            self.assertEqual((meta["judges"], meta["flags"], meta["threshold"]), ("generator-candidates", 1, 0.5))
+            # the obfuscated texts and the CredData corpora have no end-to-end run
+            for corpus in ("issues:validation:obfuscated", "creddata:validation"):
+                with self.assertRaises(common.Refused):
+                    candidates.write_scored(d, "lr-e2e", corpus, [], 0.5, {"version": "t"}, e2e=True)
 
     def test_latency_and_exits(self):
         ev = lambda us, early: {"n_params": 445345, "sources": {"all": {"n": 30, "median_us": 9999.0, "early_exit_rate": 0.0, "ece": 0.0},
@@ -112,19 +127,18 @@ class Dump(unittest.TestCase):
 
 
 class States(unittest.TestCase):
-    def test_envelope(self):
-        rec = {"generator": "sg-cand-1", "file": "data/bbbbbbbb/src/conf/ffffffff.py", "rule": "generic-keyword", "value": "v" * 8}
-        source, item = states.envelope("creddata:validation", 7, rec)
-        # the record goes in as it is; the label is a placeholder and only the real question is asked
-        self.assertEqual((source, item["id"], item["source"], item["split"], item["kind"], item["rec"]), ("creddata", "cred:val:7", "creddata", "val", False, rec))
-        self.assertEqual(states.envelope("creddata:test", 7, rec)[1]["id"], "cred:test:7")
-        # a licence copy directly under the repository's folder has no scope directory: no state
-        self.assertIsNone(states.envelope("creddata:validation", 0, dict(rec, file="data/bbbbbbbb/LICENSE.txt")))
-        # the clean-text corpus: the path inside its repository (a "secretgate/" prefix would read as a scope word)
-        source, item = states.envelope("clean", 3, dict(rec, file="secretgate/src/engine/scanner.ts"))
-        self.assertEqual((source, item["id"], item["rec"]["file"]), ("synth", "clean:all:3", "src/engine/scanner.ts"))
-        with self.assertRaises(common.Refused):
-            states.envelope("issues:validation", 0, rec)
+    def test_which_corpora_need_the_generator_export(self):
+        # the generator's candidates come from its export; the dataset's own candidates of the
+        # issue reports come from what issues.py prepare wrote
+        for name in ("creddata:validation", "creddata:test", "clean", "issues:validation:e2e"):
+            self.assertTrue(states.needs_export(name), name)
+        for name in ("issues:validation", "issues:test:obfuscated"):
+            self.assertFalse(states.needs_export(name), name)
+
+    def test_states_are_refused_without_the_build_or_the_export(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(common.Refused):
+                states.build_states("creddata:validation", os.path.join(d, "none.jsonl"), os.path.join(d, "out"), d)
 
 
 @unittest.skipUnless(HAS_SKLEARN, "scikit-learn is not installed in this interpreter")
