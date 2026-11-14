@@ -46,6 +46,7 @@
 #
 # Outputs, all in the data folder (outside every repository): <data>/eval/<split>/. Nothing
 # written there or printed holds a value except the raw exports under raw/, which stay there.
+# results.md and gate.json (numbers and hashes) are copied to runs/s6-secrets2/eval-<split>/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -207,7 +208,12 @@ gate() {
     [ -s "$dir/results.md" ] || exit 1
     echo "== gate not passed or not the test: see $dir/results.md"
   }
-  echo "wrote $dir/results.md and $dir/gate.json"
+  # numbers and hashes only: a copy in the checkout, next to runs/s6-secrets2/generator.json
+  local kept=runs/s6-secrets2/eval-$split
+  [ "$seat" = model ] || kept=$kept/seat-$seat
+  mkdir -p "$kept"
+  cp "$dir/results.md" "$dir/gate.json" "$kept/"
+  echo "wrote $dir/results.md and $dir/gate.json (copied to $kept)"
 }
 
 for s in "${steps[@]}"; do
