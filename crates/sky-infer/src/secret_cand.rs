@@ -597,13 +597,24 @@ mod tests {
             } else {
                 assert_eq!(dirs, words, "{path}");
             }
-            // CredData files the copy under those directories: reading the chain back as a
-            // path gives the same chain
+            // CredData files the copy under those directories. Reading the chain back as a
+            // path gives the same chain here, but not always: see below
             if !words.is_empty() {
                 let stored = format!("{}/0a1b2c3d", words.join("/"));
                 assert_eq!(scope_words(&stored), words, "{path}");
             }
         }
+    }
+
+    #[test]
+    fn a_stored_chain_is_not_always_its_own_scope() {
+        // `another` holds `other`; filed under `other/`, the stored path also holds `/other`,
+        // the second of the two words of the list that give that directory. The scope of a
+        // CredData file is therefore read from its directories, never computed from them.
+        assert_eq!(file_scope("x1/another/y"), "/other/");
+        assert_eq!(scope_words("x1/another/y"), ["other"]);
+        assert_eq!(scope_words("other/0a1b2c3d"), ["other", "other"]);
+        assert_eq!(file_scope("a/other/x"), "/other/other/");
     }
 
     #[test]
