@@ -34,7 +34,7 @@ sdk: static
 app_file: index.html
 pinned: false
 license: apache-2.0
-short_description: {s["short_description"]}
+short_description: {json.dumps(s["short_description"], ensure_ascii=False)}
 models:
   - {user}/{m}
 ---
