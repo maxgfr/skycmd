@@ -1,0 +1,67 @@
+{
+ "experiment": "s6-secrets v2 (docs/s6-secrets2-prereg.md, section 8)",
+ "split": "validation",
+ "model": "model",
+ "is_the_pre_registered_gate": false,
+ "universe_of_G1_G2_G3_G5": "gated",
+ "uuid_choice": "Gated universe: the rows whose CredData category is exactly `UUID` are removed, for every system (amendment 2). That choice was made after reading the training and validation rows and before any test file was read. Full universe: every meta row.",
+ "thresholds": {
+  "G1": 0.15,
+  "G2": 0.1,
+  "G2_goal": 0.05,
+  "G4": 0.08,
+  "G5": 0.05,
+  "G6_us": 3000.0,
+  "G7": 0.01
+ },
+ "gates": {
+  "G1": {
+   "holds": false,
+   "why": [
+    "no result of model"
+   ],
+   "parts": {}
+  },
+  "G2": {
+   "holds": false,
+   "why": [
+    "no result of model"
+   ],
+   "parts": {}
+  },
+  "G3": {
+   "holds": false,
+   "why": [
+    "no result of model"
+   ],
+   "parts": {}
+  },
+  "G4": {
+   "holds": false,
+   "why": [
+    "no issue-report result of model"
+   ]
+  },
+  "G5": {
+   "holds": false,
+   "why": [
+    "no ECE of model"
+   ]
+  },
+  "G6": {
+   "holds": false,
+   "why": [
+    "no native latency"
+   ]
+  },
+  "G7": {
+   "holds": false,
+   "why": [
+    "no clean-text result of model"
+   ]
+  }
+ },
+ "announced_goal_met": null,
+ "all_hold": false,
+ "verdict": "REHEARSAL on validation: the gate would not hold on these numbers; nothing is decided before the test"
+}
