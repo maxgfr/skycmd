@@ -123,6 +123,12 @@ pub fn manifest(o: &ManifestOptions) -> Result<serde_json::Value> {
         t
     });
     let config = o.config.as_deref().map(file_entry).transpose()?;
+    // the word list the state builder holds is the one of this CredData
+    let list: Vec<String> =
+        serde_json::from_value(read_json(&o.data.join("creddata/word_in_path.json"))?)?;
+    if list != sky_infer::secret_cand::WORD_IN_PATH {
+        bail!("creddata/word_in_path.json is not the list of sky_infer::secret_cand::WORD_IN_PATH");
+    }
     let mut out_files = outputs(&o.out)?;
     for rel in ["dictionary.txt", "pretrain-text/creddata.jsonl"] {
         let p = o.out.join(rel);
