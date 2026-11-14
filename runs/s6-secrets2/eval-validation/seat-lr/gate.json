@@ -20,19 +20,19 @@
    "why": [],
    "parts": {
     "all": {
-     "model": 0.859392575928009,
+     "model": 0.8603603603603605,
      "reference": "secretgate-default",
      "reference_f1": 0.5196850393700787,
      "holds": true,
-     "model_full_universe": 0.7541954590325766,
+     "model_full_universe": 0.7549407114624506,
      "reference_full_universe": 0.4347826086956522
     },
     "without_largest": {
-     "model": 0.7936507936507936,
+     "model": 0.7971781305114638,
      "reference": "secretgate-default",
      "reference_f1": 0.6136363636363636,
      "holds": true,
-     "model_full_universe": 0.7154213036565978,
+     "model_full_universe": 0.7186009538950715,
      "reference_full_universe": 0.5378486055776892
     }
    }
@@ -42,19 +42,19 @@
    "why": [],
    "parts": {
     "all": {
-     "model": 0.859392575928009,
+     "model": 0.8603603603603605,
      "reference": "cbx-17m",
      "reference_f1": 0.8872901678657074,
      "holds": true,
-     "model_full_universe": 0.7541954590325766,
+     "model_full_universe": 0.7549407114624506,
      "reference_full_universe": 0.7724425887265136
     },
     "without_largest": {
-     "model": 0.7936507936507936,
+     "model": 0.7971781305114638,
      "reference": "cbx-17m",
      "reference_f1": 0.8190854870775348,
      "holds": true,
-     "model_full_universe": 0.7154213036565978,
+     "model_full_universe": 0.7186009538950715,
      "reference_full_universe": 0.7292035398230089
     }
    }
@@ -62,43 +62,43 @@
   "G3": {
    "holds": false,
    "why": [
-    "every repository: 0.8594 <= lr 0.8594",
-    "without the largest repository: 0.7937 <= lr 0.7937"
+    "every repository: 0.8604 <= lr 0.8604",
+    "without the largest repository: 0.7972 <= lr 0.7972"
    ],
    "parts": {
     "all": {
-     "model": 0.859392575928009,
+     "model": 0.8603603603603605,
      "reference": "lr",
-     "reference_f1": 0.859392575928009,
+     "reference_f1": 0.8603603603603605,
      "holds": false,
-     "model_full_universe": 0.7541954590325766,
-     "reference_full_universe": 0.7541954590325766
+     "model_full_universe": 0.7549407114624506,
+     "reference_full_universe": 0.7549407114624506
     },
     "without_largest": {
-     "model": 0.7936507936507936,
+     "model": 0.7971781305114638,
      "reference": "lr",
-     "reference_f1": 0.7936507936507936,
+     "reference_f1": 0.7971781305114638,
      "holds": false,
-     "model_full_universe": 0.7154213036565978,
-     "reference_full_universe": 0.7154213036565978
+     "model_full_universe": 0.7186009538950715,
+     "reference_full_universe": 0.7186009538950715
     }
    }
   },
   "G4": {
    "holds": false,
    "why": [
-    "0.6217 < Gitleaks 0.6805 + 0.08"
+    "0.6312 < Gitleaks 0.6805 + 0.08"
    ],
-   "model": 0.6217044757817289,
+   "model": 0.6311970979443773,
    "gitleaks": 0.6804550155118925
   },
   "G5": {
    "holds": false,
    "why": [
-    "ECE 0.0677 > 0.05"
+    "ECE 0.0678 > 0.05"
    ],
-   "ece": 0.06772972119168058,
-   "ece_full_universe": 0.06613301292861161
+   "ece": 0.06783989488476627,
+   "ece_full_universe": 0.06710042776840966
   },
   "G6": {
    "holds": false,
@@ -107,10 +107,11 @@
    ]
   },
   "G7": {
-   "holds": false,
-   "why": [
-    "no clean-text result of lr"
-   ]
+   "holds": true,
+   "why": [],
+   "files": 77,
+   "of": 8825,
+   "share": 0.008725212464589235
   }
  },
  "announced_goal_met": true,

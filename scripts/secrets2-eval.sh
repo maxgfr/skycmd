@@ -17,7 +17,7 @@
 #                data side's own builder (scripts/secrets2/states.py: sky-data secrets2 states;
 #                SKY_DATA names the binary)
 #     trained    the size-matched LR and potion-base-2M + LR: trained once (validation run),
-#                then scored on the split's candidates
+#                then scored on the split's candidates and on the clean-text corpus
 #     model      the model (MODEL=...): sky-eval at full depth, its answers as flags
 #     clean      the clean-text corpus: the default engine, the generator alone, the model
 #     score      scripts/secrets2/scorer.py and issues.py score
@@ -185,7 +185,16 @@ trained() {
       fi
       nice -n 19 "$E/envs/$kind/bin/python" -I $S/run_lr.py score --kind "$kind" --model "$E/$kind" --table "$(table "$t")" --corpus "$corpus" --out "$dir" ${mode:+--e2e}
     done < <(corpora)
+    # the clean-text corpus (section 7.7): what G7 asks of the model, for the trained baselines
+    if [ -f "$E/clean/states/clean.jsonl" ]; then
+      nice -n 19 "$E/envs/$kind/bin/python" -I $S/run_lr.py score --kind "$kind" --model "$E/$kind" --table "$E/clean/states/clean.jsonl" --corpus clean --out "$E/clean/flags"
+    else
+      echo "== $name on the clean-text corpus: no states ($E/clean/states/clean.jsonl): skipped"
+    fi
   done
+  if [ -f "$E/clean/flags/generator.run.json" ]; then
+    py $S/clean_text.py share
+  fi
 }
 
 model() {
@@ -207,6 +216,8 @@ model() {
   if [ -f "$E/clean/states/clean.jsonl" ] && [ -f "$E/clean/states/clean.records.jsonl" ]; then
     py $S/run_model.py eval --model "$MODEL" --records "$E/clean/states/clean.records.jsonl" --split val --out "$E/clean/model" >/dev/null
     py $S/run_model.py convert --model "$MODEL" --dump "$E/clean/model/model-dump.jsonl" --table "$E/clean/states/clean.jsonl" --corpus clean --out "$E/clean/flags"
+    # the shares again, with the model's accepted candidates (G7 reads them)
+    py $S/clean_text.py share
   else
     echo "== model on the clean-text corpus: no states ($E/clean/states/clean.jsonl): skipped"
   fi

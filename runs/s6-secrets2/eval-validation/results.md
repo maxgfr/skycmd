@@ -20,8 +20,8 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 | credsweeper-ml | 0.9202 | 0.9847 | 0.9514 | 0.0199 | 0.9253 | 0.9476 (6) |
 | credsweeper-noml | 0.3218 | 1.0000 | 0.4869 | 0.4906 | 0.3873 | 0.7434 (6) |
 | cbx-17m | 0.9814 | 0.8096 | 0.8873 | 0.0036 | 0.8191 | 0.8473 (6) |
-| lr | 0.8843 | 0.8359 | 0.8594 | 0.0255 | 0.7937 | 0.8238 (6) |
-| potion-lr | 0.5308 | 0.8096 | 0.6412 | 0.1666 | 0.5255 | 0.6850 (6) |
+| lr | 0.8863 | 0.8359 | 0.8604 | 0.0250 | 0.7972 | 0.8268 (6) |
+| potion-lr | 0.5243 | 0.8271 | 0.6418 | 0.1747 | 0.5325 | 0.6934 (6) |
 
 | full universe | precision | recall | F1 | false alarms | F1 without the largest | macro F1 (≥ 20 T rows) |
 |---|---:|---:|---:|---:|---:|---:|
@@ -33,8 +33,8 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 | credsweeper-ml | 0.9550 | 0.9862 | 0.9704 | 0.0138 | 0.9519 | 0.9680 (6) |
 | credsweeper-noml | 0.3788 | 0.9983 | 0.5492 | 0.4872 | 0.4361 | 0.7810 (6) |
 | cbx-17m | 0.9814 | 0.6368 | 0.7724 | 0.0036 | 0.7292 | 0.7717 (6) |
-| lr | 0.8843 | 0.6575 | 0.7542 | 0.0256 | 0.7154 | 0.7410 (6) |
-| potion-lr | 0.5380 | 0.6454 | 0.5869 | 0.1650 | 0.5000 | 0.6415 (6) |
+| lr | 0.8863 | 0.6575 | 0.7549 | 0.0251 | 0.7186 | 0.7438 (6) |
+| potion-lr | 0.5326 | 0.6609 | 0.5899 | 0.1726 | 0.5094 | 0.6528 (6) |
 
 | | version | unit | unlabelled-line alarms | per 1,000 files (7.3) | CPU s |
 |---|---|---|---:|---:|---:|
@@ -46,8 +46,8 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 | credsweeper-ml | CredSweeper 1.19.6 | span | 0 | 0.0 | 43.9 |
 | credsweeper-noml | CredSweeper 1.19.6 | span | 0 | 0.0 | 24.5 |
 | cbx-17m | cbx-secrets-detector-17M at 89362a0938f9459e5706e703e2a91c5cf2ffe40e | span | 2074 | 4588.5 | 13816.6 |
-| lr | scikit-learn 1.9.1, SGDClassifier alpha 0.0001, 2^18 int8 weights | candidate | 176 | 389.4 | 1.6 |
-| potion-lr | model2vec 0.10.0 potion-base-2M, scikit-learn 1.9.1 LogisticRegression | candidate | 395 | 873.9 | 0.7 |
+| lr | scikit-learn 1.9.1, SGDClassifier alpha 0.0001, 2^18 int8 weights | candidate | 176 | 389.4 | 1.3 |
+| potion-lr | model2vec 0.10.0 potion-base-2M, scikit-learn 1.9.1 LogisticRegression | candidate | 437 | 966.8 | 0.7 |
 
 CredSweeper's ML was trained on a random 85% of all CredData lines: its CredData numbers are in-sample and enter no gate (section 6).
 
@@ -58,14 +58,14 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 | gated universe | candidates | positives | threshold | precision | recall | F1 | PR-AUC | recall at 1% false alarms | ECE | ECE on P(real) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | generator | 1779 | 448 | — | 0.2518 | 1.0000 | 0.4023 | — | — | — | — |
-| lr | 1779 | 448 | 0.1530 | 0.8790 | 0.8594 | 0.8691 | 0.9142 | 0.6429 | 0.0677 | 0.1190 |
-| potion-lr | 1779 | 448 | 0.0868 | 0.5108 | 0.8438 | 0.6364 | 0.6330 | 0.1116 | 0.1065 | 0.1217 |
+| lr | 1779 | 448 | 0.1550 | 0.8810 | 0.8594 | 0.8701 | 0.9145 | 0.6451 | 0.0678 | 0.1183 |
+| potion-lr | 1779 | 448 | 0.0786 | 0.5039 | 0.8638 | 0.6365 | 0.6340 | 0.1027 | 0.1081 | 0.1221 |
 
 | full universe | candidates | positives | threshold | precision | recall | F1 | PR-AUC | recall at 1% false alarms | ECE | ECE on P(real) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | generator | 1779 | 459 | — | 0.2580 | 1.0000 | 0.4102 | — | — | — | — |
-| lr | 1779 | 459 | 0.1530 | 0.8790 | 0.8388 | 0.8584 | 0.9033 | 0.6275 | 0.0661 | 0.1177 |
-| potion-lr | 1779 | 459 | 0.0868 | 0.5176 | 0.8344 | 0.6389 | 0.6316 | 0.1089 | 0.1127 | 0.1279 |
+| lr | 1779 | 459 | 0.1550 | 0.8810 | 0.8388 | 0.8594 | 0.9036 | 0.6296 | 0.0671 | 0.1180 |
+| potion-lr | 1779 | 459 | 0.0786 | 0.5117 | 0.8562 | 0.6406 | 0.6327 | 0.1002 | 0.1143 | 0.1282 |
 
 Candidates on a labelled line that overlap no labelled value are dropped (3.1); ECE is over 15 equal-width bins of the answer's confidence, as sky-eval computes it.
 
@@ -82,8 +82,8 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 | credsweeper-ml | 0.8851 | 0.9257 | 0.9049 | 0.9059 | 0.9524 | 0.9286 | 820 / 0 / 41 / 0 / 0 |
 | credsweeper-noml | 0.8966 | 0.3742 | 0.5280 | 0.9150 | 0.4252 | 0.5806 | 839 / 27 / 1107 / 0 / 0 |
 | cbx-17m | 0.8257 | 0.9651 | 0.8900 | 0.6540 | 0.9651 | 0.7797 | 443 / 0 / 12 / 4 / 2074 |
-| lr | 0.7452 | 0.8730 | 0.8041 | 0.5903 | 0.8730 | 0.7043 | 459 / 117 / 1203 / 176 / 2279 |
-| potion-lr | 0.7241 | 0.4803 | 0.5775 | 0.5812 | 0.4867 | 0.5297 | 459 / 117 / 1203 / 176 / 2279 |
+| lr | 0.7452 | 0.8750 | 0.8049 | 0.5903 | 0.8750 | 0.7050 | 459 / 117 / 1203 / 176 / 2279 |
+| potion-lr | 0.7414 | 0.4731 | 0.5776 | 0.5964 | 0.4804 | 0.5322 | 459 / 117 / 1203 / 176 / 2279 |
 
 The generator's row is its recall (2.2): the share of T rows a candidate overlaps.
 
@@ -99,14 +99,14 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 | credsweeper-ml | 0.978 (0.978) | 0.986 (0.971) | 0.750 (1.000) | 0.968 (0.938) | 1.000 (1.000) | 0.979 (0.979) | 0.924 (1.000) | 0.904 (0.976) | 1.000 (1.000) | 0.994 (0.991) |
 | credsweeper-noml | 0.736 (1.000) | 0.717 (1.000) | 0.142 (1.000) | 0.604 (1.000) | 0.099 (1.000) | 0.470 (1.000) | 0.863 (1.000) | 0.547 (1.000) | 0.075 (1.000) | 0.634 (1.000) |
 | cbx-17m | 0.946 (0.904) | 0.951 (0.924) | 0.824 (0.729) | 0.918 (0.875) | 0.833 (0.714) | 0.860 (0.787) | 0.759 (0.621) | 0.760 (0.625) | 0.966 (1.000) | 0.976 (0.962) |
-| lr | 0.743 (0.741) | 0.945 (0.905) | 0.800 (0.750) | 0.892 (0.906) | 0.778 (1.000) | 0.907 (0.936) | 0.910 (0.869) | 0.812 (0.788) | 0.966 (1.000) | 0.895 (0.868) |
-| potion-lr | 0.576 (0.741) | 0.836 (0.876) | 0.418 (0.875) | 0.756 (0.969) | 0.179 (1.000) | 0.772 (0.936) | 0.775 (0.759) | 0.536 (0.692) | 0.750 (0.857) | 0.732 (0.911) |
+| lr | 0.746 (0.741) | 0.940 (0.895) | 0.813 (0.771) | 0.909 (0.938) | 0.778 (1.000) | 0.907 (0.936) | 0.910 (0.869) | 0.815 (0.793) | 0.966 (1.000) | 0.894 (0.864) |
+| potion-lr | 0.597 (0.785) | 0.816 (0.867) | 0.400 (0.875) | 0.756 (0.969) | 0.177 (1.000) | 0.765 (0.936) | 0.787 (0.779) | 0.539 (0.712) | 0.788 (0.929) | 0.728 (0.923) |
 | positive / negative lines | 135 / 282 | 105 / 233 | 48 / 1028 | 32 / 163 | 7 / 149 | 47 / 181 | 145 / 80 | 208 / 811 | 14 / 395 | 235 / 757 |
 
 | ECE | gated | full |
 |---|---|---|
-| lr | 0.0677 [0.0291, 0.1356] | 0.0661 [0.0293, 0.1454] |
-| potion-lr | 0.1065 [0.0331, 0.2359] | 0.1127 [0.0348, 0.2472] |
+| lr | 0.0678 [0.0289, 0.1369] | 0.0671 [0.0291, 0.1474] |
+| potion-lr | 0.1081 [0.0342, 0.2369] | 0.1143 [0.0354, 0.2481] |
 
 ## Issue reports, validation split (7.4)
 
@@ -121,8 +121,10 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 | detect-secrets | 0.3594 | 0.3140 | 0.3352 | 0.0677 | — | 1893 | 0.1342 | 0.1880 | 0.4276 | 0.3621 |
 | credsweeper-ml | 0.3713 | 0.6894 | 0.4827 | 0.1411 | — | 5163 | 0.1247 | 0.2112 | 0.4760 | 0.5632 |
 | credsweeper-noml | 0.3115 | 0.8020 | 0.4487 | 0.2144 | — | 9692 | 0.0782 | 0.1425 | 0.3929 | 0.5275 |
-| lr | 0.4852 | 0.8652 | 0.6217 | 0.1110 | 0.0346 | — | — | — | — | — |
-| potion-lr | 0.2573 | 0.8976 | 0.4000 | 0.3132 | 0.0271 | — | — | — | — | — |
+| lr | 0.4888 | 0.8908 | 0.6312 | 0.1127 | 0.0335 | — | — | — | — | — |
+| potion-lr | 0.2413 | 0.9096 | 0.3814 | 0.3459 | 0.0192 | — | — | — | — | — |
+| lr-e2e | 0.6971 | 0.7304 | 0.7133 | 0.0384 | — | 2218 | 0.1943 | 0.3070 | 0.6952 | 0.7123 |
+| potion-lr-e2e | 0.3738 | 0.7304 | 0.4945 | 0.1480 | — | 6613 | 0.0659 | 0.1209 | 0.3686 | 0.4899 |
 
 | obfuscation sensitivity (candidate F1) | values as published | through CredData's `get_obfuscated_value` | difference |
 |---|---:|---:|---:|
@@ -133,6 +135,8 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 | detect-secrets | 0.3352 | 0.2852 | +0.0500 |
 | credsweeper-ml | 0.4827 | 0.4065 | +0.0762 |
 | credsweeper-noml | 0.4487 | 0.3627 | +0.0860 |
+| lr | 0.6312 | 0.6627 | -0.0315 |
+| potion-lr | 0.3814 | 0.3992 | -0.0178 |
 
 585 positive candidate strings were passed through the function; 26 stay as published (the function failed on them).
 
@@ -144,6 +148,8 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 |---|---:|---:|---:|
 | generator | 2161 | 24.49% | 14756 |
 | secretgate-default | 11 | 0.12% | 57 |
+| lr | 77 | 0.87% | 323 |
+| potion-lr | 401 | 4.54% | 969 |
 
 | with the file's path | files with an accepted candidate | share | accepted |
 |---|---:|---:|---:|
