@@ -41,6 +41,12 @@ enum Secrets2Step {
         data: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// The model's tokenizer (data/tok/tok-s2-1024.json): the weak negatives are drawn
+        /// over distinct states.
+        #[arg(long)]
+        tokenizer: PathBuf,
+        #[arg(long, default_value = "/usr/share/dict/words")]
+        dict: PathBuf,
     },
     /// Issue-report train and validation splits: decontamination against the test split, every
     /// positive value replaced, candidate records.
@@ -704,10 +710,17 @@ fn main() -> Result<()> {
         Cmd::Secrets2 { step } => {
             use sky_data::secrets2::{self as s2, load_tokenizer, load_words};
             let report = match step {
-                Secrets2Step::Creddata { data, out } => s2::cred::build(&s2::cred::CredOptions {
+                Secrets2Step::Creddata {
+                    data,
+                    out,
+                    tokenizer,
+                    dict,
+                } => s2::cred::build(&s2::cred::CredOptions {
                     data,
                     out,
                     seed: cli.seed,
+                    tokenizer: load_tokenizer(&tokenizer)?,
+                    words: load_words(&dict)?,
                 })?,
                 Secrets2Step::Issues { data, out, dict } => {
                     s2::issues::build(&s2::issues::IssueOptions {

@@ -281,7 +281,17 @@ pub fn stored_scope(file: &str) -> Result<Vec<&'static str>> {
 /// The state of an item and its features.
 pub fn state_of(item: &Item, tok: &Tokenizer, words: &WordSet) -> Result<(String, Features)> {
     let (scope, ext) = scope_of(item)?;
-    let r = &item.rec;
+    Ok(record_state(&item.rec, &scope, &ext, tok, words))
+}
+
+/// The state of a candidate record under a scope and an extension, and its features.
+pub fn record_state(
+    r: &CandRecord,
+    scope: &[&str],
+    ext: &str,
+    tok: &Tokenizer,
+    words: &WordSet,
+) -> (String, Features) {
     let filters = Filters {
         entropy: r.filters.entropy,
         placeholder: r.filters.placeholder,
@@ -292,8 +302,8 @@ pub fn state_of(item: &Item, tok: &Tokenizer, words: &WordSet) -> Result<(String
         sc::value_columns(r.line, r.end_line, r.start, r.end, r.line_from);
     let c = Candidate {
         rule: &r.rule,
-        scope: &scope,
-        ext: &ext,
+        scope,
+        ext,
         name: r.name.as_deref(),
         value: &r.value,
         line_text: &r.line_text,
@@ -304,7 +314,7 @@ pub fn state_of(item: &Item, tok: &Tokenizer, words: &WordSet) -> Result<(String
         filters,
     };
     let f = Features::of(&r.value, tok, words, filters);
-    Ok((sc::state_with(&c, &f), f))
+    (sc::state_with(&c, &f), f)
 }
 
 /// sha256 of a file, in hexadecimal.

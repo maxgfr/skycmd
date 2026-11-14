@@ -11,9 +11,10 @@
 # Steps, in order, each a mode of sky-data (counts only on the terminal, never a value):
 #   creddata       labelled candidates of the training and validation repositories, the
 #                  decontamination against the test repositories (their lines, never their
-#                  meta), the weak negatives
+#                  meta), the weak negatives (one per distinct state, the repositories in turn)
 #   issues         the issue-report train and validation splits, decontaminated against the test
-#                  split (its texts' hashes only), every positive value replaced
+#                  split (its texts' hashes only), every positive value replaced (the context
+#                  words of the training negatives kept)
 #   secret-cand    synthetic candidates
 #   mix            states, decision records, tables for the baselines
 #   hand-read      the 200 weak negatives that are read by hand (they stay in the data folder)
@@ -77,7 +78,8 @@ step() {
   nice -n 19 "$@" >"$out/logs/$name.json"
 }
 
-step creddata "$D" --seed "$seed" secrets2 creddata --data "$data" --out "$out"
+step creddata "$D" --seed "$seed" secrets2 creddata --data "$data" --out "$out" \
+  --tokenizer "$tok" --dict "$dict"
 step issues "$D" --seed "$seed" secrets2 issues --data "$data" --out "$out" --dict "$dict"
 step secret-cand "$D" --seed "$seed" secret-cand --out "$out" --dict "$dict"
 step mix "$D" --seed "$seed" secrets2 mix --out "$out" --tokenizer "$tok" --dict "$dict"

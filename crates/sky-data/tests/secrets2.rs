@@ -14,6 +14,8 @@ use sky_data::record::{read_jsonl, validate_record, DecisionRecord};
 use sky_data::secrets2::{self as s2, cred, issues, mix, synth, Item, Label, RecFilters};
 
 const TRAIN: &str = "aaaaaaaa";
+/// A second training repository, before the first in the order of the RepoIDs.
+const SECOND: &str = "a0a0a0a0";
 const VAL: &str = "bbbbbbbb";
 const TEST: &str = "cccccccc";
 
@@ -156,13 +158,40 @@ fn fixture(root: &Path) -> Fixture {
         line("trace_token", &v("u3"), None, "U"),
         line("build_key", &v("u4"), None, "U"),
         line("admin_pass", &v("f3"), Some('F'), "F"), // kept
+        // one line six times: the four in the middle have the same state
+        line("flag_token", "false-flag", None, "U"),
+        line("flag_token", "false-flag", None, "U"),
+        line("flag_token", "false-flag", None, "U"),
+        line("flag_token", "false-flag", None, "U"),
+        line("flag_token", "false-flag", None, "U"),
+        line("flag_token", "false-flag", None, "U"),
     ];
+    // a second training repository: eight labelled candidates and two on unlabelled lines
+    let mut second: Vec<Line> = (0..8)
+        .map(|i| {
+            line(
+                &format!("option_key_{i}"),
+                &v(&format!("s{i}")),
+                Some('F'),
+                "F",
+            )
+        })
+        .collect();
+    second.push(line("region_key", &v("su1"), None, "U"));
+    second.push(line("zone_token", &v("su2"), None, "U"));
     let val = [
         line("root_password", &v("vt"), Some('T'), "T"),
         line("page_token", &v("vf"), Some('F'), "F"),
         line("tmp_key", &v("vu"), None, "U"),
     ];
-    let (tc, tl) = repository(root, TRAIN, "0a0a0a0a", &train);
+    // the candidates file: the repositories in the order of their RepoID
+    let (mut tc, mut tl) = repository(root, SECOND, "0d0d0d0d", &second);
+    let (c, l) = repository(root, TRAIN, "0a0a0a0a", &train);
+    tc.extend(c);
+    tl.extend(l);
+    for (i, l) in tl.iter_mut().enumerate() {
+        l["index"] = json!(i);
+    }
     let (vc, vl) = repository(root, VAL, "0b0b0b0b", &val);
     // the test repository: lines only, no meta file
     let test_lines = [
@@ -186,7 +215,9 @@ fn fixture(root: &Path) -> Fixture {
     write(
         &root.join("splits.json"),
         &json!({
-            "training": [{"repo_id": TRAIN}], "validation": [{"repo_id": VAL}], "test": [{"repo_id": TEST}],
+            "training": [{"repo_id": TRAIN}, {"repo_id": SECOND}],
+            "validation": [{"repo_id": VAL}],
+            "test": [{"repo_id": TEST}],
         })
         .to_string(),
     );
@@ -224,8 +255,15 @@ fn fixture(root: &Path) -> Fixture {
     let t1 = format!("It fails.\r\nconfig:\r\n  password = {p1}\r\nThanks");
     let t2 = format!("Same key as in the other issue: {p1} (please rotate)\nbuild 4f2a9c\n");
     let t3 = format!("log line\nkey={p2}\nend");
+    // five distinct negatives hold `token` as a whole run: a context word (amendment 4)
+    let context: String = (5..10)
+        .map(|i| {
+            let c = format!("token: n{i}");
+            row(i, &c, &format!("an issue\n  {c}\nno secret here"), 0)
+        })
+        .collect();
     let train_csv = format!(
-        "{header}{}{}{}{}{}",
+        "{header}{}{}{}{}{}{context}",
         row(0, &p1, &t1, 1),
         row(1, "4f2a9c", &t2, 0),
         row(2, &p2, &t3, 1),
@@ -268,6 +306,8 @@ fn build(f: &Fixture, out: &str) -> PathBuf {
         data: f.root.clone(),
         out: out.clone(),
         seed: 1234,
+        tokenizer: s2::load_tokenizer(&tokenizer()).unwrap(),
+        words: words(),
     })
     .unwrap();
     issues::build(&issues::IssueOptions {
@@ -353,7 +393,7 @@ fn the_build_does_what_the_pre_registration_asks() {
     }
     assert_eq!(
         c["labels"]["training"]["frozen_labels"],
-        json!({"D": 1, "F": 3, "T": 2, "U": 4, "X": 1})
+        json!({"D": 1, "F": 11, "T": 2, "U": 12, "X": 1})
     );
     // decontamination: the T whose shape, the F whose line and the pool candidate whose line
     // are in the test repository
@@ -362,39 +402,61 @@ fn the_build_does_what_the_pre_registration_asks() {
     assert_eq!(removed["F"], json!({"exact": 1}));
     assert_eq!(c["decontamination"]["test_files_read"], 2);
     assert_eq!(c["decontamination"]["test_lines"], 4 + 2);
-    assert_eq!(c["weak_negatives"]["pool"], 4);
-    assert_eq!(c["weak_negatives"]["pool_removed_by_decontamination"], 1);
-    // 4 labelled candidates are kept: one weak negative at most
-    assert_eq!(c["weak_negatives"]["labelled_training_candidates_kept"], 4);
+    // the weak negatives (amendment 4): the pool is reduced to one candidate per distinct
+    // state, then the repositories give one candidate each in turn, in the order of their ids
+    let w = &c["weak_negatives"];
+    assert_eq!(w["pool"], 12);
+    assert_eq!(w["pool_removed_by_decontamination"], 1);
+    assert_eq!(w["pool_left"], 11);
+    // the line written six times is three states: its first, its last, the four between
+    assert_eq!(w["pool_one_per_distinct_state"], 8);
+    assert_eq!(w["pool_repositories"], 2);
+    // 12 labelled candidates are kept: three weak negatives at most
+    assert_eq!(w["labelled_training_candidates_kept"], 12);
+    assert_eq!((w["cap"].as_u64(), w["drawn"].as_u64()), (Some(3), Some(3)));
+    assert_eq!(w["by_repository"], json!({SECOND: 2, TRAIN: 1}));
     assert_eq!(
         (
-            c["weak_negatives"]["cap"].as_u64(),
-            c["weak_negatives"]["drawn"].as_u64()
+            w["repositories_contributing"].as_u64(),
+            w["largest_contribution"].as_u64()
         ),
-        (Some(1), Some(1))
+        (Some(2), Some(2))
     );
     let train = items(&out, "creddata-train");
-    let by: Vec<(&str, bool, &str)> = train
-        .iter()
-        .map(|i| (i.label.as_str(), i.weak, i.rec.name.as_deref().unwrap()))
-        .collect();
+    let of = |repo: &str, weak: bool| -> Vec<(&str, &str)> {
+        train
+            .iter()
+            .filter(|i| i.weak == weak && i.rec.file.as_deref().unwrap().contains(repo))
+            .map(|i| (i.label.as_str(), i.rec.name.as_deref().unwrap()))
+            .collect()
+    };
     assert_eq!(
-        by[..4],
+        of(TRAIN, false),
         [
-            ("T", false, "service_secret"),
-            ("F", false, "session_key"),
-            ("X", false, "user_secret"),
-            ("F", false, "admin_pass"),
+            ("T", "service_secret"),
+            ("F", "session_key"),
+            ("X", "user_secret"),
+            ("F", "admin_pass"),
         ]
     );
-    assert_eq!(by.len(), 5);
+    assert_eq!(of(SECOND, false).len(), 8);
+    assert_eq!(train.len(), 12 + 3);
+    assert_eq!(of(SECOND, true), [("F", "region_key"), ("F", "zone_token")]);
+    let weak = of(TRAIN, true);
+    assert_eq!(weak.len(), 1);
     assert!(
-        by[4].1 && by[4].0 == "F" && ["debug_key", "trace_token", "build_key"].contains(&by[4].2)
+        weak[0].0 == "F"
+            && ["debug_key", "trace_token", "build_key", "flag_token"].contains(&weak[0].1)
     );
     assert!(train
         .iter()
         .all(|i| i.source == "creddata" && i.split == "train" && i.kind));
-    assert_eq!(train[0].id, "cred:train:1");
+    // an id is the index of the candidate in the candidates file
+    let secret = train
+        .iter()
+        .find(|i| i.rec.name.as_deref() == Some("service_secret"))
+        .unwrap();
+    assert_eq!(secret.id, "cred:train:11");
     let val = items(&out, "creddata-val");
     assert_eq!(
         val.iter().map(|i| i.label).collect::<Vec<_>>(),
@@ -405,17 +467,34 @@ fn the_build_does_what_the_pre_registration_asks() {
     let i = s2::read_json(&out.join("counts/issues.json")).unwrap();
     assert_eq!(i["splits"]["train"]["removed_text_in_test"], 1);
     assert_eq!(i["splits"]["train"]["not_found"], 1);
-    assert_eq!(i["splits"]["train"]["candidates"], 3);
+    assert_eq!(i["splits"]["train"]["candidates"], 8);
+    let r = &i["replacement"];
+    assert_eq!(r["published_positive_strings_left_in_a_record"], 0);
+    assert_eq!(r["unchanged_made_of_kept_words_and_separators"], 0);
+    // the word rule (amendment 4): `token` stands in five distinct negatives of the training
+    // split and is kept in the positive that holds it; `Winter` is still replaced
+    assert_eq!(r["kept_words_of_the_training_negatives"], 1);
+    assert_eq!(r["positive_strings_with_a_kept_word_run"], 1);
+    assert_eq!(r["positive_strings_with_a_replaced_word_run"], 1);
+    assert_eq!(r["kept_runs_in_the_positive_strings"], 1);
     assert_eq!(
-        i["replacement"]["published_positive_strings_left_in_a_record"],
-        0
+        r["ten_most_frequent_kept_words"],
+        json!([{"word": "token", "positive_strings": 1}])
     );
-    assert_eq!(i["replacement"]["unchanged"], 0);
+    let v = items(&out, "issues-val");
+    assert_eq!(v[0].label, Label::T);
+    assert!(
+        v[0].rec.value.starts_with("token: "),
+        "the context word stays"
+    );
+    assert_ne!(v[0].rec.value, f.published[2]);
+    assert_eq!(v[0].rec.value.len(), f.published[2].len());
     let it = items(&out, "issues-train");
     assert_eq!(
-        it.iter().map(|i| i.label).collect::<Vec<_>>(),
+        it.iter().map(|i| i.label).collect::<Vec<_>>()[..3],
         [Label::T, Label::F, Label::T]
     );
+    assert_eq!(it.len(), 8);
     assert!(it
         .iter()
         .all(|i| !i.kind && i.rec.file.is_none() && i.rec.rule == issues::RULE));
@@ -487,12 +566,16 @@ fn the_build_does_what_the_pre_registration_asks() {
         recs.iter()
             .filter(|r| r.src == "creddata_weak:real")
             .count(),
-        1
+        3
     );
-    assert!(recs[0]
+    let secret = recs
+        .iter()
+        .find(|r| r.state.contains("\nkey service_secret\n") && r.t == "noul")
+        .unwrap();
+    assert!(secret
         .state
         .starts_with("rule generic-keyword\npath src conf .py\nkey service_secret\nvalue "));
-    assert_eq!(recs[0].target, [0.0, 1.0]);
+    assert_eq!(secret.target, [0.0, 1.0]);
     let issue: Vec<DecisionRecord> = read_jsonl(&out.join("records/issues/train.jsonl")).unwrap();
     assert!(issue[0]
         .state
@@ -501,7 +584,7 @@ fn the_build_does_what_the_pre_registration_asks() {
     let m = s2::read_json(&out.join("counts/mix.json")).unwrap();
     assert_eq!(
         m["training_candidates"],
-        json!({"creddata": 5, "issues": 3, "synth": 2, "total": 10, "synthetic_share": 0.2})
+        json!({"creddata": 15, "issues": 8, "synth": 7, "total": 30, "synthetic_share": 0.2333})
     );
     assert_eq!(m["weights"], mix::WEIGHTS);
 
@@ -539,6 +622,8 @@ fn the_build_refuses_what_is_not_the_frozen_generator() {
             data: f.root.clone(),
             out: f.root.join("build"),
             seed: 1234,
+            tokenizer: s2::load_tokenizer(&tokenizer()).unwrap(),
+            words: s2::load_words(&f.root.join("words.txt")).unwrap(),
         })
     };
     // a candidates file that is not the one generator.json names
@@ -549,10 +634,16 @@ fn the_build_refuses_what_is_not_the_frozen_generator() {
     assert!(err.contains("sha256"), "{err}");
     std::fs::write(&cands, text).unwrap();
     run().unwrap();
-    // a candidate of a repository of another split
-    let splits = json!({"training": [{"repo_id": TRAIN}], "validation": [{"repo_id": TEST}], "test": [{"repo_id": VAL}]});
+    // the candidates of a repository that is a test repository: refused by the guard, before
+    // any meta file is opened
+    let splits = json!({
+        "training": [{"repo_id": TRAIN}, {"repo_id": SECOND}],
+        "validation": [{"repo_id": TEST}],
+        "test": [{"repo_id": VAL}],
+    });
     std::fs::write(root.join("splits.json"), splits.to_string()).unwrap();
-    assert!(run().is_err());
+    let err = run().unwrap_err().to_string();
+    assert_eq!(err, format!("refused: {VAL} is a test repository"));
     // no generator.json: nothing is built
     std::fs::remove_file(root.join("gen/generator.json")).unwrap();
     let err = format!("{:#}", run().unwrap_err());

@@ -11,6 +11,13 @@
 //! - **A dictionary word stays a word**: a maximal run of ASCII letters of 4 characters or more
 //!   that is a word of the dictionary becomes another word of the same length, in the same case
 //!   pattern. This is what CredData's obfuscation does not do.
+//! - **A context word is kept as it is** (amendment 4): a candidate of the issue-report set is a
+//!   regular expression's match and often holds its key name (`token`, `password`, `secret`),
+//!   which the word rule would turn into another word in positives and never in negatives. A
+//!   dictionary-word run that occurs, as a whole run and without regard to case, in at least
+//!   [`KEPT_MIN_STRINGS`] distinct negative candidate strings of the training split is left
+//!   untouched ([`KeptRuns`]). Only the dictionary-word runs are concerned: a run of letters
+//!   that is no dictionary word is drawn again in its class, as before.
 //! - **Every other letter or digit becomes a random one of its class**, the classes being
 //!   CredData's: a run of letters and digits written in lower-case hexadecimal stays so, as does
 //!   upper-case hexadecimal and base32 (`A-Z`, `2-7`); otherwise a lower-case letter becomes a
@@ -22,10 +29,76 @@
 //! draw depends on the seed and on the value alone: the same value gets the same replacement
 //! wherever it stands.
 
+use std::collections::{HashMap, HashSet};
+
 use sky_infer::secret_cand::{letter_runs, WordSet};
 
 use super::sha256_hex;
 use crate::rng::Rng;
+
+/// Distinct negative candidate strings a word must occur in, as a whole run of letters, to be
+/// kept as it is (amendment 4).
+pub const KEPT_MIN_STRINGS: usize = 5;
+
+/// The dictionary-word runs that are kept as they are: those of at least [`KEPT_MIN_STRINGS`]
+/// distinct negative candidate strings, in lower case.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KeptRuns {
+    runs: HashSet<String>,
+}
+
+impl KeptRuns {
+    /// From the negative candidate strings of the training split (after its decontamination):
+    /// each distinct string counts once for each dictionary-word run it holds, whatever the
+    /// case of the run.
+    pub fn from_negatives<'a>(
+        negatives: impl IntoIterator<Item = &'a str>,
+        words: &WordSet,
+    ) -> Self {
+        let distinct: HashSet<&str> = negatives.into_iter().collect();
+        let mut strings: HashMap<String, usize> = HashMap::new();
+        for s in distinct {
+            let runs: HashSet<String> = letter_runs(s)
+                .map(|(a, b)| &s[a..b])
+                .filter(|run| words.is_word(run))
+                .map(str::to_ascii_lowercase)
+                .collect();
+            for run in runs {
+                *strings.entry(run).or_default() += 1;
+            }
+        }
+        Self {
+            runs: strings
+                .into_iter()
+                .filter(|(_, n)| *n >= KEPT_MIN_STRINGS)
+                .map(|(run, _)| run)
+                .collect(),
+        }
+    }
+
+    /// Whether a run of letters is kept, without regard to its case.
+    pub fn contains(&self, run: &str) -> bool {
+        !self.runs.is_empty() && self.runs.contains(&run.to_ascii_lowercase())
+    }
+
+    pub fn len(&self) -> usize {
+        self.runs.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.runs.is_empty()
+    }
+}
+
+/// A value's replacement, and what the word rule did in it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Replacement {
+    pub text: String,
+    /// The dictionary-word runs kept as they are, in lower case, one entry per run.
+    pub kept: Vec<String>,
+    /// Dictionary-word runs replaced by another word.
+    pub replaced: usize,
+}
 
 /// Prefixes kept where a token starts.
 const PREFIXES: [&str; 86] = [
@@ -312,7 +385,8 @@ fn is_alnum(c: u8) -> bool {
 
 /// The replacement of `value`, drawn from `rng`. Works on bytes: only ASCII letters and digits
 /// change, so every other character (and every multi-byte one) is copied.
-fn replace_with(value: &str, words: &WordSet, rng: &mut Rng) -> String {
+fn replace_with(value: &str, words: &WordSet, keep: &KeptRuns, rng: &mut Rng) -> Replacement {
+    let mut report = Replacement::default();
     let b = value.as_bytes();
     let n = b.len();
     let mut out = b.to_vec();
@@ -402,10 +476,15 @@ fn replace_with(value: &str, words: &WordSet, rng: &mut Rng) -> String {
                 t += 1;
             }
             let run = &value[s..t];
-            if words.is_word(run) {
+            if words.is_word(run) && keep.contains(run) {
+                // a context word: not a character of it changes
+                kept[s..t].fill(true);
+                report.kept.push(run.to_ascii_lowercase());
+            } else if words.is_word(run) {
                 let pool = words.of_len(run.len());
                 let lower = run.to_ascii_lowercase();
                 if pool.len() > 1 {
+                    report.replaced += 1;
                     let new = loop {
                         let w = &pool[rng.below(pool.len())];
                         if **w != *lower {
@@ -459,30 +538,46 @@ fn replace_with(value: &str, words: &WordSet, rng: &mut Rng) -> String {
         i = t;
     }
     // only ASCII bytes were written over ASCII bytes
-    String::from_utf8(out).unwrap_or_else(|_| value.to_string())
+    report.text = String::from_utf8(out).unwrap_or_else(|_| value.to_string());
+    report
 }
 
-/// The replacement of `value`: the same for the same value and seed. A value that has a letter
-/// or a digit to draw never comes back unchanged (it is drawn again, a few times at most).
-pub fn replace_value(value: &str, words: &WordSet, seed: u64) -> String {
+/// The replacement of `value`: the same for the same value, kept runs and seed. A value that
+/// has a letter or a digit to draw never comes back unchanged (it is drawn again, a few times
+/// at most); a value made of kept runs and separators only has nothing to draw and stays.
+pub fn replace_value_report(
+    value: &str,
+    words: &WordSet,
+    keep: &KeptRuns,
+    seed: u64,
+) -> Replacement {
     let mut rng = Rng::derived(
         seed,
         &format!("s6-secrets2:replace:{}", sha256_hex(value.as_bytes())),
     );
-    let mut out = replace_with(value, words, &mut rng);
+    let mut out = replace_with(value, words, keep, &mut rng);
     for _ in 0..16 {
-        if out != value {
+        if out.text != value {
             break;
         }
-        out = replace_with(value, words, &mut rng);
+        out = replace_with(value, words, keep, &mut rng);
     }
     out
+}
+
+/// The text of [`replace_value_report`].
+pub fn replace_value(value: &str, words: &WordSet, keep: &KeptRuns, seed: u64) -> String {
+    replace_value_report(value, words, keep, seed).text
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::secrets::{rand_str, ALNUM, HEX, UPPER_DIGITS, URLSAFE};
+
+    fn none() -> KeptRuns {
+        KeptRuns::default()
+    }
 
     fn words() -> WordSet {
         WordSet::from_text(
@@ -514,12 +609,12 @@ mod tests {
                 rand_str(&mut rng, UPPER_DIGITS, 9),
                 rand_str(&mut rng, URLSAFE, 20)
             );
-            let r = replace_value(&v, &w, 1234);
+            let r = replace_value(&v, &w, &none(), 1234);
             assert_eq!(shape(&r), shape(&v));
             assert_eq!(r.len(), v.len());
             assert_ne!(r, v);
-            assert_eq!(r, replace_value(&v, &w, 1234));
-            assert_ne!(r, replace_value(&v, &w, 1235));
+            assert_eq!(r, replace_value(&v, &w, &none(), 1234));
+            assert_ne!(r, replace_value(&v, &w, &none(), 1235));
         }
     }
 
@@ -531,7 +626,7 @@ mod tests {
             ("my-HORSE-77", 3, 5),
             ("x9_battery_x9", 3, 7),
         ] {
-            let r = replace_value(v, &w, 7);
+            let r = replace_value(v, &w, &none(), 7);
             let new = &r[word_at..word_at + len];
             let old = &v[word_at..word_at + len];
             assert!(w.is_word(new), "{new}");
@@ -540,12 +635,81 @@ mod tests {
             assert_eq!(shape(&r), shape(v));
         }
         // glued words are one run, which is no word: letters of its class
-        let r = replace_value("treehouse", &w, 7);
+        let r = replace_value("treehouse", &w, &none(), 7);
         assert_eq!(shape(&r), "aaaaaaaaa");
         // a word with no other word of its length cannot be replaced by a word
         let alone = WordSet::from_text("tree\n");
-        assert_eq!(shape(&replace_value("tree-12", &alone, 7)), "aaaa-00");
-        assert_ne!(replace_value("tree-12", &alone, 7), "tree-12");
+        assert_eq!(
+            shape(&replace_value("tree-12", &alone, &none(), 7)),
+            "aaaa-00"
+        );
+        assert_ne!(replace_value("tree-12", &alone, &none(), 7), "tree-12");
+    }
+
+    #[test]
+    fn a_context_word_of_the_negatives_is_kept_as_it_is() {
+        let w = words();
+        // `password` stands as a whole run in five distinct negatives, in several cases;
+        // `winter` in four; `house` in five strings of which two are the same string
+        let negatives = [
+            "password: none",
+            "PASSWORD=",
+            "db_password = x1",
+            "Password required",
+            "the password, again",
+            "winter 1",
+            "Winter 2",
+            "winter-3",
+            "WINTER_4",
+            "house a",
+            "house b",
+            "house c",
+            "house d",
+            "house d",
+            // glued to other letters it is another run, which counts for nothing
+            "passwords mypassword housekeeping",
+        ];
+        let keep = KeptRuns::from_negatives(negatives, &w);
+        assert!(keep.contains("password") && keep.contains("PassWord"));
+        assert!(!keep.contains("winter") && !keep.contains("house") && !keep.contains("none"));
+        assert_eq!(keep.len(), 1);
+        // a fifth distinct string, and the word is kept
+        let more = negatives.iter().copied().chain(["house e"]);
+        assert!(KeptRuns::from_negatives(more, &w).contains("house"));
+
+        let secret = "Password: Winter-48213-qzv";
+        let r = replace_value_report(secret, &w, &keep, 7);
+        // the key name is untouched, in its case; the word of the value is still replaced
+        assert!(r.text.starts_with("Password: "), "the context word stays");
+        assert_eq!(
+            (r.kept.clone(), r.replaced),
+            (vec!["password".to_string()], 1)
+        );
+        let word = &r.text[10..16];
+        assert!(
+            w.is_word(word)
+                && word != "Winter"
+                && word.starts_with(|c: char| c.is_ascii_uppercase())
+        );
+        assert_eq!(shape(&r.text), shape(secret));
+        assert!(!r.text.contains("48213") || !r.text.contains("qzv"));
+        // without the kept runs, the rule of section 3.2 as first written: both words go
+        let before = replace_value_report(secret, &w, &none(), 7);
+        assert!(!before.text.starts_with("Password"));
+        assert_eq!((before.kept.len(), before.replaced), (0, 2));
+        // a kept word is kept only as a whole run
+        let r = replace_value_report("mypassword=Summer77", &w, &keep, 7);
+        assert!(!r.text.starts_with("mypassword") && r.kept.is_empty());
+        // a value made of kept words and separators has nothing to draw
+        let r = replace_value_report("password: PASSWORD", &w, &keep, 7);
+        assert_eq!(
+            (r.text.as_str(), r.kept.len(), r.replaced),
+            ("password: PASSWORD", 2, 0)
+        );
+        // only dictionary words are concerned: `pwd` in five negatives is still drawn again
+        let keep = KeptRuns::from_negatives(["pwd 1", "pwd 2", "pwd 3", "pwd 4", "pwd 5"], &w);
+        assert!(keep.is_empty());
+        assert!(!replace_value("pwd=Xk42", &w, &keep, 7).starts_with("pwd"));
     }
 
     #[test]
@@ -554,16 +718,16 @@ mod tests {
         let mut rng = Rng::derived(5, "replace-classes");
         for _ in 0..200 {
             let hex = rand_str(&mut rng, HEX, 40);
-            let r = replace_value(&hex, &w, 1);
+            let r = replace_value(&hex, &w, &none(), 1);
             assert!(
                 r.bytes().all(|c| HEX.contains(&c)),
                 "lower hex stays lower hex"
             );
             let upper = hex.to_ascii_uppercase();
-            let r = replace_value(&upper, &w, 1);
+            let r = replace_value(&upper, &w, &none(), 1);
             assert!(r.bytes().all(|c| b"0123456789ABCDEF".contains(&c)));
             let b32 = rand_str(&mut rng, b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", 32);
-            let r = replace_value(&b32, &w, 1);
+            let r = replace_value(&b32, &w, &none(), 1);
             assert!(r
                 .bytes()
                 .all(|c| b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains(&c)));
@@ -577,12 +741,12 @@ mod tests {
             rand_str(&mut rng, HEX, 4),
             rand_str(&mut rng, HEX, 12)
         );
-        let r = replace_value(&uuid, &w, 1);
+        let r = replace_value(&uuid, &w, &none(), 1);
         assert!(r.bytes().all(|c| c == b'-' || HEX.contains(&c)));
         assert_eq!(shape(&r).matches('-').count(), 4);
         // what is not an ASCII letter or digit is copied
         let v = "p\u{e4}ss w\u{f6}rd:\t#12 \u{1F512}";
-        let r = replace_value(v, &w, 1);
+        let r = replace_value(v, &w, &none(), 1);
         assert_eq!(shape(&r), shape(v));
         assert_eq!(r.chars().count(), v.chars().count());
     }
@@ -635,7 +799,7 @@ mod tests {
             ),
         ];
         for (v, keep) in &cases {
-            let r = replace_value(v, &w, 11);
+            let r = replace_value(v, &w, &none(), 11);
             assert_eq!(
                 &r[..*keep],
                 &v[..*keep],
@@ -646,14 +810,14 @@ mod tests {
             assert_eq!(shape(&r), shape(v));
             // after text, as in a regular expression's match
             let line = format!("token: \"{v}\"");
-            let r = replace_value(&line, &w, 11);
+            let r = replace_value(&line, &w, &none(), 11);
             assert_eq!(&r[8..8 + keep], &v[..*keep]);
             assert_eq!(shape(&r), shape(&line));
         }
         // glued to a letter, the same characters are no prefix
         let body = rand_str(&mut rng, b"BCDEFGHJKLMNOPQRSTUVWXYZ", 16);
         let v = format!("x{}{body}", ["AK", "IA"].concat());
-        let r = replace_value(&v, &w, 11);
+        let r = replace_value(&v, &w, &none(), 11);
         assert_eq!(shape(&r), shape(&v));
         // a kept domain
         let v = format!(
@@ -661,7 +825,7 @@ mod tests {
             rand_str(&mut rng, HEX, 12),
             rand_str(&mut rng, ALNUM, 8)
         );
-        let r = replace_value(&v, &w, 11);
+        let r = replace_value(&v, &w, &none(), 11);
         assert!(r.contains(".s3.amazonaws.com/"));
         assert_ne!(r, v);
     }
@@ -681,7 +845,7 @@ mod tests {
             String::from_utf8(header).unwrap(),
             String::from_utf8(payload).unwrap()
         );
-        let r = replace_value(&jwt, &w, 4);
+        let r = replace_value(&jwt, &w, &none(), 4);
         assert_eq!(r.len(), jwt.len());
         assert_ne!(r, jwt);
         let parts: Vec<&str> = r.split('.').collect();
@@ -699,7 +863,7 @@ mod tests {
         assert_ne!(parts[2], sig);
         // a part that does not decode keeps its first three characters only
         let broken = format!("eyJ{}", rand_str(&mut rng, b"!bcd", 9));
-        assert!(replace_value(&broken, &w, 4).starts_with("eyJ"));
+        assert!(replace_value(&broken, &w, &none(), 4).starts_with("eyJ"));
     }
 
     #[test]

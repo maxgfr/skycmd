@@ -23,7 +23,7 @@ use anyhow::{bail, Context, Result};
 use serde_json::json;
 use sky_infer::secret_cand::WordSet;
 
-use super::replace::replace_value;
+use super::replace::{replace_value_report, KeptRuns};
 use super::{
     bump, file_entry, record_at, write_json, CandRecord, Counts, Item, Label, RecFilters, ISSUES,
 };
@@ -119,7 +119,8 @@ impl Positives {
     pub fn new(replacement: &HashMap<String, String>) -> Self {
         let mut pairs: Vec<(String, String)> = replacement
             .iter()
-            .filter(|(s, new)| !s.is_empty() && s.len() == new.len())
+            // a string that stays as it is (kept words and separators only) is not replaced
+            .filter(|(s, new)| !s.is_empty() && s.len() == new.len() && s != new)
             .map(|(s, new)| (s.clone(), new.clone()))
             .collect();
         pairs.sort();
@@ -254,22 +255,45 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
         kept.push((split, rows));
     }
 
+    // the context words (amendment 4): the dictionary-word runs of at least five distinct
+    // negative candidate strings of the training split, after its decontamination
+    let negatives: HashSet<&str> = kept
+        .iter()
+        .filter(|(split, _)| *split == "train")
+        .flat_map(|(_, rows)| rows.iter().filter(|r| !r.positive))
+        .map(|r| r.candidate.as_str())
+        .collect();
+    let keep = KeptRuns::from_negatives(negatives.iter().copied(), &o.words);
+
     // one replacement per positive candidate string, the same in both splits
     let mut replacement: HashMap<String, String> = HashMap::new();
     let mut unchanged = 0usize;
-    let mut with_word = 0usize;
+    let (mut with_replaced, mut with_kept, mut kept_runs) = (0usize, 0usize, 0usize);
+    let mut kept_words: BTreeMap<String, usize> = BTreeMap::new();
     for (_, rows) in &kept {
         for r in rows.iter().filter(|r| r.positive) {
             if replacement.contains_key(&r.candidate) {
                 continue;
             }
-            let new = replace_value(&r.candidate, &o.words, o.seed);
-            unchanged += (new == r.candidate) as usize;
-            with_word +=
-                (sky_infer::secret_cand::longest_word_run(&r.candidate, &o.words) > 0) as usize;
-            replacement.insert(r.candidate.clone(), new);
+            let new = replace_value_report(&r.candidate, &o.words, &keep, o.seed);
+            unchanged += (new.text == r.candidate) as usize;
+            with_replaced += (new.replaced > 0) as usize;
+            with_kept += !new.kept.is_empty() as usize;
+            kept_runs += new.kept.len();
+            // a word counts once for each distinct positive string that holds it
+            for w in new.kept.iter().collect::<HashSet<_>>() {
+                *kept_words.entry(w.clone()).or_default() += 1;
+            }
+            replacement.insert(r.candidate.clone(), new.text);
         }
     }
+    let mut most: Vec<(&String, &usize)> = kept_words.iter().collect();
+    most.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let most: Vec<serde_json::Value> = most
+        .iter()
+        .take(10)
+        .map(|(w, n)| json!({"word": w, "positive_strings": n}))
+        .collect();
     let positives = Positives::new(&replacement);
 
     let mut left_in_records = 0usize;
@@ -359,8 +383,14 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
         "rule": RULE,
         "replacement": {
             "distinct_positive_strings": replacement.len(),
-            "unchanged": unchanged,
-            "with_a_dictionary_word_run": with_word,
+            "unchanged_made_of_kept_words_and_separators": unchanged,
+            "distinct_negative_strings_of_the_training_split": negatives.len(),
+            "kept_words_of_the_training_negatives": keep.len(),
+            "positive_strings_with_a_replaced_word_run": with_replaced,
+            "positive_strings_with_a_kept_word_run": with_kept,
+            "kept_runs_in_the_positive_strings": kept_runs,
+            "distinct_kept_words_in_the_positive_strings": kept_words.len(),
+            "ten_most_frequent_kept_words": most,
             "published_positive_strings_left_in_a_record": left_in_records,
         },
         "splits": counts,
@@ -372,6 +402,7 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::secrets2::replace::replace_value;
 
     fn words() -> WordSet {
         WordSet::from_text("winter\nsummer\nspring\n")
@@ -408,7 +439,10 @@ mod tests {
         let secret = "Winter-48213-qzv";
         let text = format!("first {secret}\nagain: {secret} and a neighbour 77\n");
         let mut rep = HashMap::new();
-        rep.insert(secret.to_string(), replace_value(secret, &w, 1234));
+        rep.insert(
+            secret.to_string(),
+            replace_value(secret, &w, &KeptRuns::default(), 1234),
+        );
         let p = Positives::new(&rep);
         let out = p.replace_in(&text).unwrap();
         assert_eq!(out.len(), text.len());
@@ -429,7 +463,10 @@ mod tests {
         let text = format!("{long} | {short} | pw=Qzvmer-{other}");
         let mut rep = HashMap::new();
         for s in [long, short, other] {
-            rep.insert(s.to_string(), replace_value(s, &w, 1234));
+            rep.insert(
+                s.to_string(),
+                replace_value(s, &w, &KeptRuns::default(), 1234),
+            );
         }
         let p = Positives::new(&rep);
         let out = p.replace_in(&text).unwrap();
@@ -439,7 +476,10 @@ mod tests {
         // non-ASCII text around a value stays as it is
         let text = format!("cl\u{e9} : {secret} \u{1F512}");
         let mut rep = HashMap::new();
-        rep.insert(secret.to_string(), replace_value(secret, &w, 1234));
+        rep.insert(
+            secret.to_string(),
+            replace_value(secret, &w, &KeptRuns::default(), 1234),
+        );
         let out = Positives::new(&rep).replace_in(&text).unwrap();
         assert!(out.starts_with("cl\u{e9} : ") && out.ends_with(" \u{1F512}"));
     }

@@ -10,9 +10,12 @@
 //!   labelled value under it. This module labels every candidate again from the meta rows, with
 //!   its own reading of the matching rules, and counts where the two differ. The frozen file is
 //!   the one the items are built from; a difference is reported, never settled here.
-//! - **Weak negatives.** The `U` candidates of the training repositories are the pool. After
-//!   the decontamination, at most 25% of the labelled training candidates that were kept are
-//!   drawn from it (seed), labelled `F` and tagged `weak`.
+//! - **Weak negatives** (amendment 4). The `U` candidates of the training repositories are the
+//!   pool. After the decontamination it is reduced to one candidate per distinct state, the
+//!   first in file order; then the repositories are taken in turn, in the order of their
+//!   RepoID, each giving one candidate at a time from its own list shuffled with the seed, until
+//!   the cap is reached (25% of the labelled training candidates that were kept) or every list
+//!   is empty ([`draw_weak`]). They are labelled `F` and tagged `weak`.
 //! - **Decontamination.** A candidate is removed when its normalised line also occurs in a test
 //!   repository. A line is normalised by trimming it and collapsing its inner whitespace; the
 //!   value of every T row on it (and, for a candidate labelled T, the candidate's own value) is
@@ -20,7 +23,8 @@
 //!   that length at that place. Of the test repositories this reads the lines of the files and
 //!   nothing else: never `meta/`.
 //!
-//! No test repository's meta file is opened by this module ([`Splits::guard`]).
+//! No test repository's meta file is opened by this module: every read of `meta/` goes through
+//! [`read_meta`], which asks [`Splits::guard`] first.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -28,6 +32,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use serde_json::json;
+
+use sky_infer::secret_cand::WordSet;
+use sky_infer::tokenizer::Tokenizer;
 
 use super::{
     bump, file_entry, read_json, sha256_file, write_json, CandRecord, Counts, Item, Label, CREDDATA,
@@ -656,6 +663,69 @@ pub struct CredOptions {
     /// The build folder.
     pub out: PathBuf,
     pub seed: u64,
+    /// The model's tokenizer and the dictionary: a weak negative is one per distinct state.
+    pub tokenizer: Tokenizer,
+    pub words: WordSet,
+}
+
+/// The meta rows of a repository, read from `<cred>/meta/<repo>.csv`: the only place a meta
+/// file is opened, and only for a training or validation repository.
+pub fn read_meta(cred: &Path, splits: &Splits, repo: &str) -> Result<Vec<MetaRow>> {
+    splits.guard(repo)?;
+    let text = std::fs::read_to_string(cred.join(format!("meta/{repo}.csv")))
+        .with_context(|| format!("read meta/{repo}.csv"))?;
+    parse_meta(&text, repo)
+}
+
+/// The weak negatives drawn from a pool, and what the draw was made of.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WeakDraw {
+    /// The candidates drawn, as indices of the candidates file, sorted.
+    pub drawn: Vec<usize>,
+    /// Candidates of the pool after its reduction to one per distinct state.
+    pub distinct: usize,
+    /// Repositories with a candidate in the reduced pool.
+    pub repositories: usize,
+    /// What each repository gives, for those that give something.
+    pub by_repository: BTreeMap<String, usize>,
+}
+
+/// The draw of the weak negatives (section 3.1 as amendment 4 corrects it). `pool` is the
+/// candidates on unlabelled lines of the training repositories left by the decontamination,
+/// in file order: `(index, repository, state)`, the state by its hash. The pool is reduced to
+/// one candidate per distinct state, the first in file order; then the repositories are taken
+/// in turn, in the order of their RepoID, each giving one candidate at a time from its own
+/// list shuffled with the seed, until `cap` is reached or every list is empty.
+pub fn draw_weak(pool: &[(usize, &str, [u8; 32])], cap: usize, seed: u64) -> WeakDraw {
+    let mut seen: HashSet<[u8; 32]> = HashSet::new();
+    let mut lists: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for &(index, repo, state) in pool {
+        if seen.insert(state) {
+            lists.entry(repo).or_default().push(index);
+        }
+    }
+    for (repo, list) in lists.iter_mut() {
+        Rng::derived(seed, &format!("s6-secrets2:weak-negatives:{repo}")).shuffle(list);
+    }
+    let mut out = WeakDraw {
+        distinct: seen.len(),
+        repositories: lists.len(),
+        ..WeakDraw::default()
+    };
+    let longest = lists.values().map(Vec::len).max().unwrap_or(0);
+    'turns: for turn in 0..longest {
+        for (repo, list) in &lists {
+            if out.drawn.len() == cap {
+                break 'turns;
+            }
+            if let Some(&index) = list.get(turn) {
+                out.drawn.push(index);
+                *out.by_repository.entry(repo.to_string()).or_default() += 1;
+            }
+        }
+    }
+    out.drawn.sort_unstable();
+    out
 }
 
 /// One candidate of a split while the build runs: how its line is looked up, and whether its
@@ -746,14 +816,12 @@ pub fn build(o: &CredOptions) -> Result<serde_json::Value> {
         while i < recs.len() {
             let file = recs[i].file.clone().context("a candidate without a file")?;
             let repo = repo_of(&file)?.to_string();
+            splits.guard(&repo)?;
             if !repos.contains(repo.as_str()) {
                 bail!("{file}: not a {split} repository");
             }
-            splits.guard(&repo)?;
             if !meta.contains_key(&repo) {
-                let text = std::fs::read_to_string(cred.join(format!("meta/{repo}.csv")))
-                    .with_context(|| format!("read meta/{repo}.csv"))?;
-                meta.insert(repo.clone(), parse_meta(&text, &repo)?);
+                meta.insert(repo.clone(), read_meta(&cred, &splits, &repo)?);
             }
             let rows: Vec<&MetaRow> = meta[&repo].iter().filter(|r| r.file == file).collect();
             let u = read_utf16(&cred.join(&file))?
@@ -941,13 +1009,21 @@ pub fn build(o: &CredOptions) -> Result<serde_json::Value> {
         if *split == "training" {
             let labelled = items.len();
             let cap = (labelled as f64 * WEAK_SHARE).floor() as usize;
-            let mut order: Vec<usize> = (0..pool.len()).collect();
-            Rng::derived(o.seed, "s6-secrets2:weak-negatives").shuffle(&mut order);
-            order.truncate(cap);
-            order.sort_unstable();
+            // the state of each candidate of the pool, by its hash
+            let mut states = Vec::with_capacity(pool.len());
+            for &index in &pool {
+                let rec = &recs[index];
+                let file = rec.file.as_deref().unwrap_or("");
+                let scope = super::stored_scope(file)?;
+                let (state, _) = super::record_state(rec, &scope, &rec.ext, &o.tokenizer, &o.words);
+                let d = ring::digest::digest(&ring::digest::SHA256, state.as_bytes());
+                let mut h = [0u8; 32];
+                h.copy_from_slice(d.as_ref());
+                states.push((index, repo_of(file)?, h));
+            }
+            let draw = draw_weak(&states, cap, o.seed);
             let mut weak_by_rule = Counts::new();
-            for &k in &order {
-                let index = pool[k];
+            for &index in &draw.drawn {
                 bump(&mut weak_by_rule, &recs[index].rule);
                 items.push(Item {
                     id: format!("cred:{short}:{index}"),
@@ -961,16 +1037,23 @@ pub fn build(o: &CredOptions) -> Result<serde_json::Value> {
                     rec: recs[index].clone(),
                 });
             }
-            kept.insert("weak".into(), order.len());
+            kept.insert("weak".into(), draw.drawn.len());
+            let pool_repos: HashSet<&str> = states.iter().map(|s| s.1).collect();
             weak_counts = json!({
                 "share": WEAK_SHARE,
                 "pool": pool_all,
                 "pool_in_a_file_with_no_scope_directory": pool_root,
                 "pool_removed_by_decontamination": pool_removed,
                 "pool_left": pool.len(),
+                "pool_repositories": pool_repos.len(),
+                "pool_one_per_distinct_state": draw.distinct,
                 "labelled_training_candidates_kept": labelled,
                 "cap": cap,
-                "drawn": order.len(),
+                "drawn": draw.drawn.len(),
+                "repositories_contributing": draw.by_repository.len(),
+                "largest_contribution": draw.by_repository.values().max(),
+                "smallest_contribution": draw.by_repository.values().min(),
+                "by_repository": draw.by_repository,
                 "by_rule": weak_by_rule,
             });
         }
@@ -1263,6 +1346,85 @@ mod tests {
         assert!(lookup.hit(&k_user) && lookup.hit(&k_pass) && lookup.hit(&k_name));
         assert!(!lookup.hit(&k_url));
         assert_eq!(lookup.lines, 3);
+    }
+
+    fn h(n: usize) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        out[..8].copy_from_slice(&(n as u64).to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn weak_negatives_are_one_per_state_and_taken_in_turn() {
+        // file order: repository a floods the pool with one state, b and c hold a few
+        let mut pool: Vec<(usize, &str, [u8; 32])> =
+            (0..500).map(|i| (i, "aaaaaaaa", h(1))).collect();
+        pool.extend((500..520).map(|i| (i, "aaaaaaaa", h(i))));
+        pool.extend((520..523).map(|i| (i, "bbbbbbbb", h(i))));
+        // a state already seen in a, and one of its own
+        pool.push((523, "cccccccc", h(1)));
+        pool.push((524, "cccccccc", h(524)));
+        let d = draw_weak(&pool, 9, 1234);
+        // 1 + 20 states of a, 3 of b, 1 of c: the repeated state counts once, for its first
+        assert_eq!((d.distinct, d.repositories), (25, 3));
+        assert_eq!(d.drawn.len(), 9);
+        // turn 1: a, b, c; turn 2: a, b; turn 3: a, b; then a alone
+        let by = |a: usize, b: usize, c: usize| {
+            BTreeMap::from([
+                ("aaaaaaaa".to_string(), a),
+                ("bbbbbbbb".to_string(), b),
+                ("cccccccc".to_string(), c),
+            ])
+        };
+        assert_eq!(d.by_repository, by(5, 3, 1));
+        assert!(d.drawn.contains(&524) && !d.drawn.contains(&523));
+        // of the flood, only its first candidate can be drawn
+        assert!(d.drawn.iter().all(|&i| i == 0 || i >= 500));
+        assert!(d.drawn.windows(2).all(|w| w[0] < w[1]));
+        // the same seed, the same draw; another seed, another choice inside a repository
+        assert_eq!(d, draw_weak(&pool, 9, 1234));
+        let other: Vec<WeakDraw> = (1..40).map(|s| draw_weak(&pool, 9, s)).collect();
+        assert!(other.iter().any(|o| o.drawn != d.drawn));
+        assert!(other.iter().all(|o| o.by_repository == d.by_repository));
+        // a cap past the pool: every list is emptied
+        let all = draw_weak(&pool, 1000, 1234);
+        assert_eq!(all.drawn.len(), 25);
+        assert_eq!(all.by_repository, by(21, 3, 1));
+        assert!(draw_weak(&pool, 0, 1234).drawn.is_empty());
+        assert_eq!(draw_weak(&[], 5, 1234), WeakDraw::default());
+        // the cap falls inside a turn: the repositories come in the order of their RepoID
+        let two = draw_weak(&pool, 2, 1234);
+        assert_eq!(
+            two.by_repository.keys().collect::<Vec<_>>(),
+            ["aaaaaaaa", "bbbbbbbb"]
+        );
+    }
+
+    #[test]
+    fn a_meta_file_of_a_test_repository_is_never_opened() {
+        let dir = std::env::temp_dir().join(format!("sky-cred-guard-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("meta")).unwrap();
+        let s = Splits {
+            training: vec!["aaaaaaaa".into()],
+            validation: vec!["bbbbbbbb".into()],
+            test: vec!["cccccccc".into()],
+        };
+        // the three files are there and well formed: only the guard stands before the third
+        for repo in ["aaaaaaaa", "bbbbbbbb", "cccccccc"] {
+            let row = format!("1,ab,GitHub,{repo},data/{repo}/src/ab.py,3,3,T,10,22,,,Password\n");
+            std::fs::write(
+                dir.join(format!("meta/{repo}.csv")),
+                format!("{META_HEADER}\n{row}"),
+            )
+            .unwrap();
+        }
+        assert_eq!(read_meta(&dir, &s, "aaaaaaaa").unwrap().len(), 1);
+        assert_eq!(read_meta(&dir, &s, "bbbbbbbb").unwrap().len(), 1);
+        let err = read_meta(&dir, &s, "cccccccc").unwrap_err().to_string();
+        assert_eq!(err, "refused: cccccccc is a test repository");
+        let err = read_meta(&dir, &s, "dddddddd").unwrap_err().to_string();
+        assert!(err.starts_with("refused"), "{err}");
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]
