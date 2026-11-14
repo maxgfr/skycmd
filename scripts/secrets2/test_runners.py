@@ -13,6 +13,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import clean_text  # noqa: E402
 import common  # noqa: E402
 import issues  # noqa: E402
 import run_scanners  # noqa: E402
@@ -285,6 +286,22 @@ class Issues(unittest.TestCase):
         self.assertIsNotNone(c["ece"])
         with self.assertRaises(common.Refused):
             issues.score_system(self.cands, dict(run, threshold=None), flags, self.texts.get)
+
+
+class CleanText(unittest.TestCase):
+    def test_share_of_files(self):
+        fl = lambda path, **kw: common.flag("clean", path, 1, start=0, end=4, **kw)
+        flags = [fl("secretgate/src/a.ts", rule="r"), fl("secretgate/src/a.ts", rule="r"), fl("skycmd/docs/b.md", rule="k")]
+        res, accepted, scored = clean_text.share_of(flags, {"system": "generator", "unit": "candidate"}, 200)
+        # two files of 200 hold a candidate, whatever their number of candidates
+        self.assertEqual((res["files_with_an_accepted_flag"], res["share"], res["accepted_flags"], scored), (2, 0.01, 3, False))
+        self.assertEqual(res["by_rule"], {"r": 2, "k": 1})
+        # a model accepts at its threshold: one file left
+        flags = [fl("secretgate/src/a.ts", score=0.2, id=0), fl("secretgate/src/a.ts", score=0.4, id=1), fl("skycmd/docs/b.md", score=0.9, id=2)]
+        res, accepted, scored = clean_text.share_of(flags, {"system": "model", "unit": "candidate", "threshold": 0.5}, 200)
+        self.assertEqual((res["files_with_an_accepted_flag"], res["share"], [x["id"] for x in accepted], scored), (1, 0.005, [2], True))
+        with self.assertRaises(common.Refused):
+            clean_text.share_of(flags, {"system": "model", "unit": "candidate"}, 200)
 
 
 if __name__ == "__main__":
