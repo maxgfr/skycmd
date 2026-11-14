@@ -87,6 +87,22 @@ A teacher gave soft labels on every training question of the Hugging Face decisi
 | [nvidia/When2Call](https://huggingface.co/datasets/nvidia/When2Call) (test split) | CC-BY-4.0 | test split of a trained source |
 | [PolyAI/banking77](https://huggingface.co/datasets/PolyAI/banking77) | CC-BY-4.0 | trained on: reported as in-distribution, never as zero-shot |
 
+### s6-secrets-pico: generated data
+No external dataset. `sky-data secret-jev` generates every text locally: each key follows its provider's public format with a random body, so none is a real key ([`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) §1). The bar is a rule scanner written in Rust in the style of gitleaks (see [s6](#s6) below). It pretrains on the same text as s6-nano.
+
+### s6-ear-nano: audio data and baseline
+Only derived features are kept on disk (log-mel frames, and WAV for the test clips); the audio is not redistributed ([`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)). The model failed its gates and is not published.
+
+| Dataset or model | Licence | Used as |
+|---|---|---|
+| [pipecat-ai/smart-turn-data-v3-train](https://huggingface.co/datasets/pipecat-ai/smart-turn-data-v3-train) | CC-BY-4.0 | end-of-turn questions, train and val |
+| [pipecat-ai/smart-turn-data-v3.2-test](https://huggingface.co/datasets/pipecat-ai/smart-turn-data-v3.2-test) | CC-BY-4.0 | end-of-turn test: the official held-out set of Smart Turn v3.2 |
+| [pipecat-ai/smart-turn-v3](https://huggingface.co/pipecat-ai/smart-turn-v3) (Smart Turn v3.2, ONNX) | BSD-2-Clause | the baseline of the end-of-turn gate, run on the same test clips |
+| Speech Commands v0.02 ([paper](https://arxiv.org/abs/1804.03209), [`google/speech_commands`](https://huggingface.co/datasets/google/speech_commands)) | CC-BY-4.0 | keyword questions, 12 classes |
+| [MLCommons/ml_spoken_words](https://huggingface.co/datasets/MLCommons/ml_spoken_words) (MSWC, en + fr) | CC-BY-4.0 | zero-shot keywords: 50 words per language held out |
+| [openslr/librispeech_asr](https://huggingface.co/datasets/openslr/librispeech_asr) (`clean`) | CC-BY-4.0 | audio of the pretraining |
+| [shangeth/librispeech-mimi-codes](https://huggingface.co/datasets/shangeth/librispeech-mimi-codes) | CC-BY-4.0 | the Mimi codebook-0 ids predicted during pretraining; Mimi itself never runs |
+
 ### s5: backbones, teacher and held-out evaluation
 | Dataset or model | Licence | Used as |
 |---|---|---|
@@ -141,6 +157,14 @@ marked as such. Not republished: the gated `LocalLLaMA/typed-decisions`, the s6-
 - **Imitation learning:** DAgger (Ross, Gordon & Bagnell, 2011) and [on-policy distillation](https://www.thinkingmachines.ai/blog/on-policy-distillation/).
 - **Bio-inspired ablations:** [Neural Circuit Policies](https://arxiv.org/abs/1809.04423) and [expand-and-sparsify / FlyHash](https://arxiv.org/abs/2001.04907).
 
+### Methods the code uses throughout
+Written in-house in Rust, after these:
+- **Encoder layout:** [RoPE](https://arxiv.org/abs/2104.09864) and a [GeGLU](https://arxiv.org/abs/2002.05202) MLP, as in [ModernBERT](https://arxiv.org/abs/2412.13663).
+- **Optimizer and schedule:** [Muon](https://kellerjordan.github.io/posts/muon/) (Keller Jordan), ported from `mlx.optimizers.Muon`, for s1 to s3; the s6 ablation kept AdamW. The warmup-stable-decay schedule of [MiniCPM](https://arxiv.org/abs/2404.06395), on a time budget.
+- **Ternary weights:** the absmean ternary quantization of [BitNet b1.58](https://arxiv.org/abs/2402.17764), trained in with a [straight-through estimator](https://arxiv.org/abs/1308.3432).
+- **Calibration and its measure:** [temperature scaling](https://arxiv.org/abs/1706.04599) per question type, and the ECE with 15 equal-width bins, as defined in the same paper.
+- **Conformal exit thresholds:** the bound `(n·R̂ + 1)/(n + 1) ≤ α` of [Conformal Risk Control](https://arxiv.org/abs/2208.02814), with the early-exit setting of [CALM](https://arxiv.org/abs/2207.07061) and [Fast yet Safe](https://arxiv.org/abs/2405.20915).
+
 ### s4
 - **Teacher:** [Qwen3.5](https://huggingface.co/collections/Qwen/qwen35) through [mlx-lm](https://github.com/ml-explore/mlx-lm); the teacher scores option letters in one pass and never generates.
 - **Encoders over decoders for classification at equal size:** [Ettin, Seq vs Seq](https://arxiv.org/abs/2507.11412).
@@ -152,13 +176,14 @@ marked as such. Not republished: the gated `LocalLLaMA/typed-decisions`, the s6-
 
 ### s6
 What the pre-registrations rest on ([`docs/s6-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-prereg.md), [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), notes in [`docs/research.md`](https://github.com/maxgfr/skycmd/blob/main/docs/research.md)). The ablation adopted none of the encoder and optimizer additions: the shipped s6-nano rests on the learning-rate transfer, the pretraining budget, the QAT schedule and DAgger, and the conformal thresholds were tested on it and rejected.
-- **Tested, not adopted:** [Parallax](https://arxiv.org/abs/2605.29157) attention; Muon v2 after [Muon is Scalable for LLM Training](https://arxiv.org/abs/2502.16982); [SODA](https://arxiv.org/abs/2605.11172) weight decay; exit distillation after [SAFE-KD](https://arxiv.org/abs/2602.03043); a weight EMA ([2311.05109](https://arxiv.org/abs/2311.05109), [BEMA](https://arxiv.org/abs/2508.00180)); [StableQAT](https://arxiv.org/abs/2601.19320); a pretraining curriculum ([2506.11300](https://arxiv.org/abs/2506.11300)).
+- **Tested, not adopted:** [Parallax](https://arxiv.org/abs/2605.29157) attention; Muon v2 after [Muon is Scalable for LLM Training](https://arxiv.org/abs/2502.16982); exclusive self-attention ([XSA](https://doi.org/10.21203/rs.3.rs-10673227/v1)); [SODA](https://arxiv.org/abs/2605.11172) weight decay; exit distillation after [SAFE-KD](https://arxiv.org/abs/2602.03043); a weight EMA ([2311.05109](https://arxiv.org/abs/2311.05109), [BEMA](https://arxiv.org/abs/2508.00180)); [StableQAT](https://arxiv.org/abs/2601.19320); a pretraining curriculum ([2506.11300](https://arxiv.org/abs/2506.11300)).
 - **Why the ablation tunes AdamW too and counts time:** [Fantastic Pretraining Optimizers](https://arxiv.org/abs/2509.02046) and [When Does Muon Actually Win?](https://arxiv.org/abs/2610.21555).
 - **Learning rate across widths:** [fast hyperparameter transfer](https://arxiv.org/abs/2512.22768) and the spectral condition for μP ([2603.00541](https://arxiv.org/abs/2603.00541)): the per-size pilots are centred on the pico rate × √(96/d).
 - **Pretraining budget and QAT:** Training compute-optimal transformer encoder models (EMNLP 2025), on how many tokens per parameter an MLM encoder wants; [16-bit → 1.58-bit continual QAT](https://arxiv.org/abs/2502.11895), for the float warm-up before ternary training.
-- **Conformal exit thresholds:** [Fast yet Safe](https://arxiv.org/abs/2405.20915) and CALM (NeurIPS 2022), for α = 0.02. They were tested on s6-nano in closed loop and rejected.
+- **Conformal exit thresholds:** [Fast yet Safe](https://arxiv.org/abs/2405.20915) and [CALM](https://arxiv.org/abs/2207.07061) (NeurIPS 2022), for α = 0.02. They were tested on s6-nano in closed loop and rejected.
 - **DAgger with a per-turn mixture:** [Revisiting DAgger in the Era of LLM-Agents](https://arxiv.org/abs/2605.12913).
 - **s6-secrets-pico's bar:** a rule scanner in the style of [gitleaks](https://github.com/gitleaks/gitleaks) (MIT): prefix rules for 20 key formats, connection strings with a password, an entropy rule on secret-sounding names and allowlists, written in Rust (`sky-data secret-baseline`), not gitleaks itself. Its data is synthetic and generated locally ([`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md); licence in [`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)), and it pretrains on the same text as s6-nano.
+- **s6-ear-nano:** Kyutai's [Mimi](https://arxiv.org/abs/2410.00037) codec (from Moshi) as the source of the pretraining targets; masked prediction of discrete targets after [HuBERT](https://arxiv.org/abs/2106.07447) and [BEST-RQ](https://arxiv.org/abs/2202.01855); continuous features rather than codec indices for classification ([DASB](https://arxiv.org/abs/2406.14294), [DualTurn](https://arxiv.org/abs/2603.08216)); a small frontal model that calls a larger one ([MoshiRAG](https://arxiv.org/abs/2604.12928)).
 
 ### s5
 - **Option isolation and shared positions:** [arXiv 2610.01601](https://arxiv.org/abs/2610.01601) (§ III, positions; § V-C, ablations).
