@@ -1849,6 +1849,7 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "sky-gguf",
  "sky-infer",
  "tar",
  "tokenizers 0.23.2",

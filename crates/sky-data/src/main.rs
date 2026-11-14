@@ -85,6 +85,33 @@ enum Secrets2Step {
         #[arg(long, default_value_t = 0.30)]
         share: f64,
     },
+    /// The states of the candidates of a split, for the evaluation: the table and the records
+    /// the model and the logistic regression read (<out>.jsonl, <out>.records.jsonl). The test
+    /// split is refused unless --test-open exists and --model holds its threshold.
+    States {
+        #[arg(long)]
+        data: PathBuf,
+        /// creddata:<split>, clean, issues:<split>, issues:<split>:obfuscated or
+        /// issues:<split>:e2e (training, validation or test).
+        #[arg(long)]
+        corpus: String,
+        /// The generator's raw export (creddata, clean and the end-to-end issue candidates).
+        #[arg(long)]
+        candidates: Option<PathBuf>,
+        /// Prefix of the two files written.
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        tokenizer: PathBuf,
+        #[arg(long, default_value = "/usr/share/dict/words")]
+        dict: PathBuf,
+        /// The trained ternary GGUF, whose metadata holds skycmd-s2.secrets2.tau_f1 (test only).
+        #[arg(long)]
+        model: Option<PathBuf>,
+        /// The file whose existence opens the test split.
+        #[arg(long, default_value = sky_data::secrets2::states::TEST_OPEN)]
+        test_open: PathBuf,
+    },
     /// The sample of weak negatives that is read by hand (it stays in the data folder).
     HandRead {
         #[arg(long)]
@@ -752,6 +779,25 @@ fn main() -> Result<()> {
                     tokenizer: load_tokenizer(&tokenizer)?,
                     text,
                     share,
+                })?,
+                Secrets2Step::States {
+                    data,
+                    corpus,
+                    candidates,
+                    out,
+                    tokenizer,
+                    dict,
+                    model,
+                    test_open,
+                } => s2::states::build(&s2::states::StatesOptions {
+                    data,
+                    corpus: s2::states::Corpus::parse(&corpus)?,
+                    candidates,
+                    out,
+                    tokenizer: load_tokenizer(&tokenizer)?,
+                    words: load_words(&dict)?,
+                    model,
+                    test_open,
                 })?,
                 Secrets2Step::HandRead { out } => s2::build::hand_read_sample(&out, cli.seed)?,
                 Secrets2Step::Manifest {

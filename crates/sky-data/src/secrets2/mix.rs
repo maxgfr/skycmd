@@ -79,7 +79,7 @@ pub fn records_of(item: &Item, state: &str) -> Vec<DecisionRecord> {
     out
 }
 
-fn features_json(f: &Features) -> serde_json::Value {
+pub(crate) fn features_json(f: &Features) -> serde_json::Value {
     json!({
         "len": f.len,
         "entropy": f.entropy as f64 / 100.0,

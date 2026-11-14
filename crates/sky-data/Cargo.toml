@@ -27,6 +27,7 @@ ring = "0.17.14"
 zstd = "0.14.2"
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 sky-infer = { path = "../sky-infer", default-features = false }
+sky-gguf = { path = "../sky-gguf" }
 claxon = "0.4.3"
 tar = { version = "0.4.45", default-features = false }
 

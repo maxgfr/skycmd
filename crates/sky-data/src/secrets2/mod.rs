@@ -9,7 +9,8 @@
 //! - [`synth`]: synthetic candidates, `sky-data secret-cand` (3.3);
 //! - [`mix`]: states, decision records and the tables the baselines read (3.4, 4.1);
 //! - [`pretext`]: the pretraining text of section 5;
-//! - [`build`], which writes `BUILD.json`.
+//! - [`build`], which writes `BUILD.json`;
+//! - [`states`]: the states of the candidates of a split for the evaluation (sections 6 and 7).
 //!
 //! One record format serves the three sources: the candidate record of the generator
 //! `sg-cand-1` ([`CandRecord`]), and one state builder, `sky_infer::secret_cand`, which the
@@ -25,6 +26,7 @@ pub mod issues;
 pub mod mix;
 pub mod pretext;
 pub mod replace;
+pub mod states;
 pub mod synth;
 
 use std::collections::BTreeMap;

@@ -139,6 +139,8 @@ struct Fixture {
     /// Values that must be in no output: the issue-report positives as published.
     published: Vec<String>,
     test_csv: String,
+    /// The rows of the validation split of the issue reports: candidate, text, label.
+    val_rows: Vec<(String, String, u8)>,
 }
 
 /// The miniature data folder.
@@ -272,7 +274,20 @@ fn fixture(root: &Path) -> Fixture {
         row(4, "nowhere", "a text without its candidate", 0),
     );
     let v1 = format!("see\n{p3}\nabove");
-    let val_csv = format!("{header}{}{}", row(0, &p3, &v1, 1), row(1, "above", &v1, 0));
+    let v2 = "nothing secret\n  value: plain-cand\nend".to_string();
+    let val_rows = vec![
+        (p3.clone(), v1.clone(), 1),
+        ("above".to_string(), v1.clone(), 0),
+        ("plain-cand".to_string(), v2, 0),
+    ];
+    let val_csv: String = std::iter::once(header.to_string())
+        .chain(
+            val_rows
+                .iter()
+                .enumerate()
+                .map(|(i, (c, t, l))| row(i, c, t, *l)),
+        )
+        .collect();
     let test_secret = value("test-secret", 30);
     let test_csv = format!(
         "{header}{}{}",
@@ -291,6 +306,7 @@ fn fixture(root: &Path) -> Fixture {
         root: root.to_path_buf(),
         published: vec![p1, p2, p3],
         test_csv,
+        val_rows,
     }
 }
 
@@ -661,4 +677,476 @@ fn the_build_refuses_what_is_not_the_frozen_generator() {
     let err = format!("{:#}", run().unwrap_err());
     assert!(err.contains("not frozen"), "{err}");
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// What `scripts/secrets2/issues.py prepare` writes for a split: the texts as files (named by
+/// the first 16 hex digits of their sha256), and the place of each candidate in code points.
+fn prepare_issues(
+    root: &Path,
+    split: &str,
+    rows: &[(String, String, u8)],
+    obfuscated: &[(&str, &str)],
+) {
+    let base = root.join("eval/issues").join(split);
+    let mut cands = Vec::new();
+    for (i, (cand, text, label)) in rows.iter().enumerate() {
+        let tid = &s2::sha256_hex(text.as_bytes())[..16];
+        write(&base.join(format!("texts/{tid}.txt")), text);
+        let mut other = text.clone();
+        for (old, new) in obfuscated {
+            other = other.replace(old, new);
+        }
+        write(&base.join(format!("texts-obfuscated/{tid}.txt")), &other);
+        let mut c = json!({"row": i, "text": tid, "label": label});
+        if let Some(at) = text.find(cand.as_str()) {
+            c["start"] = json!(text[..at].chars().count());
+            c["end"] = json!(text[..at + cand.len()].chars().count());
+        }
+        cands.push(c);
+    }
+    jsonl(&base.join("candidates.jsonl"), &cands);
+    write(
+        &base.join("index.json"),
+        &json!({"split": split, "source": "x.csv"}).to_string(),
+    );
+}
+
+fn states(
+    f: &Fixture,
+    corpus: &str,
+    candidates: Option<&Path>,
+    out: &str,
+    model: Option<&Path>,
+) -> anyhow::Result<Value> {
+    s2::states::build(&s2::states::StatesOptions {
+        data: f.root.clone(),
+        corpus: s2::states::Corpus::parse(corpus)?,
+        candidates: candidates.map(Path::to_path_buf),
+        out: f.root.join(out),
+        tokenizer: s2::load_tokenizer(&tokenizer())?,
+        words: s2::load_words(&f.root.join("words.txt"))?,
+        model: model.map(Path::to_path_buf),
+        test_open: f.root.join("TEST-OPEN"),
+    })
+}
+
+fn table(path: &Path) -> BTreeMap<String, Value> {
+    let rows: Vec<Value> = read_jsonl(path).unwrap();
+    rows.into_iter()
+        .map(|r| (r["id"].as_str().unwrap().to_string(), r))
+        .collect()
+}
+
+/// A generator record for `needle` in `text`, as an export line.
+fn export_line(file: Option<&str>, text: &str, needle: &str) -> Value {
+    let at = text.find(needle).unwrap();
+    let mut rec = s2::record_at(
+        cred::GENERATOR,
+        file,
+        "generic-keyword",
+        Some("token"),
+        text,
+        at,
+        at + needle.len(),
+        RecFilters::default(),
+    );
+    rec.revision = Some(cred::REVISION);
+    serde_json::to_value(&rec).unwrap()
+}
+
+#[test]
+fn states_of_a_split_for_the_evaluation() {
+    let root = std::env::temp_dir().join(format!("sky-secrets2-states-{}", std::process::id()));
+    let f = fixture(&root);
+    let out = build(&f, "build");
+    let gen = root.join("gen");
+
+    // CredData validation: every candidate of the export gets a state; those the build kept
+    // have the same state, label and features in its table
+    let r = states(
+        &f,
+        "creddata:validation",
+        Some(&gen.join("candidates-validation.raw.jsonl")),
+        "eval/validation/states/creddata",
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            r["candidates"].as_u64(),
+            r["states"].as_u64(),
+            r["records"].as_u64()
+        ),
+        (Some(3), Some(3), Some(5))
+    );
+    assert_eq!(r["labels"], json!({"F": 1, "T": 1, "U": 1}));
+    let got = table(&root.join("eval/validation/states/creddata.jsonl"));
+    let built = table(&out.join("tables/creddata-val.jsonl"));
+    assert_eq!(built.len(), 2);
+    for (id, row) in &built {
+        for k in ["state", "label", "real", "features", "rule", "class", "via"] {
+            assert_eq!(got[id][k], row[k], "{id} {k}");
+        }
+    }
+    let other = &got["cred:val:2"];
+    assert_eq!(
+        (&other["unlabelled"], &other["label"], &other["real"]),
+        (&json!("U"), &Value::Null, &Value::Null)
+    );
+    let recs: Vec<DecisionRecord> =
+        read_jsonl(&root.join("eval/validation/states/creddata.records.jsonl")).unwrap();
+    let srcs: Vec<&str> = recs.iter().map(|r| r.src.as_str()).collect();
+    assert_eq!(
+        srcs,
+        [
+            "creddata:real",
+            "creddata:kind",
+            "creddata:real",
+            "creddata:kind",
+            "creddata_unlabelled:real"
+        ]
+    );
+    for r in &recs {
+        validate_record(r).unwrap();
+        assert_eq!(r.split, "val");
+    }
+    assert_eq!(recs[0].state, got["cred:val:0"]["state"].as_str().unwrap());
+    // a candidate of a repository of another split stops the run
+    let err = states(
+        &f,
+        "creddata:validation",
+        Some(&gen.join("candidates-training.raw.jsonl")),
+        "eval/x",
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        err.starts_with("refused: ") && err.contains("validation split"),
+        "{err}"
+    );
+    // a licence copy at a repository's root has no scope directory: counted, no state
+    let licence = root.join("licence.jsonl");
+    jsonl(
+        &licence,
+        &[export_line(
+            Some(&format!("data/{VAL}/LICENSE")),
+            "token = abcdefgh\n",
+            "abcdefgh",
+        )],
+    );
+    let r = states(&f, "creddata:validation", Some(&licence), "eval/x", None).unwrap();
+    assert_eq!(
+        (
+            r["states"].as_u64(),
+            r["without_a_scope_directory"].as_u64()
+        ),
+        (Some(0), Some(1))
+    );
+
+    // the issue reports as published: the values are the dataset's, not the build's replacements
+    let mut rows = f.val_rows.clone();
+    rows.push(("not in its text".to_string(), "another text".to_string(), 0));
+    let stand_in = format!("token: {}", "Z".repeat(24));
+    prepare_issues(
+        &root,
+        "validation",
+        &rows,
+        &[(f.published[2].as_str(), stand_in.as_str())],
+    );
+    let r = states(
+        &f,
+        "issues:validation",
+        None,
+        "eval/validation/states/issues",
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            r["candidates"].as_u64(),
+            r["states"].as_u64(),
+            r["not_found_in_their_text"].as_u64()
+        ),
+        (Some(4), Some(3), Some(1))
+    );
+    assert_eq!(r["labels"], json!({"F": 2, "T": 1}));
+    let got = table(&root.join("eval/validation/states/issues.jsonl"));
+    let built = table(&out.join("tables/issues-val.jsonl"));
+    // a candidate whose text holds no positive: the state of the build
+    assert_eq!(got["issue:val:2"]["state"], built["issue:val:2"]["state"]);
+    assert_eq!(
+        got["issue:val:2"]["features"],
+        built["issue:val:2"]["features"]
+    );
+    // the positive: published here, replaced in the build
+    let state = got["issue:val:0"]["state"].as_str().unwrap();
+    assert!(
+        state.starts_with("rule issue-regex\npath _\nkey\nvalue ")
+            && state.contains(f.published[2].as_str())
+    );
+    assert_ne!(got["issue:val:0"]["state"], built["issue:val:0"]["state"]);
+    assert_eq!(
+        (&got["issue:val:0"]["label"], &got["issue:val:0"]["real"]),
+        (&json!("T"), &json!(1))
+    );
+    let recs: Vec<DecisionRecord> =
+        read_jsonl(&root.join("eval/validation/states/issues.records.jsonl")).unwrap();
+    assert!(
+        recs.len() == 3
+            && recs
+                .iter()
+                .all(|r| r.src == "issues:real" && r.split == "val")
+    );
+    assert_eq!(recs[0].target, [0.0, 1.0]);
+    // through the obfuscation: the same places in the other texts
+    let r = states(
+        &f,
+        "issues:validation:obfuscated",
+        None,
+        "eval/validation/states/issues-obfuscated",
+        None,
+    )
+    .unwrap();
+    assert_eq!(r["states"], 3);
+    let obf = table(&root.join("eval/validation/states/issues-obfuscated.jsonl"));
+    let state = obf["issue:val:0"]["state"].as_str().unwrap();
+    assert!(state.contains(stand_in.as_str()) && !state.contains(f.published[2].as_str()));
+    assert_eq!(obf["issue:val:2"]["state"], got["issue:val:2"]["state"]);
+    // end to end: the generator's candidates on the issue texts, read without a path
+    let e2e = root.join("e2e.jsonl");
+    jsonl(
+        &e2e,
+        &[export_line(None, &f.val_rows[0].1, &f.published[2][7..])],
+    );
+    let r = states(
+        &f,
+        "issues:validation:e2e",
+        Some(&e2e),
+        "eval/validation/states/issues-e2e",
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        (r["states"].as_u64(), &r["labels"]),
+        (Some(1), &json!({"none": 1}))
+    );
+    let got = table(&root.join("eval/validation/states/issues-e2e.jsonl"));
+    let state = got["issue-e2e:val:0"]["state"].as_str().unwrap();
+    assert!(
+        state.starts_with("rule generic-keyword\npath _\nkey token\nvalue "),
+        "{state}"
+    );
+    assert_eq!(got["issue-e2e:val:0"]["label"], Value::Null);
+    jsonl(
+        &e2e,
+        &[export_line(
+            Some("texts/0123456789abcdef.txt"),
+            &f.val_rows[0].1,
+            "above",
+        )],
+    );
+    assert!(states(&f, "issues:validation:e2e", Some(&e2e), "eval/x", None).is_err());
+    // the texts of another split are not this split's
+    assert!(states(&f, "issues:training", None, "eval/x", None).is_err());
+
+    // the clean-text corpus: the path inside its repository gives the scope
+    let clean = root.join("clean.jsonl");
+    jsonl(
+        &clean,
+        &[export_line(
+            Some("somerepo/src/conf/app.py"),
+            "token = abcdefgh\n",
+            "abcdefgh",
+        )],
+    );
+    let r = states(&f, "clean", Some(&clean), "eval/clean/states/clean", None).unwrap();
+    assert_eq!(r["states"], 1);
+    let got = table(&root.join("eval/clean/states/clean.jsonl"));
+    assert!(got["clean:all:0"]["state"]
+        .as_str()
+        .unwrap()
+        .starts_with("rule generic-keyword\npath src conf app .py\n"));
+
+    // THE TEST SPLIT: refused until TEST-OPEN exists and a model holds its threshold
+    let test_file = format!("data/{TEST}/_/0c0c0c0c.txt");
+    let test_text = std::fs::read_to_string(root.join("creddata").join(&test_file)).unwrap();
+    let export = root.join("test.jsonl");
+    jsonl(
+        &export,
+        &[export_line(Some(&test_file), &test_text, "something")],
+    );
+    let model = root.join("model.gguf");
+    let gguf = |tau: Option<f32>| {
+        let mut w = sky_gguf::GgufWriter::new();
+        if let Some(t) = tau {
+            w.add_kv(s2::states::TAU_KEY, t);
+        }
+        std::fs::write(&model, w.to_bytes().unwrap()).unwrap();
+    };
+    gguf(Some(0.5));
+    for corpus in [
+        "creddata:test",
+        "issues:test",
+        "issues:test:obfuscated",
+        "issues:test:e2e",
+    ] {
+        let err = states(
+            &f,
+            corpus,
+            Some(&export),
+            "eval/test/states/x",
+            Some(&model),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("the test split is closed"), "{corpus}: {err}");
+    }
+    assert!(
+        !root.join("eval/test").exists(),
+        "nothing is written for a closed split"
+    );
+    std::fs::write(root.join("TEST-OPEN"), "").unwrap();
+    assert!(states(
+        &f,
+        "creddata:test",
+        Some(&export),
+        "eval/test/states/x",
+        None
+    )
+    .is_err());
+    gguf(None);
+    let err = states(
+        &f,
+        "creddata:test",
+        Some(&export),
+        "eval/test/states/x",
+        Some(&model),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains(s2::states::TAU_KEY), "{err}");
+    // open: the meta rows of the test repository are read (none here: its candidate is unlabelled)
+    gguf(Some(0.5));
+    write(
+        &root.join(format!("creddata/meta/{TEST}.csv")),
+        &format!("{META_HEADER}\n"),
+    );
+    let r = states(
+        &f,
+        "creddata:test",
+        Some(&export),
+        "eval/test/states/creddata",
+        Some(&model),
+    )
+    .unwrap();
+    assert_eq!(
+        (r["states"].as_u64(), &r["labels"]),
+        (Some(1), &json!({"U": 1}))
+    );
+    assert!(table(&root.join("eval/test/states/creddata.jsonl")).contains_key("cred:test:0"));
+    // and still no candidate of another split
+    assert!(states(
+        &f,
+        "creddata:test",
+        Some(&gen.join("candidates-validation.raw.jsonl")),
+        "eval/x",
+        Some(&model)
+    )
+    .is_err());
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// On the real data folder (SECRETS2_DATA; SECRETS2_TOKENIZER names the model's tokenizer): the
+/// states of the validation split are those of the build. Skipped when the folder is not given:
+/// nothing of it is in the repository.
+#[test]
+fn the_validation_states_of_the_real_build_are_reproduced() {
+    let (Some(data), Some(tok)) = (
+        std::env::var_os("SECRETS2_DATA"),
+        std::env::var_os("SECRETS2_TOKENIZER"),
+    ) else {
+        eprintln!("SECRETS2_DATA and SECRETS2_TOKENIZER are not set: skipped");
+        return;
+    };
+    let data = PathBuf::from(data);
+    let tmp = data.join(format!("eval/tmp-states-test-{}", std::process::id()));
+    let words = || s2::load_words(Path::new("/usr/share/dict/words")).unwrap();
+    let run = |corpus: &str, candidates: Option<PathBuf>, name: &str| {
+        s2::states::build(&s2::states::StatesOptions {
+            data: data.clone(),
+            corpus: s2::states::Corpus::parse(corpus).unwrap(),
+            candidates,
+            out: tmp.join(name),
+            tokenizer: s2::load_tokenizer(Path::new(&tok)).unwrap(),
+            words: words(),
+            model: None,
+            test_open: data.join("no-such-file"),
+        })
+        .unwrap()
+    };
+    let build_json = s2::read_json(&data.join("build/BUILD.json")).unwrap();
+    let kept = |source: &str| {
+        build_json["mix"]["sources"][source]["val"]["candidates"]
+            .as_u64()
+            .unwrap() as usize
+    };
+
+    // CredData: every validation candidate the build kept, with the same state, label, features
+    let r = run(
+        "creddata:validation",
+        Some(data.join("gen/candidates-validation.raw.jsonl")),
+        "creddata",
+    );
+    let got = table(&tmp.join("creddata.jsonl"));
+    let built = table(&data.join("build/tables/creddata-val.jsonl"));
+    assert_eq!(built.len(), kept("creddata"));
+    assert!(built.len() > 1000 && got.len() == r["states"].as_u64().unwrap() as usize);
+    for (id, row) in &built {
+        for k in ["state", "label", "features"] {
+            assert!(got[id][k] == row[k], "{id}: {k} differs from the build");
+        }
+    }
+    let frozen = s2::read_json(&data.join("gen/generator.json")).unwrap();
+    for (k, v) in frozen["labels"]["validation"].as_object().unwrap() {
+        assert_eq!(&r["labels"][k], v, "label {k} against the frozen labels");
+    }
+    eprintln!(
+        "creddata:validation: {} states, the {} of the build reproduced",
+        got.len(),
+        built.len()
+    );
+
+    // issue reports: the states from the evaluation's prepared texts are those of the split
+    // file itself; where the build replaced nothing, they are the build's
+    if data
+        .join("eval/issues/validation/candidates.jsonl")
+        .is_file()
+    {
+        run("issues:validation", None, "issues");
+        let got = table(&tmp.join("issues.jsonl"));
+        let rows = issues::read_rows(&data.join(issues::DATA_DIR).join("val.csv")).unwrap();
+        let tokenizer = s2::load_tokenizer(Path::new(&tok)).unwrap();
+        let w = words();
+        for r in &rows {
+            let rec = issues::candidate_record(&r.text, &r.candidate).unwrap();
+            let (state, _) = s2::record_state(&rec, &[], "", &tokenizer, &w);
+            assert!(
+                got[&format!("issue:val:{}", r.index)]["state"] == state.as_str(),
+                "row {}",
+                r.index
+            );
+        }
+        let built = table(&data.join("build/tables/issues-val.jsonl"));
+        let same = built
+            .iter()
+            .filter(|(id, row)| got[*id]["state"] == row["state"])
+            .count();
+        let positives = built.values().filter(|r| r["label"] == "T").count();
+        assert_eq!(built.len(), kept("issues"));
+        // every positive is replaced in the build; a few negatives stand next to one
+        assert!(same <= built.len() - positives && same > (built.len() - positives) * 9 / 10);
+        eprintln!("issues:validation: {} states from {} rows; {same} of the build's {} unchanged by the replacement", got.len(), rows.len(), built.len());
+    }
+    std::fs::remove_dir_all(&tmp).ok();
 }

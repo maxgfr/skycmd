@@ -93,6 +93,14 @@ impl Splits {
         Ok(s)
     }
 
+    /// [`Splits::guard`], which a test repository also passes when the test split is open.
+    pub fn guard_eval(&self, repo: &str, test_open: bool) -> Result<()> {
+        if test_open && self.test.iter().any(|r| r == repo) {
+            return Ok(());
+        }
+        self.guard(repo)
+    }
+
     /// The repositories of `training` or `validation`.
     pub fn of(&self, split: &str) -> Result<&[String]> {
         match split {
@@ -671,7 +679,18 @@ pub struct CredOptions {
 /// The meta rows of a repository, read from `<cred>/meta/<repo>.csv`: the only place a meta
 /// file is opened, and only for a training or validation repository.
 pub fn read_meta(cred: &Path, splits: &Splits, repo: &str) -> Result<Vec<MetaRow>> {
-    splits.guard(repo)?;
+    read_meta_eval(cred, splits, repo, false)
+}
+
+/// [`read_meta`] for the evaluation: a test repository's meta file is opened only when
+/// `test_open` says the guard of the test split is satisfied ([`super::states::test_is_open`]).
+pub fn read_meta_eval(
+    cred: &Path,
+    splits: &Splits,
+    repo: &str,
+    test_open: bool,
+) -> Result<Vec<MetaRow>> {
+    splits.guard_eval(repo, test_open)?;
     let text = std::fs::read_to_string(cred.join(format!("meta/{repo}.csv")))
         .with_context(|| format!("read meta/{repo}.csv"))?;
     parse_meta(&text, repo)
