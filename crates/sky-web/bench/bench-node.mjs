@@ -4,7 +4,9 @@
 // `--game G`, `benchGame()` times that game instead (doom: the three questions on one state).
 //
 //   node crates/sky-web/bench/bench-node.mjs [--n 2000] [--repeat 5] [--no-static-cache] [--packed]
-//        [--exit-threshold T] [--game flappy|rescue|dodge|doom] model.gguf...
+//        [--exit-threshold T] [--game flappy|rescue|dodge|doom] [--relaxed] model.gguf...
+//
+// `--relaxed` loads the relaxed-SIMD module (sky_web_relaxed_bg.wasm) instead of the SIMD128 one.
 //
 // Prints one JSON line per model: the median over `--repeat` runs of the bench median, plus the
 // depth and cache statistics reported by `bench()`.
@@ -22,6 +24,7 @@ let staticCache = true
 let packed = false
 let tau
 let game
+let relaxed = false
 const models = []
 for (let i = 0; i < args.length; i++) {
   const a = args[i]
@@ -31,15 +34,16 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--packed') packed = true
   else if (a === '--exit-threshold') tau = Number(args[++i])
   else if (a === '--game') game = args[++i]
+  else if (a === '--relaxed') relaxed = true
   else models.push(a)
 }
 if (!models.length) {
-  console.error('usage: bench-node.mjs [--n N] [--repeat R] [--no-static-cache] [--packed] [--exit-threshold T] [--game G] model.gguf...')
+  console.error('usage: bench-node.mjs [--n N] [--repeat R] [--no-static-cache] [--packed] [--exit-threshold T] [--game G] [--relaxed] model.gguf...')
   process.exit(2)
 }
 
 const mod = await import(join(pkg, 'sky_web.js'))
-await mod.default({ module_or_path: readFileSync(join(pkg, 'sky_web_bg.wasm')) })
+await mod.default({ module_or_path: readFileSync(join(pkg, relaxed ? 'sky_web_relaxed_bg.wasm' : 'sky_web_bg.wasm')) })
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b)

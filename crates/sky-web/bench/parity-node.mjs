@@ -2,7 +2,9 @@
 // (native probabilities of the shipping engine) through the browser module's `Engine.decide`
 // (site/public/pkg, built by scripts/build-wasm.sh) and reports the largest probability gap.
 //
-//   node crates/sky-web/bench/parity-node.mjs model.gguf dump.jsonl [--n 20]
+//   node crates/sky-web/bench/parity-node.mjs model.gguf dump.jsonl [--n 20] [--relaxed]
+//
+// `--relaxed` loads the relaxed-SIMD module (sky_web_relaxed_bg.wasm) instead of the SIMD128 one.
 //
 // s6-ear dumps (`sky-eval --dump` on an audio model) carry a `wav` path per row: those rows go
 // through `Engine.decideAudio` on the clip's samples (16-bit PCM WAV at 16 kHz).
@@ -18,19 +20,21 @@ const pkg = join(here, '../../../site/public/pkg')
 
 const args = process.argv.slice(2)
 let n = 20
+let relaxed = false
 const files = []
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--n') n = Number(args[++i])
+  else if (args[i] === '--relaxed') relaxed = true
   else files.push(args[i])
 }
 if (files.length !== 2) {
-  console.error('usage: parity-node.mjs model.gguf dump.jsonl [--n 20]')
+  console.error('usage: parity-node.mjs model.gguf dump.jsonl [--n 20] [--relaxed]')
   process.exit(2)
 }
 const [modelPath, dumpPath] = files
 
 const mod = await import(join(pkg, 'sky_web.js'))
-await mod.default({ module_or_path: readFileSync(join(pkg, 'sky_web_bg.wasm')) })
+await mod.default({ module_or_path: readFileSync(join(pkg, relaxed ? 'sky_web_relaxed_bg.wasm' : 'sky_web_bg.wasm')) })
 const engine = new mod.Engine(new Uint8Array(readFileSync(modelPath)))
 
 const rows = readFileSync(dumpPath, 'utf8').split('\n').filter(Boolean).slice(0, n).map((l) => JSON.parse(l))
