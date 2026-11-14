@@ -360,6 +360,12 @@ function caseLabel(c: DemoCase) {
     </p>
 
     <template v-if="isSecrets">
+      <p class="live-banner">
+        Not a scanner: the presets are texts of the model's own generator. On real files with no secret, the model
+        flags 59.8% of the files at p ≥ 0.9 and 49.4% at p ≥ 0.999
+        (<a href="https://github.com/maxgfr/secretgate/pull/19">measurement</a>), so its answer on a text of your
+        own cannot be trusted.
+      </p>
       <p class="live-banner live-safe">
         The keys in the presets are fake: each is a provider's public format with a random body, as the bench
         generator writes them, and the Stripe-format ones are drawn again in your browser at each page load. Everything runs locally in your browser; nothing you paste is sent anywhere.

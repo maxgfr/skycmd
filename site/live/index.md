@@ -14,7 +14,7 @@ It is Ettin-17M, fine-tuned in Rust, quantized to 8 bits. It runs in WASM on thi
 
 **s6-nano** (1,486,225 ternary parameters, a 715 KB file) is the generalist of the s6 family: it plays the four games on [Play](/play/) and answers typed questions in free text. It can be chosen in every demo below, and [its own section](#s6-nano-the-questions-it-was-trained-for) asks it the game and numeric questions it was trained for. On the questions of the demos above it is a weaker model than s5-lite: 0.480 on `typed_decisions_bench` against 0.696 ([results](/results/)).
 
-**s6-secrets-pico** (445,345 ternary parameters, a 250 KB file) is a specialist: paste a short text and it says whether a secret is exposed, which service issued it, what kind of value it is and on which line. It has [its own section](#s6-secrets-pico-is-a-secret-exposed-in-this-text) and answers nothing else.
+**s6-secrets-pico** (445,345 ternary parameters, a 250 KB file) is a specialist: given a short text it says whether a secret is exposed, which service issued it, what kind of value it is and on which line. It has [its own section](#s6-secrets-pico-is-a-secret-exposed-in-this-text) and answers nothing else. It passes its gate on its generator's bench and fails on real files: it is not a scanner.
 
 What makes s5 different is its **iso** architecture:
 
@@ -76,6 +76,8 @@ The file is published at **full depth**: every answer uses all 4 block passes, b
 
 ## s6-secrets-pico: is a secret exposed in this text?
 
+**This demo is not a scanner.** The presets are texts of the model's own generator. On real files the model flags most clean files: measured after publication on 719 real source, configuration and documentation files with no secret, it flags 59.8% of them at p ≥ 0.9 and 49.4% at p ≥ 0.999 ([results](/results/#s6-secrets-real-text), [measurement](https://github.com/maxgfr/secretgate/pull/19)). Do not use it to check your own files.
+
 Paste a config file, a `.env` or a few lines of code. The model asks itself the four questions of its training data, each in one forward pass, with the generator's own instruction and options (`sky-data secret-jev`): is a usable secret exposed, which service issued it (14 services or `none`), what kind of value it is (a live secret, a test key, a publishable key, a placeholder, or not a credential), and which line exposes it (one option per line, plus `none`; asked for texts of two lines or more). Everything runs in this browser: the text you paste is never sent anywhere.
 
 The presets are texts of its test bench (docker-compose, toml, go and ini files, a kind of file the training never shows), taken by a fixed rule: the first text of each kind, the first text where the rule scanner is wrong on the secret question and the model right, and the first text where the model is wrong on secret, service or kind. They are kept whatever the model answers: natively, the published file picks the expected option on 25 of their 28 questions. The misses are two lines and one service. Their keys are fake, generated in each provider's public format with a random body.
@@ -84,7 +86,7 @@ What to expect, from the bench ([results](/results/#s6-secrets-pico-passed-publi
 
 - secret 0.9990 and service 0.9795, where a gitleaks-style rule scanner scores 0.977 and 0.787 on the same 1,996 texts; kind 0.9990;
 - **line 0.6859: do not rely on it.** On the texts that do expose a secret it names the right line 383 times out of 1,010, often with a probability near 100 %;
-- the bench is synthetic, from our own generator: beating the scanner there says nothing about real leaks in real repositories.
+- the bench is synthetic, from our own generator, and the result does not carry over: on real files with no secret the model flags 10.6% of 7-line chunks and 59.8% of the files at p ≥ 0.9, with probabilities that are not calibrated outside the generator.
 
 The file is published at full depth (all 4 block passes). Times are measured in your browser for each decision; the first call also pays the start-up of the module and the first encodings, so it is shown apart from the median of the warm calls. On the build machine (an Apple M5, measured while a GPU training was running), a decision takes a median of 786 to 789 µs natively and 1,420 to 1,427 µs in WASM under Node (SIMD128 build). In a later session, also with a training running, the relaxed-SIMD build took 1,219 µs against 1,580 µs for SIMD128.
 
