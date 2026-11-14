@@ -6,7 +6,9 @@ s6-cast forecasts a time series: given up to 2,048 past points, it returns nine 
 - an exit after each loop;
 - ternary QAT and Muon v2.
 
-It runs in sky-infer on native targets and in WASM. Code only so far: no model has been trained.
+It runs in sky-infer on native targets and in WASM.
+
+**Status on 14/11/2026.** The first model, s6-cast-pico, was trained once by `docs/s6-cast-prereg.md` (480 working minutes, 250,092 steps) and **failed its gate**: on GIFT-Eval, without flip, nGMASE 0.9471 and nWQL 0.6646 against bars of 0.838 and 0.587 (0.9099 and 0.6417 with flip; TinyCast 0.774 / 0.545). It is not published. The recipe adopted neither Parallax nor XSA, so the trained model has 369,792 parameters (142,912 bytes ternary) instead of the 388,320 of the table below. Results: `BENCH.md` and `docs/big-run-report.md`.
 
 Why this design (`docs/research.md`, forecasting):
 - At this size, the best zero-shot forecasters are small and long-context. TinyCast has 146K parameters; Reverso-Nano has 200K and Reverso 2.6M.
