@@ -166,7 +166,15 @@ def packages(name, installed):
             chosen = pkg["sdist"]
         entry = {"name": pkg["name"], "version": pkg["version"]}
         if chosen:
-            entry.update({"url": chosen["url"], "bytes": chosen.get("size"), "sha256": chosen["hash"].split(":", 1)[-1]})
+            size = chosen.get("size")
+            if size is None:
+                # an index that lists no size (download.pytorch.org): asked from the server
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(chosen["url"], method="HEAD"), timeout=60) as r:
+                        size = int(r.headers["Content-Length"])
+                except (OSError, KeyError, TypeError, ValueError):
+                    size = None
+            entry.update({"url": chosen["url"], "bytes": size, "sha256": chosen["hash"].split(":", 1)[-1]})
         else:
             entry["note"] = "no wheel of the lock carries the installed tags"
         out.append(entry)
