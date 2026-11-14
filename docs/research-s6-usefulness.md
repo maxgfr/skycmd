@@ -222,7 +222,7 @@ A sub-1 MB forecaster is only worth using if it beats **TinyCast (nWQL 0.545 / n
 - **Benchmark and baseline.** GIFT-Eval (97 configurations): beat TinyCast (0.774 MASE / 0.545 WQL at 146K) and FLAIR (0.838 / 0.587). Check Chronos-ZS and fev-bench too.
 - **Data.** GIFT-Eval-Pretrain (check each constituent licence), KernelSynth-style synthetic series (generated, so licence-free).
 - **Main risk.** The slot is already filled by a 146K model on a Cortex-M7, so a tie means no reason to exist. Leakage accusations if the pretraining set overlaps the test set.
-- **Why third.** It is already training and the bar is public and cheap to measure. Copy TinyCast's FFT period detection and phase folding. Demand is moderate.
+- **Why third.** It was already training when this was written (it has since failed its gate, on the evening of 14 November 2026: `docs/big-run-report.md`), and the bar is public and cheap to measure. Copy TinyCast's FFT period detection and phase folding. Demand is moderate.
 
 ### 4. A first-pass injection filter for agent tool output (stage 1 of a cascade only)
 - **User and job.** Agent hook authors: cheaply escalate suspicious tool output (web pages, files, MCP results) to a bigger checker, and let the rest through.

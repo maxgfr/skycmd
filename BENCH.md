@@ -291,7 +291,7 @@ Pre-registration: [`docs/s5-prereg.md`](docs/s5-prereg.md) and its three amendme
 
 ## skycmd-s6 (s6-nano, s6-micro): general-purpose decisions and games, pre-registered
 
-Pre-registration: [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), its gates in §6 and its amendments 1 to 11. Results: `runs/s6-nano/eval/results.md` and `runs/s6-micro/eval/results.md` (`scripts/s6-gate.py`), with the JSON files next to them.
+Pre-registration: [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), its gates in §6 and its amendments 1 to 14. Results: `runs/s6-nano/eval/results.md` and `runs/s6-micro/eval/results.md` (`scripts/s6-gate.py`), with the JSON files next to them.
 
 **Recipe.** Chosen by the pre-registered rules of the pico ablation (`runs/recipe/recipe.json`): AdamW, learning-rate scale 2.0, and none of the additions (no Muon, Parallax, XSA, SODA, exit distillation, EMA, StableQAT or curriculum; each missed its pre-registered gain or lost a game). The rate pilots kept ×1 for s6-nano and ×0.5 for s6-micro. Without the Parallax probe rows, s6-nano has 1,486,225 parameters instead of the 1,569,457 of the pre-registration; s6-micro has the s4-micro shape, 5,587,201. The GLM-5.3-flash teacher labelled 747,077 of the 747,198 selected training questions (0.9998, `runs/all/nano-glm.log`).
 
@@ -362,7 +362,7 @@ Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate
 
 **Model and recipe.** The s3-pico graph (1 state block × 4 loops, exits after each pass, d 96, vocabulary 1,024) with a 320-token state window and a 192-token head window: 445,345 parameters (203,393 in the pretraining stack), the same count as s3-pico, since the ablation did not adopt Parallax. Recipe from `runs/recipe/recipe.json`: AdamW, learning-rate scale 2.0, no EMA, so `last` is the exported checkpoint. Ternary GGUF: 250,272 bytes.
 
-**Run.** Seed 0, one run, in a throttled mode, so the budgets count working minutes; the log records two cooling pauses (582 s and 900 s) but does not name the modes in force. Steps actually done (`runs/all/secrets-train.log`):
+**Run.** Seed 0, one run, in a throttled mode, so the budgets count working minutes; the log records two cooling pauses (582 s and 900 s) and no change of mode, so the run stayed in its launch mode (duty 0.5, 45 minutes of work and 15 of rest). Steps actually done (`runs/all/secrets-train.log`):
 
 | phase | budget | steps |
 |---|---:|---:|
