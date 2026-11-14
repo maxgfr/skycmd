@@ -6,6 +6,7 @@
 //
 //   node engine.mjs --secretgate <checkout> --mode default|candidates --files-from LIST
 //        --base DIR --out FILE [--repos id,id,...] [--no-path] [--no-pragmas] [--stats FILE]
+//        [--where FILE]
 //
 // --mode default      the default engine, filters on: `scan(text, {sourcePath})` per file
 //                     (section 6). With --no-path the engine gets no source path, with
@@ -18,6 +19,9 @@
 //                     the record afterwards. Only for the clean-text corpus read as the census
 //                     read it; with a path the generator is the checkout's own command line.
 //                     The records hold RAW values: the output stays in the data folder.
+//                     With --where FILE the records carry no path at all (file null, no
+//                     extension: an issue text has none, section 7.4) and FILE gets, line for
+//                     line, the path each record comes from.
 //
 // Lines are those of the engine ("\n" ends a line); cpStart and cpEnd are columns in Unicode
 // code points, cpEnd on endLine. A file that is empty, larger than --max-bytes or has a NUL
@@ -37,6 +41,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--base") opt.base = resolve(argv[++i]);
   else if (a === "--out") opt.out = resolve(argv[++i]);
   else if (a === "--stats") opt.stats = resolve(argv[++i]);
+  else if (a === "--where") opt.where = resolve(argv[++i]);
   else if (a === "--repos") opt.repos = new Set(argv[++i].split(","));
   else if (a === "--max-bytes") opt.maxBytes = Number(argv[++i]);
   else if (a === "--no-path") opt.path = false;
@@ -116,6 +121,7 @@ const began = performance.now();
 const cpu0 = process.cpuUsage();
 const fd = openSync(opt.out, "w", 0o600);
 fchmodSync(fd, 0o600);
+const whereFd = opt.where ? openSync(opt.where, "w", 0o600) : undefined;
 const stats = { mode: opt.mode, sourcePath: opt.mode === "default" ? opt.path : false, pragmas: opt.pragmas, files: files.length, read: 0, skipped: 0, filesWithFindings: 0, findings: 0, byRule: {} };
 for (const file of files) {
   const text = readText(join(opt.base, file));
@@ -139,7 +145,11 @@ for (const file of files) {
     }
   } else {
     for (const c of candidates.candidateRecords(text, engine, { raw: true, maxLine: 1000 })) {
-      writeSync(fd, `${JSON.stringify({ ...c, file, ext: extname(file).toLowerCase() })}\n`);
+      if (whereFd === undefined) writeSync(fd, `${JSON.stringify({ ...c, file, ext: extname(file).toLowerCase() })}\n`);
+      else {
+        writeSync(fd, `${JSON.stringify(c)}\n`);
+        writeSync(whereFd, `${JSON.stringify({ file })}\n`);
+      }
       stats.byRule[c.rule] = (stats.byRule[c.rule] ?? 0) + 1;
       n++;
     }
@@ -148,6 +158,7 @@ for (const file of files) {
   if (n > 0) stats.filesWithFindings++;
 }
 closeSync(fd);
+if (whereFd !== undefined) closeSync(whereFd);
 const cpu = process.cpuUsage(cpu0);
 stats.seconds = Number(((performance.now() - began) / 1000).toFixed(1));
 stats.cpuSeconds = Number(((cpu.user + cpu.system) / 1e6).toFixed(1));

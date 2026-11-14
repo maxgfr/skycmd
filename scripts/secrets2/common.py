@@ -327,6 +327,62 @@ def creddata_files(split, verify=True):
     return out
 
 
+class Corpus:
+    """What a file scanner is given: a base directory, the roots below it that it may scan,
+    the files below them, and the guard that names the repository of a path or refuses it."""
+
+    def __init__(self, name, base, roots, files, check):
+        self.name = name
+        self.base = base
+        self.roots = list(roots)
+        self.files = list(files)
+        self.check = check
+        for f in self.files:
+            check(f)
+            if not any(f == r or f.startswith(r + "/") for r in self.roots):
+                raise Refused(f"{f} is outside the roots of {name}")
+
+
+def creddata_corpus(split_name, model=None):
+    split = open_split(split_name, model)
+    files = creddata_files(split)
+    return Corpus(f"creddata:{split_name}", creddata_base(), [f"data/{r}" for r in split.repos], files, split.check)
+
+
+def issues_dir(split, model=None):
+    """<data>/eval/issues/<split>, after the guard of the split."""
+    if split not in ISSUE_SPLITS:
+        raise Refused(f"unknown split {split!r}")
+    if split == "test":
+        test_is_open(model)
+    return os.path.join(eval_root(), "issues", split)
+
+
+def issues_corpus(split, obfuscated=False, model=None):
+    """The issue texts of a split as files (scripts/secrets2/issues.py prepare writes them)."""
+    base = issues_dir(split, model)
+    root = "texts-obfuscated" if obfuscated else "texts"
+    index = load_json(os.path.join(base, "index.json"))
+    files = [f"{root}/{t}.txt" for t in index["texts"]]
+
+    def check(path):
+        if not re.match(rf"^{root}/[0-9a-f]{{16}}\.txt$", path):
+            raise Refused(f"{path} is not an issue text of {split}")
+        return "issues"
+
+    return Corpus(f"issues:{split}" + (":obfuscated" if obfuscated else ""), base, [root], files, check)
+
+
+def corpus(name, model=None):
+    """creddata:<split>, issues:<split> or issues:<split>:obfuscated."""
+    parts = name.split(":")
+    if parts[0] == "creddata" and len(parts) == 2:
+        return creddata_corpus(parts[1], model)
+    if parts[0] == "issues" and len(parts) in (2, 3) and parts[2:] in ([], ["obfuscated"]):
+        return issues_corpus(parts[1], len(parts) == 3, model)
+    raise Refused(f"unknown corpus {name!r}")
+
+
 # ---------------------------------------------------------------- text and lines
 
 def read_text(path):
