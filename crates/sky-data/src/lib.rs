@@ -20,6 +20,7 @@ pub mod rng;
 pub mod s4;
 pub mod s5;
 pub mod secrets;
+pub mod secrets2;
 pub mod series;
 pub mod stats;
 pub mod teacher;
