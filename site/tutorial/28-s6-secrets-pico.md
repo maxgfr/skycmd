@@ -1,6 +1,6 @@
 # 28 s6-secrets-pico: is a secret exposed in this text?
 
-*Trained in November 2026 and published on 14 November 2026, at full depth. It passed a gate fixed before training, against a rule scanner whose score was written down before the first training step. Its bench is synthetic: [what that means](#limits) comes with every number below.*
+*Trained in November 2026 and published on 14 November 2026, at full depth. It passed a gate fixed before training, against a rule scanner whose score was written down before the first training step. Its bench is synthetic, and on real files it fails: measured after publication, it flags 59.8% of clean real files at p ≥ 0.9. It is published as the result of its pre-registration, not as a scanner ([Limits](#limits)).*
 
 The game models and s6-nano answer many kinds of question. s6-secrets-pico answers four, about one kind of text: a short file (an `.env`, a config, a few lines of code, a `curl` command, a log, a diff) that may expose a credential. It has 445,345 parameters in a 250,272-byte ternary file, the same engine as the games, and it runs in the browser, so a pasted text never leaves the page.
 
@@ -65,7 +65,7 @@ The gate (§6): beat the scanner on both questions it answers, with the ternary 
 | kind (5 options) | 1,996 | 0.9990 | not asked | 0.0010 |
 | line (3 to 8 options) | 1,996 | 0.6859 | not asked | 0.3051 |
 
-**The gate passes.** Read against the scanner, text by text:
+**The gate passes**, on the synthetic bench; on real files the model fails ([Limits](#limits)). Read against the scanner, text by text:
 
 - **Where the scanner fails, the model does not.** It answers the secret question right on all 46 texts the scanner gets wrong: the 35 random values under secret-sounding names and the 11 generic secrets.
 - **Where the model fails, the scanner does not.** The model is wrong on 2 texts, both an `x_api_key` with a 32-digit hex value in an ini file, which it calls not a credential; the scanner is right on both.
@@ -75,7 +75,17 @@ The gate (§6): beat the scanner on both questions it answers, with the ternary 
 
 ## Limits
 
-- **The bench is synthetic.** The formats, the file templates and the class shares are our generator's, and every key is a public format with a random body. Beating the scanner here shows that the model reads formats and context (the variable name, a test or publishable key, a placeholder) in file types it never saw. It says nothing about its recall on real repositories, and no such conclusion is drawn ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) §6).
+- **The bench is synthetic.** The formats, the file templates and the class shares are our generator's, and every key is a public format with a random body. Beating the scanner here shows that the model reads formats and context (the variable name, a test or publishable key, a placeholder) in file types it never saw ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) §6).
+- **On real text it fails, so it is not a scanner.** After publication the file was run on 719 real source, configuration and documentation files in which a rule scanner finds nothing, cut into 22,433 chunks of at most 7 lines and 300 characters, the length of the training texts ([amendment 6](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md); the measurement, its script and its limits: [secretgate pull request 19](https://github.com/maxgfr/secretgate/pull/19)). Every flag is a false positive:
+
+  | threshold | chunks flagged | files flagged |
+  |---|---:|---:|
+  | p ≥ 0.9 | 10.6% | 59.8% |
+  | p ≥ 0.999 | 5.9% | 49.4% |
+
+  The flagged chunks are ordinary text (imports, prose, JSON), and the probabilities are not calibrated outside the generator: over the clean chunks the median is 0.00009 and the 90th percentile 0.93. The gate, on `secret_bench`, stays passed. The model stays published as the result of its pre-registration, not as a tool: do not use it to scan real files.
+- **Recall on real secrets was not measured.** No real secret is in that corpus.
+- **What a second version would be.** A different task: a rule finds the candidate, and the model judges it in its context. It would get its own pre-registration before any run; nothing is promised.
 - **Do not rely on the line answer.** 0.6859, and confident when wrong (ECE 0.3051). On the 1,010 texts that expose a secret it names the right line 383 times; the 986 texts without one, where `none` is right, carry the score. Most misses point one line (327) or three lines (261) above the right one.
 - **One run, one seed,** and no interval.
 
@@ -89,7 +99,7 @@ Measured on the build machine (Apple M5) while a GPU training was running, so an
 
 ## Try it
 
-- **On [Live](/live/#s6-secrets-pico-is-a-secret-exposed-in-this-text):** paste a text, or take a preset from the test bench (taken by a fixed rule: the first text of each kind, the first text where the scanner is wrong on the secret question and the model right, and the first text where the model is wrong). The model asks itself the four questions, and each decision is timed in your browser. The presets' key bodies are drawn at random when the page loads, so no key-like value is stored in the site's source.
+- **On [Live](/live/#s6-secrets-pico-is-a-secret-exposed-in-this-text):** take a preset from the test bench, or paste a text (an answer on a real file means little, see [Limits](#limits)) (taken by a fixed rule: the first text of each kind, the first text where the scanner is wrong on the secret question and the model right, and the first text where the model is wrong). The model asks itself the four questions, and each decision is timed in your browser. The presets' key bodies are drawn at random when the page loads, so no key-like value is stored in the site's source.
 - **In your own page**, with the module of the [Install](/install/) page and the exact texts of the trained question (`site/.vitepress/theme/lib/s6-cases.ts`):
 
 ```js
@@ -104,4 +114,4 @@ const [pNo, pYes] = model.decideRaw(
 );
 ```
 
-Ask it only its four questions, with these texts: it was trained on nothing else. The numbers of this chapter are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md) (section "s6-secrets-pico") and on the [results page](/results/#s6-secrets-pico-passed-published-at-full-depth).
+Ask it only its four questions, with these texts: it was trained on nothing else. Do not use it as a scanner on real files ([Limits](#limits)). The numbers of this chapter are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md) (section "s6-secrets-pico") and on the [results page](/results/#s6-secrets-pico-passed-published-at-full-depth).
