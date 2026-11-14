@@ -36,7 +36,7 @@ jobs:
         with:
           tool: wasm-pack
 
-      - name: Build the wasm module (SIMD128)
+      - name: Build the wasm modules (SIMD128 and relaxed SIMD)
         run: scripts/build-wasm.sh
 
       # The npm package `skycmd`, served as https://<user>.github.io/skycmd/lib/skycmd.js
