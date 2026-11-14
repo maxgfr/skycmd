@@ -8,9 +8,9 @@
 
 Inputs: hf/cards/<model>.md (model cards, `{{USER}}` replaced by the namespace), hf/spaces.json
 (one entry per Space), site/public/models/ (GGUF files and manifest), site/public/pkg/ (the wasm
-module), site/public/doom/ (Freedoom textures for the game Spaces) and target/hf-space-app/ (the
-demo app). Everything is assembled under target/hf/<model>/{model,space} before upload; with
---dry-run nothing is uploaded.
+modules, SIMD128 and relaxed SIMD), site/public/doom/ (Freedoom textures for the game Spaces) and
+target/hf-space-app/ (the demo app). Everything is assembled under target/hf/<model>/{model,space}
+before upload; with --dry-run nothing is uploaded.
 """
 import argparse
 import json
@@ -43,8 +43,9 @@ models:
 
 {s["tagline"]}
 
-Everything runs in your browser: a Rust inference engine compiled to WebAssembly (SIMD128) reads
-the GGUF file shipped with this Space. Nothing is sent to a server.
+Everything runs in your browser: a Rust inference engine compiled to WebAssembly (relaxed SIMD
+where the browser supports it, else SIMD128) reads the GGUF file shipped with this Space. Nothing
+is sent to a server.
 
 - Model card: [{user}/{m}](https://huggingface.co/{user}/{m})
 - Code: [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd)
@@ -94,7 +95,7 @@ def main() -> None:
     ap.add_argument("--user", default="", help="namespace (default: the logged-in user)")
     a = ap.parse_args()
 
-    for need in [APP / "index.html", PUBLIC / "pkg" / "sky_web_bg.wasm"]:
+    for need in [APP / "index.html", PUBLIC / "pkg" / "sky_web_bg.wasm", PUBLIC / "pkg" / "sky_web_relaxed_bg.wasm"]:
         if not need.exists():
             raise SystemExit(f"missing {need}: run scripts/build-wasm.sh and (cd site && npm run space:build)")
     api = None
