@@ -18,6 +18,7 @@ pub mod prompt;
 pub mod quant;
 pub mod s2;
 pub mod safetensors;
+pub mod secret_cand;
 pub mod ternary;
 pub mod tokenizer;
 #[cfg(feature = "wasm")]
