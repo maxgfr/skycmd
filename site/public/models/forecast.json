@@ -1,5 +1,5 @@
 {
-  "about": "Forecasters of the /forecast/ page. s6-cast appears here once trained and past its gate (docs/s6-cast-prereg.md).",
+  "about": "Forecasters of the /forecast/ page. s6-cast-pico failed its gate (docs/s6-cast-prereg.md, BENCH.md) and is not listed; an s6-cast appears here only once one passes its gate.",
   "models": [
     {
       "name": "TinyCast",

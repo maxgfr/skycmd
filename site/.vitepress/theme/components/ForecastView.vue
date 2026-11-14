@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The /forecast/ page: pick a series, forecast it in the browser with every published forecaster
-// (s6-cast once trained, TinyCast in wasm, Timestral-5M in onnxruntime-web, seasonal naive),
+// (s6-cast if one passes its gate, TinyCast in wasm, Timestral-5M in onnxruntime-web, seasonal naive),
 // and compare the median and the 10–90 % band, the latency and, in backtest mode, the MASE.
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import {
@@ -359,7 +359,7 @@ function latency(us: number): string {
     />
     <div class="models" role="group" aria-label="Models">
       <label v-for="k in MODEL_KEYS" :key="k" class="model" :class="{ off: !available(k) }">
-        <!-- an untrained model stays enabled (it runs as soon as it ships) but shows unchecked -->
+        <!-- a model that is not published stays enabled (it runs as soon as it ships) but shows unchecked -->
         <input
           type="checkbox"
           :checked="enabled[k] && available(k)"
@@ -368,7 +368,7 @@ function latency(us: number): string {
         />
         <span class="key" :class="`s${SLOT[k]}`" aria-hidden="true" />
         <span>{{ k }}</span>
-        <span v-if="!available(k)" class="badge">not trained yet</span>
+        <span v-if="!available(k)" class="badge">failed its gate, not published</span>
         <span v-else-if="loading[k]" class="badge">{{ loading[k] }}</span>
         <span v-else-if="k === 'Timestral-5M' && !enabled[k]" class="badge">23 MB, on demand</span>
       </label>
@@ -432,7 +432,7 @@ function latency(us: number): string {
           <td><span class="key" :class="`s${SLOT[r.key]}`" />{{ r.key }}<span v-if="r.result?.exits" class="muted"> · {{ r.result.exits }}</span></td>
           <td class="num">{{ r.params == null ? '—' : r.params === 0 ? '0' : formatInt(r.params) }}</td>
           <td class="num">{{ r.bytes == null ? '—' : r.bytes === 0 ? '—' : formatKB(r.bytes) }}</td>
-          <td class="num">{{ r.result ? latency(r.result.micros) : r.available ? '—' : 'not trained yet' }}</td>
+          <td class="num">{{ r.result ? latency(r.result.micros) : r.available ? '—' : 'not published' }}</td>
           <td v-if="backtest" class="num">{{ r.mase == null ? '—' : r.mase.toFixed(3) }}</td>
           <td v-if="backtest" class="num">{{ r.cov == null ? '—' : `${Math.round(r.cov * 100)} %` }}</td>
           <td>
@@ -446,7 +446,7 @@ function latency(us: number): string {
     <p class="note">
       MASE divides the mean absolute error of the median by the history's own seasonal-naive error (season
       {{ season }}{{ demo ? '' : ', from the periodogram' }}); below 1 beats repeating the last season. Every model runs
-      on this page: the wasm module for s6-cast, TinyCast and the seasonal naive, onnxruntime-web for Timestral.
+      on this page: the wasm module for TinyCast and the seasonal naive, onnxruntime-web for Timestral.
       <span v-if="demo"> Series: {{ demo.credit }}.</span>
     </p>
   </div>
