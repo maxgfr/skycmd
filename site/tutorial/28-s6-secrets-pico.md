@@ -84,7 +84,8 @@ The gate (§6): beat the scanner on both questions it answers, with the ternary 
 Measured on the build machine (Apple M5) while a GPU training was running, so an idle machine may be faster:
 
 - native (`sky-eval`, the 7,984 bench questions, full depth): a median of 789 and 786 µs per decision in two runs;
-- WASM under Node (`parity-node.mjs`, the first 200 bench questions): 1,420 and 1,427 µs per decision, with a largest probability gap of 1.2e-6 to the native engine and the same answer on all 200.
+- WASM under Node (`parity-node.mjs`, the first 200 bench questions, SIMD128 build): 1,420 and 1,427 µs per decision, with a largest probability gap of 1.2e-6 to the native engine and the same answer on all 200;
+- both builds later the same day, three alternating runs each: 1,580 µs with SIMD128 and 1,219 µs with relaxed SIMD (largest gap 6.0e-7, same answers), the build the site loads where the browser supports it.
 
 ## Try it
 

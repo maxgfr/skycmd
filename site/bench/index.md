@@ -63,11 +63,13 @@ cargo run --release -p sky-arena -- site/public/models/s3-pico.gguf --episodes 3
 export CARGO_TARGET_DIR=$PWD/target/sky-infer
 cargo run --release -p sky-infer --bin sky-bench -- site/public/models/s3-pico.gguf --questions 2 --iters 4000
 
-# WASM latency per Flappy frame under Node (the module of the Play page)
+# WASM latency per Flappy frame under Node (the modules of the Play page: SIMD128 by default,
+# --relaxed for the relaxed-SIMD build)
 scripts/build-wasm.sh
 node crates/sky-web/bench/bench-node.mjs site/public/models/*.gguf
+node crates/sky-web/bench/bench-node.mjs --relaxed site/public/models/*.gguf
 ```
 
 The numbers in `site/public/bench.json` come from these measurements (its `note` field says which). `scripts/export-models.sh` regenerates it only for s1 models in the Laya layout, so do not run it to refresh this page: it would drop s3-pico and s2-nano.
 
-The in-browser button loads each published model and times 300 decisions with the same wasm build as the Play page.
+The in-browser button loads each published model and times 300 decisions with the same wasm build as the Play page: relaxed SIMD where the browser supports it, else SIMD128 (the line under the button says which). The WASM numbers of the table come from `site/public/bench.json` and were measured with the SIMD128 build.

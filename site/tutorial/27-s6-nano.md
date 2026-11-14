@@ -106,10 +106,12 @@ What the result does and does not say:
 
 ## In the browser
 
-The WASM module answers like the native engine: on the first 200 bench questions, the largest probability gap is 9.5e-7 and the answer is the same on all 200 (`parity-node.mjs`). Measured under Node on the build machine:
+The WASM module answers like the native engine: on the first 200 bench questions, the largest probability gap is 9.5e-7 and the answer is the same on all 200 (`parity-node.mjs`). Measured under Node on the build machine, SIMD128 build:
 
 - a long JSON state of the bench: a median of 14.6 to 15.2 ms per decision, in two runs;
 - a Flappy frame (two questions and the physics step, full depth): 436 µs.
+
+The site loads the relaxed-SIMD build where the browser supports it ([chapter 14](./14-wasm-inference-simd128)). Three alternating runs of each build in one session, with a GPU training running: 15.8 ms (SIMD128) against 12.5 ms (relaxed) per bench question, 445 µs against 358 µs per Flappy frame, and the same answers on the 200 questions (largest gap 9.5e-7 and 8.9e-7).
 
 ## s6-micro: the same recipe, four times larger, not published
 

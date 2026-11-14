@@ -189,14 +189,16 @@ The script turns on WebAssembly SIMD and writes into `site/public/pkg`:
 
 ```bash
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/sky-web-wasm}
-export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+simd128"
+rustflags=${RUSTFLAGS:-}
+pkg=$PWD/site/public/pkg
 
-wasm-pack build crates/sky-web --target web "$profile" --out-dir ../../site/public/pkg --no-typescript
+RUSTFLAGS="$rustflags -C target-feature=+simd128" \
+  wasm-pack build crates/sky-web --target web "$profile" --out-dir "$pkg" --no-typescript
 # wasm-pack writes a .gitignore and a package.json the site does not need.
-rm -f site/public/pkg/.gitignore site/public/pkg/package.json site/public/pkg/README.md
+rm -f "$pkg/.gitignore" "$pkg/package.json" "$pkg/README.md"
 ```
 
-The output is `sky_web.js` plus `sky_web_bg.wasm`. `site/public/pkg` is gitignored, so run the script after every fresh clone.
+A release build then runs `wasm-pack` a second time with `+simd128,+relaxed-simd` into a temporary directory, checks with `cmp` that it wrote the same `sky_web.js`, and installs its module as `sky_web_relaxed_bg.wasm` ([chapter 14](./14-wasm-inference-simd128)). The output is `sky_web.js` plus `sky_web_bg.wasm` and `sky_web_relaxed_bg.wasm` (`--dev` builds the first module only). `site/public/pkg` is gitignored, so run the script after every fresh clone.
 
 ## Models for the site
 

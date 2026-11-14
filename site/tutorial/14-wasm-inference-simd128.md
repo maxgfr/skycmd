@@ -128,7 +128,7 @@ mod simd {
     }
 ```
 
-Baseline SIMD128 has no fused multiply-add, so `fma(acc, a, b)` is `f32x4_add(acc, f32x4_mul(a, b))`; a build with `+relaxed-simd` uses `f32x4.relaxed_madd` instead (Chrome, Edge and Node run it, Safari does not; `BENCH.md`). The `cfg` also means a wasm build without `+simd128` still compiles and silently uses the scalar fallback. Chapter 17 shows how to make sure the flag is set.
+Baseline SIMD128 has no fused multiply-add, so `fma(acc, a, b)` is `f32x4_add(acc, f32x4_mul(a, b))`; a build with `+relaxed-simd` uses `f32x4.relaxed_madd` instead, fused on arm64. The site ships both builds and loads the relaxed one where the browser supports it (see "Building" below). The WebAssembly feature table ([webassembly.org/features](https://webassembly.org/features/), as updated on 10 November 2026) lists relaxed SIMD in Chrome from 114, Firefox from 145 and Node from 21, and in Safari only behind a JavaScriptCore flag (`useWebAssemblyRelaxedSIMD`); any browser that does not validate it runs the SIMD128 module. The `cfg` also means a wasm build without `+simd128` still compiles and silently uses the scalar fallback. Chapter 17 shows how to make sure the flag is set.
 
 ### int8 products on SIMD128
 
@@ -242,15 +242,16 @@ wasm-pack build crates/sky-web --target web "$profile" --out-dir ../../site/publ
 Three things work together:
 
 1. `RUSTFLAGS` with `-C target-feature=+simd128` makes rustc emit SIMD128 and selects the `mod simd` above. `crates/sky-web/.cargo/config.toml` sets the same flag for wasm builds started from that directory.
-2. `[package.metadata.wasm-pack.profile.release]` in both `Cargo.toml` files passes `--enable-simd` (plus bulk memory, non-trapping float-to-int, sign extension and mutable globals) to `wasm-opt -O3`. Without them, `wasm-opt` rejects the SIMD instructions.
+2. `[package.metadata.wasm-pack.profile.release]` in both `Cargo.toml` files passes `--enable-simd` (plus bulk memory, non-trapping float-to-int, sign extension and mutable globals) to `wasm-opt -O3`; `crates/sky-web/Cargo.toml` also passes `--enable-relaxed-simd`. Without them, `wasm-opt` rejects the SIMD instructions.
 3. `--target web` produces an ES module with `init()` / `initSync()` that the VitePress site imports at runtime.
+4. A release build runs `wasm-pack` twice: once with `+simd128` (`sky_web_bg.wasm`) and once with `+simd128,+relaxed-simd` (installed as `sky_web_relaxed_bg.wasm`). The two builds write the same JS glue, and the script fails if they do not, so one `sky_web.js` serves both modules. `loadWasm()` in `site/.vitepress/theme/lib/wasm.ts` asks `WebAssembly.validate` about a 36-byte module that uses `i8x16.relaxed_swizzle`; if it validates, it instantiates the relaxed module, and if that fails for any reason (an older deploy without the file, a fetch or instantiation error) it falls back to the SIMD128 one. The timing lines of the demos say which build runs (`engine: relaxed SIMD` or `engine: SIMD128`).
 
 ```sh
-scripts/build-wasm.sh          # release, writes site/public/pkg/sky_web.js + sky_web_bg.wasm
-scripts/build-wasm.sh --dev    # unoptimized, faster to build
+scripts/build-wasm.sh          # release, writes site/public/pkg/sky_web.js + sky_web_bg.wasm + sky_web_relaxed_bg.wasm
+scripts/build-wasm.sh --dev    # unoptimized, faster to build, SIMD128 only
 ```
 
-The release module currently on disk (`site/public/pkg/sky_web_bg.wasm`) is about 0.9 MB and contains all four games and the s1, s2 and s3 engine.
+The release module (`site/public/pkg/sky_web_bg.wasm`) was 1,158,468 bytes on 14/11/2026 and the relaxed one 1,156,343; each contains all four games and the s1, s2 and s3 engine.
 
 ## Measuring
 
@@ -283,7 +284,17 @@ Measured on an Apple M5 (Node 24 / V8 for wasm, F16 GGUF files, medians). The s1
 
 The s1-micro row was measured for [chapter 12](./12-size-ladder) on the same machine while other jobs ran, so read it as an order of magnitude. The comparable columns are the first two: the same two questions on the same state, WASM against native. WASM costs about 2× native on pico today (1.8× on nano with the earlier engine). Expect a few percent of noise between runs, more if the machine is busy (with the earlier engine, the s1-pico WASM median moved between 631 and 697 µs across three runs on a loaded machine).
 
-The s2 and s3 architectures of [chapter 19](./19-s2-architecture) and [chapter 21](./21-s3-recursive-tiny) use the same SIMD layer and the same SIMD128 build, plus panel kernels for products with few rows (`kernels::PanelMatrix`). They do less work per frame: the same `bench()` costs 409.1 µs for the 1.5M-parameter s2-nano and 49.6 µs for s3-pico, the site's default model (`site/public/bench.json`). `BENCH.md` ("Inference") breaks these down per question, with and without relaxed SIMD.
+The s2 and s3 architectures of [chapter 19](./19-s2-architecture) and [chapter 21](./21-s3-recursive-tiny) use the same SIMD layer and the same SIMD128 build, plus panel kernels for products with few rows (`kernels::PanelMatrix`). They do less work per frame: the same `bench()` costs 409.1 µs for the 1.5M-parameter s2-nano and 49.6 µs for s3-pico, the site's default model (`site/public/bench.json`, SIMD128 build). `BENCH.md` ("Inference") breaks these down per question, with and without relaxed SIMD.
+
+`crates/sky-web/bench/bench-node.mjs` and `parity-node.mjs` load the SIMD128 module by default and the relaxed one with `--relaxed`. Three alternating runs of each on 14/11/2026, on the Apple M5 while a GPU training was running (so read the spread, not the third digit):
+
+| measurement | SIMD128: median (range) | relaxed SIMD: median (range) |
+|---|---:|---:|
+| s3-pico, Flappy frame (`bench-node.mjs --game flappy`) | 55.4 µs (53.6 to 58.4) | 47.9 µs (47.6 to 98.5) |
+| s6-nano, Flappy frame, full depth | 445 µs (424 to 450) | 358 µs (340 to 364) |
+| s6-nano, the first 200 questions of `typed_decisions_bench` (`parity-node.mjs`) | 15.8 ms (15.6 to 16.2) | 12.5 ms (12.0 to 13.1) |
+
+The 98.5 µs is one relaxed run of s3-pico out of three; the other two are 47.6 and 47.9 µs. Both builds give the native answers on the 200 questions: largest probability gap 9.5e-7 (SIMD128) and 8.9e-7 (relaxed), same argmax on all 200.
 
 ## Next
 

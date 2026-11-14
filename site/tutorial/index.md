@@ -9,7 +9,7 @@ This tutorial rebuilds skycmd from an empty Cargo workspace to the games on the 
 What you end up with:
 
 - **Tiny.** s3-pico, the default model of the site, has 445,345 parameters in a 251,104-byte ternary file. The earlier s1-pico has 202,305 parameters in 545,280 bytes, and s2-nano 1,532,033 parameters in 701,568 bytes (`site/public/models/manifest.json`).
-- **Fast.** One Flappy Drone frame, two typed questions plus the physics step, takes 49.6 µs for s3-pico, 409.1 µs for s2-nano and 588.6 µs for s1-pico in WASM under Node (`site/public/bench.json`).
+- **Fast.** One Flappy Drone frame, two typed questions plus the physics step, takes 49.6 µs for s3-pico, 409.1 µs for s2-nano and 588.6 µs for s1-pico in WASM under Node (`site/public/bench.json`, SIMD128 build).
 - **Typed.** A model answers `choice`, `score` and `noul` questions with a calibrated probability for every allowed option, in one forward pass, and a coded validator keeps the last word.
 - **Plays games.** s3-pico plays all four games at the oracle's level: 200 of 200 Flappy pipes, every survivor rescued, the oracle's 0.867 Dodge completion, and every Doom-like level cleared with the oracle's kill rate (`runs/ship-s3-pico.arena.json`). Before it, DAgger took s1-pico and s2-nano to the oracle's level on the three drone games, and a fine-tuned s2-nano learned the Doom-like shooter.
 - **Answers your own questions.** s5-lite (Ettin-17M fine-tuned in Rust, 20.7 MB) reads each option by its definition only, isolated from the others, so option order and key names cannot change an answer. It scores 0.696 on the typed-decisions test, at the level of oscar-1-17m (chapters 23 to 25).

@@ -48,7 +48,7 @@ The comment records the one bug of the first try. `./pkg/sky_web.js` passed to `
 Each Space ships the same build with its own `space.json`, which names the model, the demos and the game to open first. Two builds are needed:
 
 ```sh
-scripts/build-wasm.sh                 # the Rust engine as wasm32 + SIMD128, into site/public/pkg
+scripts/build-wasm.sh                 # the Rust engine as wasm32, SIMD128 and relaxed SIMD, into site/public/pkg
 cd site && npm run space:build        # the demo app, into target/hf-space-app
 ```
 
