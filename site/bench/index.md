@@ -33,7 +33,7 @@ These models answer questions you write yourself, so they are measured on held-o
 
 ## s6 results
 
-Five s6 models have a pre-registration with its gate. Four are trained and evaluated: two pass and are published, two fail and are not. The s6-pico ablation only chose the recipe of the others, and its rules adopted none of the s6 additions (Muon, Parallax, XSA and the rest): there is no s6-pico model to ship. Every number is on the [results page](/results/#s6-november-2026) and in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md).
+Five s6 models have a pre-registration with its gate. All five are trained and evaluated: two pass and are published, three fail and are not. The s6-pico ablation only chose the recipe of the others, and its rules adopted none of the s6 additions (Muon, Parallax, XSA and the rest): there is no s6-pico model to ship. Every number is on the [results page](/results/#s6-november-2026) and in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md).
 
 | model | task | parameters | gate (pre-registered) | result |
 |---|---|---:|---|---|
@@ -41,14 +41,7 @@ Five s6 models have a pre-registration with its gate. Four are trained and evalu
 | **s6-secrets-pico** | API-key and secret detection in short texts: is a secret exposed, which service, what kind of value, which line; s3-pico graph with a 320-token state ([SPEC §14](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6.md)) | 445,345 | beat a gitleaks-style rule scanner on a synthetic bench of unseen file types: > 0.977 on "is a secret exposed?" and > 0.787 on "which service?", ternary, full depth ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md)) | **passed**: secret 0.9990, service 0.9795, kind 0.9990, line 0.6859 (weak); 250 KB, published at full depth. The bench is synthetic: **on real files it fails**, flagging 59.8% of clean files at p ≥ 0.9 and 49.4% at p ≥ 0.999, so it is a result, not a scanner ([real text](/results/#s6-secrets-real-text), [Live](/live/#s6-secrets-pico-is-a-secret-exposed-in-this-text)) |
 | s6-micro | the same at s4-micro scale, 4,096 tokens, 384-token state | 5,587,201 | ≥ 0.45 on `typed_decisions_bench` (goal 0.50, the level of s4's Qwen3.5-4B teacher), no game more than 5 % below s3-pico, ECE ≤ 0.08 | **failed on calibration only**: 0.547 (gate and goal met), games at s3-pico's score, but ECE 0.0821 at full depth and 0.0804 at its conformal thresholds; not published |
 | s6-ear-nano | an s6 that listens: 10 s of 16 kHz audio as 80 ms log-mel frames, typed questions in text, pretrained to predict Mimi's semantic tokens ([SPEC §16](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6.md)) | 1,532,449 | end of turn at least as accurate as Smart Turn v3.2 (8M) on the same clips, ≥ 0.90 on Speech Commands (12 classes), ≥ 2 × chance on held-out MSWC words in English and French ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md)) | **failed**: end of turn 0.5681 against 0.8518, keywords 0.8885, French zero-shot 0.1330 (English 0.2100 passes); not published |
-
-## Coming next
-
-| model | task | parameters | gate (pre-registered) |
-|---|---|---:|---|
-| s6-cast | probabilistic forecasting on the [Forecast](/forecast/) page ([SPEC](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)) | 388,320 | GIFT-Eval nGMASE ≤ 0.838 and nWQL ≤ 0.587; the goal is TinyCast's 0.774 / 0.545 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md)) |
-
-s6-cast is still training.
+| s6-cast-pico | probabilistic forecasting: 2,048 past points in patches of 32, nine deciles for each of the next 64 steps ([SPEC](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)) | 369,792 | GIFT-Eval nGMASE ≤ 0.838 and nWQL ≤ 0.587, the training-free FLAIR; the goal is TinyCast's 0.774 / 0.545 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md)) | **failed**: nGMASE 0.9471, nWQL 0.6646 (0.9099 and 0.6417 with flip); not published ([results](/results/#s6-cast-pico-failed)) |
 
 s6-nano, s6-micro and s6-secrets-pico pretrain on the s3 text plus the non-web parts of the training data of OLMo 3 (Dolma 3) and LLM360 (TxT360): Wikipedia, science PDFs, maths, public-domain books, StackExchange and French Europarl ([sources](/sources/)). s6-cast reads no text, and s6-ear hears its state: it pretrains on LibriSpeech audio against the published Mimi codes.
 
