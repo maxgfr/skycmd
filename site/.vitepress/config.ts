@@ -27,6 +27,8 @@ const chapters: [string, string][] = [
   ['24-reproduce-s5-lite', '24 Reproducing s5-lite step by step'],
   ['25-hugging-face', '25 Publishing on Hugging Face'],
   ['26-s6-ear', '26 s6-ear: a decision model that listens'],
+  ['27-s6-nano', '27 s6-nano: one small file for the games and for free-text questions'],
+  ['28-s6-secrets-pico', '28 s6-secrets-pico: is a secret exposed in this text?'],
 ]
 
 const groups: [string, number, number][] = [
@@ -36,7 +38,7 @@ const groups: [string, number, number][] = [
   ['Shipping', 12, 17],
   ['Going further', 17, 21],
   ['Decision models for any question (s4, s5)', 21, 25],
-  ['The s6 family', 25, 26],
+  ['The s6 family', 25, 28],
 ]
 
 // Every maxgfr.github.io site shares one origin, so one localStorage: VitePress keeps the theme
