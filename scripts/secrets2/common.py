@@ -58,13 +58,18 @@ class Refused(Exception):
     """A guard said no: wrong split, test not open, a frozen hash that differs."""
 
 
-def _main_parent():
+def main_checkout():
+    """The main checkout of this repository (a worktree has its own files, not its own builds)."""
     try:
         common = subprocess.run(["git", "-C", REPO, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                                 capture_output=True, text=True, check=True).stdout.strip()
-        return os.path.dirname(os.path.dirname(common))
+        return os.path.dirname(common)
     except (OSError, subprocess.CalledProcessError):
-        return os.path.dirname(REPO)
+        return REPO
+
+
+def _main_parent():
+    return os.path.dirname(main_checkout())
 
 
 def data_root():
