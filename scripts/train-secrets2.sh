@@ -41,6 +41,12 @@
 #   SKY_MLX_CACHE_GB=2   cap of MLX's buffer cache
 #   RESUME=1        continue from the checkpoints of an interrupted run (unset: start over)
 #   SKY_OUT         a prefix for everything this script writes (scripts/train-all.sh SMOKE=1)
+#   SMOKE=1         the first contact with sky-train, in the manner of scripts/train-all.sh: 1
+#                   minute of pretraining and 2 of decision training (PRETRAIN_MIN, DECIDE_MIN to
+#                   change them), every step, everything under SKY_OUT (default
+#                   runs/secrets2-smoke/), never in runs/s6-secrets-verify-pico or
+#                   models/s6-secrets-verify-pico. It tests that the commands start and the
+#                   files chain; its numbers are not looked at
 #   DRY_RUN=1       print the commands instead of running them (nothing is built or trained)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -61,6 +67,12 @@ tok=data/tok/tok-s2-1024.json
 init_params=${INIT_PARAMS:-runs/s6-secrets-pico/pretrain/last/model.safetensors}
 init_ref=runs/s6-secrets-pico/pretrain/init/model.safetensors
 step_mem=${STEP_MEM_GB:-0}
+smoke=${SMOKE:-}
+if [ -n "$smoke" ]; then
+  SKY_OUT=${SKY_OUT:-runs/secrets2-smoke/}
+  PRETRAIN_MIN=${PRETRAIN_MIN:-1}
+  DECIDE_MIN=${DECIDE_MIN:-2}
+fi
 weights=creddata=0.45,issues=0.35,synth=0.20
 records=$build/records/creddata,$build/records/issues,$build/records/synth
 val_cred=$build/records/creddata/val.jsonl
@@ -69,6 +81,16 @@ m=${SKY_OUT:-}models/$name
 model=$m/skycmd-$name-ternary.gguf
 ev=$run/eval
 cfg=$run/config.json
+# a smoke run never writes where the real run does
+if [ -n "$smoke" ]; then
+  case "$run" in
+    "runs/$name" | "./runs/$name" | "$PWD/runs/$name")
+      echo "SMOKE=1 needs a prefix that is not the real run's (SKY_OUT=$SKY_OUT)" >&2
+      exit 2
+      ;;
+  esac
+  echo "== SMOKE: everything under $SKY_OUT; nothing of it is a result"
+fi
 
 # The recipe, with no hand choice: CONFIG, OPT, LR_SCALE, PRETRAIN, DECIDE.
 CONFIG=configs/$recipe_model.json OPT='' LR_SCALE=1 PRETRAIN='' DECIDE=''
@@ -305,10 +327,14 @@ report() {
   note "write $run/report.md: steps, working minutes, brake modes, thresholds, then $ev/validation.md"
   [ "$dry" = 1 ] && return
   python3 -I - "$run" "$ckpt" "$m/tau.json" "$ev/validation.md" "$build/BUILD.json" "$SKY_BRAKE_FILE" \
-    "$SKY_DUTY ${SKY_COOL:-no long rests}" "$init_params" "$weights" <<'EOF'
+    "$SKY_DUTY ${SKY_COOL:-no long rests}" "$init_params" "$weights" "$smoke" <<'EOF'
 import hashlib, json, os, re, sys
-run, ckpt, tau_path, validation, manifest, brake_file, brake_env, start, weights = sys.argv[1:]
-out = ["# s6-secrets-verify-pico: the run", "",
+run, ckpt, tau_path, validation, manifest, brake_file, brake_env, start, weights, smoke = sys.argv[1:]
+out = ["# s6-secrets-verify-pico: the run", ""]
+if smoke:
+    out += ["**SMOKE RUN.** A few minutes under a throwaway prefix, to test that the commands start and the files "
+            "chain: no number below is a result, none is to be looked at.", ""]
+out += [
        "Pre-registration: `docs/s6-secrets2-prereg.md`, section 5. One run, seed 0; the checkpoint read is "
        f"`{ckpt}`, no other.", ""]
 build = json.load(open(manifest))
