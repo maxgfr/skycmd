@@ -255,9 +255,9 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
         kept.push((split, rows));
     }
 
-    // the context runs (amendments 4 and 5): the runs of letters of at least five distinct
+    // the context runs (amendments 4, 5 and 7): the runs of letters of at least five distinct
     // negative candidate strings of the training split, after its decontamination, that are a
-    // dictionary word or hold a keyword
+    // dictionary word, hold a keyword, or have four letters that are not all hexadecimal
     let negatives: HashSet<&str> = kept
         .iter()
         .filter(|(split, _)| *split == "train")
@@ -271,6 +271,7 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
     let mut unchanged = 0usize;
     let (mut with_replaced, mut with_kept, mut kept_runs) = (0usize, 0usize, 0usize);
     let mut with_redrawn_common = 0usize;
+    let mut redrawn_words: BTreeMap<String, usize> = BTreeMap::new();
     let mut kept_words: BTreeMap<String, usize> = BTreeMap::new();
     for (_, rows) in &kept {
         for r in rows.iter().filter(|r| r.positive) {
@@ -281,7 +282,10 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
             unchanged += (new.text == r.candidate) as usize;
             with_replaced += (new.replaced > 0) as usize;
             with_kept += !new.kept.is_empty() as usize;
-            with_redrawn_common += (new.redrawn_common > 0) as usize;
+            with_redrawn_common += !new.redrawn_common.is_empty() as usize;
+            for w in new.redrawn_common.iter().collect::<HashSet<_>>() {
+                *redrawn_words.entry(w.clone()).or_default() += 1;
+            }
             kept_runs += new.kept.len();
             // a word counts once for each distinct positive string that holds it
             for w in new.kept.iter().collect::<HashSet<_>>() {
@@ -292,11 +296,16 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
     }
     let mut most: Vec<(&String, &usize)> = kept_words.iter().collect();
     most.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
-    let most: Vec<serde_json::Value> = most
-        .iter()
-        .take(10)
-        .map(|(w, n)| json!({"run": w, "positive_strings": n}))
-        .collect();
+    let top = |most: Vec<(&String, &usize)>| -> Vec<serde_json::Value> {
+        most.iter()
+            .take(10)
+            .map(|(w, n)| json!({"run": w, "positive_strings": n}))
+            .collect()
+    };
+    let most = top(most);
+    let mut redrawn: Vec<(&String, &usize)> = redrawn_words.iter().collect();
+    redrawn.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+    let redrawn = top(redrawn);
     let positives = Positives::new(&replacement);
 
     let mut left_in_records = 0usize;
@@ -391,6 +400,7 @@ pub fn build(o: &IssueOptions) -> Result<serde_json::Value> {
             "kept_runs_of_the_training_negatives": keep.len(),
             "positive_strings_with_a_replaced_word_run": with_replaced,
             "positive_strings_with_a_redrawn_run_that_5_negatives_hold": with_redrawn_common,
+            "ten_most_frequent_redrawn_runs_that_5_negatives_hold": redrawn,
             "positive_strings_with_a_kept_run": with_kept,
             "kept_runs_in_the_positive_strings": kept_runs,
             "distinct_kept_runs_in_the_positive_strings": kept_words.len(),

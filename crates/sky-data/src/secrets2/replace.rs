@@ -11,15 +11,18 @@
 //! - **A dictionary word stays a word**: a maximal run of ASCII letters of 4 characters or more
 //!   that is a word of the dictionary becomes another word of the same length, in the same case
 //!   pattern. This is what CredData's obfuscation does not do.
-//! - **A context run is kept as it is** (amendments 4 and 5): a candidate of the issue-report
-//!   set is a regular expression's match and often holds its key name (`token`, `password`,
-//!   `api_key`), which would otherwise be rewritten in positives and never in negatives. A whole
-//!   run of letters is left untouched when it occurs, as a whole run and without regard to
-//!   case, in at least [`KEPT_MIN_STRINGS`] distinct negative candidate strings of the training
-//!   split, and either it is a dictionary word, or it has at least [`KEPT_MIN_LETTERS`] letters
-//!   and contains one of the generator's keywords or scheme words ([`CONTEXT_WORDS`]). The
-//!   second case asks for a keyword so that a short random run of a real value is not kept
-//!   because it happens to be common ([`KeptRuns`]).
+//! - **A context run is kept as it is** (amendments 4, 5 and 7): a candidate of the
+//!   issue-report set is a regular expression's match and often holds its key name (`token`,
+//!   `password`, `api_key`) or the names of a connection string (`mysql`, `https`), which would
+//!   otherwise be rewritten in positives and never in negatives. A whole run of letters is left
+//!   untouched when it occurs, as a whole run and without regard to case, in at least
+//!   [`KEPT_MIN_STRINGS`] distinct negative candidate strings of the training split, and
+//!   ([`may_be_kept`]) it is a dictionary word, or it has at least [`KEPT_MIN_LETTERS`] letters
+//!   and contains one of the generator's keywords or scheme words ([`CONTEXT_WORDS`]), or it has
+//!   at least [`KEPT_MIN_PLAIN`] letters that are not all among `a` to `f`. A run of 3 letters
+//!   outside the first two cases, and a run made only of hexadecimal letters, are drawn again:
+//!   among them are fragments of real values, which this replacement exists to remove
+//!   ([`KeptRuns`]).
 //! - **Every other letter or digit becomes a random one of its class**, the classes being
 //!   CredData's: a run of letters and digits written in lower-case hexadecimal stays so, as does
 //!   upper-case hexadecimal and base32 (`A-Z`, `2-7`); otherwise a lower-case letter becomes a
@@ -45,6 +48,10 @@ pub const KEPT_MIN_STRINGS: usize = 5;
 /// Letters a run that is no dictionary word must have to be kept (amendment 5).
 pub const KEPT_MIN_LETTERS: usize = 3;
 
+/// Letters a run that is neither a dictionary word nor a holder of a keyword must have to be
+/// kept, and they must not all be hexadecimal letters (amendment 7).
+pub const KEPT_MIN_PLAIN: usize = 4;
+
 /// The keywords of the candidate generator (`generic-keyword`) and its scheme words: a run that
 /// is no dictionary word is kept only if it holds one of them (amendment 5).
 pub const CONTEXT_WORDS: [&str; 18] = [
@@ -69,13 +76,15 @@ pub const CONTEXT_WORDS: [&str; 18] = [
 ];
 
 /// Whether a run of letters may be kept if the negatives hold it often enough: a dictionary
-/// word, or a run of at least [`KEPT_MIN_LETTERS`] letters that contains a context word.
+/// word; or a run of at least [`KEPT_MIN_LETTERS`] letters that contains a context word; or a
+/// run of at least [`KEPT_MIN_PLAIN`] letters that are not all among `a` to `f`.
 pub fn may_be_kept(run: &str, words: &WordSet) -> bool {
     if words.is_word(run) {
         return true;
     }
     let low = run.to_ascii_lowercase();
-    low.len() >= KEPT_MIN_LETTERS && CONTEXT_WORDS.iter().any(|w| low.contains(w))
+    (low.len() >= KEPT_MIN_LETTERS && CONTEXT_WORDS.iter().any(|w| low.contains(w)))
+        || (low.len() >= KEPT_MIN_PLAIN && !low.bytes().all(|b| matches!(b, b'a'..=b'f')))
 }
 
 /// The runs of letters that are kept as they are, in lower case, and for the counts every run
@@ -148,8 +157,8 @@ pub struct Replacement {
     /// Dictionary-word runs replaced by another word.
     pub replaced: usize,
     /// Runs that the negatives hold as often as a kept run and that are drawn again all the
-    /// same: no dictionary word, no keyword in them.
-    pub redrawn_common: usize,
+    /// same (3 letters with no keyword, or hexadecimal letters only), in lower case.
+    pub redrawn_common: Vec<String>,
 }
 
 /// Prefixes kept where a token starts.
@@ -533,7 +542,9 @@ fn replace_with(value: &str, words: &WordSet, keep: &KeptRuns, rng: &mut Rng) ->
                 kept[s..t].fill(true);
                 report.kept.push(run.to_ascii_lowercase());
             } else if !words.is_word(run) {
-                report.redrawn_common += keep.is_common(run) as usize;
+                if keep.is_common(run) {
+                    report.redrawn_common.push(run.to_ascii_lowercase());
+                }
             } else {
                 let pool = words.of_len(run.len());
                 let lower = run.to_ascii_lowercase();
@@ -769,40 +780,35 @@ mod tests {
         // `accesstoken`, `com` and `id` as whole runs; four hold `authz`
         let negatives: Vec<String> = (0..5)
             .map(|i| {
-                format!(
-                    "api_key={i} apikey pwd accessToken example.com id {}",
-                    if i < 4 { "authz" } else { "" }
-                )
+                let rare = if i < 4 { "authz" } else { "" };
+                format!("api_key={i} apikey pwd accessToken x.com id {rare}")
             })
             .collect();
         let keep = KeptRuns::from_negatives(negatives.iter().map(String::as_str), &w);
         for run in ["api", "KEY", "apikey", "ApiKey", "pwd", "accesstoken"] {
             assert!(keep.contains(run), "{run}");
         }
-        // common, but no dictionary word and no keyword in it; or too short; or too rare
+        // common, but 3 letters with no keyword in them; or too short; or too rare
         assert!(keep.is_common("com") && !keep.contains("com"));
-        assert!(keep.is_common("example") && !keep.contains("example"));
         assert!(!keep.contains("id") && !keep.is_common("id"));
         assert!(!keep.contains("authz") && !keep.is_common("authz"));
         assert_eq!(keep.len(), 5);
-        assert!(
-            may_be_kept("passwd", &w) && may_be_kept("XApiKey", &w) && may_be_kept("winter", &w)
-        );
-        assert!(!may_be_kept("ke", &w) && !may_be_kept("qzv", &w) && !may_be_kept("mongodb", &w));
+        assert!(may_be_kept("passwd", &w) && may_be_kept("XApiKey", &w));
+        assert!(may_be_kept("winter", &w) && !may_be_kept("ke", &w) && !may_be_kept("qzv", &w));
 
-        let secret = "api_key=Qz81mfa22Lx; apikey: Winter-77 (pwd) example.com authz";
+        let secret = "api_key=Qz81mfa22Lx; apikey: Winter-77 (pwd) x.com authz";
         let r = replace_value_report(secret, &w, &keep, 7);
-        assert!(
-            r.text.starts_with("api_key=")
-                && r.text.contains("; apikey: ")
-                && r.text.contains(" (pwd) ")
-        );
+        assert!(r.text.starts_with("api_key="));
+        assert!(r.text.contains("; apikey: ") && r.text.contains(" (pwd) "));
         assert_eq!(r.kept, ["api", "key", "apikey", "pwd"]);
-        // the value is still drawn again, its word replaced by a word; `com`, `example` and
-        // `authz` are drawn again too, the first two although the negatives hold them
+        // the value is still drawn again, its word replaced by a word; `com` and `authz` are
+        // drawn again too, the first although the negatives hold it
         assert!(!r.text.contains("Qz81mfa22Lx") && !r.text.contains("Winter"));
-        assert!(!r.text.contains("example") && !r.text.ends_with("authz"));
-        assert_eq!((r.replaced, r.redrawn_common), (1, 2));
+        assert!(!r.text.contains(".com") && !r.text.ends_with("authz"));
+        assert_eq!(
+            (r.replaced, r.redrawn_common.clone()),
+            (1, vec!["com".to_string()])
+        );
         assert_eq!(shape(&r.text), shape(secret));
         // a run is kept as a whole run only: `mykey` is not `key`
         let r = replace_value_report("mykey=Qz81", &w, &keep, 7);
@@ -810,6 +816,49 @@ mod tests {
         // with amendment 4 alone (dictionary words only) these names were drawn again
         let before = KeptRuns::from_negatives(["winter 1"], &w);
         assert!(!replace_value("api_key=Qz81", &w, &before, 7).starts_with("api_key"));
+    }
+
+    #[test]
+    fn a_common_name_of_four_letters_is_kept_unless_it_is_hexadecimal_letters() {
+        let w = words();
+        // amendment 7: five distinct negatives hold the names of a connection string (`mysql`,
+        // `mongodb`, `https`), a 3-letter run (`srv`), runs of hexadecimal letters (`abcdef`,
+        // `beef`) and, four times only, `postgres`
+        let negatives: Vec<String> = (0..5)
+            .map(|i| {
+                let rare = if i < 4 { "postgres" } else { "" };
+                format!("mysql://h{i} mongodb+srv https abcdef beef {rare}")
+            })
+            .collect();
+        let keep = KeptRuns::from_negatives(negatives.iter().map(String::as_str), &w);
+        for run in ["mysql", "MongoDB", "https"] {
+            assert!(keep.contains(run), "{run}");
+        }
+        for run in ["srv", "abcdef", "beef", "ABCDEF"] {
+            assert!(keep.is_common(run) && !keep.contains(run), "{run}");
+        }
+        assert!(!keep.contains("postgres") && !keep.is_common("postgres"));
+        assert_eq!(keep.len(), 3);
+        assert!(may_be_kept("mongodb", &w) && may_be_kept("host", &w) && may_be_kept("table", &w));
+        // 3 letters, hexadecimal letters only, or both
+        assert!(!may_be_kept("srv", &w) && !may_be_kept("facade", &w) && !may_be_kept("bad", &w));
+        // a dictionary word is the first case, whatever its letters
+        let hexword = WordSet::from_text("facade\n");
+        assert!(may_be_kept("facade", &hexword));
+
+        let secret = "mongodb+srv://user9:Qz81mfa22Lx@abcdef.beef.example/db?https";
+        let r = replace_value_report(secret, &w, &keep, 7);
+        assert!(r.text.starts_with("mongodb+") && r.text.ends_with("?https"));
+        assert_eq!(r.kept, ["mongodb", "https"]);
+        // the user, the password, the host and the 3-letter and hexadecimal runs are drawn again
+        assert!(!r.text.contains("+srv:") && !r.text.contains("Qz81mfa22Lx"));
+        assert!(
+            !r.text.contains("abcdef") && !r.text.contains(".beef.") && !r.text.contains("example")
+        );
+        assert_eq!(r.redrawn_common, ["srv", "abcdef", "beef"]);
+        assert_eq!(shape(&r.text), shape(secret));
+        // with amendment 5 alone these names were drawn again
+        assert!(!w.is_word("mongodb") && !CONTEXT_WORDS.iter().any(|c| "mongodb".contains(c)));
     }
 
     #[test]
