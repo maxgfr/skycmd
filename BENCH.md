@@ -320,6 +320,7 @@ The reference rows are those of the s6-nano evaluation; the s6-micro evaluation 
 
 - **In distribution, not zero-shot:** `zs_banking77` 0.631 (s6-nano) and 0.705 (s6-micro), n 2,000. Banking77 is in the training data.
 - **MASSIVE English is not strictly zero-shot.** 206 of the 2,000 English test utterances read here also appear as states in the training split, 201 of them as questions of the same intent task in a decision source derived from MASSIVE (`calibrated:mteb/amazon_massive_intent` in `data/decisions/calibrated_typed.jsonl`), the other 5 in `calibrated:clinc/clinc_oos`; none of the 1,000 French ones does (exact match after lowercasing). The training data hold 3,113 questions of that source (3 options instead of 8). The seen utterances are not answered better: s6-nano 0.393 on the 206 against 0.429 on the 1,794 others, s6-micro 0.495 against 0.521; without them the pooled ECE is 0.0486 and 0.0837, so neither gate changes (`docs/s6-gen-prereg.md`, amendment 14). This overlap was found after the evaluation, when this page was written.
+- **ECE by source and the interval of the pooled ECE** (reported numbers, not gates; amendment 12; `scripts/s6-ece-by-source.py` on the evaluation dumps, which gives back the pooled 0.0479 and 0.0821 exactly). s6-nano: bench 0.0261, MASSIVE en 0.0248, MASSIVE fr 0.1112, When2Call 0.1412, NOTAM deel_subject 0.0746, NOTAM notam_multi 0.0710; pooled 0.0479, 95 % bootstrap interval [0.0416, 0.0564] (1,000 resamples of the items). s6-micro: 0.0660, 0.1334, 0.0313, 0.1176, 0.0636, 0.2558; pooled 0.0821, [0.0746, 0.0900]. Details in [`docs/big-run-report.md`](docs/big-run-report.md) §6.
 - **Truncated records** (`sky-train s2-truncation`, the first 500 records of each source, n 258,309): s6-nano state 12.5%, head 10.5%, either 21.7%, and on `typed_decisions_bench` state 1.4%, head 0.0%; s6-micro 14.6%, 11.6%, 24.0%, and on the bench 4.2%, 0.0%.
 
 **Arena.** 30 episodes per game, the same seeds for every model, mean score (`models/s6-*/…-arena.json`):
@@ -435,3 +436,29 @@ Test split, ternary, full depth:
 | zero-shot keywords, French | 1,000 | 0.1330 | 0.1520 | 0.20 (2 × chance) | **fail** |
 
 Three gates of four fail: s6-ear-nano is not published. The control, trained the same way without the Mimi pretraining, is more accurate on all four sets, so in this run the pretraining did not help. ECE over all test sources is 0.0081 at full depth. At the CRC thresholds the model uses 3.42 of its 4 passes on average (early exit on 21.1% of the questions), with the same verdicts. Smart Turn v3.2 has a precision of 0.783 and a recall of 0.971 on the end-of-turn clips; the pre-registration asks for the same two numbers for s6-ear, and the run did not compute them.
+
+## s6-cast-pico: probabilistic forecasting, pre-registered, gate failed
+
+Pre-registration: [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md), gate in §6, amendments 1 to 8. Results: `data/gift-eval-out/s6-cast-pico/summary.json` (`scripts/gift-eval.py score`), with `all_results.csv` next to it and the same files for the flipped model, our TinyCast port and our seasonal naive; run logs `runs/all/cast-{pilot,train,export,eval}.log`. The final report of the run is [`docs/big-run-report.md`](docs/big-run-report.md).
+
+**Model and recipe.** The s6 encoder on patches of 32 points: 2 blocks × 2 loops, an exit after each loop, d 96, context 2,048 points, horizon 64, nine deciles. 369,792 parameters (`cast-train.log`), without Parallax or XSA, which the recipe did not adopt (`runs/recipe/recipe.json`), instead of the 388,320 of the pre-registration. AdamW at 3e-3, batch 256, QAT over the last 20 %, EMA 0.999, seed 1, TinyCast as teacher on 50 % of the windows with a weight annealed from 0.5 to 0. The pilots (3,000 steps each) kept 3e-3 (validation pinball 0.05089, against 0.05121 at 1e-3 and 0.05788 at 1e-2) and the teacher (0.05076 against 0.050891 without). Ternary GGUF of the EMA weights (validation pinball 0.0431, against 0.0442 for the last weights): 142,912 bytes, exit tolerance 0.0128 from the calibration on 2,000 synthetic windows.
+
+**Run.** One run, 480 working minutes, from 14/11 06:07 to 19:05, in the brake modes of amendments 4 to 8 (night 0.95 55:5, idle 0.85 50:10, in use or on battery 0.5 45:15): **250,092 steps**. No restart.
+
+**Test bench.** GIFT-Eval, 97 configurations, 371,330 windows, the official protocol (gluonts `evaluate_model`, the 9 deciles); every metric is divided by the seasonal naive and averaged geometrically. 2,017 windows in 12 configurations have no observation in the model's last 2,048 points and are forecast by the seasonal naive, in both passes (`cast-eval.log`).
+
+| model | nGMASE | nWQL | nMSIS |
+|---|---:|---:|---:|
+| **s6-cast-pico, without flip** (the reported model) | **0.9471** | **0.6646** | 0.7190 |
+| s6-cast-pico, with flip | 0.9099 | 0.6417 | 0.6860 |
+| gate: FLAIR, training-free (TinyCast paper) | 0.838 | 0.587 | |
+| goal: TinyCast as published | 0.774 | 0.545 | |
+| TinyCast, our port, with flip | 0.7856 | 0.5570 | 0.5781 |
+| seasonal naive, our harness | 0.9999 | 0.8876 | 2.6778 |
+
+**Gate** (§6): nGMASE ≤ 0.838 and nWQL ≤ 0.587, without flip. **Failed on both metrics; not published.** The goal of beating TinyCast is not met either: the gap to the published TinyCast is +0.1731 nGMASE and +0.1196 nWQL, to our generic TinyCast port +0.1615 and +0.1076. With flip the model still misses both bars.
+
+- **Against the seasonal naive.** Better on nGMASE (0.9471) and on nWQL (0.6646 against 0.8876). Per configuration, its MASE is below the seasonal naive's in 52 of 97 and its WQL in 84 of 97; our TinyCast port has a lower MASE in 86 configurations and a lower WQL in 87.
+- **By term** (geometric means of the per-configuration ratios, computed from the `all_results.csv` files): MASE 0.860 short, 1.046 medium, 1.105 long, against 0.756, 0.806, 0.848 for our TinyCast port. Medium and long horizons are worse than the seasonal naive.
+- **By domain**, MASE / WQL: Econ/Fin 1.018 / 0.901, Energy 1.080 / 0.800, Healthcare 0.760 / 0.614, Nature 0.862 / 0.467, Sales 0.753 / 0.457, Transport 0.833 / 0.644, Web/CloudOps 0.983 / 0.662; our TinyCast port 0.894 / 0.841, 0.882 / 0.661, 0.735 / 0.639, 0.757 / 0.358, 0.734 / 0.445, 0.669 / 0.510, 0.750 / 0.562. Healthcare is the only domain where its WQL is below TinyCast's. The worst configurations are `solar/10T/long` and `solar/10T/medium` (MASE ratios 2.729 and 2.282, against 0.973 and 0.955 for our TinyCast port).
+- **Not measured by the run:** the latency, the mean number of exits used on GIFT-Eval (the calibration gives 3.64 of 4 on its synthetic windows) and the gap to Timestral-5M, whose GIFT-Eval scores are not in the repository.
