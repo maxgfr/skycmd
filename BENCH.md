@@ -355,7 +355,9 @@ The relaxed build is 1.26x faster on the bench questions and 1.24x on a Flappy f
 
 ## s6-secrets-pico: API-key and secret detection, pre-registered
 
-Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate in §6, amendments 1 to 5. Results: `runs/s6-secrets-pico/report.md` (`s2-eval`), the rule scanner's score `runs/s6-secrets-pico/baseline.txt` (written before any training), and the run log `runs/all/secrets-train.log`.
+Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate in §6, amendments 1 to 6. Results: `runs/s6-secrets-pico/report.md` (`s2-eval`), the rule scanner's score `runs/s6-secrets-pico/baseline.txt` (written before any training), and the run log `runs/all/secrets-train.log`.
+
+**Not a scanner.** The gate below is passed on a synthetic bench. On real files with no secret, measured after publication, the model flags 59.8% of the files at p ≥ 0.9 and 49.4% at p ≥ 0.999 ([real text](#real-text-1411-after-publication), amendment 6). It is published as the result of its pre-registration, not as a tool: do not use it to scan real files.
 
 **Model and recipe.** The s3-pico graph (1 state block × 4 loops, exits after each pass, d 96, vocabulary 1,024) with a 320-token state window and a 192-token head window: 445,345 parameters (203,393 in the pretraining stack), the same count as s3-pico, since the ablation did not adopt Parallax. Recipe from `runs/recipe/recipe.json`: AdamW, learning-rate scale 2.0, no EMA, so `last` is the exported checkpoint. Ternary GGUF: 250,272 bytes.
 
@@ -391,7 +393,30 @@ Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate
 - WASM, `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-secrets-pico.gguf <dump> --n 200` (Node 24) on the first 200 bench questions, SIMD128 build: max |p_wasm − p_native| 1.2e-6, argmax agreement 200 of 200, median 1,420 and 1,427 µs per decision in two runs;
 - both builds later the same day, three alternating runs each, a training still running: SIMD128 1,580 µs (1,577 to 1,581), max gap 1.2e-6; relaxed SIMD 1,219 µs (1,196 to 1,237), max gap 6.0e-7; argmax agreement 200 of 200 in every run.
 
-**What this bench does not say** (§6). It is synthetic: the formats, the file templates and the class shares are our generator's, and every key is a provider's public format with a random body. Beating the scanner here shows that the model reads formats and context (the variable name, a test or publishable key, a placeholder) in file types it never saw. It says nothing about its recall on real repositories, and no such conclusion is drawn.
+**What this bench does not say** (§6). It is synthetic: the formats, the file templates and the class shares are our generator's, and every key is a provider's public format with a random body. Beating the scanner here shows that the model reads formats and context (the variable name, a test or publishable key, a placeholder) in file types it never saw. It says nothing about real repositories, and no such conclusion is drawn; the false positives on real files were measured afterwards (next subsection), the recall on real secrets was not.
+
+### Real text (14/11, after publication)
+
+Amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md). The published file was run on real files outside its generator, for a possible use in [secretgate](https://github.com/maxgfr/secretgate), a rule-based secrets firewall for coding agents. The measurement, its script and its limits are in that repository (`docs/model-comparison.md`, [pull request 19](https://github.com/maxgfr/secretgate/pull/19)); secretgate did not adopt the model.
+
+**Corpus.** 719 real source, configuration and documentation files in which the rules of secretgate find nothing (its own sources and tests, a sample of its `node_modules`, and `crates/` and `docs/` of this repository), cut into 22,433 chunks of at most 7 lines and 300 characters, the length of the training texts. The secret question is asked on each chunk; a file counts as flagged when one of its chunks is. Since no file holds a secret, every flag is a false positive.
+
+| root | files | chunks | chunks flagged, p ≥ 0.9 / 0.999 | files flagged, p ≥ 0.9 / 0.999 |
+|---|---:|---:|---|---|
+| secretgate `src/` | 36 | 1,231 | 5.4% / 2.3% | 61.1% / 38.9% |
+| secretgate `tests/` | 39 | 1,260 | 10.6% / 6.3% | 79.5% / 69.2% |
+| secretgate `README.md` | 1 | 100 | 5.0% / 2.0% | 1 of 1 / 1 of 1 |
+| `node_modules/.pnpm` (sample) | 395 | 6,673 | 10.3% / 4.8% | 40.3% / 29.4% |
+| skycmd `crates/` | 227 | 11,726 | 10.2% / 6.0% | 86.8% / 78.0% |
+| skycmd `docs/` | 21 | 1,443 | 20.7% / 12.5% | 95.2% / 95.2% |
+| **total** | **719** | **22,433** | **10.6% / 5.9%** | **59.8% / 49.4%** |
+
+- **The flagged chunks are ordinary text** (imports, prose, JSON); none of the 25 highest scores holds a credential-shaped value.
+- **The probabilities are not calibrated outside the generator.** Over the clean chunks the median P(secret) is 0.00009 and the 90th percentile 0.93, so raising the threshold barely helps. Asking the kind and service questions as well does not change it, and neither do smaller or larger chunks.
+- **The same script finds the bench score again** on `secret_bench`: recall 0.9980, precision 1.0000, accuracy 0.9990, against 0.9772, 0.7183 and 0.7946 for the rules of secretgate, most of whose false positives there are the test and publishable keys it redacts on purpose.
+- **What it means.** The gate is on `secret_bench` and stays passed; nothing in it is reread or changed. The model cannot be used to scan real files, and it stays published as the result of its pre-registration, not as a tool.
+- **What it does not test.** Recall on real secrets was not measured (no real secret is in that corpus), and the files come from two projects and one dependency tree.
+- **Next.** A second version, if one is made, would be a different task (a rule finds the candidate and the model judges it in its context), with its own pre-registration before any run. Nothing is promised.
 
 ## s6-ear-nano: first run, gates failed
 
