@@ -1,0 +1,178 @@
+{
+  "generator": "sg-cand-1",
+  "revision": 1,
+  "frozen": "2026-11-14T13:39:06.202Z",
+  "preRegistration": "skycmd docs/s6-secrets2-prereg.md, sections 2.1, 2.2, 2.4 and amendment 2",
+  "secretgate": {
+    "repository": "https://github.com/maxgfr/secretgate",
+    "commit": "4e93cfa2ee6e216caca9bc8e6f74cb565a991350",
+    "branch": "chore/sg-cand-1"
+  },
+  "sha256": {
+    "rules/gitleaks.toml": "e163e53b9e7e8a8511e77271e2b323ed057759542a6d988258afe3a1fa329caf",
+    "scripts/rule-candidates.mjs": "430b4123df05857a57e084741b5fa0add46e6efbc507598b8c7db9bb3d24eccf",
+    "src/engine/scanner.ts": "1551d424fcb499eeeb29523f432913264d34edd21fcf5709e4b5779b5ec1a31d",
+    "src/engine/rules.gen.ts": "b92a83d5819c3f99fd81bc961b1da5c31482c70e414f473783eb01a4c0908c5c"
+  },
+  "node": "v24.22.2",
+  "creddataCommit": "01e3d135a90f46c9a7965683b24a05d12e136b33",
+  "maxBytes": 67108864,
+  "measuredOn": "the 100 training and 16 validation repositories of splits.json; no test repository, no file of the clean-text corpus",
+  "universes": {
+    "full": "every meta row",
+    "gated": "rows whose Category is exactly \"UUID\" removed (amendment 2)"
+  },
+  "recall": {
+    "training": {
+      "full": {
+        "tRows": 3491,
+        "covered": 2194,
+        "recall": 0.6285,
+        "coveredByDefaultEngine": 989,
+        "recallOfDefaultEngine": 0.2833
+      },
+      "gated": {
+        "tRows": 2452,
+        "covered": 2162,
+        "recall": 0.8817,
+        "coveredByDefaultEngine": 989,
+        "recallOfDefaultEngine": 0.4033
+      }
+    },
+    "validation": {
+      "full": {
+        "tRows": 659,
+        "covered": 455,
+        "recall": 0.6904,
+        "coveredByDefaultEngine": 169,
+        "recallOfDefaultEngine": 0.2564
+      },
+      "gated": {
+        "tRows": 522,
+        "covered": 444,
+        "recall": 0.8506,
+        "coveredByDefaultEngine": 169,
+        "recallOfDefaultEngine": 0.3238
+      }
+    },
+    "together": {
+      "full": {
+        "tRows": 4150,
+        "covered": 2649,
+        "recall": 0.6383,
+        "coveredByDefaultEngine": 1158,
+        "recallOfDefaultEngine": 0.279
+      },
+      "gated": {
+        "tRows": 2974,
+        "covered": 2606,
+        "recall": 0.8763,
+        "coveredByDefaultEngine": 1158,
+        "recallOfDefaultEngine": 0.3894
+      }
+    }
+  },
+  "volume": {
+    "training": {
+      "candidates": 211802,
+      "lines": 15170825,
+      "candidatesPer1000Lines": 13.961
+    },
+    "validation": {
+      "candidates": 4234,
+      "lines": 881868,
+      "candidatesPer1000Lines": 4.801
+    },
+    "together": {
+      "candidates": 216036,
+      "lines": 16052693,
+      "candidatesPer1000Lines": 13.458
+    }
+  },
+  "candidatesByRule": {
+    "generic-keyword": 201077,
+    "generic-api-key": 12807,
+    "password-assignment": 1383,
+    "url-credentials": 250,
+    "private-key": 145,
+    "jwt": 101,
+    "auth-scheme": 100,
+    "aws-access-token": 76,
+    "vault-service-token": 29,
+    "credit-card-number": 19,
+    "curl-auth-user": 10,
+    "hashicorp-tf-password": 9,
+    "curl-auth-header": 7,
+    "twilio-api-key": 7,
+    "gcp-api-key": 2,
+    "grafana-api-key": 2,
+    "kubernetes-secret-yaml": 2,
+    "twitch-api-token": 2,
+    "facebook-page-access-token": 1,
+    "facebook-secret": 1,
+    "github-app-token": 1,
+    "linkedin-client-id": 1,
+    "linkedin-client-secret": 1,
+    "stripe-access-token": 1,
+    "twitter-api-key": 1,
+    "twitter-api-secret": 1
+  },
+  "labels": {
+    "training": {
+      "T": 2127,
+      "X": 726,
+      "F": 17875,
+      "U": 190158,
+      "D": 916
+    },
+    "validation": {
+      "T": 459,
+      "X": 117,
+      "F": 1203,
+      "U": 2279,
+      "D": 176
+    }
+  },
+  "seconds": {
+    "training": 280.9,
+    "validation": 25
+  },
+  "files": {
+    "candidates-training.raw.jsonl": {
+      "bytes": 140408404,
+      "sha256": "f1946d905f1cc9d4b77ed789488d4fe4e59c9ee109682bcead4348fb4dfec8b2"
+    },
+    "labels-training.jsonl": {
+      "bytes": 37894384,
+      "sha256": "56851c3e45c013833618dd35da63bac18604878ce7ea5d3a3bebc726f429586e"
+    },
+    "files-training.txt": {
+      "bytes": 133871,
+      "sha256": "3306bb57d1c36817e3c3924399edac587d3d6b8568fa597a1d56b1dec26202fb"
+    },
+    "candidates-validation.raw.jsonl": {
+      "bytes": 5252167,
+      "sha256": "15aa997c16ef4a38e62d055441b222f5e390efe4a661c281a61c0b9b028d0ad5"
+    },
+    "labels-validation.jsonl": {
+      "bytes": 797405,
+      "sha256": "cc20c4e4106233652d864c8fd72beab49576d941084c4fec04ea2b125785ceee"
+    },
+    "files-validation.txt": {
+      "bytes": 15976,
+      "sha256": "3748d714b7aed55eb5273569c953dba66262329f9ce1b47ef1732122d9f049c3"
+    },
+    "clean-corpus.json": {
+      "bytes": 2346197,
+      "sha256": "99877d1ea8f41d7c52980a114a537afa63ab64bd100604b0471ad20112f1e073",
+      "files": 8825,
+      "listSha256": "b25d912775de152941d98462fcae3e96fc15dbb6292614adbfeb22083e74cc53"
+    }
+  },
+  "firstMeasurement": {
+    "where": "gen/first/",
+    "secretgateCommit": "c5ba5686da534c7ed3cbe4ce0c33c524789b9786",
+    "recall": 0.5773,
+    "candidatesPer1000Lines": 13.3
+  }
+}
