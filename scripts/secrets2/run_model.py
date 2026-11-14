@@ -206,7 +206,8 @@ def main():
         elif a.what == "wasm":
             print(json.dumps(wasm(a.model, a.dump, a.out)))
         else:
-            common.corpus(a.corpus)  # the guard of the split
+            if a.corpus != "clean":
+                common.corpus(a.corpus)  # the guard of the split
             meta = convert(a.model, a.dump, a.table, a.corpus, a.out, a.system)
             common.log(f"{meta['system']}: {meta['flags']} candidates scored on {meta['corpus']}, tau* {meta['threshold']}")
     except common.Refused as e:

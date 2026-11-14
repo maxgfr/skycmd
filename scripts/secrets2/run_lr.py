@@ -323,7 +323,8 @@ def main():
         elif a.what == "probe":
             print(json.dumps(probe(a.tables, a.out), indent=1))
         else:
-            common.corpus(a.corpus)  # the guard of the split
+            if a.corpus != "clean":
+                common.corpus(a.corpus)  # the guard of the split
             meta = score(a.model, a.kind, a.table, a.corpus, a.out, a.system)
             common.log(f"{meta['system']}: {meta['flags']} candidates scored on {meta['corpus']}, threshold {meta['threshold']}")
     except common.Refused as e:
