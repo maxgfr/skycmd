@@ -12,7 +12,12 @@
 #                                      programs using less than OTHER_CPU percent of one core
 #                                      (60): the owner sleeps and nothing else works. FULL="" turns
 #                                      this mode off
-#   too hot       back to IN_USE while macOS reports thermal pressure
+#   too hot       HOT (default: IN_USE) while macOS reports thermal pressure (`pmset -g therm`, or
+#                 a thermal state of "serious" or worse, read by scripts/thermal-state.swift,
+#                 built once into <file>.thermal when `swiftc` is there), and on battery
+#
+#   Owner away for a day, 0.85 whatever the input and the hour, 0.5 if the machine heats:
+#     IN_USE="0.85 50:10" HOT="0.5 45:15" FULL="" scripts/auto-brake.sh
 #   out of memory the training is stopped when it holds more than MEM_STOP_GB of memory MEM_STOP_N
 #                 times in a row (4, two minutes): a run that swaps does almost no work and fills
 #                 the disk. It resumes from its last checkpoint at the next launch. The loading of
@@ -26,6 +31,7 @@ log=$file.log
 in_use=${IN_USE:-0.5 45:15}
 away=${AWAY:-0.85 50:10}
 full=${FULL-0.95 55:5}
+hot_brake=${HOT:-$in_use}
 full_idle_min=${FULL_IDLE_MIN:-30}
 full_hours=${FULL_HOURS:-23-8}
 other_cpu=${OTHER_CPU:-60}
@@ -44,7 +50,15 @@ display_held() {
     END { exit !held }'
 }
 on_battery() { pmset -g batt | head -n 1 | grep -q 'Battery Power'; }
+# The thermal state of scripts/thermal-state.swift (0 when the helper could not be built).
+therm_bin=$file.thermal
+thermal_state() {
+  local v=0
+  [ -x "$therm_bin" ] && v=$("$therm_bin" 2>/dev/null) || v=0
+  case $v in [0-3]) echo "$v" ;; *) echo 0 ;; esac
+}
 hot() {
+  [ "$(thermal_state)" -ge 2 ] && return 0
   pmset -g therm 2>/dev/null | awk -F'= *' '
     /CPU_Speed_Limit/ && $2 + 0 < 100 { hot = 1 }
     /Thermal Warning Level/ && $2 + 0 > 0 { hot = 1 }
@@ -86,12 +100,16 @@ set_brake() { # <value> <reason>
 }
 
 mkdir -p "$(dirname "$file")"
+if [ ! -x "$therm_bin" ] && command -v swiftc >/dev/null; then
+  nice -n 19 swiftc -O -o "$therm_bin" "$(dirname "$0")/thermal-state.swift" 2>/dev/null ||
+    echo "$(date '+%F %T') thermal-state helper not built: pmset only" >>"$log"
+fi
 over=0
 while :; do
   if hot; then
-    set_brake "$in_use" "thermal pressure"
+    set_brake "$hot_brake" "thermal pressure (state $(thermal_state))"
   elif on_battery; then
-    set_brake "$in_use" "on battery"
+    set_brake "$hot_brake" "on battery"
   elif display_held; then
     set_brake "$in_use" "a video or a call keeps the display awake"
   elif [ "$(idle_secs)" -lt $((idle_min * 60)) ]; then
