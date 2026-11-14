@@ -4,7 +4,9 @@
 //! points of one episode, each frame with its oracle target, all frames of a
 //! sequence asking the same rendered question. Every record is a regular
 //! decision record plus `seq` (sequence id) and `seq_t` (frame index; `t` is
-//! already the question type of the record schema).
+//! already the question type of the record schema). A frame the game paused before
+//! (`DecisionGame::pause`) carries `pause: true`: a model that sleeps may do it there
+//! (`s2::memory`, docs/s6-sleep-prereg.md).
 
 use std::{
     collections::HashMap,
@@ -63,15 +65,15 @@ pub fn generate(game: &str, n_seq: usize, k: usize, seed: u64, out: &Path) -> Re
         let split = serde_json::to_value(split_for_seed(episode_seed))?;
         let eps = EPSILONS[rng.gen_range(0..EPSILONS.len())];
         let mut g = make_game(game, episode_seed).expect("known game");
-        // (state text, oracle targets) of the recent decision points.
-        let mut window: Vec<(String, Vec<Vec<f32>>)> = Vec::new();
+        // (state text, oracle targets, pause before the frame) of the recent decision points.
+        let mut window: Vec<(String, Vec<Vec<f32>>, bool)> = Vec::new();
         while !g.done() && g.stats().score < max_score && emitted < n_seq {
             if !g.decision_due() {
                 g.tick();
                 continue;
             }
             let t = g.oracle();
-            window.push((g.state_text(), t.clone()));
+            window.push((g.state_text(), t.clone(), g.pause()));
             if window.len() == k {
                 // Non-overlapping windows, half of them kept, so sequences
                 // spread over the whole episode.
@@ -85,12 +87,16 @@ pub fn generate(game: &str, n_seq: usize, k: usize, seed: u64, out: &Path) -> Re
                     let r = render_variant(q, &mut rng);
                     let qtype = serde_json::to_value(q.qtype)?;
                     let id = seq_id(game, seed, emitted);
-                    for (ft, (state, targets)) in window.iter().enumerate() {
-                        let rec = json!({
+                    for (ft, (state, targets, pause)) in window.iter().enumerate() {
+                        let mut rec = json!({
                             "src": format!("seq:{game}"), "t": qtype, "ins": r.ins, "opts": r.opts,
                             "state": state, "target": r.map_target(&targets[qi]), "split": split,
                             "seq": id, "seq_t": ft,
                         });
+                        // Written only when true, so the files of games without pauses do not change.
+                        if *pause {
+                            rec["pause"] = true.into();
+                        }
                         serde_json::to_writer(&mut w, &rec)?;
                         w.write_all(b"\n")?;
                     }
@@ -117,6 +123,8 @@ pub fn generate(game: &str, n_seq: usize, k: usize, seed: u64, out: &Path) -> Re
 pub struct SeqData {
     pub data: S2Data,
     pub train: Vec<Vec<usize>>,
+    /// Per train sequence and frame: the game paused before that frame.
+    pub pauses: Vec<Vec<bool>>,
     pub k: usize,
 }
 
@@ -128,6 +136,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
     }
     // The loader keeps the file order within each split: rebuild the train sequences.
     let mut frames: Vec<(u64, usize)> = Vec::new();
+    let mut paused: Vec<bool> = Vec::new();
     for file in list_jsonl(path)? {
         let f = std::fs::File::open(&file)?;
         for line in BufReader::new(f).lines() {
@@ -142,6 +151,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
                     v["seq"].as_u64().context("record without seq")?,
                     v["seq_t"].as_u64().context("record without seq_t")? as usize,
                 ));
+                paused.push(v["pause"].as_bool().unwrap_or(false));
             }
         }
     }
@@ -180,7 +190,16 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
         train.push(idx);
     }
     train.sort_unstable();
-    Ok(SeqData { data, train, k })
+    let pauses = train
+        .iter()
+        .map(|s| s.iter().map(|&i| paused[i]).collect())
+        .collect();
+    Ok(SeqData {
+        data,
+        train,
+        pauses,
+        k,
+    })
 }
 
 /// One temporal training batch: `K` frame batches over the same rows (one
@@ -242,9 +261,185 @@ pub fn sample(
     }
 }
 
+/// One batch of whole sequences for a model with or without memory (`s2::memory::seq_loss`):
+/// the frames of `n` sequences of one game, frame by frame over the same rows.
+pub struct FrameBatch {
+    pub frames: Vec<S2Batch>,
+    /// The game paused before frame `t` (the pauses of a game do not depend on the episode).
+    pub pauses: Vec<bool>,
+    pub n_rows: usize,
+    pub n_tokens: usize,
+}
+
+/// Samples `n` sequences of `sd`, all frames padded to one state length.
+pub fn sample_frames(sd: &SeqData, n: usize, rng: &mut Rng, pad_to: usize) -> FrameBatch {
+    let picked: Vec<usize> = (0..n).map(|_| rng.below(sd.train.len())).collect();
+    let items = &sd.data.train[0];
+    let s_min = picked
+        .iter()
+        .flat_map(|&s| sd.train[s].iter().map(|&i| items[i].state.len()))
+        .max()
+        .unwrap_or(1);
+    let mut frames = Vec::with_capacity(sd.k);
+    let mut n_tokens = 0;
+    for t in 0..sd.k {
+        let rows: Vec<&data::S2Item> = picked.iter().map(|&s| &items[sd.train[s][t]]).collect();
+        let b = make_batch_min(&sd.data.statics, &rows, pad_to, s_min);
+        n_tokens += b.n_tokens;
+        frames.push(b);
+    }
+    let pauses = sd.pauses[picked[0]].clone();
+    debug_assert!(picked.iter().all(|&s| sd.pauses[s] == pauses));
+    FrameBatch {
+        frames,
+        pauses,
+        n_rows: n * sd.k,
+        n_tokens,
+    }
+}
+
+/// The games of a sleep training and their shares of the sequence batches.
+pub struct SleepData {
+    pub games: Vec<(String, SeqData)>,
+    pub weights: Vec<f64>,
+}
+
+impl SleepData {
+    /// Loads one `s2-seqgen` file per game; `weights` is `game=w,...` (default: equal shares),
+    /// a game being the file's stem.
+    pub fn load(
+        paths: &[std::path::PathBuf],
+        weights: Option<&str>,
+        tok: &Tok,
+        cfg: &S2Config,
+    ) -> Result<Self> {
+        let mut games = Vec::new();
+        for p in paths {
+            let name = p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .with_context(|| format!("no game name in {}", p.display()))?
+                .to_string();
+            let sd = load(p, tok, cfg)?;
+            if sd.train.is_empty() {
+                bail!("{}: no train sequence", p.display());
+            }
+            games.push((name, sd));
+        }
+        if games.is_empty() {
+            bail!("no sequence file");
+        }
+        let mut w = vec![1.0; games.len()];
+        if let Some(spec) = weights {
+            w = vec![0.0; games.len()];
+            for part in spec.split(',') {
+                let (g, x) = part
+                    .split_once('=')
+                    .with_context(|| format!("bad weight {part:?}, expected game=w"))?;
+                let i = games
+                    .iter()
+                    .position(|(n, _)| n == g)
+                    .with_context(|| format!("weight for {g:?}, which has no sequence file"))?;
+                w[i] = x.parse().with_context(|| format!("bad weight {part:?}"))?;
+            }
+        }
+        let total: f64 = w.iter().sum();
+        if w.iter().any(|x| *x < 0.0) || total <= 0.0 {
+            bail!("sequence weights must be positive");
+        }
+        Ok(SleepData {
+            games,
+            weights: w.iter().map(|x| x / total).collect(),
+        })
+    }
+
+    /// Draws a game by its share, then a batch of `n` of its sequences.
+    pub fn sample(&self, n: usize, rng: &mut Rng, pad_to: usize) -> (usize, FrameBatch) {
+        let u = rng.f64();
+        let mut acc = 0.0;
+        let mut g = self.games.len() - 1;
+        for (i, w) in self.weights.iter().enumerate() {
+            acc += w;
+            if u < acc {
+                g = i;
+                break;
+            }
+        }
+        (g, sample_frames(&self.games[g].1, n, rng, pad_to))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn probe_sequences_are_whole_episodes_with_their_pause() {
+        let dir = tempfile::tempdir().unwrap();
+        let (rec, rule) = (
+            dir.path().join("recall.jsonl"),
+            dir.path().join("rule110.jsonl"),
+        );
+        generate("recall", 6, 64, 3, &rec).unwrap();
+        generate("rule110", 12, 8, 3, &rule).unwrap();
+        let lines = |p: &Path| -> Vec<serde_json::Value> {
+            std::fs::read_to_string(p)
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str(l).unwrap())
+                .collect()
+        };
+        let r = lines(&rec);
+        assert_eq!(r.len(), 6 * 64);
+        assert!(r.iter().all(|x| x.get("pause").is_none()));
+        // A whole episode: its asks are answered by a colour shown earlier in the same sequence.
+        for ep in r.chunks(64) {
+            let asks = ep
+                .iter()
+                .filter(|x| !x["state"].as_str().unwrap().contains("ask none"))
+                .count();
+            assert!(asks >= 6, "{asks} asks");
+            assert!(ep[0]["state"].as_str().unwrap().starts_with("show "));
+        }
+        let q = lines(&rule);
+        assert_eq!(q.len(), 12 * 8);
+        for ep in q.chunks(8) {
+            let paused: Vec<bool> = ep
+                .iter()
+                .map(|x| x["pause"].as_bool().unwrap_or(false))
+                .collect();
+            assert_eq!(
+                paused,
+                [false, true, false, false, false, false, false, false]
+            );
+        }
+        let _g = crate::test_util::lock();
+        let (_d, tok) = crate::s2::data::tests::s2_tok();
+        let mut cfg = S2Config::tiny(262);
+        cfg.fuse_numbers = true;
+        cfg.max_state_tokens = 96;
+        let sd = SleepData::load(&[rec, rule], Some("recall=3,rule110=1"), &tok, &cfg).unwrap();
+        assert_eq!(sd.weights, [0.75, 0.25]);
+        assert_eq!((sd.games[0].1.k, sd.games[1].1.k), (64, 8));
+        let mut rng = Rng::new(1);
+        let mut seen = [0usize; 2];
+        for _ in 0..40 {
+            let (g, b) = sd.sample(2, &mut rng, 16);
+            seen[g] += 1;
+            assert_eq!(b.frames.len(), sd.games[g].1.k);
+            assert_eq!(b.pauses.iter().filter(|p| **p).count(), g);
+            let s0 = b.frames[0].ids.shape().to_vec();
+            assert!(b.frames.iter().all(|f| f.ids.shape() == s0.as_slice()));
+        }
+        assert!(seen[0] > seen[1] && seen[1] > 0, "{seen:?}");
+        assert!(SleepData::load(
+            &[dir.path().join("recall.jsonl")],
+            Some("doom=1"),
+            &tok,
+            &cfg
+        )
+        .is_err());
+    }
 
     #[test]
     fn sequence_ids_differ_across_games() {

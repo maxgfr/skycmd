@@ -369,6 +369,9 @@ pub fn to_gguf(
     if cfg.temporal_carry {
         w.add_kv(k("temporal_carry"), true);
     }
+    if cfg.memory {
+        w.add_kv(k("memory"), true);
+    }
     if cfg.parallax {
         w.add_kv(k("parallax"), true);
     }
@@ -520,6 +523,12 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
             .as_bool()
             .ok_or_else(|| anyhow!("{ARCH}.temporal_carry is not a bool"))?,
     };
+    let memory = match g.get(&format!("{ARCH}.memory")) {
+        None => false,
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| anyhow!("{ARCH}.memory is not a bool"))?,
+    };
     let parallax = match g.get(&format!("{ARCH}.parallax")) {
         None => false,
         Some(v) => v
@@ -571,6 +580,7 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         fuse_numbers,
         state_loops,
         temporal_carry,
+        memory,
         parallax,
         xsa,
         state_kind,

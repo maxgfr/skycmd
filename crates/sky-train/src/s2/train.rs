@@ -420,6 +420,31 @@ impl S2Session {
         })
     }
 
+    /// One step on whole sequences (`s2::memory::seq_loss`): with a memory config the model
+    /// reads and writes its memory frame after frame and sleeps as `how` says; without one,
+    /// every frame is answered alone. Every exit of every frame is supervised.
+    pub fn sleep_step(
+        &mut self,
+        batch: &crate::s2::seq::FrameBatch,
+        lr_scale: f32,
+        qat: bool,
+        how: crate::s2::memory::Sleep,
+    ) -> Result<StepStats> {
+        let wv = model::exit_weight_vec(&self.cfg, None);
+        let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+        let cfg = &self.cfg;
+        let (loss, grad_norm) =
+            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
+                crate::s2::memory::seq_loss(p, cfg, &b.frames, &b.pauses, &wts, qat, how)
+            })?;
+        self.state.step += 1;
+        Ok(StepStats {
+            loss,
+            grad_norm,
+            tokens: batch.n_tokens,
+        })
+    }
+
     /// Atomic checkpoint into `dir` (via `dir.tmp`).
     pub fn save(&self, dir: &Path, files: &[(&str, Vec<u8>)]) -> Result<()> {
         let tmp = PathBuf::from(format!("{}.tmp", dir.display()));
@@ -1505,6 +1530,19 @@ pub struct S2DecideArgs {
     pub seq_frac: f64,
     /// Probability that a warm frame's carry is dropped (cold start).
     pub carry_drop: f64,
+    /// docs/s6-sleep-prereg.md §4: whole-sequence files (`s2-seqgen` output, one per game). A
+    /// step is a sequence step with probability `seq_frac`; with a `memory` config the model
+    /// keeps its memory along the sequence and sleeps, without one it answers each frame alone.
+    pub sleep_records: Vec<PathBuf>,
+    /// Shares of the games among the sequence batches (`game=w,...`; default: equal).
+    pub sleep_weights: Option<String>,
+    /// Sequences per sequence batch.
+    pub sleep_batch: usize,
+    /// Sleep passes `N` a batch can draw (one value: a fixed `N`). Drawn with or without a
+    /// memory, so both arms see the same batches.
+    pub sleep_passes: Vec<usize>,
+    /// Backpropagate through every sleep pass instead of the last one only.
+    pub sleep_full: bool,
     /// s4 deep improvement supervision: sharpening exponent of the first exit's target
     /// (rising linearly to 1 at the last exit); `None` disables it.
     pub dis: Option<f32>,
@@ -1743,6 +1781,46 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         }
         None => None,
     };
+    let sleeps = if a.sleep_records.is_empty() {
+        None
+    } else {
+        if seqs.is_some() {
+            bail!("--sleep-records and --seq-records are two different trainings");
+        }
+        if a.sleep_passes.is_empty() || a.sleep_passes.contains(&0) || a.sleep_batch == 0 {
+            bail!("--sleep-passes needs values >= 1 and --sleep-batch a size >= 1");
+        }
+        let sl = crate::s2::seq::SleepData::load(
+            &a.sleep_records,
+            a.sleep_weights.as_deref(),
+            &tok,
+            &s.cfg,
+        )?;
+        for ((name, sd), w) in sl.games.iter().zip(&sl.weights) {
+            println!(
+                "sequences {name}: {} train sequences of {} frames, share {w:.2}",
+                sd.train.len(),
+                sd.k
+            );
+        }
+        println!(
+            "{}: {:.0}% of the steps are batches of {} sequences, sleep passes drawn in {:?}{}",
+            if s.cfg.memory {
+                "memory and sleep"
+            } else {
+                "no memory (each frame alone)"
+            },
+            a.seq_frac * 100.0,
+            a.sleep_batch,
+            a.sleep_passes,
+            if a.sleep_full {
+                ", gradient through every pass"
+            } else {
+                ", gradient through the last pass"
+            }
+        );
+        Some(sl)
+    };
     let mut seq_loss_sum = (0.0f64, 0usize);
     while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
         brake.rest(&mut t0);
@@ -1782,6 +1860,39 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                         s.state.step, seq_loss_sum.1
                     );
                     log.write(&json!({"step": s.state.step, "seq_loss": l}))?;
+                    seq_loss_sum = (0.0, 0);
+                }
+            }
+        }
+        if let Some(sl) = &sleeps {
+            if s.state.rng.f64() < a.seq_frac {
+                seq_step = true;
+                let (g, b) = sl.sample(a.sleep_batch, &mut s.state.rng, a.pad_to);
+                let passes = a.sleep_passes[s.state.rng.below(a.sleep_passes.len())];
+                let how = crate::s2::memory::Sleep {
+                    passes,
+                    every: crate::s2::memory::SLEEP_EVERY,
+                    full: a.sleep_full,
+                };
+                let st = s.sleep_step(&b, lr_scale, qat, how)?;
+                if !st.loss.is_finite() {
+                    bail!(
+                        "non-finite sequence loss at step {} ({}, {passes} passes)",
+                        s.state.step,
+                        sl.games[g].0
+                    );
+                }
+                seq_loss_sum = (seq_loss_sum.0 + st.loss as f64, seq_loss_sum.1 + 1);
+                s.state.elapsed_secs = base + t0.elapsed().as_secs_f64();
+                if seq_loss_sum.1.is_multiple_of(50) {
+                    let l = seq_loss_sum.0 / seq_loss_sum.1 as f64;
+                    println!(
+                        "step {:>6} sequence loss {l:.4} (last 50 sequence steps, {})",
+                        s.state.step,
+                        progress_label(&a.progress, &s.state)
+                    );
+                    log.write(&json!({"step": s.state.step, "seq_loss": l,
+                        "elapsed_min": s.state.elapsed_secs / 60.0}))?;
                     seq_loss_sum = (0.0, 0);
                 }
             }

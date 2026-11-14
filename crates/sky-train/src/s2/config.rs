@@ -40,6 +40,10 @@ pub struct S2Config {
     /// frame's final latent through `carry_gate ⊙ LN(carry_norm)`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub temporal_carry: bool,
+    /// `docs/s6-sleep-prereg.md` §2: one fast-weight memory layer after each state block, kept
+    /// per stream from frame to frame and rewritten during sleep (see `s2::memory`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub memory: bool,
     /// SPEC-S6 §1: Parallax attention in the encoder blocks. `attn_qkv` holds a fourth
     /// projection, the probe `ρ`, normalized per head by `attn_px_norm`.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -246,6 +250,9 @@ impl S2Config {
         if self.is_audio() && (self.fuse_numbers || self.temporal_carry || self.ffn_es.is_some()) {
             bail!("state_kind audio: fuse_numbers, temporal_carry and ffn_es apply to text states only");
         }
+        if self.memory && (self.is_audio() || self.temporal_carry) {
+            bail!("memory: text states only, and not with temporal_carry");
+        }
         if let Some(es) = &self.ffn_es {
             if es.expand == 0 || es.fan_in == 0 || es.fan_in > self.hidden_size {
                 bail!("ffn_es: expand must be >= 1 and fan_in in 1..=hidden_size");
@@ -348,6 +355,7 @@ impl S2Config {
             fuse_numbers: false,
             state_loops: 1,
             temporal_carry: false,
+            memory: false,
             parallax: false,
             xsa: false,
             ffn_es: None,

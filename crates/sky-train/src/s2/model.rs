@@ -66,7 +66,7 @@ const BLOCK_MATRICES: [&str; 4] = [
 /// scorer's hidden layer `cls.weight`. `cls.output`, the embeddings
 /// (`token_embd`, `num_proj`, `type_embd`) and the norms are excluded.
 pub fn is_ternary(name: &str) -> bool {
-    if name == "cls.weight" {
+    if name == "cls.weight" || crate::s2::memory::is_ternary(name) {
         return true;
     }
     let enc = (name.starts_with("blk.") || name.starts_with("static.blk."))
@@ -209,6 +209,9 @@ fn specs(cfg: &S2Config, parts: S2Parts) -> Vec<(String, Vec<i32>, Init)> {
         // SPEC-S3 §7: zero gate, so a fresh carry model equals its cold one.
         out.push(("carry_gate.weight".to_string(), vec![d], Init::Zeros));
         out.push(("carry_norm.weight".to_string(), vec![d], Init::Ones));
+    }
+    if parts.decision && cfg.memory {
+        crate::s2::memory::specs(&mut out, cfg);
     }
     if parts.decision {
         out.push((
@@ -428,7 +431,7 @@ pub fn ternary_codes(w: &[f32], rows: usize, cols: usize) -> (Vec<i8>, Vec<f32>)
 
 /// The parameters as used by the forward pass: fake-quantized when `qat`,
 /// cast to bf16 when `cfg.bf16`.
-fn prepare<'a>(p: &'a ParamMap, cfg: &S2Config, qat: bool) -> R<Cow<'a, ParamMap>> {
+pub(crate) fn prepare<'a>(p: &'a ParamMap, cfg: &S2Config, qat: bool) -> R<Cow<'a, ParamMap>> {
     if !cfg.bf16 && !qat {
         return Ok(Cow::Borrowed(p));
     }
@@ -474,7 +477,7 @@ pub(crate) fn linear(x: &Array, weight: &Array, bias: Option<&Array>) -> R<Array
     }
 }
 
-fn to_f32(x: Array) -> R<Array> {
+pub(crate) fn to_f32(x: Array) -> R<Array> {
     if x.dtype() == Dtype::Float32 {
         Ok(x)
     } else {
@@ -733,10 +736,31 @@ fn state_exits(
 pub(crate) fn state_run(
     p: &ParamMap,
     cfg: &S2Config,
-    mut x: Array,
+    x: Array,
     valid: &Array,
     exits: &[usize],
 ) -> R<Vec<(Array, Array)>> {
+    Ok(state_run_mem(p, cfg, x, valid, exits, None)?.0)
+}
+
+/// What each state block writes to the memory after a frame: its output at its last application,
+/// `None` for a block the frame did not run.
+pub(crate) type Written = Vec<Option<Array>>;
+/// Per exit, the normalized hidden states and the raw ones.
+pub(crate) type ExitStates = Vec<(Array, Array)>;
+
+/// [`state_run`] with a fast-weight memory (`s2::memory`, one matrix stack per state block):
+/// after every application of block `l`, the hidden states read `mem[l]`, before the exit of
+/// that application is taken. Also returns, per block, its output at its last application
+/// (before the read): what the frame writes to the memory.
+pub(crate) fn state_run_mem(
+    p: &ParamMap,
+    cfg: &S2Config,
+    mut x: Array,
+    valid: &Array,
+    exits: &[usize],
+    mem: Option<&[Array]>,
+) -> R<(ExitStates, Written)> {
     let mask = padding_mask(valid)?;
     let rope = Rope::Sequential(cfg.rope_theta, cfg.head_dim() as i32);
     let last_app = exits
@@ -746,6 +770,7 @@ pub(crate) fn state_run(
         .unwrap_or(cfg.depth());
     let nb = cfg.state_layers;
     let mut out = Vec::with_capacity(exits.len());
+    let mut written: Written = vec![None; nb];
     for a in 0..last_app {
         let (lp, l) = (a / nb, a % nb);
         if l == 0 && lp > 0 {
@@ -758,6 +783,10 @@ pub(crate) fn state_run(
             _ => Some("attn_norm"),
         };
         x = block(p, cfg, &format!("blk.{l}"), norm, x, &mask, &rope)?;
+        if let Some(m) = mem {
+            written[l] = Some(x.clone());
+            x = crate::s2::memory::read(p, cfg, l, &x, &m[l])?;
+        }
         for &e in exits {
             if cfg.exits[e] == a + 1 {
                 out.push((
@@ -772,7 +801,7 @@ pub(crate) fn state_run(
             }
         }
     }
-    Ok(out)
+    Ok((out, written))
 }
 
 /// Fusion head + scorer for every exit at once: `m` `[B, K, d]` markers,
@@ -897,6 +926,41 @@ fn forward_prepared(
     n: usize,
     carry: Option<Carry<'_>>,
 ) -> R<(Array, Vec<Array>)> {
+    let (logits, raw, _) = forward_prepared_mem(p, cfg, b, n, carry, None)?;
+    Ok((logits, raw))
+}
+
+/// The state stream of a batch, embedded.
+fn embed_state(p: &ParamMap, cfg: &S2Config, b: &S2Batch) -> R<Array> {
+    if cfg.is_audio() {
+        embed_audio(p, &b.audio)
+    } else {
+        embed(p, &b.ids, &b.values, &b.has)
+    }
+}
+
+/// The state encoder alone at full depth, reading `mem`: what each state block writes to the
+/// memory (a sleep pass asks no question, so the static stream and the fusion head do not run).
+pub(crate) fn state_written(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    mem: &[Array],
+) -> R<Written> {
+    let x = embed_state(p, cfg, b)?;
+    Ok(state_run_mem(p, cfg, x, &b.valid, &[cfg.n_exits() - 1], Some(mem))?.1)
+}
+
+/// [`forward_prepared`] with an optional memory; the third value is what each state block
+/// writes to it (see [`state_run_mem`]).
+pub(crate) fn forward_prepared_mem(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    n: usize,
+    carry: Option<Carry<'_>>,
+    mem: Option<&[Array]>,
+) -> R<(Array, Vec<Array>, Written)> {
     let st = static_encode(
         p,
         cfg,
@@ -915,11 +979,7 @@ fn forward_prepared(
     let qt = flat
         .take_axis(b.q_idx.reshape(&[-1])?, 0)?
         .reshape(&[rows, tq, d])?;
-    let mut x = if cfg.is_audio() {
-        embed_audio(p, &b.audio)?
-    } else {
-        embed(p, &b.ids, &b.values, &b.has)?
-    };
+    let mut x = embed_state(p, cfg, b)?;
     if let Some(c) = carry {
         let ln = layer_norm(c.h, w(p, "carry_norm.weight")?, None, cfg.norm_eps)?;
         let term = ln.multiply(w(p, "carry_gate.weight")?)?;
@@ -927,10 +987,24 @@ fn forward_prepared(
         x = x.add(cast_like(term, &x)?.multiply(&on)?)?;
     }
     let used: Vec<usize> = (0..n).collect();
-    let run = state_run(p, cfg, x, &b.valid, &used)?;
+    let (run, written) = state_run_mem(p, cfg, x, &b.valid, &used, mem)?;
     let (hs, raw): (Vec<Array>, Vec<Array>) = run.into_iter().unzip();
     let logits = fusion(p, cfg, &m, &b.qtype, &hs, &b.valid, &qt, &b.q_valid)?;
-    Ok((logits, raw))
+    Ok((logits, raw, written))
+}
+
+/// Deep-supervision cross-entropy of one frame: `Σ_e w_e · CE(exit e)` against the soft
+/// targets, the mean over rows (`logits` `[E, B, K]`, `wts` `[E]`).
+pub(crate) fn frame_ce(logits: &Array, b: &S2Batch, wts: &Array) -> R<Array> {
+    let logits = masked(logits, &b.marker_mask)?;
+    let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+    let ce = b
+        .target
+        .multiply(&logp)?
+        .sum_axis(-1, None)?
+        .mean_axis(-1, None)?
+        .negative()?;
+    ce.multiply(wts)?.sum(None)
 }
 
 /// SPEC-S3 §7 sequence loss over `K` frames of the same rows: frame 0 cold,
@@ -955,15 +1029,7 @@ pub fn seq_loss(
         let on_t = on.index(t as i32);
         let carry = prev.as_ref().map(|h| Carry { h, on: &on_t });
         let (logits, raw) = forward_prepared(p, cfg, b, cfg.n_exits(), carry)?;
-        let logits = masked(&logits, &b.marker_mask)?;
-        let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
-        let ce = b
-            .target
-            .multiply(&logp)?
-            .sum_axis(-1, None)?
-            .mean_axis(-1, None)?
-            .negative()?;
-        let l = ce.multiply(wts)?.sum(None)?;
+        let l = frame_ce(&logits, b, wts)?;
         total = Some(match total {
             Some(x) => x.add(&l)?,
             None => l,
@@ -1286,7 +1352,7 @@ pub fn exit_logits(logits: &Array, e: i32) -> Array {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::{collections::HashMap, rc::Rc};
 
     use mlx_rs::transforms::keyed_value_and_grad;
@@ -1300,7 +1366,7 @@ mod tests {
         test_util,
     };
 
-    fn ladder(name: &str) -> S2Config {
+    pub(crate) fn ladder(name: &str) -> S2Config {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(format!("../../configs/{name}.json"));
         S2Config::load(path).unwrap()
@@ -2202,7 +2268,7 @@ mod tests {
         assert!(g[0].all_close(&c, 1e-6, 1e-6, None).unwrap());
     }
 
-    fn rec(t: &str, ins: &str, opts: &[&str], state: &str) -> DecisionRecord {
+    pub(crate) fn rec(t: &str, ins: &str, opts: &[&str], state: &str) -> DecisionRecord {
         DecisionRecord {
             src: "unit".into(),
             t: t.into(),
@@ -2216,7 +2282,7 @@ mod tests {
         }
     }
 
-    fn item(stat: usize, state: &Stream, k: usize, qtype: usize) -> S2Item {
+    pub(crate) fn item(stat: usize, state: &Stream, k: usize, qtype: usize) -> S2Item {
         let mut target = vec![0.0; k];
         target[0] = 1.0;
         S2Item {

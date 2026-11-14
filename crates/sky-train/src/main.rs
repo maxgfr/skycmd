@@ -405,6 +405,24 @@ enum Cmd {
         /// Probability that a warm frame starts cold anyway.
         #[arg(long, default_value_t = 0.3)]
         carry_drop: f64,
+        /// docs/s6-sleep-prereg.md: whole-sequence files (s2-seqgen output, one per game,
+        /// comma-separated). A step is a sequence batch with probability --seq-frac. With
+        /// `memory` in the config the model keeps a memory and sleeps; without it, each frame
+        /// is answered alone (the control arm, on the same batches).
+        #[arg(long, value_delimiter = ',')]
+        sleep_records: Vec<PathBuf>,
+        /// Shares of the games among the sequence batches: game=w,... (default: equal).
+        #[arg(long)]
+        sleep_weights: Option<String>,
+        /// Sequences per sequence batch.
+        #[arg(long, default_value_t = 16)]
+        sleep_batch: usize,
+        /// Sleep passes N drawn for each sequence batch (comma-separated; one value fixes N).
+        #[arg(long, value_delimiter = ',', default_value = "1,2,3,4")]
+        sleep_passes: Vec<usize>,
+        /// Backpropagate through every sleep pass instead of the last one only.
+        #[arg(long)]
+        sleep_full: bool,
         #[arg(long, default_value_t = 20)]
         log_every: u64,
         #[arg(long, default_value_t = 1000)]
@@ -505,6 +523,33 @@ enum Cmd {
         #[arg(long, default_value_t = 50)]
         max_pipes: u32,
         /// s2 tokenizer (default data/tok/tok-s2-<1024|2048>.json from the vocabulary size).
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
+    /// docs/s6-sleep-prereg.md: closed-loop play of a checkpoint on a memory probe (recall,
+    /// rule110) or an arena game, at the last exit, with the ternary weights. A model with a
+    /// memory is read once per value of --passes; a model without one answers each frame alone.
+    S2Probe {
+        /// Checkpoint directory (model.safetensors, config.json, tokenizer.json).
+        run: PathBuf,
+        #[arg(long)]
+        game: String,
+        /// Probes: the episodes are the first test-split seeds from this one upward. Arena
+        /// games: the seed of sky-arena.
+        #[arg(long)]
+        from_seed: u64,
+        #[arg(long)]
+        episodes: usize,
+        /// Sleep passes N to read (comma-separated; 1 = no sleep).
+        #[arg(long, value_delimiter = ',', default_value = "1,2,4")]
+        passes: Vec<usize>,
+        #[arg(long, default_value_t = 200)]
+        max_pipes: u32,
+        /// Read the float weights instead of the ternary ones.
+        #[arg(long)]
+        float: bool,
         #[arg(long)]
         tokenizer: Option<PathBuf>,
         #[arg(long)]
@@ -811,6 +856,11 @@ fn main() -> Result<()> {
             seq_records,
             seq_frac,
             carry_drop,
+            sleep_records,
+            sleep_weights,
+            sleep_batch,
+            sleep_passes,
+            sleep_full,
             log_every,
             eval_every,
             checkpoint_minutes,
@@ -843,6 +893,11 @@ fn main() -> Result<()> {
             seq_records,
             seq_frac,
             carry_drop,
+            sleep_records,
+            sleep_weights,
+            sleep_batch,
+            sleep_passes,
+            sleep_full,
             dis,
             exit_kd: exit_kd.map(|weight| ExitKd {
                 weight,
@@ -955,6 +1010,29 @@ fn main() -> Result<()> {
             if let Some(path) = json {
                 std::fs::write(path, serde_json::to_string_pretty(&r)?)?;
             }
+        }
+        Cmd::S2Probe {
+            run,
+            game,
+            from_seed,
+            episodes,
+            passes,
+            max_pipes,
+            float,
+            tokenizer,
+            json,
+        } => {
+            s2::probe::probe(&s2::probe::ProbeArgs {
+                run,
+                tokenizer,
+                game,
+                from_seed,
+                episodes,
+                passes,
+                max_pipes,
+                float,
+                json,
+            })?;
         }
         Cmd::S2Seqgen {
             games,

@@ -1,7 +1,7 @@
 //! Rollout harness: plays a game with a [`Policy`] and reports metrics.
 
 use crate::common::{argmax, DecisionGame, EpisodeStats, Event};
-use crate::{dodge, doom, flappy, rescue};
+use crate::{dodge, doom, flappy, recall, rescue, rule110};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
@@ -9,13 +9,19 @@ use serde::Serialize;
 /// Names of the games, in a stable order.
 pub const GAMES: [&str; 4] = [flappy::NAME, rescue::NAME, dodge::NAME, doom::NAME];
 
-/// Creates a game by name.
+/// Names of the memory probes (`docs/s6-sleep-prereg.md` §3). They are not part of [`GAMES`]:
+/// no arena gate and no default run plays them.
+pub const PROBES: [&str; 2] = [recall::NAME, rule110::NAME];
+
+/// Creates a game or a probe by name.
 pub fn make_game(name: &str, seed: u64) -> Option<Box<dyn DecisionGame>> {
     match name {
         flappy::NAME => Some(Box::new(flappy::Flappy::new(seed))),
         rescue::NAME => Some(Box::new(rescue::Rescue::new(seed))),
         dodge::NAME => Some(Box::new(dodge::Dodge::new(seed))),
         doom::NAME => Some(Box::new(doom::Doom::new(seed))),
+        recall::NAME => Some(Box::new(recall::Recall::new(seed))),
+        rule110::NAME => Some(Box::new(rule110::Rule110::new(seed))),
         _ => None,
     }
 }

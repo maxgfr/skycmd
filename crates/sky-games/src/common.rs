@@ -201,6 +201,12 @@ pub trait DecisionGame {
     /// Advances one tick, holding the last decision.
     fn tick(&mut self) -> StepOutcome;
     fn stats(&self) -> EpisodeStats;
+    /// True when the game is at a pause before the next decision (a level change, the end of a
+    /// cue): nothing is asked for a while, and a model that sleeps may do it now
+    /// (`docs/s6-sleep-prereg.md` §2). Games without pauses never report one.
+    fn pause(&self) -> bool {
+        false
+    }
     /// Enables or disables the safety reflex (no-op for games without one).
     fn set_veto(&mut self, _on: bool) {}
     /// Render data as JSON.
