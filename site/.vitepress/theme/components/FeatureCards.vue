@@ -12,7 +12,7 @@ const tiny = computed(() =>
 const fast = computed(() =>
   live.medianUs > 0 && live.status === 'model'
     ? `${formatInt(live.medianUs)} µs per decision right now, in WASM with SIMD128, on the main thread.`
-    : 'One forward pass per question, no token generation: well under a millisecond per decision in WASM with SIMD128.',
+    : 'One forward pass per question, no token generation: s3-pico takes 49.6 µs per Flappy frame (two questions and the physics) in WASM with SIMD128, under Node on the build machine.',
 )
 </script>
 
