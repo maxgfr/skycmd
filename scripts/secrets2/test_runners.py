@@ -89,6 +89,36 @@ class Guards(unittest.TestCase):
         with self.assertRaises(common.Refused):
             common.corpus("creddata")
 
+    def test_the_test_split_needs_the_file_and_a_threshold(self):
+        # with a stand-in for runs/s6-secrets2/TEST-OPEN and for splits.json: the file alone is
+        # not enough, the model must carry tau*
+        real = (common.TEST_OPEN, common.load_splits, os.environ.pop("SECRETS2_MODEL", None))
+        with tempfile.TemporaryDirectory() as d:
+            try:
+                common.load_splits = lambda: SPLITS
+                common.TEST_OPEN = os.path.join(d, "TEST-OPEN")
+                with_tau, without = os.path.join(d, "a.gguf"), os.path.join(d, "b.gguf")
+                with open(with_tau, "wb") as f:
+                    f.write(gguf({common.TAU_KEY: 0.3}))
+                with open(without, "wb") as f:
+                    f.write(gguf({"general.name": "m"}))
+                with self.assertRaises(common.Refused):
+                    common.open_split("test", with_tau)  # no TEST-OPEN
+                open(common.TEST_OPEN, "w").close()
+                for model in (None, without, os.path.join(d, "missing.gguf")):
+                    with self.assertRaises(common.Refused):
+                        common.open_split("test", model)
+                split = common.open_split("test", with_tau)
+                self.assertEqual((split.repos, split.largest), (["dddddddd", "eeeeeeee"], "dddddddd"))
+                with self.assertRaises(common.Refused):
+                    split.check("data/bbbbbbbb/src/f.py")  # a validation file, in a test run
+                # the other splits never need either
+                self.assertEqual(common.open_split("validation").repos, ["bbbbbbbb", "cccccccc"])
+            finally:
+                common.TEST_OPEN, common.load_splits = real[0], real[1]
+                if real[2] is not None:
+                    os.environ["SECRETS2_MODEL"] = real[2]
+
     def test_flags_round_trip(self):
         with tempfile.TemporaryDirectory() as d:
             flags = [common.flag("bbbbbbbb", "data/bbbbbbbb/src/f.py", 3, 3, 4, 9, score=0.123456789, rule="r", id=7),
