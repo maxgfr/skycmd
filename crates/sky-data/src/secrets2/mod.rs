@@ -5,7 +5,8 @@
 //!   the weak negatives, the decontamination against the test repositories (3.1);
 //! - [`issues`]: the issue-report train and validation splits as candidate records, their
 //!   decontamination against the test split and the replacement of every real value (3.2);
-//! - [`replace`]: the word-preserving shape replacement.
+//! - [`replace`]: the word-preserving shape replacement;
+//! - [`synth`]: synthetic candidates (3.3).
 //!
 //! One record format serves the three sources: the candidate record of the generator
 //! `sg-cand-1` ([`CandRecord`]), and one state builder, `sky_infer::secret_cand`, which the
@@ -18,6 +19,7 @@
 pub mod cred;
 pub mod issues;
 pub mod replace;
+pub mod synth;
 
 use std::collections::BTreeMap;
 use std::io::Read;
