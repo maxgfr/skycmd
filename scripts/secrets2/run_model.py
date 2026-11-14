@@ -11,6 +11,11 @@ format. The engine is the shipping one (`sky-eval`, native), at full depth.
       Writes DIR/model-latency.json: median microseconds per candidate at both depths (the
       records of the real question), accuracy and ECE of the real question at each exit,
       parameters and file size.
+  run_model.py wasm    --model M.gguf --dump DIR/model-dump.jsonl --out DIR
+      section 7.5, reported: crates/sky-web/bench/parity-node.mjs on the first 200 candidates
+      of the dump (their real question), on a copy of the file whose exit thresholds are set
+      to 1 (amendment 13 of docs/s6-gen-prereg.md). Writes DIR/model-wasm.json: max
+      |p_wasm - p_native|, argmax agreement, median microseconds. A parity failure is kept.
   run_model.py convert --model M.gguf --dump DIR/model-dump.jsonl --table T.jsonl
                        --corpus creddata:validation --out FLAGS [--system model]
       one flag per candidate with score = P(real), the threshold being tau* read from the
@@ -143,6 +148,37 @@ def run_eval(model, records, split, out):
     return latency
 
 
+def wasm(model, dump, out, n=200):
+    main = common.main_checkout()
+    script = os.path.join(main, "crates", "sky-web", "bench", "parity-node.mjs")
+    gguf_set = os.path.join(os.path.dirname(sky_eval()), "gguf-set")
+    if not os.path.isfile(os.path.join(main, "site", "public", "pkg", "sky_web.js")):
+        raise common.Refused(f"{main}/site/public/pkg: no WASM build (scripts/build-wasm.sh)")
+    if not os.path.isfile(gguf_set):
+        raise common.Refused(f"{gguf_set}: no gguf-set binary")
+    os.makedirs(out, exist_ok=True)
+    real = os.path.join(out, "model-dump-real.jsonl")
+    with open(real, "w") as f:
+        k = 0
+        for d in read_jsonl(dump):
+            if d.get("t") == "noul" and d.get("ins") == Q_REAL:
+                f.write(json.dumps(d) + "\n")
+                k += 1
+                if k == n:
+                    break
+    full = os.path.join(out, "full-depth.gguf")
+    subprocess.run([gguf_set, model, full, "skycmd-s2.exit_threshold.choice=1", "skycmd-s2.exit_threshold.score=1", "skycmd-s2.exit_threshold.noul=1"],
+                   check=True, capture_output=True)
+    r = subprocess.run(common.nice([os.environ.get("NODE", "node"), script, full, real, "--n", str(n)]), capture_output=True, text=True)
+    try:
+        result = json.loads(r.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        raise common.Refused(f"parity-node.mjs gave no result (exit {r.returncode})")
+    result["parity"] = r.returncode == 0
+    common.write_json(os.path.join(out, "model-wasm.json"), result)
+    return result
+
+
 def convert(model, dump, table, corpus_name, out, system):
     tau = common.model_tau(model)
     scores, kind = dump_to_scores(candidates.read_table(table), read_jsonl(dump))
@@ -154,7 +190,7 @@ def convert(model, dump, table, corpus_name, out, system):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("what", choices=("eval", "convert"))
+    ap.add_argument("what", choices=("eval", "wasm", "convert"))
     ap.add_argument("--model", required=True)
     ap.add_argument("--records")
     ap.add_argument("--split", default="val")
@@ -167,6 +203,8 @@ def main():
     try:
         if a.what == "eval":
             print(json.dumps(run_eval(a.model, a.records, a.split, a.out), indent=1))
+        elif a.what == "wasm":
+            print(json.dumps(wasm(a.model, a.dump, a.out)))
         else:
             common.corpus(a.corpus)  # the guard of the split
             meta = convert(a.model, a.dump, a.table, a.corpus, a.out, a.system)

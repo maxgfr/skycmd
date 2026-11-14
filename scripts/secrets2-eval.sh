@@ -143,6 +143,8 @@ trained() {
         continue
       fi
       nice -n 19 "$E/envs/$kind/bin/python" -I $S/run_lr.py train --kind "$kind" --tables "$build/tables" --out "$E/$kind" >/dev/null
+      # the value-only probe (section 9): trained on training, scored on validation
+      [ "$kind" != lr ] || nice -n 19 "$E/envs/lr/bin/python" -I $S/run_lr.py probe --tables "$build/tables" --out "$E/value-probe.json" >/dev/null
     elif [ ! -f "$E/$kind/$kind.json" ]; then
       echo "== $name: not trained (run the validation split first): skipped"
       continue
@@ -170,6 +172,8 @@ model() {
     fi
     py $S/run_model.py eval --model "$MODEL" --records "$(records "$t")" --split "$short" --out "$out/model/$t" >/dev/null
     py $S/run_model.py convert --model "$MODEL" --dump "$out/model/$t/model-dump.jsonl" --table "$(table "$t")" --corpus "$corpus" --out "$dir"
+    # the WASM figure is reported, not gated: a parity failure stays in model-wasm.json
+    [ "$t" != creddata ] || py $S/run_model.py wasm --model "$MODEL" --dump "$out/model/$t/model-dump.jsonl" --out "$out/model/$t" >/dev/null || true
   done < <(corpora)
   if [ -f "$E/clean/states/clean.jsonl" ] && [ -f "$E/clean/states/clean.records.jsonl" ]; then
     py $S/run_model.py eval --model "$MODEL" --records "$E/clean/states/clean.records.jsonl" --split "$short" --out "$E/clean/model" >/dev/null
@@ -198,7 +202,8 @@ gate() {
   [ "$seat" = model ] || dir=$out/seat-$seat
   # A failed gate is a result, not a crash: it stays in results.md.
   py scripts/s6-secrets2-gate.py --scores "$out/scores.json" --issues "$out/issues.json" --clean "$E/clean/clean.json" \
-    --latency "$out/model/creddata/model-latency.json" --model "$seat" --out-dir "$dir" >/dev/null || {
+    --latency "$out/model/creddata/model-latency.json" --wasm "$out/model/creddata/model-wasm.json" --probe "$E/value-probe.json" \
+    --model "$seat" --out-dir "$dir" >/dev/null || {
     [ -s "$dir/results.md" ] || exit 1
     echo "== gate not passed or not the test: see $dir/results.md"
   }

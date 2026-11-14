@@ -7,6 +7,8 @@ Reads what scripts/secrets2-eval.sh writes in the data folder (hashes and number
   issues.json        scripts/secrets2/issues.py score: the issue-report split
   clean.json         scripts/secrets2/clean_text.py share: the clean-text corpus
   model-latency.json scripts/secrets2/run_model.py eval: native latency, size, exits
+  model-wasm.json    scripts/secrets2/run_model.py wasm: WASM parity and latency (reported)
+  value-probe.json   scripts/secrets2/run_lr.py probe: the value-only probe (reported)
 
 The model is published only if all of these hold, on the TEST split, ternary GGUF, full depth,
 tau* from validation:
@@ -24,7 +26,8 @@ of category exactly "UUID" are removed (amendment 2); the full-universe numbers 
 next to them. G7 is read on the corpus as the census read it (no source path).
 
 Usage: s6-secrets2-gate.py --scores scores.json [--issues issues.json] [--clean clean.json]
-           [--latency model-latency.json] [--model model] --out-dir DIR
+           [--latency model-latency.json] [--wasm model-wasm.json] [--probe value-probe.json]
+           [--model model] --out-dir DIR
 Writes DIR/results.md and DIR/gate.json. Exit status 0 when the gate passes, 1 otherwise. On a
 split other than test the same computation is a rehearsal and says so; `--model lr` puts
 another system in the model's seat to rehearse the gate before a model exists.
@@ -159,7 +162,7 @@ def gates(scores, issues, clean, latency, model):
     return out, goal
 
 
-def results(scores, issues, clean, latency, model, g, goal):
+def results(scores, issues, clean, latency, model, g, goal, wasm=None, probe=None):
     split = scores["split"]
     systems = scores["systems"]
     names = ordered(systems, model)
@@ -289,7 +292,18 @@ def results(scores, issues, clean, latency, model, g, goal):
         if latency.get("exits"):
             L += ["| exit | accuracy (real question) | ECE |", "|---:|---:|---:|"] + [f"| {e['exit']} | {fmt(e['accuracy'])} | {fmt(e['ece'])} |" for e in latency["exits"]] + [""]
 
+    if wasm:
+        L += [f"WASM ({wasm['n']} candidates, thresholds at 1): median {wasm['median_wasm_us']:.0f} µs, max |p_wasm - p_native| {wasm['max_abs_diff']:.2e}, "
+              f"argmax agree {wasm['argmax_agree']}.", ""]
+    if probe:
+        L += ["## Value-only probe (section 9)", "",
+              f"A logistic regression on the value's own features ({', '.join(probe['features'])}), trained on {probe['training_candidates']} labelled CredData training candidates, "
+              f"scored on {probe['validation_candidates']} CredData validation candidates ({probe['validation_positives']} positives): PR-AUC {fmt(probe['pr_auc'])} "
+              f"(the share of positives is {fmt(probe['share_of_positives'])}), ROC-AUC {fmt(probe['roc_auc'])}, best F1 {fmt(probe['best_f1'])}. "
+              "A high score means the shape of a value alone separates T from F and X.", ""]
+
     L += ["## Gate", ""]
+
     def two(name, text):
         for part, label in PARTS:
             p = g[name]["parts"].get(part)
@@ -328,6 +342,8 @@ def main():
     ap.add_argument("--issues")
     ap.add_argument("--clean")
     ap.add_argument("--latency")
+    ap.add_argument("--wasm")
+    ap.add_argument("--probe")
     ap.add_argument("--model", default="model", help="the system in the model's seat (default: model)")
     ap.add_argument("--out-dir", required=True)
     a = ap.parse_args()
@@ -337,7 +353,7 @@ def main():
         return 1
     issues, clean, latency = maybe(a.issues), maybe(a.clean), maybe(a.latency)
     g, goal = gates(scores, issues, clean, latency, a.model)
-    md, ok, verdict = results(scores, issues, clean, latency, a.model, g, goal)
+    md, ok, verdict = results(scores, issues, clean, latency, a.model, g, goal, maybe(a.wasm), maybe(a.probe))
     os.makedirs(a.out_dir, exist_ok=True)
     with open(os.path.join(a.out_dir, "results.md"), "w") as f:
         f.write(md)

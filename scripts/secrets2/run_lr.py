@@ -32,6 +32,14 @@ negatives, issues, synth), every candidate once, weighted so that the three sour
 0.45 / 0.35 / 0.20 as in the model's training mix (section 3.4).
 
 `score` writes one flag per candidate of the table, with its score and the chosen threshold.
+
+  .../envs/lr/bin/python -I scripts/secrets2/run_lr.py probe --tables BUILD/tables --out FILE
+the value-only probe of section 9: LogisticRegression(max_iter=1000) on the eight features of
+section 4.2 that are read from the value alone (length, entropy, characters per token, the four
+character counts, the longest word run), standardised; trained on the labelled CredData
+training candidates (no weak negative), scored on the CredData validation candidates. A high
+score means the shape of a value alone separates T from F and X, i.e. CredData's obfuscation
+is readable. Writes FILE (PR-AUC, ROC-AUC, the best F1 over thresholds).
 """
 import argparse
 import json
@@ -226,6 +234,37 @@ def train(tables, out, kind):
     return report
 
 
+VALUE_FEATURES = ("len", "entropy", "chars_per_token", "digits", "upper", "lower", "other", "word_run")
+
+
+def probe(tables, out):
+    import numpy as np
+    from sklearn.linear_model import LogisticRegression
+
+    files = table_files(tables)
+    train_rows = [r for r in candidates.read_table(files["creddata-train.jsonl"]) if not r.get("weak")]
+    val = list(candidates.read_table(files["creddata-val.jsonl"]))
+    if any(r.get("split") != "train" for r in train_rows) or any(r.get("split") != "val" for r in val):
+        raise common.Refused("the probe reads the CredData training and validation tables only")
+    x = lambda rows: np.array([[float(r["features"][k]) for k in VALUE_FEATURES] for r in rows])
+    y = lambda rows: np.array([int(r["real"]) for r in rows])
+    mean, std = x(train_rows).mean(axis=0), x(train_rows).std(axis=0)
+    std[std == 0] = 1.0
+    clf = LogisticRegression(max_iter=1000).fit((x(train_rows) - mean) / std, y(train_rows))
+    p = clf.predict_proba((x(val) - mean) / std)[:, 1]
+    items = [(float(a), bool(b)) for a, b in zip(p, y(val))]
+    pos = [a for a, b in items if b]
+    neg = [a for a, b in items if not b]
+    wins = sum((a > b) + 0.5 * (a == b) for a in pos for b in neg)
+    t, f1 = scorer.best_f1_threshold(items)
+    report = {"what": "value-only probe (section 9): logistic regression on the value's own features", "features": list(VALUE_FEATURES),
+              "training_candidates": len(train_rows), "training_positives": int(y(train_rows).sum()), "validation_candidates": len(val),
+              "validation_positives": len(pos), "pr_auc": scorer.pr_auc(items), "roc_auc": wins / (len(pos) * len(neg)) if pos and neg else None,
+              "best_f1": f1, "best_f1_threshold": t, "share_of_positives": len(pos) / len(val) if val else None}
+    common.write_json(out, report)
+    return report
+
+
 def load(model_dir, kind):
     report = common.load_json(os.path.join(model_dir, f"{kind}.json"))
     path = os.path.join(model_dir, report["model_file"]["name"])
@@ -255,7 +294,7 @@ def score(model_dir, kind, table, corpus_name, out, system=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("what", choices=("train", "score"))
+    ap.add_argument("what", choices=("train", "score", "probe"))
     ap.add_argument("--kind", choices=("lr", "potion"), default="lr")
     ap.add_argument("--tables")
     ap.add_argument("--model")
@@ -268,6 +307,8 @@ def main():
         if a.what == "train":
             r = train(a.tables, a.out, a.kind)
             print(json.dumps({k: v for k, v in r.items() if k != "tables"}, indent=1))
+        elif a.what == "probe":
+            print(json.dumps(probe(a.tables, a.out), indent=1))
         else:
             common.corpus(a.corpus)  # the guard of the split
             meta = score(a.model, a.kind, a.table, a.corpus, a.out, a.system)

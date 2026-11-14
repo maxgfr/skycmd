@@ -232,6 +232,19 @@ class Gate(unittest.TestCase):
         self.assertIn("`lr` sits in the model's seat", md)
         self.assertFalse(g["G3"]["holds"])  # the LR is not better than itself
 
+    def test_reported_extras(self):
+        s, i, c, l = passing()
+        g, goal = gate.gates(s, i, c, l, "model")
+        wasm = {"n": 200, "max_abs_diff": 9e-7, "argmax_agree": 200, "median_wasm_us": 3900.0}
+        probe = {"features": ["len", "entropy"], "training_candidates": 100, "validation_candidates": 50, "validation_positives": 10,
+                 "pr_auc": 0.61, "roc_auc": 0.8, "best_f1": 0.6, "share_of_positives": 0.2}
+        md, ok, _ = gate.results(s, i, c, l, "model", g, goal, wasm, probe)
+        self.assertTrue(ok)
+        self.assertIn("WASM (200 candidates, thresholds at 1): median 3900 µs", md)
+        self.assertIn("PR-AUC 0.6100", md)
+        # reported, never read by a gate
+        self.assertEqual(gate.gates(s, i, c, l, "model")[0], g)
+
     def test_files_and_exit_status(self):
         with tempfile.TemporaryDirectory() as d:
             paths = {}
