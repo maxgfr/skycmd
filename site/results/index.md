@@ -9,7 +9,7 @@ Every model on this page was judged against criteria fixed before any test run, 
 
 ## s6 (November 2026)
 
-s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md) and s6-secrets-pico in [`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md), all frozen before their training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). s6-cast is still training.
+s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md), s6-secrets-pico in [`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) and s6-cast-pico in [`docs/s6-cast-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md), all frozen before their training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). The five models were trained in one run, from 12 to 14 November; its final report, with every phase, incident and gate, is [`docs/big-run-report.md`](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md).
 
 ### In short
 
@@ -17,6 +17,7 @@ s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://gi
 - **s6-secrets-pico passes its gate** and is published, at full depth. 445,345 ternary parameters (250 KB): on a synthetic bench of file types it never saw, secret 0.9990 and service 0.9795, where a gitleaks-style rule scanner scores 0.977 and 0.787. Its line answer is weak (0.6859). **On real text it fails:** measured after publication on 719 real files with no secret, it flags 59.8% of them at p ≥ 0.9 and 49.4% at p ≥ 0.999. It stays published as the result of its pre-registration, not as a scanner ([below](#s6-secrets-real-text)).
 - **s6-micro fails on calibration only.** 0.547 on the bench (gate 0.45 and announced goal 0.50 both met), but ECE 0.0821 at full depth and 0.0804 at its conformal thresholds, above the 0.08 guard. It is not published.
 - **s6-ear-nano fails three of its four gates.** End of turn 0.5681 against 0.8518 for Smart Turn v3.2, and its own control without the Mimi pretraining does better on all four sets. It is not published.
+- **s6-cast-pico fails its gate on both metrics.** On GIFT-Eval it scores nGMASE 0.9471 and nWQL 0.6646, against bars of 0.838 and 0.587 (the training-free FLAIR) and TinyCast's 0.774 / 0.545. It is not published ([below](#s6-cast-pico-failed)).
 - **The s6 additions were not adopted.** The pre-registered pico ablation kept none of them: no Muon, no Parallax, no XSA, no SODA, no exit distillation, no EMA, no StableQAT, no curriculum. s6-nano is the s3 architecture at language scale, as in s4, trained with AdamW. What changed from s3-pico and s4-micro is the pretraining (0.87B tokens, 588 per parameter), the GLM-5.3-flash teacher, a larger tokenizer and wider windows. No ablation separates these causes, so none of them is claimed on its own.
 
 ### s6-nano: passed, published at full depth
@@ -90,6 +91,23 @@ Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
 - **The pretraining did not help** in this run: the control, trained the same way from a random init, is more accurate on every set. The pretraining itself worked as a task (codebook-0 accuracy 0.2196 on masked val frames, 45 times its technical bar).
 - **Size:** 1,532,449 parameters, 5.2 times fewer than Smart Turn v3.2. The verdicts are the same at the conformal thresholds.
 - **Not reported:** the precision and recall of the end-of-turn answers, which the pre-registration asks for, were not computed by the run (Smart Turn v3.2: 0.783 and 0.971).
+
+### s6-cast-pico: failed {#s6-cast-pico-failed}
+
+A probabilistic forecaster: the s6 encoder on patches of 32 points, 2,048 points of context, nine deciles for each of the next 64 steps, ternary weights and an exit after each loop. 369,792 parameters, 142,912 bytes, trained for 480 working minutes (250,092 steps) on synthetic series and permissive real series, with TinyCast as a teacher whose weight falls to 0. GIFT-Eval, 97 configurations, every score divided by the seasonal naive, lower is better (`data/gift-eval-out/*/summary.json`):
+
+| model | nGMASE | nWQL |
+|---|---:|---:|
+| **s6-cast-pico** (without flip, the reported model) | **0.9471** | **0.6646** |
+| s6-cast-pico, with flip | 0.9099 | 0.6417 |
+| gate: FLAIR, training-free | 0.838 | 0.587 |
+| goal: TinyCast as published (146,505 parameters) | 0.774 | 0.545 |
+| TinyCast, our port, same harness | 0.7856 | 0.5570 |
+| seasonal naive, same harness | 0.9999 | 0.8876 |
+
+- **The gate fails on both metrics** (result), and so does the goal of beating TinyCast. With flip the model still misses both bars. It is not published, and the [Forecast](/forecast/) page runs TinyCast, Timestral-5M and the seasonal naive only.
+- **Where it fails** (result). It beats the seasonal naive on average, but its point forecasts are worse than the seasonal naive at the medium and long horizons (MASE ratio 1.046 and 1.105) and in the Energy and Econ/Fin domains; our TinyCast port has a lower MASE in 86 of the 97 configurations. The worst are the 10-minute solar series at medium and long horizons, with MASE ratios of 2.282 and 2.729 to the seasonal naive.
+- **Not measured** by the run: the latency, the mean number of exits used on GIFT-Eval, and the gap to Timestral-5M, whose GIFT-Eval scores are not in the repository. The picture by domain and term is in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md) and [`docs/big-run-report.md`](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md).
 
 ## s5 (October 2026)
 
