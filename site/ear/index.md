@@ -10,7 +10,11 @@ outline: [2, 2]
 - has the speaker finished their turn?
 - which word was said?
 
-It has 1.6M parameters, a fifth of Smart Turn v3.2. It runs here in WebAssembly, log-mel front-end included, and the audio never leaves your browser. Below its conformal threshold, it says it would hand the clip to a larger model: that is the System 1 of a voice agent ([how it works](/tutorial/26-s6-ear)).
+::: warning Not published yet
+The first s6-ear-nano failed three of its four pre-registered gates (end of turn 0.5681 against 0.8518 for Smart Turn v3.2), so there is no model to load on this page. The numbers are on the [results page](/results/#s6-ear-nano-failed).
+:::
+
+It has 1.5M parameters, about a fifth of Smart Turn v3.2. It runs here in WebAssembly, log-mel front-end included, and the audio never leaves your browser. Below its conformal threshold, it says it would hand the clip to a larger model: that is the System 1 of a voice agent ([how it works](/tutorial/26-s6-ear)).
 
 <ClientOnly>
   <EarDemo />

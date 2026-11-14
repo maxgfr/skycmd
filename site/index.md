@@ -40,6 +40,12 @@ hero:
 
 <FeatureCards />
 
+<div class="home-s6">
+
+**New, November 2026: s6-nano.** One 715 KB ternary model plays the four games at the oracle's level and answers typed questions in free text: 0.480 on `typed_decisions_bench`, above the majority class (0.398) where the earlier small models stayed below it, with an ECE of 0.0479. It passed a gate fixed before training, and its two siblings that missed theirs are reported too: s6-micro on calibration, s6-ear-nano on three of four gates. [Try it on Live](./live/#s6-nano-the-questions-it-was-trained-for) · [Results](./results/#s6-november-2026) · [What it shows](./novelty/#_8-what-s6-adds-trained-in-november-2026)
+
+</div>
+
 <div class="links-row">
   <a href="./play/">Play the games</a>
   <a href="./play/?game=rescue">Rescue Run</a>
@@ -47,7 +53,8 @@ hero:
   <a href="./play/?game=doom">Doom-like</a>
   <a href="./live/">Live: ask s5-lite anything</a>
   <a href="./forecast/">Forecast: TinyCast and Timestral-5M in the browser</a>
-  <a href="./results/">s5 results, failures included</a>
+  <a href="./live/#s6-nano-the-questions-it-was-trained-for">s6-nano: games and typed questions, 715 KB</a>
+  <a href="./results/">s6 and s5 results, failures included</a>
   <a href="https://huggingface.co/maxgfr">Models on Hugging Face</a>
   <a href="./install/">Install</a>
   <a href="./tutorial/01-why-tiny-decision-models">Start the tutorial</a>

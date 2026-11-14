@@ -1,6 +1,6 @@
 # 26 s6-ear: a decision model that listens
 
-*Code ready and tested end to end on a small sample (3 November 2026). No model is trained yet, so this chapter has no results: the gates below will say whether it ships.*
+*Code ready and tested end to end on a small sample (3 November 2026). The first s6-ear-nano was trained in November 2026 and failed three of its four gates, so it is not published: the [result](#the-first-run-three-gates-failed) is at the end of this chapter.*
 
 Every model so far reads its state as text. s6-ear reads **audio**: the last 10 seconds of speech, at 16 kHz. It answers typed questions about them with the same engine, the same GGUF format, the same early exits and the same WASM build as the game models. These are the decisions a voice agent needs every 80 ms: has the speaker finished, which word was said, and later whether to keep listening, acknowledge, speak or yield.
 
@@ -15,7 +15,7 @@ The codecs themselves are not small:
 | Mimi encoder (Kyutai) | about 48M |
 | SNAC | 19.8M |
 | EnCodec | 15M |
-| **s6-ear-nano, the whole decision model** | **1.6M** |
+| **s6-ear-nano, the whole decision model** | **1.5M** (1,532,449 trained; 1.6M with Parallax, which the s6 ablation did not adopt) |
 
 Two published results settle the design:
 
@@ -44,7 +44,7 @@ The same file runs natively, in the browser and in the data pipeline that writes
 - **The question stays text.** The question and its options are still BPE text in the static stream, so you can ask about words the model never heard in training. A classic keyword spotter has a fixed output layer and cannot do that.
 - **The format.** Two GGUF keys, `state_kind = "audio"` and `audio_frame = 320`. A file without them is an ordinary text model, byte for byte.
 
-**Parameters** (fixed by a test): 1,615,681 for the decision model, which is s6-nano plus the 46,224 of `audio_proj`. That is 1/5 of Smart Turn v3.2, the 8M end-of-turn detector we compare against.
+**Parameters** (fixed by a test): 1,615,681 for the decision model, which is s6-nano plus the 46,224 of `audio_proj`. That is 1/5 of Smart Turn v3.2, the 8M end-of-turn detector we compare against. The trained model has 1,532,449, because the s6 ablation did not adopt Parallax and its probe rows.
 
 ## Pretraining: "Mimi as the teacher"
 
@@ -103,7 +103,7 @@ MAX_CLIPS=200 scripts/train-ear.sh data      # smoke data: 200 clips per set
 scripts/train-ear.sh data pretrain decide eval
 ```
 
-The [Listen](/ear/) page runs it on your microphone or on sample clips once the model ships. In your own page:
+The [Listen](/ear/) page runs it on your microphone or on sample clips once a model passes its gates. In your own page:
 
 ```js
 const r = JSON.parse(engine.decideAudio('noul', 'Has the speaker finished their turn?',
@@ -114,3 +114,21 @@ The measured costs in the smoke run, both at full depth:
 
 - **Native:** 0.6 ms per decision for 1 s of audio and 5 ms for 10 s, log-mel included.
 - **WASM:** 0.67 ms per decision (median over 20 clips).
+
+## The first run: three gates failed
+
+Trained in November 2026 in a throttled mode, so the budgets count working minutes: 48,626 pretraining steps, then 48,205 decision steps. A first decision run of 31,480 steps was discarded before any evaluation because it ran in swap ([amendment 4](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md)). The control, the same model without the Mimi pretraining, did 49,131 steps. Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
+
+| gate | s6-ear-nano | control | bar | verdict |
+|---|---:|---:|---:|---|
+| end of turn (31,527 clips) | 0.5681 | 0.7647 | 0.8518, Smart Turn v3.2 | fail |
+| Speech Commands, 12 classes | 0.8885 | 0.9217 | 0.90 | fail |
+| zero-shot keywords, English | 0.2100 | 0.3020 | 0.20 | pass |
+| zero-shot keywords, French | 0.1330 | 0.1520 | 0.20 | fail |
+
+- **The pretraining task was learned.** Codebook-0 accuracy on masked validation frames reached 0.2196, 45 times the technical bar of 10/2048.
+- **It did not transfer.** The control, starting from random weights, is more accurate on every set: in this run, the Mimi pretraining brought nothing to the decisions.
+- **The verdicts do not change at the conformal thresholds.** There the model uses 3.42 of its 4 passes on average.
+- **Not computed by the run:** the precision and recall of its end-of-turn answers, which the pre-registration asks for. Smart Turn v3.2 has 0.783 and 0.971.
+
+The model is not published, and the [Listen](/ear/) page has no model to load.

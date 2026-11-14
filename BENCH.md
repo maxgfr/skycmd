@@ -217,7 +217,7 @@ The carry does not reduce depth: warm frames use as many layers as cold ones, wi
 
 ## skycmd-s6 (s6-pico): Parallax attention and Muon v2, code only
 
-`docs/SPEC-S6.md`. No s6 model is trained yet. These are costs on random data, Apple M5, two runs each (the range shown):
+`docs/SPEC-S6.md`. These costs were measured before any s6 training, on random data, Apple M5, two runs each (the range shown). The pre-registered pico ablation then adopted none of these additions (`runs/recipe/recipe.json`); the trained s6 models are in the sections below.
 
 | | s3-pico | s6-pico |
 |---|---:|---:|
@@ -288,3 +288,75 @@ Pre-registration: [`docs/s5-prereg.md`](docs/s5-prereg.md) and its three amendme
 - **Inits.** Every A′ and B-i run starts from `ettin-reranker-17m`, the init chosen on validation.
 - **Quantization.** q8_0 changes the bench ECE of the B-i finalists by −0.0024, −0.0003 and −0.0005, and their accuracy by at most 0.3 points.
 - **In the browser.** The /live model answers a 6-option question in about 20 ms in headless Chrome (wasm, SIMD128), and its state is reused across questions.
+
+## skycmd-s6 (s6-nano, s6-micro): general-purpose decisions and games, pre-registered
+
+Pre-registration: [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), its gates in §6 and its amendments 1 to 11. Results: `runs/s6-nano/eval/results.md` and `runs/s6-micro/eval/results.md` (`scripts/s6-gate.py`), with the JSON files next to them.
+
+**Recipe.** Chosen by the pre-registered rules of the pico ablation (`runs/recipe/recipe.json`): AdamW, learning-rate scale 2.0, and none of the additions (no Muon, Parallax, XSA, SODA, exit distillation, EMA, StableQAT or curriculum; each missed its pre-registered gain or lost a game). The rate pilots kept ×1 for s6-nano and ×0.5 for s6-micro. Without the Parallax probe rows, s6-nano has 1,486,225 parameters instead of the 1,569,457 of the pre-registration; s6-micro has the s4-micro shape, 5,587,201. The GLM-5.3-flash teacher labelled 747,077 of the 747,198 selected training questions (0.9998, `runs/all/nano-glm.log`).
+
+**Runs.** Throttled mode (a duty cycle and cooling pauses, amendments 4 to 10), so the budgets count working minutes only. Steps actually done:
+
+| phase | s6-nano budget | s6-nano steps | s6-micro budget | s6-micro steps |
+|---|---:|---:|---:|---:|
+| MLM pretraining | 90 min | 53,360 (0.87B tokens, 588 per parameter, epoch 8, MLM loss 2.356) | 180 min | 31,700 (0.52B tokens, 93 per parameter, epoch 5, MLM loss 2.081) |
+| decision training | 90 min | 19,893 | 180 min | 38,826 |
+| DAgger rounds 1, 2, 3 | 15 min each | 4,645, 4,660, 4,644 | 20 min each | 5,951, 5,898, 5,952 |
+
+Pretraining steps, tokens, epoch and loss are from the results files; the decision and DAgger steps are the `done:` lines of `runs/all/{nano,micro}-{train,dagger}.log`. Two decision trainings were stopped and resumed from their last checkpoint: s6-nano's by the memory cap at step 16,020, resumed from step 15,573 (amendment 8), and s6-micro's by hand at step 27,280 after about 34 minutes in swap, resumed from step 27,161 with the uncompiled step (amendment 11); the steps done in swap are kept, so s6-micro has fewer decision steps than its 180 minutes would otherwise give.
+
+**Test sets.** `sky-eval`, the ternary GGUF of the last DAgger round, at most 2,000 questions per source (the first ones), at full depth (τ = 1); the published models on the same records:
+
+| model | params | `typed_decisions_bench` | MASSIVE en | MASSIVE fr | When2Call | NOTAM deel_subject | NOTAM notam_multi | all | ECE (all) | mean block passes | median native µs |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **s6-nano** | 1,486,225 | **0.480** | 0.425 | 0.239 | 0.404 | 0.055 | 0.493 | 0.360 | **0.0479** | 4.00 | 1,488 |
+| s6-micro | 5,587,201 | 0.547 | 0.518 | 0.275 | 0.430 | 0.052 | 0.394 | 0.378 | 0.0821 | 6.00 | 7,346 |
+| s6-micro (CRC thresholds) | 5,587,201 | 0.544 | 0.518 | 0.275 | 0.431 | 0.052 | 0.391 | 0.377 | 0.0804 | 4.59 | 4,896 |
+| s3-pico | 445,345 | 0.382 | 0.187 | 0.117 | 0.368 | 0.163 | 0.319 | 0.268 | 0.0629 | 4.00 | 518 |
+| s4-micro | 5,587,201 | 0.352 | 0.335 | 0.240 | 0.399 | 0.065 | 0.298 | 0.285 | 0.0666 | 6.00 | 7,340 |
+| s5-lite | 17,060,097 | 0.696 | 0.726 | 0.444 | 0.376 | 0.177 | 0.554 | 0.500 | 0.0328 | n/a (iso) | 10,090 |
+
+The reference rows are those of the s6-nano evaluation; the s6-micro evaluation gives the same accuracies (latencies differ by under 1%). Published bench scores: s3-pico 0.382, s4-micro 0.343 (older record layout), oscar-1-17m 0.6775, s5-lite 0.696; majority class 0.398. At its conformal thresholds s6-micro exits early on 36.0% of the questions.
+
+- **In distribution, not zero-shot:** `zs_banking77` 0.631 (s6-nano) and 0.705 (s6-micro), n 2,000. Banking77 is in the training data.
+- **MASSIVE English is not strictly zero-shot.** 206 of the 2,000 English test utterances read here also appear as states in the training split, 201 of them as questions of the same intent task in a decision source derived from MASSIVE (`calibrated:mteb/amazon_massive_intent` in `data/decisions/calibrated_typed.jsonl`), the other 5 in `calibrated:clinc/clinc_oos`; none of the 1,000 French ones does (exact match after lowercasing). This overlap was found after the evaluation, when this page was written.
+- **Truncated records** (`sky-train s2-truncation`, the first 500 records of each source, n 258,309): s6-nano state 12.5%, head 10.5%, either 21.7%, and on `typed_decisions_bench` state 1.4%, head 0.0%; s6-micro 14.6%, 11.6%, 24.0%, and on the bench 4.2%, 0.0%.
+
+**Arena.** 30 episodes per game, the same seeds for every model, mean score (`models/s6-*/…-arena.json`):
+
+| model | Flappy | Rescue | Dodge | Doom-like |
+|---|---:|---:|---:|---:|
+| s3-pico | 200.00 | 3.00 | 9.47 | 3.27 |
+| s6-nano, full depth | 200.00 | 3.00 | 9.47 | 3.27 |
+| s6-nano, CRC thresholds | 200.00 | 2.80 | 9.33 | 3.27 |
+| s6-micro, full depth | 200.00 | 3.00 | 9.47 | 3.27 |
+| s6-micro, CRC thresholds | 200.00 | 3.00 | 9.47 | 3.27 |
+
+At full depth s6-nano plays at the oracle's score in every game: 0 crashes, Rescue 100%, Dodge completion 87% (= oracle) with 23 reflex vetoes, Doom-like completion 100% and kill rate 0.772 (= oracle) with 3 vetoes. At its CRC thresholds (α = 0.02) it uses 1.01 to 1.83 of its 4 passes per game, but Rescue falls to 93% and the Dodge vetoes rise to 1,016: outside the pre-registered 2%, so the thresholds are not kept.
+
+**Gates** (`docs/s6-gen-prereg.md` §6; each also needs no game more than 5% below s3-pico and ECE ≤ 0.08):
+
+- **s6-nano: passed, published at full depth.** Bench 0.480 > 0.398, ECE 0.0479, no game below s3-pico. The CRC thresholds are not kept, so the published file `site/public/models/s6-nano.gguf` is the last DAgger round with its three exit thresholds set to 1 (`gguf-set`; the calibration had left them at 0.5).
+- **s6-micro: failed on calibration only, not published.** Bench 0.547 ≥ 0.45, and the announced goal of 0.50 is met; no game below s3-pico; but ECE 0.0821 at full depth and 0.0804 at the CRC thresholds, above 0.08.
+
+**From nano to micro:** bench accuracy 0.480 → 0.547, ECE 0.0479 → 0.0821, median native latency 1,488 → 7,346 µs per decision, file 715,136 → 2,420,032 bytes.
+
+**WASM (s6-nano, the published file).** `node crates/sky-web/bench/parity-node.mjs site/public/models/s6-nano.gguf runs/s6-nano/eval/dump-s6-nano.jsonl --n 200` on the first 200 bench questions: max |p_wasm − p_native| 9.5e-7, argmax agreement 200 of 200, median 14.6 to 15.2 ms per decision under Node in two runs (long JSON states; natively 7,385 µs on the same source). On short game states, `bench-node.mjs --game flappy` gives 436 µs per Flappy frame (two questions and the physics step, full depth). The WASM line of the results files was measured with early exits at 0.5 against a full-depth native dump, so it does not describe a published configuration and is not quoted here.
+
+## s6-ear-nano: first run, gates failed
+
+Pre-registration: [`docs/s6-ear-prereg.md`](docs/s6-ear-prereg.md), gates in §6, amendments 2 to 4. Gate file: `runs/s6-ear-nano/eval/gate.json` (`scripts/ear-gate.py gate`); measurements: `runs/s6-ear-nano/eval/eval-{full,crc,control}.json` and `runs/all/ear-train.log`.
+
+- **Model.** 1,532,449 parameters, ternary, 899,200 bytes; without Parallax (not adopted by the ablation) instead of the 1,615,681 of the pre-registration. Smart Turn v3.2 has 8M, 5.2 times more.
+- **Runs** (working minutes, throttled mode). Mimi pretraining: 48,626 steps; codebook-0 accuracy on masked val frames 0.2196 against a technical bar of 0.00488. Decision training: 48,205 steps, after a first run of 31,480 steps was discarded for a memory defect before any evaluation (amendment 4). The control without Mimi pretraining: 49,131 steps.
+
+Test split, ternary, full depth:
+
+| gate | n | s6-ear-nano | control (no Mimi pretraining) | bar | verdict |
+|---|---:|---:|---:|---:|---|
+| end of turn (`ear:turn_end`) | 31,527 | 0.5681 | 0.7647 | 0.8518 (Smart Turn v3.2 on the same clips) | **fail** |
+| keywords, 12 classes (`ear:keyword`) | 4,890 | 0.8885 | 0.9217 | 0.90 | **fail** |
+| zero-shot keywords, English | 1,000 | 0.2100 | 0.3020 | 0.20 (2 × chance) | pass |
+| zero-shot keywords, French | 1,000 | 0.1330 | 0.1520 | 0.20 (2 × chance) | **fail** |
+
+Three gates of four fail: s6-ear-nano is not published. The control, trained the same way without the Mimi pretraining, is more accurate on all four sets, so in this run the pretraining did not help. ECE over all test sources is 0.0081 at full depth. At the CRC thresholds the model uses 3.42 of its 4 passes on average (early exit on 21.1% of the questions), with the same verdicts. Smart Turn v3.2 has a precision of 0.783 and a recall of 0.971 on the end-of-turn clips; the pre-registration asks for the same two numbers for s6-ear, and the run did not compute them.

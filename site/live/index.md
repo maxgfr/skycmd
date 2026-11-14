@@ -12,6 +12,8 @@ The game models on [Play](/play/) only know their games. **s5-lite** is a decisi
 
 It is Ettin-17M, fine-tuned in Rust, quantized to 8 bits. It runs in WASM on this page and sends nothing to a server.
 
+**s6-nano** (1,486,225 ternary parameters, a 715 KB file) is the generalist of the s6 family: it plays the four games on [Play](/play/) and answers typed questions in free text. It can be chosen in every demo below, and [its own section](#s6-nano-the-questions-it-was-trained-for) asks it the game and numeric questions it was trained for. On the questions of the demos above it is a weaker model than s5-lite: 0.480 on `typed_decisions_bench` against 0.696 ([results](/results/)).
+
 What makes s5 different is its **iso** architecture:
 
 - **Options read by definition only.** The model reads each option by its definition. The key you give it (`billing`, `yes`, `A`) never reaches the model, so renaming the keys or swapping yes and no cannot change the answer.
@@ -58,6 +60,16 @@ The statement to check is a `noul` question: *The message violates this rule: "â
 
 <ClientOnly>
   <LiveDecide mode="guard" />
+</ClientOnly>
+
+## s6-nano: the questions it was trained for
+
+The four games and the numeric curriculum, as typed questions you can edit: the state is the text the game gives the model (`vy 11 dx 35 â€¦`), and every option, `noul` answers included, is the record's own text. The presets follow a fixed rule: the first record of the test split of each source and question type in the game and numeric sets. They are kept whatever the model answers: natively, the published file picks the expected option on 11 of the 15, and the 4 misses are numeric questions. Some instructions are in French, as in the training data.
+
+The file is published at **full depth**: every answer uses all 4 block passes, because the early-exit thresholds were rejected by the pre-registered arena check ([results](/results/)). The time shown is measured in your browser for each decision. On the build machine, under Node, these short game and number states take about 1.6 ms per decision; the long JSON states of `typed_decisions_bench` take about 15 ms.
+
+<ClientOnly>
+  <LiveDecide mode="s6" prefer="s6-nano" />
 </ClientOnly>
 
 ## Proof 1: keys and order cannot matter (guaranteed)

@@ -6,6 +6,7 @@ import { onMounted, ref } from 'vue'
 import LiveDecide from '../.vitepress/theme/components/LiveDecide.vue'
 import LiveProof from '../.vitepress/theme/components/LiveProof.vue'
 import PlayGame from '../.vitepress/theme/components/PlayGame.vue'
+import { loadManifest } from '../.vitepress/theme/lib/wasm'
 
 interface SpaceConfig {
   model: string
@@ -21,6 +22,8 @@ interface SpaceConfig {
 
 const cfg = ref<SpaceConfig | null>(null)
 const failed = ref('')
+/** A game Space whose model also answers free-text questions (manifest `task: general`, s6-nano). */
+const general = ref(false)
 const SITE = 'https://maxgfr.github.io/skycmd'
 
 const DECISION = [
@@ -78,6 +81,7 @@ onMounted(async () => {
     }
     cfg.value = c
     document.title = `${c.title} · skycmd`
+    general.value = (await loadManifest()).some((m) => m.name === c.model && m.task === 'general')
   } catch (e) {
     failed.value = (e as Error).message
   }
@@ -116,9 +120,20 @@ onMounted(async () => {
           </section>
         </template>
       </template>
-      <section v-else>
-        <PlayGame />
-      </section>
+      <template v-else>
+        <section>
+          <PlayGame />
+        </section>
+        <section v-if="general">
+          <h2>Typed questions in free text</h2>
+          <p>
+            The same model answers the game and numeric questions it was trained for, with your own instruction,
+            options and state. The presets are the first test record of each source and question type, kept whatever
+            the model answers.
+          </p>
+          <LiveDecide mode="s6" :prefer="cfg.model" />
+        </section>
+      </template>
 
       <footer>
         Everything runs in your browser: a Rust inference engine compiled to WebAssembly (SIMD128) reads the GGUF

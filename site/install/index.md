@@ -36,9 +36,10 @@ and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/d
 | s2-nano-doom | s2, ternary | 1.5M | [s2-nano-doom.gguf](https://maxgfr.github.io/skycmd/models/s2-nano-doom.gguf) (702 KB) | skycmd engine only |
 | s4-micro (experimental) | s2, ternary | 5.6M | [s4-micro.gguf](https://maxgfr.github.io/skycmd/models/s4-micro.gguf) (2.4 MB) | skycmd engine only |
 | s5-lite | iso, q8_0 | 17M | [s5-lite.gguf](https://maxgfr.github.io/skycmd/models/s5-lite.gguf) (20.7 MB) | skycmd engine only |
+| s6-nano (games and free-text questions) | s6, ternary, full depth | 1.5M | [s6-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-nano.gguf) (715 KB) | skycmd engine only |
 
 Every model is also on Hugging Face with its model card and a demo Space that runs in the browser:
-[s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
+[s6-nano](https://huggingface.co/maxgfr/s6-nano), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 

@@ -76,13 +76,13 @@ Not used, despite open models: the Lucie Training Dataset (CC-BY-NC-SA-4.0, non-
 | [PolyAI/banking77](https://huggingface.co/datasets/PolyAI/banking77) | CC-BY-4.0 | **held out** from s4: zero-shot evaluation |
 | [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation |
 
-### s6-nano and s6-micro: test sets (not trained yet)
-A teacher gives soft labels on every training question of the Hugging Face decision sets above (about 747,000), kept only where it agrees with the gold answer. It is [GLM-5.3-flash](https://huggingface.co/zai-org/GLM-5.3-Flash), an open-weight model (MIT), called through the z.ai API. No test question is ever sent. They train on the decision sets, the games and the numeric curriculum above, and pretrain on the s3 text plus the open set above ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)).
+### s6-nano and s6-micro: teacher and test sets
+A teacher gave soft labels on every training question of the Hugging Face decision sets above (747,077 of the 747,198 selected), kept only where it agrees with the gold answer. It is [GLM-5.3-flash](https://huggingface.co/zai-org/GLM-5.3-Flash), an open-weight model (MIT), called through the z.ai API. No test question is ever sent. They train on the decision sets, the games and the numeric curriculum above, and pretrain on the s3 text plus the open set above ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)).
 
 | Dataset | Licence | Used as |
 |---|---|---|
 | [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (test split) | Apache-2.0 | the gated benchmark, `typed_decisions_bench` |
-| [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation |
+| [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation; 206 of the 2,000 English test utterances also appear in the training split, 201 of them in a source derived from MASSIVE (found after the evaluation, [results](/results/#s6-november-2026)) |
 | [AirsideLabs/notam-typed-decisions](https://huggingface.co/datasets/AirsideLabs/notam-typed-decisions) | CC-BY-4.0 | **held out**: test only |
 | [nvidia/When2Call](https://huggingface.co/datasets/nvidia/When2Call) (test split) | CC-BY-4.0 | test split of a trained source |
 | [PolyAI/banking77](https://huggingface.co/datasets/PolyAI/banking77) | CC-BY-4.0 | trained on: reported as in-distribution, never as zero-shot |
@@ -149,6 +149,15 @@ marked as such. Not republished: the gated `LocalLLaMA/typed-decisions`, the s6-
 - **Hard and soft labels together:** [arXiv 2605.26246](https://arxiv.org/abs/2605.26246).
 - **Answer bias of LLM option scoring and its correction:** [Calibrate Before Use](https://arxiv.org/abs/2102.09690) (contextual calibration) and [Large Language Models Are Not Robust Multiple Choice Selectors](https://arxiv.org/abs/2309.03882).
 - **Small function-calling reference:** [Extending FunctionGemma](https://arxiv.org/abs/2609.25373).
+
+### s6
+What the pre-registrations rest on ([`docs/s6-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-prereg.md), [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), notes in [`docs/research.md`](https://github.com/maxgfr/skycmd/blob/main/docs/research.md)). The ablation adopted none of the encoder and optimizer additions: the shipped s6-nano rests on the learning-rate transfer, the pretraining budget, the QAT schedule and DAgger, and the conformal thresholds were tested on it and rejected.
+- **Tested, not adopted:** [Parallax](https://arxiv.org/abs/2605.29157) attention; Muon v2 after [Muon is Scalable for LLM Training](https://arxiv.org/abs/2502.16982); [SODA](https://arxiv.org/abs/2605.11172) weight decay; exit distillation after [SAFE-KD](https://arxiv.org/abs/2602.03043); a weight EMA ([2311.05109](https://arxiv.org/abs/2311.05109), [BEMA](https://arxiv.org/abs/2508.00180)); [StableQAT](https://arxiv.org/abs/2601.19320); a pretraining curriculum ([2506.11300](https://arxiv.org/abs/2506.11300)).
+- **Why the ablation tunes AdamW too and counts time:** [Fantastic Pretraining Optimizers](https://arxiv.org/abs/2509.02046) and [When Does Muon Actually Win?](https://arxiv.org/abs/2610.21555).
+- **Learning rate across widths:** [fast hyperparameter transfer](https://arxiv.org/abs/2512.22768) and the spectral condition for μP ([2603.00541](https://arxiv.org/abs/2603.00541)): the per-size pilots are centred on the pico rate × √(96/d).
+- **Pretraining budget and QAT:** Training compute-optimal transformer encoder models (EMNLP 2025), on how many tokens per parameter an MLM encoder wants; [16-bit → 1.58-bit continual QAT](https://arxiv.org/abs/2502.11895), for the float warm-up before ternary training.
+- **Conformal exit thresholds:** [Fast yet Safe](https://arxiv.org/abs/2405.20915) and CALM (NeurIPS 2022), for α = 0.02. They were tested on s6-nano in closed loop and rejected.
+- **DAgger with a per-turn mixture:** [Revisiting DAgger in the Era of LLM-Agents](https://arxiv.org/abs/2605.12913).
 
 ### s5
 - **Option isolation and shared positions:** [arXiv 2610.01601](https://arxiv.org/abs/2610.01601) (§ III, positions; § V-C, ablations).

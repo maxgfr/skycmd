@@ -32,6 +32,16 @@
     "file": "s4-micro.gguf"
   },
   {
+    "name": "s6-nano",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "general",
+    "full_depth": true,
+    "params": 1486225,
+    "bytes": 715136,
+    "file": "s6-nano.gguf"
+  },
+  {
     "name": "s1-pico",
     "arch": "modern-bert",
     "weight_format": "f16",

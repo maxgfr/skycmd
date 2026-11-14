@@ -300,8 +300,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="ear">
     <p v-if="!entry && !status" class="ear-note">
-      <strong>s6-ear is not trained yet.</strong> This demo is wired to the engine and will answer here as soon as
-      the model passes its <a href="https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md">pre-registered gates</a>.
+      <strong>No s6-ear model is published.</strong> The first one failed its
+      <a href="https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md">pre-registered gates</a>. This demo is
+      wired to the engine and will answer here as soon as a model passes them.
     </p>
     <template v-else>
       <p class="ear-status">{{ status }}</p>

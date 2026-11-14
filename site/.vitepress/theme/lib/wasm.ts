@@ -59,8 +59,11 @@ export interface ModelEntry {
   arch?: string
   /** `f32`, `f16`, `q8_0` or `ternary`. */
   weight_format?: string
-  /** `generic`: a decision model for free-text questions (s4, the Live page), not for the games. */
+  /** `generic`: a decision model for free-text questions (s4, s5: the Live page), not for the games.
+   * `general`: both, the games and free-text questions (s6-nano). Absent: the games only. */
   task?: string
+  /** Published at full depth: the file's exit thresholds are 1, so early exit is off. */
+  full_depth?: boolean
   /** s6-ear: the System 2 hand-off thresholds per question type (conformal, `ear-gate.py crc`). */
   route?: Record<string, number>
   /** The games the model was trained and measured on (`sky-arena`); absent = every game. */
@@ -75,6 +78,11 @@ export function playsGame(entry: Pick<ModelEntry, 'games'>, game: string): boole
 /** The models that play the games (every manifest entry but the generic ones). */
 export function gameModels(list: ModelEntry[]): ModelEntry[] {
   return list.filter((m) => m.task !== 'generic')
+}
+
+/** The models that answer free-text questions (the Live page): `generic` and `general` entries. */
+export function questionModels(list: ModelEntry[]): ModelEntry[] {
+  return list.filter((m) => m.task === 'generic' || m.task === 'general')
 }
 
 /** Model family of a manifest entry (from `arch`, else from the name). */

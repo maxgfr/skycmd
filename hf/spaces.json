@@ -1,5 +1,18 @@
 [
   {
+    "model": "s6-nano",
+    "kind": "game",
+    "emoji": "🧩",
+    "color_from": "indigo",
+    "color_to": "green",
+    "tagline": "A 715 KB ternary decision model that plays four games at the oracle's level and answers typed questions in free text, above the majority class of the typed-decisions bench.",
+    "short_description": "715 KB model for four games and typed questions",
+    "notes": [
+      "Published at full depth: its conformal early-exit thresholds were rejected by the pre-registered arena check.",
+      "0.480 on the typed-decisions bench, where the majority class is 0.398 and s5-lite reaches 0.696: expect mistakes on questions in free text."
+    ]
+  },
+  {
     "model": "s5-lite",
     "kind": "decision",
     "proofs": true,

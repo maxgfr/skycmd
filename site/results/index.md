@@ -3,7 +3,61 @@ title: Results
 outline: [2, 3]
 ---
 
-# s5 results: what works, what does not
+# Results: what works, what does not
+
+Every model on this page was judged against criteria fixed before any test run, and failures are published like successes. The s6 family (November 2026) comes first, then s5 (October 2026).
+
+## s6 (November 2026)
+
+s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md), both frozen before any s6 training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). s6-cast is still training, and s6-secrets-pico's result will be published with the model.
+
+### In short
+
+- **s6-nano passes its gate** and is published, at full depth. 1,486,225 ternary parameters (715 KB): 0.480 on `typed_decisions_bench`, above the majority class (0.398) where s3-pico (0.382) and s4-micro (0.352 on the same records) stayed below it, with an ECE of 0.0479, while it still plays every game at the oracle's level.
+- **s6-micro fails on calibration only.** 0.547 on the bench (gate 0.45 and announced goal 0.50 both met), but ECE 0.0821 at full depth and 0.0804 at its conformal thresholds, above the 0.08 guard. It is not published.
+- **s6-ear-nano fails three of its four gates.** End of turn 0.5681 against 0.8518 for Smart Turn v3.2, and its own control without the Mimi pretraining does better on all four sets. It is not published.
+- **The s6 additions were not adopted.** The pre-registered pico ablation kept none of them: no Muon, no Parallax, no XSA, no SODA, no exit distillation, no EMA, no StableQAT, no curriculum. s6-nano is the s3 architecture at language scale, as in s4, trained with AdamW. What changed from s3-pico and s4-micro is the pretraining (0.87B tokens, 588 per parameter), the GLM-5.3-flash teacher, a larger tokenizer and wider windows. No ablation separates these causes, so none of them is claimed on its own.
+
+### s6-nano: passed, published at full depth
+
+Test sets, at most 2,000 questions per source, ternary GGUF of the last DAgger round, full depth; the published models on the same records:
+
+| model | params | `typed_decisions_bench` | MASSIVE en | MASSIVE fr | When2Call | NOTAM deel_subject | NOTAM notam_multi | all | ECE (all) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **s6-nano** | 1,486,225 | **0.480** | 0.425 | 0.239 | 0.404 | 0.055 | 0.493 | 0.360 | **0.0479** |
+| s6-micro (not published) | 5,587,201 | 0.547 | 0.518 | 0.275 | 0.430 | 0.052 | 0.394 | 0.378 | 0.0821 |
+| s3-pico | 445,345 | 0.382 | 0.187 | 0.117 | 0.368 | 0.163 | 0.319 | 0.268 | 0.0629 |
+| s4-micro | 5,587,201 | 0.352 | 0.335 | 0.240 | 0.399 | 0.065 | 0.298 | 0.285 | 0.0666 |
+| s5-lite | 17,060,097 | 0.696 | 0.726 | 0.444 | 0.376 | 0.177 | 0.554 | 0.500 | 0.0328 |
+
+- **The gate** (result): bench 0.480 > 0.398; no game more than 5 % below s3-pico; ECE 0.0479 ≤ 0.08. Published bench scores for comparison: s3-pico 0.382, s4-micro 0.343, oscar-1-17m 0.6775, s5-lite 0.696.
+- **The games** (result): 30 episodes per game at full depth, on the same seeds as s3-pico. Flappy 200/200 pipes with 0 crashes, Rescue 100 %, Dodge 87 % (= oracle) with 23 reflex vetoes, Doom-like 100 % of levels and a kill rate of 0.772 (= oracle). These are s3-pico's scores, and the oracle's.
+- **Early exit rejected** (result). The conformal thresholds (α = 0.02) cut the depth to 1.01 to 1.83 of 4 passes per game, but Rescue fell to 93 % and the Dodge vetoes rose from 23 to 1,016. The pre-registered rule allows 2 %, so the thresholds are not kept. The published file has its three exit thresholds set to 1: the calibration had left them at 0.5, a setting that was never evaluated.
+- **Where it fails** (result). NOTAM subject 0.055, below s3-pico (0.163), and When2Call 0.404. The NOTAM sets are never trained on.
+- **Not strictly zero-shot** (found afterwards). 206 of the 2,000 English MASSIVE test utterances also appear in the training split, 201 of them in a decision source derived from MASSIVE; none of the French ones does. The English MASSIVE score is therefore partly in distribution. Banking77, trained on, is reported apart: 0.631.
+- **Truncation** (result): 1.4 % of the bench states are cut at 512 tokens. s3-pico's windows cut 96.8 % of the bench sequences ([chapter 12](/tutorial/12-size-ladder)).
+- **In the browser** (result). WASM matches the native engine on the first 200 bench questions to 9.5e-7, with the same answer on all 200. A long JSON state of the bench takes about 15 ms per decision under Node, a Flappy frame 0.44 ms. Try it on [Live](/live/#s6-nano-the-questions-it-was-trained-for) and [Play](/play/).
+
+### s6-micro: failed on calibration only
+
+Same evaluation, 5,587,201 parameters (the s4-micro shape). Bench 0.547, so the gate (≥ 0.45) and the announced goal (0.50, the level of s4's Qwen3.5-4B teacher) are both met. The games match s3-pico at full depth and at its conformal thresholds. The gate fails on the guard: ECE 0.0821 over all the test sources at full depth, 0.0804 at the conformal thresholds, both above 0.08. Its decision training was stopped once for a memory problem and resumed from its checkpoint ([amendment 11](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)). From nano to micro, accuracy rises from 0.480 to 0.547 and the ECE from 0.0479 to 0.0821, the median native time per decision goes from 1,488 to 7,346 µs, and the file from 715 KB to 2.4 MB.
+
+### s6-ear-nano: failed
+
+Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
+
+| gate | n | s6-ear-nano | control (no Mimi pretraining) | bar | verdict |
+|---|---:|---:|---:|---:|---|
+| end of turn | 31,527 | 0.5681 | 0.7647 | 0.8518 (Smart Turn v3.2, same clips) | fail |
+| keywords (Speech Commands, 12 classes) | 4,890 | 0.8885 | 0.9217 | 0.90 | fail |
+| zero-shot keywords, English | 1,000 | 0.2100 | 0.3020 | 0.20 (2 × chance) | pass |
+| zero-shot keywords, French | 1,000 | 0.1330 | 0.1520 | 0.20 (2 × chance) | fail |
+
+- **The pretraining did not help** in this run: the control, trained the same way from a random init, is more accurate on every set. The pretraining itself worked as a task (codebook-0 accuracy 0.2196 on masked val frames, 45 times its technical bar).
+- **Size:** 1,532,449 parameters, 5.2 times fewer than Smart Turn v3.2. The verdicts are the same at the conformal thresholds.
+- **Not reported:** the precision and recall of the end-of-turn answers, which the pre-registration asks for, were not computed by the run (Smart Turn v3.2: 0.783 and 0.971).
+
+## s5 (October 2026)
 
 s5 is a small decision model (Ettin-17M for s5-lite, English) tested on three bets, each judged against criteria fixed before any test run. The [pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s5-prereg.md) was committed first. The evaluation tool refuses the test split of a frozen set unless that file is committed and lists the set's hash, and it logs every test pass.
 

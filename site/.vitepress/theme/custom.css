@@ -47,6 +47,23 @@
   }
 }
 
+.home-s6 {
+  margin-top: 24px;
+  padding: 14px 18px;
+  border: 1px solid var(--vp-c-divider);
+  border-left: 3px solid var(--vp-c-brand-1);
+  border-radius: 10px;
+  background: var(--vp-c-bg-soft);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.home-s6 p {
+  margin: 0;
+}
+.home-s6 code {
+  font-size: 13px;
+}
+
 .links-row {
   display: flex;
   flex-wrap: wrap;

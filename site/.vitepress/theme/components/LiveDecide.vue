@@ -3,16 +3,20 @@
 // calibrated probabilities, computed in the browser by the wasm module (`Engine.decide`).
 // s5-lite (iso architecture) reads each option by its definition only: the keys never reach the
 // model, and a state is encoded once for every question asked about it. The presets are the
-// demo cases the models are evaluated on (eval/s5/demo-cases.jsonl, lib/demo-cases.ts).
+// demo cases the models are evaluated on (eval/s5/demo-cases.jsonl, lib/demo-cases.ts). The `s6`
+// mode asks s6-nano the game and numeric questions it was trained for (lib/s6-cases.ts), with the
+// options of each record, `noul` answers included.
 import { computed, onMounted, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
-import { formatInt, loadEngine, loadManifest, type ModelEntry, type WasmEngine } from '../lib/wasm'
+import { formatInt, loadEngine, loadManifest, questionModels, type ModelEntry, type WasmEngine } from '../lib/wasm'
 import { DEMO_CASES, type DemoCase } from '../lib/demo-cases'
+import { S6_CASES } from '../lib/s6-cases'
 
-type Mode = 'playground' | 'tools' | 'triage' | 'guard'
+type Mode = 'playground' | 'tools' | 'triage' | 'guard' | 's6'
 type QT = 'choice' | 'score' | 'noul'
 
-const props = defineProps<{ mode: Mode }>()
+/** `prefer`: the model selected first, by name (default: the iso model, else the first one). */
+const props = defineProps<{ mode: Mode; prefer?: string }>()
 
 interface Answer {
   probs: number[]
@@ -25,13 +29,16 @@ interface Answer {
 }
 
 /** Demo-case sources of each mode (English: s5 is a small English model, with no French version). */
-const SOURCES: Record<Mode, string[]> = {
+const SOURCES: Record<Exclude<Mode, 's6'>, string[]> = {
   playground: ['demo_playground_en', 'demo_score_en'],
   tools: ['demo_tools_en'],
   triage: ['demo_triage_en'],
   guard: ['demo_guard_en'],
 }
-const examples: DemoCase[] = DEMO_CASES.filter((c) => SOURCES[props.mode].includes(c.src))
+const examples: DemoCase[] =
+  props.mode === 's6' ? S6_CASES : DEMO_CASES.filter((c) => SOURCES[props.mode as Exclude<Mode, 's6'>].includes(c.src))
+/** Modes whose `noul` answers are written in the form (the records' own texts) instead of fixed. */
+const ownNoul = props.mode === 'guard' || props.mode === 's6'
 
 /** The `noul` options of s4-micro, which was trained with these texts. */
 const S4_NOUL = ['false: no, the statement does not hold', 'true: yes, the statement holds']
@@ -61,6 +68,8 @@ const median = ref<number | null>(null)
 const samples: number[] = []
 
 const isIso = computed(() => model.value?.arch === 'skycmd-iso')
+/** Early exit can be switched on: an s2 file published with its exit thresholds. */
+const canExit = computed(() => !!model.value && !isIso.value && !model.value.full_depth)
 
 function pick(i: number) {
   const c = examples[i]
@@ -74,7 +83,7 @@ function pick(i: number) {
 /** Rendered option texts, as `sky-eval` renders s5 records (`key: definition`, `level i: …`). */
 const rendered = computed<string[]>(() => {
   if (qtype.value === 'noul') {
-    if (props.mode === 'guard') {
+    if (ownNoul) {
       return optionsText.value
         .split('\n')
         .map((l) => l.trim())
@@ -112,7 +121,7 @@ const expected = computed<number | null>(() => {
 /** The answer is an abstention: the abstention option wins, or no option is clearly ahead. */
 const abstains = computed(() => {
   const r = rows.value
-  if (!r.length || qtype.value !== 'choice') return false
+  if (!r.length || qtype.value !== 'choice' || props.mode === 's6') return false
   const top = r.find((x) => x.best)!
   return top.key === 'unsure' || top.key === 'no_tool' || top.p < 0.4
 })
@@ -121,8 +130,12 @@ const violation = computed(() => (props.mode === 'guard' && answer.value ? answe
 
 onMounted(async () => {
   const all = await loadManifest()
-  models.value = all.filter((m) => m.task === 'generic')
-  model.value = models.value.find((m) => m.arch === 'skycmd-iso') ?? models.value[0] ?? null
+  models.value = questionModels(all)
+  model.value =
+    models.value.find((m) => m.name === props.prefer) ??
+    models.value.find((m) => m.arch === 'skycmd-iso') ??
+    models.value[0] ??
+    null
   if (!model.value) {
     status.value = 'No generic decision model is published on this site yet.'
     return
@@ -132,6 +145,9 @@ onMounted(async () => {
 
 async function load() {
   if (!model.value) return
+  // The median is per model.
+  samples.length = 0
+  median.value = null
   status.value = `Loading ${model.value.name} (${formatInt(model.value.bytes / 1024)} KB)…`
   try {
     engine.value = await loadEngine(model.value)
@@ -151,7 +167,7 @@ function run() {
     return
   }
   try {
-    e.setExitThreshold(adaptive.value ? undefined : 1.0)
+    e.setExitThreshold(adaptive.value && canExit.value ? undefined : 1.0)
     const a = JSON.parse(
       e.decide(qtype.value, ins.value.trim(), JSON.stringify(rendered.value), state.value),
     ) as Answer
@@ -183,12 +199,17 @@ function pct(p: number) {
 function short(s: string, n = 46) {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s
 }
+
+/** Preset button text: the state (s5 cases), or the source and type (s6 cases, whose states are numbers). */
+function caseLabel(c: DemoCase) {
+  return props.mode === 's6' ? `${c.src.replace(/^(game|numeric):/, '')} · ${c.t}` : short(c.state)
+}
 </script>
 
 <template>
   <div class="live">
     <div class="live-row live-top">
-      <label>Language
+      <label v-if="mode !== 's6'">Language
         <select v-model="lang">
           <option value="en">English</option>
           <option value="fr">Français</option>
@@ -199,16 +220,17 @@ function short(s: string, n = 46) {
           <option v-for="m in models" :key="m.file" :value="m">{{ m.name }} · {{ m.weight_format }}</option>
         </select>
       </label>
-      <label v-if="mode === 'playground'">Type
+      <label v-if="mode === 'playground' || mode === 's6'">Type
         <select v-model="qtype">
           <option value="choice">choice</option>
           <option value="score">score</option>
           <option value="noul">noul (true / false)</option>
         </select>
       </label>
-      <label v-if="model && !isIso" class="live-check">
+      <label v-if="canExit" class="live-check">
         <input v-model="adaptive" type="checkbox" /> adaptive depth (early exit)
       </label>
+      <span v-else-if="model && model.full_depth" class="live-note">full depth, as published</span>
     </div>
 
     <p v-if="lang === 'fr'" class="live-banner">
@@ -223,19 +245,20 @@ function short(s: string, n = 46) {
         :key="i"
         type="button"
         :class="{ on: i === caseIdx && expected !== null }"
+        :title="c.state"
         @click="pick(i)"
-      >{{ short(c.state) }}</button>
+      >{{ caseLabel(c) }}</button>
     </div>
 
     <div class="live-form">
       <label>{{ mode === 'guard' ? 'Statement to check' : qtype === 'noul' ? 'Statement' : 'Question' }}
         <input v-model="ins" type="text" />
       </label>
-      <label v-if="qtype !== 'noul' || mode === 'guard'">
+      <label v-if="qtype !== 'noul' || ownNoul">
         {{
           mode === 'tools'
             ? 'Tools (name: description, one per line)'
-            : mode === 'guard'
+            : mode === 'guard' || qtype === 'noul'
               ? 'Answers (false: …, true: …)'
               : qtype === 'score'
                 ? 'Levels (lowest first, one per line)'
@@ -338,6 +361,11 @@ function short(s: string, n = 46) {
   align-items: center;
   gap: 6px;
   font-weight: 400 !important;
+}
+.live-note {
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+  padding-bottom: 6px;
 }
 .live-banner {
   margin: 0 0 10px;
