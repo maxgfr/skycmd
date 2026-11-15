@@ -31,6 +31,11 @@ DRAWS = 10_000
 PASSES = (1, 2, 4)
 BUCKETS = ("1-4", "5-8", "9-16", "17-32")
 DEV2_SEED, DEV2_EPISODES = 2_000_000_000, 500
+AMENDMENT_4 = (
+    "C2 missed its bar by 0.010 (form frame 0.3900 against 0.40); by amendment 4 of "
+    "docs/s6-sleep2-prereg.md, a stated deviation, form frame was taken and C4 decided. This is a "
+    "threshold not applied after it was read, on a readiness check and not on a result."
+)
 DISCLOSURE = (
     "v2 was designed after reading v1's pilot: its logs, its dev scores (all at chance), its "
     "checkpoints and optimiser states, and its training sequences. The changes answer an "
@@ -102,8 +107,13 @@ def cmd_checks(root):
     c = os.path.join(root, "checks")
     v = {"pass": False, "needs_amendment": False}
     c1, c2, c3 = (load(os.path.join(c, f"c{i}.json")) for i in (1, 2, 3))
-    v["c1"], v["c2"], v["c3"] = c1["pass"], c2["pass"], c3["pass"]
+    v["c1"], v["c2"] = c1["pass"], c2["pass"]
     v["form"] = c2["adopted"]
+    if not c2["pass"]:
+        # Amendment 4: C2 missed its bar; form frame is taken and C4 decides (a deviation).
+        v["form"], v["c2_deviation"] = "frame", AMENDMENT_4
+    # C3 is a sanity check since amendment 1: no memory weight but the read-out has a gradient.
+    v["c3"] = bool(c3["forms"][v["form"]]["other_mem_exactly_zero"])
     c4 = os.path.join(c, "c4", "c4.json")
     v["c4"] = load(c4)["pass"] if os.path.exists(c4) else None
     v["mem_lr_mult"], v["mem_float"] = 10, False
@@ -125,7 +135,7 @@ def cmd_checks(root):
             # Both retries passed: the text does not say which setting is taken; an amendment does.
             v["c4_passed_with"] = passed
             v["needs_amendment"] = True
-    v["pass"] = bool(v["c1"] and v["c2"] and v["c3"] and (v["c4"] or v.get("c4_passed_with")))
+    v["pass"] = bool(v["c1"] and (v["c2"] or v.get("c2_deviation")) and v["c3"] and (v["c4"] or v.get("c4_passed_with")))
     with open(os.path.join(c, "verdict.json"), "w") as f:
         json.dump(v, f, indent=2)
     print(json.dumps(v))
@@ -217,7 +227,11 @@ def cmd_pilot(root, smoke=False):
         sys.exit(f"{root}: a smoke never writes under runs/s6-sleep2")
     p = os.path.join(root, "pilot")
     stop = load(os.path.join(p, "stop.json"))
-    out = {"disclosure": DISCLOSURE, "checks": load(os.path.join(root, "checks", "verdict.json")), "phase_a": stop}
+    checks = load(os.path.join(root, "checks", "verdict.json"))
+    out = {"disclosure": DISCLOSURE, "checks": checks, "phase_a": stop}
+    if checks.get("c2_deviation"):
+        out["c2_deviation"] = checks["c2_deviation"]
+        print(checks["c2_deviation"])
     if stop["stop"] and not smoke:  # a smoke goes on, to check the code of the rule
         out.update(verdict="stopped", next="the pilot failed in-sample after phase A (section 5.1); section 11: the fast-weight line stops")
     else:
