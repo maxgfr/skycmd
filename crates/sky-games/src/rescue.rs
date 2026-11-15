@@ -880,7 +880,10 @@ mod tests {
             g.cells[to] = WIND_N + wind.index() as u8;
             let out = g.step(action);
             assert!(!out.done && !out.info.vetoed);
-            assert_eq!(g.pos, to, "{wind:?} {action:?}: the drone lands where it was sent");
+            assert_eq!(
+                g.pos, to,
+                "{wind:?} {action:?}: the drone lands where it was sent"
+            );
             assert_eq!(BATTERY_MAX - g.battery, cost, "{wind:?} {action:?}");
             // Hovering in the wind cell: no drift, cost 1.
             let b = g.battery;

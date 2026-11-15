@@ -2911,7 +2911,10 @@ mod tests {
             let a = moves[(t / 60) % moves.len()];
             g.step_human(Some(a));
             let p = &g.player;
-            assert!(!g.circle_hits_walls(p.x, p.y, PLAYER_RADIUS * 0.99, None), "tick {t}");
+            assert!(
+                !g.circle_hits_walls(p.x, p.y, PLAYER_RADIUS * 0.99, None),
+                "tick {t}"
+            );
         }
         assert_eq!(g.player.health, hp);
         assert!(!g.dead);

@@ -926,11 +926,14 @@ mod tests {
         assert_eq!(out.info.event, Event::Crashed);
         assert_eq!(out.reward, -10.0);
         assert_eq!(g.score(), 0);
-        assert_eq!(g.stats().crashed, true);
+        assert!(g.stats().crashed);
         // The drone moves at most 11 m/s / 60 Hz = 0.18 m per frame: it stops less than one
         // frame of travel inside the obstacle (no tunnelling through a 3 m deep obstacle).
         let depth = g.x + HL - TOWER.x0;
-        assert!(depth > 0.0 && depth <= CRUISE_V * DT + 1e-4, "depth {depth}");
+        assert!(
+            depth > 0.0 && depth <= CRUISE_V * DT + 1e-4,
+            "depth {depth}"
+        );
         // A finished episode stays finished.
         assert!(g.step(DodgeAction::Continue).done);
         assert_eq!(g.frame, g.stats().steps);
@@ -982,7 +985,11 @@ mod tests {
                             && g.x - HL < o.x1() + DECK_OVERHANG
                             && g.z + HH > o.ceil)
                 });
-                assert!(hit, "a crash without an obstacle at x {} y {} z {}", g.x, g.y, g.z);
+                assert!(
+                    hit,
+                    "a crash without an obstacle at x {} y {} z {}",
+                    g.x, g.y, g.z
+                );
             }
         }
         assert!(crashes > 0);
