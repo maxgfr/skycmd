@@ -2,6 +2,10 @@
 //! class, plus the zero-parameter pieces the page compares against — seasonal naive, the
 //! synthetic generators of s6-cast's pretraining, and the periodogram period detector.
 //!
+//! An s6-cast v2 file (docs/s6-cast2-prereg.md §4) needs nothing more from the page: its
+//! computed-periodicity front end (the detected periods, the phase channels, the seasonal draft)
+//! runs inside the engine on every pass of the same `forecast` call; `info()` says it is there.
+//!
 //! ```js
 //! const f = new Forecaster(bytes);                       // skycmd-cast or skycmd-tinycast
 //! const q = f.forecast(history, 64, false);              // Float32Array [64 × levels]
@@ -77,15 +81,22 @@ impl Forecaster {
         self.inner.levels().to_vec()
     }
 
-    /// JSON: `name`, `params`, `bytes`, `levels`, `pass_horizon`, and of the last forecast
+    /// JSON: `name`, `params`, `bytes`, `levels`, `pass_horizon`, the front end of an s6-cast
+    /// v2 file (`periods`: the detected periods K, 0 without; `draft`), and of the last forecast
     /// `micros`, `exits_used`, `passes`.
     pub fn info(&self) -> String {
+        let (periods, draft) = match &self.inner {
+            sky_infer::cast::Forecaster::Cast(m) => (m.cfg.periods, m.cfg.draft),
+            sky_infer::cast::Forecaster::TinyCast(_) => (0, false),
+        };
         serde_json::json!({
             "name": self.inner.name(),
             "params": self.params,
             "bytes": self.bytes,
             "levels": self.inner.levels(),
             "pass_horizon": self.inner.pass_horizon(),
+            "periods": periods,
+            "draft": draft,
             "micros": self.last_us,
             "exits_used": self.last_exits,
             "passes": self.last_passes,

@@ -8,7 +8,7 @@ export interface WasmForecaster {
   /** `[horizon × levels]` quantiles, row-major, in the units of the history. */
   forecast(history: Float32Array, horizon: number, flip: boolean): Float32Array
   levels(): Float32Array
-  /** JSON: name, params, bytes, levels, pass_horizon, micros, exits_used, passes. */
+  /** JSON: name, params, bytes, levels, pass_horizon, periods, draft, micros, exits_used, passes. */
   info(): string
   free(): void
 }
