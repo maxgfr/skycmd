@@ -1,0 +1,65 @@
+{
+  "episodes": 2000,
+  "from_seed": 0,
+  "first_seed": 0,
+  "last_seed": 2221,
+  "train_episodes": 1000,
+  "qat": true,
+  "init_seed": 0,
+  "write": "average",
+  "forms": [
+    {
+      "form": "frame",
+      "memory_qk": "shared",
+      "memory_value": "frame",
+      "accuracy_1_8": 0.39,
+      "asks_1_8": 4000,
+      "accuracy_all": 0.3215,
+      "by_bucket": [
+        0.494,
+        0.286,
+        0.2525,
+        0.2535
+      ],
+      "key_overlap": 0.7325357430926273
+    },
+    {
+      "form": "token",
+      "memory_qk": "shared",
+      "memory_value": "token",
+      "accuracy_1_8": 0.37075,
+      "asks_1_8": 4000,
+      "accuracy_all": 0.310625,
+      "by_bucket": [
+        0.4535,
+        0.288,
+        0.246,
+        0.255
+      ],
+      "key_overlap": 0.7325357430926273
+    },
+    {
+      "form": "v1",
+      "memory_qk": "separate",
+      "memory_value": "token",
+      "accuracy_1_8": 0.259,
+      "asks_1_8": 4000,
+      "accuracy_all": 0.259875,
+      "by_bucket": [
+        0.2645,
+        0.2535,
+        0.2695,
+        0.252
+      ],
+      "key_overlap": 0.6664838542201212
+    }
+  ],
+  "base_binding": {
+    "accuracy": 0.590875,
+    "shows": 8000
+  },
+  "bar": 0.4,
+  "tie": 0.02,
+  "adopted": null,
+  "pass": false
+}
