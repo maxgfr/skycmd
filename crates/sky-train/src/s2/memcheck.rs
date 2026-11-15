@@ -35,7 +35,7 @@ use crate::{
     params::{self, ParamMap},
     rng::Rng,
     s2::{
-        config::{MemoryQk, MemoryValue, S2Config},
+        config::{MemoryQk, MemoryValue, MemoryWrite, S2Config},
         data::{encode_record_cfg, make_batch, S2Item, StaticSeq},
         memory::{self, Memory, Sleep, SLEEP_EVERY},
         model::{exit_weight_vec, expand_pretrained, init, prepare, state_written, S2Parts},
@@ -93,10 +93,22 @@ pub struct MemcheckArgs {
     /// Run C1 only.
     #[arg(long)]
     pub c1_only: bool,
+    /// The write rule of the two v2 forms (amendment 1: the one the sweep adopted); v1's
+    /// reference keeps v1's rule.
+    #[arg(long, default_value = "average", value_parser = parse_write)]
+    pub write: MemoryWrite,
+    /// The sweep of amendment 1 (write rules × passes × idle frames on C1's synthetic states,
+    /// `sweep.json` and `sweep.md`) and its adoption rule; nothing else.
+    #[arg(long)]
+    pub sweep: bool,
     /// Only the gradient report of C3 on the three forms (`grads.json`), with no verdict: the
     /// step-0 gradient of every parameter group, v1 against v2.
     #[arg(long)]
     pub grads_only: bool,
+}
+
+fn parse_write(s: &str) -> std::result::Result<MemoryWrite, String> {
+    MemoryWrite::parse(s).ok_or_else(|| format!("{s:?}: average, delta, exact or centred"))
 }
 
 /// One memory form of the checks.
@@ -126,11 +138,14 @@ const FORMS: [Form; 3] = [
 ];
 
 /// The configuration of `form` on the base's.
-fn form_cfg(base: &S2Config, form: Form) -> Result<S2Config> {
+fn form_cfg(base: &S2Config, form: Form, write: MemoryWrite) -> Result<S2Config> {
     let mut c = base.clone();
     c.memory = true;
     c.memory_qk = form.qk;
     c.memory_value = form.value;
+    if form.qk == MemoryQk::Shared {
+        c.memory_write = write;
+    }
     c.temperature.clear();
     c.validate()?;
     Ok(c)
@@ -555,7 +570,107 @@ pub fn memcheck(a: &MemcheckArgs) -> Result<()> {
     mlx_rs::with_device(mlx_rs::Device::cpu(), || run(a))
 }
 
+/// Amendment 1: the rules in their order of preference, the passes and the idle frames swept.
+pub const SWEEP_RULES: [MemoryWrite; 3] =
+    [MemoryWrite::Delta, MemoryWrite::Exact, MemoryWrite::Centred];
+pub const SWEEP_PASSES: [usize; 4] = [1, 2, 4, 8];
+pub const SWEEP_IDLE: [usize; 5] = [1, 4, 8, 16, 32];
+/// The idle frames a rule must decode right, with at most `SWEEP_MAX_PASSES` passes.
+pub const SWEEP_PASS_IDLE: [usize; 3] = [1, 4, 8];
+pub const SWEEP_MAX_PASSES: usize = 4;
+
+/// Amendment 1's adoption: the first rule of [`SWEEP_RULES`] that decodes red under form
+/// `frame` (C1's criterion) at every idle count of [`SWEEP_PASS_IDLE`] with at most
+/// [`SWEEP_MAX_PASSES`] passes, with the smallest such number of passes.
+pub fn sweep_adopt(rows: &[memory::AlgebraRow]) -> Option<(&'static str, usize)> {
+    for rule in SWEEP_RULES {
+        for n in SWEEP_PASSES
+            .iter()
+            .copied()
+            .filter(|n| *n <= SWEEP_MAX_PASSES)
+        {
+            let ok = SWEEP_PASS_IDLE.iter().all(|i| {
+                rows.iter().any(|r| {
+                    r.rule == rule.name()
+                        && r.passes == n
+                        && r.form == "frame"
+                        && r.idle == *i
+                        && r.argmax == 0
+                })
+            });
+            if ok {
+                return Some((rule.name(), n));
+            }
+        }
+    }
+    None
+}
+
+fn sweep(out: &std::path::Path) -> Result<Option<(&'static str, usize)>> {
+    let mut rules = vec![MemoryWrite::Average];
+    rules.extend(SWEEP_RULES);
+    let (cos, rows) = memory::algebra(&rules, &SWEEP_PASSES, &SWEEP_IDLE, 0)?;
+    let adopted = sweep_adopt(&rows);
+    let mut md = format!(
+        "# Amendment 1: the write-rule sweep on C1's synthetic states\n\nd = 96, one head, \
+         Wqk = Wv = I, word vectors drawn once with seed 0 (mean cosine between words {cos:.3}); \
+         sleep every {} frames with N passes (the wake pass included). Each cell: the colour \
+         decoded at the ask's door (R = red, right; G, B, Y wrong) and the margin, red's \
+         projection minus the best wrong one's. `average` is v1's rule, for reference.\n",
+        memory::SLEEP_EVERY
+    );
+    for form in ["frame", "token"] {
+        md += &format!(
+            "\n## Value form `{form}`\n\n| rule | N | {} |\n|---|---:|{}\n",
+            SWEEP_IDLE.map(|i| format!("d = {i}")).join(" | "),
+            "---|".repeat(SWEEP_IDLE.len())
+        );
+        for rule in &rules {
+            for n in SWEEP_PASSES {
+                let cells: Vec<String> = SWEEP_IDLE
+                    .iter()
+                    .map(|i| {
+                        let r = rows
+                            .iter()
+                            .find(|r| {
+                                r.rule == rule.name()
+                                    && r.passes == n
+                                    && r.form == form
+                                    && r.idle == *i
+                            })
+                            .expect("a reading");
+                        format!("{} {:+.3}", ["R", "G", "B", "Y"][r.argmax], r.margin)
+                    })
+                    .collect();
+                md += &format!("| {} | {n} | {} |\n", rule.name(), cells.join(" | "));
+            }
+        }
+    }
+    md += &match adopted {
+        Some((rule, n)) => format!(
+            "\nAdopted (the first of delta, exact, centred to decode red under form `frame` at \
+             d = 1, 4 and 8 with at most 4 passes): **{rule}**, N = **{n}**.\n"
+        ),
+        None => "\nNo rule decodes red at d = 1, 4 and 8 with at most 4 passes: v2 stops here \
+                 (amendment 1).\n"
+            .to_string(),
+    };
+    print!("{md}");
+    std::fs::write(out.join("sweep.md"), &md)?;
+    write_json(
+        &out.join("sweep.json"),
+        &json!({"mean_cosine": cos, "rows": rows, "order": SWEEP_RULES.map(|r| r.name()),
+            "pass_idle": SWEEP_PASS_IDLE, "max_passes": SWEEP_MAX_PASSES,
+            "adopted": adopted.map(|(r, n)| json!({"rule": r, "passes": n}))}),
+    )?;
+    Ok(adopted)
+}
+
 fn run(a: &MemcheckArgs) -> Result<()> {
+    if a.sweep {
+        sweep(&a.out)?;
+        return Ok(());
+    }
     let base_cfg = S2Config::load(a.base.join("config.json"))?;
     let base = params::load(&a.base.join("model.safetensors"))?;
     let tok = Tok::load(&a.base.join("tokenizer.json"))?;
@@ -588,7 +703,7 @@ fn run(a: &MemcheckArgs) -> Result<()> {
     let mut forms = Vec::new();
     let mut binding = None;
     for form in FORMS {
-        let cfg = form_cfg(&base_cfg, form)?;
+        let cfg = form_cfg(&base_cfg, form, a.write)?;
         let raw = step0_params(&cfg, &base, a.seed)?;
         let p = prepare(&raw, &cfg, true)?.into_owned();
         params::eval(&p)?;
@@ -642,7 +757,7 @@ fn run(a: &MemcheckArgs) -> Result<()> {
         &a.out.join("c2.json"),
         &json!({"episodes": seeds.len(), "from_seed": a.from_seed, "first_seed": seeds[0],
             "last_seed": seeds[seeds.len() - 1], "train_episodes": n_train, "qat": true,
-            "init_seed": a.seed, "forms": forms, "base_binding": {"accuracy": bind_acc, "shows": bind_n},
+            "init_seed": a.seed, "write": a.write.name(), "forms": forms, "base_binding": {"accuracy": bind_acc, "shows": bind_n},
             "bar": C2_BAR, "tie": C2_TIE, "adopted": adopted, "pass": c2_pass}),
     )?;
 
@@ -665,7 +780,7 @@ fn run(a: &MemcheckArgs) -> Result<()> {
     write_json(
         &a.out.join("c3.json"),
         &json!({"batches": a.batches, "batch": a.batch, "seed": a.seed, "pad_to": a.pad_to,
-            "passes": 1, "qat": true, "forms": c3, "adopted": adopted, "bar": C3_BAR, "pass": c3_pass}),
+            "passes": 1, "qat": true, "write": a.write.name(), "forms": c3, "adopted": adopted, "bar": C3_BAR, "pass": c3_pass}),
     )?;
     println!(
         "C1 {} | C2 {} | C3 {}",
@@ -685,7 +800,7 @@ fn gradients(
     base: &ParamMap,
     tok: &Tok,
 ) -> Result<BTreeMap<&'static str, serde_json::Value>> {
-    let cfg0 = form_cfg(base_cfg, FORMS[2])?;
+    let cfg0 = form_cfg(base_cfg, FORMS[2], a.write)?;
     let sd = SleepData::load(std::slice::from_ref(&a.seq), None, tok, &cfg0)?;
     let mut rng = Rng::new(a.seed);
     let batches: Vec<_> = (0..a.batches)
@@ -704,7 +819,7 @@ fn gradients(
     };
     let mut c3 = BTreeMap::new();
     for form in FORMS {
-        let cfg = form_cfg(base_cfg, form)?;
+        let cfg = form_cfg(base_cfg, form, a.write)?;
         let p = step0_params(&cfg, base, a.seed)?;
         let wv = exit_weight_vec(&cfg, None);
         let wts = Array::from_slice(&wv, &[wv.len() as i32]);

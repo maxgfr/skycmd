@@ -53,6 +53,11 @@ pub struct S2Config {
     /// Written only when `frame`.
     #[serde(default, skip_serializing_if = "MemoryValue::is_token")]
     pub memory_value: MemoryValue,
+    /// `docs/s6-sleep2-prereg.md` amendment 1: the write rule of a memory layer, `average`
+    /// (v1's gated 1/n frame step), `delta` (W1), `exact` (W2) or `centred` (W3). Written only
+    /// when not `average`.
+    #[serde(default, skip_serializing_if = "MemoryWrite::is_average")]
+    pub memory_write: MemoryWrite,
     /// Runtime switches of the memory checks (never saved).
     #[serde(skip)]
     pub memory_run: MemoryRun,
@@ -183,6 +188,43 @@ impl MemoryValue {
             MemoryValue::Token => "token",
             MemoryValue::Frame => "frame",
         }
+    }
+}
+
+/// The write rule of a memory layer (`docs/s6-sleep2-prereg.md` amendment 1).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryWrite {
+    /// v1: `S ← αS + (1/n)·Σ_i β_i (v_i − αS k_i) k_iᵀ`, `β = σ(wβ·x)`.
+    #[default]
+    Average,
+    /// W1: `S ← αS`, then the delta rule token by token at full step,
+    /// `S ← S + β_i (v_i − S k_i) k_iᵀ` with `β_i = 2σ(wβ·x_i)` (1 for a fresh model).
+    Delta,
+    /// W2: one exact step per frame, `S ← S + (V − S Kᵀ)(K Kᵀ + λI)⁻¹ K`, `λ = 1e-3`.
+    Exact,
+    /// W3: v1's rule with the keys centred on the frame's mean key (then of unit norm again).
+    Centred,
+}
+
+impl MemoryWrite {
+    pub fn is_average(&self) -> bool {
+        *self == MemoryWrite::Average
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            MemoryWrite::Average => "average",
+            MemoryWrite::Delta => "delta",
+            MemoryWrite::Exact => "exact",
+            MemoryWrite::Centred => "centred",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        [Self::Average, Self::Delta, Self::Exact, Self::Centred]
+            .into_iter()
+            .find(|w| w.name() == s)
     }
 }
 
@@ -323,8 +365,12 @@ impl S2Config {
         if self.memory && (self.is_audio() || self.temporal_carry) {
             bail!("memory: text states only, and not with temporal_carry");
         }
-        if !self.memory && (!self.memory_qk.is_separate() || !self.memory_value.is_token()) {
-            bail!("memory_qk and memory_value need memory");
+        if !self.memory
+            && (!self.memory_qk.is_separate()
+                || !self.memory_value.is_token()
+                || !self.memory_write.is_average())
+        {
+            bail!("memory_qk, memory_value and memory_write need memory");
         }
         if let Some(es) = &self.ffn_es {
             if es.expand == 0 || es.fan_in == 0 || es.fan_in > self.hidden_size {
@@ -431,6 +477,7 @@ impl S2Config {
             memory: false,
             memory_qk: MemoryQk::Separate,
             memory_value: MemoryValue::Token,
+            memory_write: MemoryWrite::Average,
             memory_run: MemoryRun::default(),
             parallax: false,
             xsa: false,

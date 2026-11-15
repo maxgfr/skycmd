@@ -137,6 +137,7 @@ impl CastConfig {
             memory: false,
             memory_qk: Default::default(),
             memory_value: Default::default(),
+            memory_write: Default::default(),
             memory_run: Default::default(),
             parallax: self.parallax,
             xsa: self.xsa,

@@ -28,7 +28,7 @@ use crate::{
     model::layer_norm,
     params::ParamMap,
     s2::{
-        config::{MemoryQk, MemoryValue, S2Config},
+        config::{MemoryQk, MemoryValue, MemoryWrite, S2Config},
         data::S2Batch,
         model::{
             cast_like, forward_prepared_mem, frame_ce, frame_ce_rows, heads, linear, merge_heads,
@@ -201,6 +201,17 @@ pub(crate) fn write(
     let k = l2norm(&project(p, cfg, l, key_part(cfg), &y)?)?;
     let on = valid.as_dtype(Dtype::Float32)?;
     let n = ops::maximum(on.sum_axis(-1, true)?, Array::from_f32(1.0))?;
+    // W3: the keys centred on the frame's mean key (over its valid tokens), of unit norm again.
+    let k = if cfg.memory_write == MemoryWrite::Centred {
+        let on_k = on.reshape(&[b, 1, t, 1])?;
+        let mean = k
+            .multiply(&on_k)?
+            .sum_axis(2, true)?
+            .divide(n.reshape(&[b, 1, 1, 1])?)?;
+        l2norm(&k.subtract(&mean)?)?
+    } else {
+        k
+    };
     let v = match cfg.memory_value {
         MemoryValue::Token => project(p, cfg, l, "v", &y)?,
         MemoryValue::Frame => {
@@ -217,7 +228,25 @@ pub(crate) fn write(
         xf.multiply(to_f32(w(p, &name(l, part))?.clone())?)?
             .sum_axis(-1, None)
     };
-    let beta = ops::sigmoid(gate("beta")?)?;
+    if cfg.memory_write == MemoryWrite::Exact {
+        // W2: S ← S + (V − S Kᵀ)(K Kᵀ + λI)⁻¹ K over the valid tokens (the padding has zero
+        // keys and values, so it adds nothing). With the rows of `err` the (v_i − S k_i)ᵀ:
+        // the update is (G⁻¹ err)ᵀ K, G = K Kᵀ + λI being symmetric.
+        let on_k = on.reshape(&[b, 1, t, 1])?;
+        let km = k.multiply(&on_k)?;
+        let err = v
+            .multiply(&on_k)?
+            .subtract(ops::matmul(&km, s.transpose_axes(&[0, 1, 3, 2])?)?)?;
+        let eye = ops::eye::<f32>(t, None, None)?.multiply(Array::from_f32(EXACT_LAMBDA))?;
+        let g = ops::matmul(&km, km.transpose_axes(&[0, 1, 3, 2])?)?.add(&eye)?;
+        let sol = spd_solve(&g, &err)?;
+        return s.add(ops::matmul(sol.transpose_axes(&[0, 1, 3, 2])?, &km)?);
+    }
+    let beta = match cfg.memory_write {
+        // W1: a fresh model (wβ = 0) takes full steps.
+        MemoryWrite::Delta => ops::sigmoid(gate("beta")?)?.multiply(Array::from_f32(2.0))?,
+        _ => ops::sigmoid(gate("beta")?)?,
+    };
     let alpha = ops::sigmoid(
         gate("alpha")?
             .multiply(&on)?
@@ -227,11 +256,52 @@ pub(crate) fn write(
     )?
     .reshape(&[b, 1, 1, 1])?;
     let kept = s.multiply(&alpha)?;
+    if cfg.memory_write == MemoryWrite::Delta {
+        // W1: token by token, S ← S + β_i (v_i − S k_i) k_iᵀ, the padding skipped.
+        let w = beta.multiply(&on)?;
+        let mut st = kept;
+        for i in 0..t {
+            let at = Array::from_slice(&[i], &[1]);
+            let ki = k.take_axis(&at, 2)?;
+            let vi = v.take_axis(&at, 2)?;
+            let wi = w.take_axis(&at, 1)?.reshape(&[b, 1, 1, 1])?;
+            let erri = vi.subtract(ops::matmul(&ki, st.transpose_axes(&[0, 1, 3, 2])?)?)?;
+            let step = ops::matmul(erri.multiply(&wi)?.transpose_axes(&[0, 1, 3, 2])?, &ki)?;
+            st = st.add(step)?;
+        }
+        return Ok(st);
+    }
     // err_i = v_i − α·S·k_i, weighted by β_i / n over the valid tokens.
     let err = v.subtract(ops::matmul(&k, kept.transpose_axes(&[0, 1, 3, 2])?)?)?;
     let weight = beta.multiply(&on)?.divide(&n)?.reshape(&[b, 1, t, 1])?;
     let delta = ops::matmul(err.multiply(&weight)?.transpose_axes(&[0, 1, 3, 2])?, &k)?;
     kept.add(delta)
+}
+
+/// λ of the exact write (W2).
+pub const EXACT_LAMBDA: f32 = 1e-3;
+
+/// `G⁻¹ R` for symmetric positive definite `G` `[.., n, n]` and `R` `[.., n, m]`, by Gauss–Jordan
+/// elimination without pivoting, from elementwise ops and matmuls only: it is differentiable and
+/// runs on every device (MLX's `linalg::inv` and `linalg::solve` run on the CPU only and have no
+/// gradient).
+pub(crate) fn spd_solve(g: &Array, r: &Array) -> R<Array> {
+    let n = g.dim(-1);
+    let (mut g, mut r) = (g.clone(), r.clone());
+    for j in 0..n {
+        let at = Array::from_slice(&[j], &[1]);
+        let row_g = g.take_axis(&at, -2)?; // [.., 1, n]
+        let piv = row_g.take_axis(&at, -1)?; // [.., 1, 1]
+        let row_g = row_g.divide(&piv)?;
+        let row_r = r.take_axis(&at, -2)?.divide(&piv)?;
+        let e: Vec<f32> = (0..n).map(|i| (i == j) as u8 as f32).collect();
+        let e = Array::from_slice(&e, &[n, 1]);
+        // Column j minus e_j: row j becomes the scaled pivot row, the others are eliminated.
+        let col = g.take_axis(&at, -1)?.subtract(&e)?; // [.., n, 1]
+        g = g.subtract(ops::matmul(&col, &row_g)?)?;
+        r = r.subtract(ops::matmul(&col, &row_r)?)?;
+    }
+    Ok(r)
 }
 
 /// The memory after the writes of one frame (`written` from `state_run_mem`): a block the frame
@@ -422,6 +492,11 @@ fn seq_frames(
 /// Check C1 of `docs/s6-sleep2-prereg.md` §3, the retrieval algebra: one reading.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AlgebraRow {
+    /// The write rule (`average` for v1's).
+    pub rule: &'static str,
+    /// Passes over each chunk of frames, the wake pass included (`N`; sleeps every
+    /// [`SLEEP_EVERY`] frames, as the model does).
+    pub passes: usize,
     pub form: &'static str,
     /// Idle frames between the show frame and the ask frame.
     pub idle: usize,
@@ -429,6 +504,8 @@ pub struct AlgebraRow {
     pub colours: [f32; 4],
     /// The colour of the argmax (0 = red, the colour shown).
     pub argmax: usize,
+    /// Red's projection minus the best wrong colour's (> 0: decoded right).
+    pub margin: f32,
 }
 
 /// Check C1: synthetic hidden states at `d = 96` (one random unit direction per word, orthogonal
@@ -439,6 +516,20 @@ pub struct AlgebraRow {
 /// a noise n`. Returns the measured mean cosine between distinct words and one row per form and
 /// number of idle frames.
 pub fn retrieval_algebra(idle: &[usize], seed: u64) -> R<(f32, Vec<AlgebraRow>)> {
+    algebra(&[MemoryWrite::Average], &[1], idle, seed)
+}
+
+/// The sweep of amendment 1 of `docs/s6-sleep2-prereg.md` on the setting of C1: every write rule
+/// of `rules` at every number of passes of `passes`. The frames before the ask are written as
+/// a wake pass, and every [`SLEEP_EVERY`] frames the chunk is replayed `N − 1` more times with
+/// the same rule (as [`sleep`] does; with synthetic states a replay rewrites the same keys and
+/// values). The word vectors and the noise numbers are the same for every reading.
+pub fn algebra(
+    rules: &[MemoryWrite],
+    passes: &[usize],
+    idle: &[usize],
+    seed: u64,
+) -> R<(f32, Vec<AlgebraRow>)> {
     const D: usize = 96;
     let mut rng = crate::rng::Rng::new(seed);
     let gauss = |rng: &mut crate::rng::Rng| -> Vec<f32> {
@@ -515,33 +606,61 @@ pub fn retrieval_algebra(idle: &[usize], seed: u64) -> R<(f32, Vec<AlgebraRow>)>
         .map(|c| &vec_of[*c])
         .collect();
     let mut rows = Vec::new();
-    for form in [MemoryValue::Frame, MemoryValue::Token] {
-        cfg.memory_value = form;
-        for &n_idle in idle {
-            let mut st = ops::zeros::<f32>(&[1, 1, D as i32, D as i32])?;
-            st = write(&p, &cfg, 0, &show, &valid, &st)?;
-            for n in &noise[..n_idle] {
-                let idle_frame = frame(&format!("show none colour none ask none noise {n}"));
-                st = write(&p, &cfg, 0, &idle_frame, &valid, &st)?;
+    for &rule in rules {
+        cfg.memory_write = rule;
+        for &n in passes {
+            for form in [MemoryValue::Frame, MemoryValue::Token] {
+                cfg.memory_value = form;
+                for &n_idle in idle {
+                    let mut before = vec![show.clone()];
+                    before.extend(
+                        noise[..n_idle]
+                            .iter()
+                            .map(|x| frame(&format!("show none colour none ask none noise {x}"))),
+                    );
+                    let mut st = ops::zeros::<f32>(&[1, 1, D as i32, D as i32])?;
+                    let mut chunk: Vec<&Array> = Vec::new();
+                    let sleep_on = |st: &mut Array, chunk: &mut Vec<&Array>| -> R<()> {
+                        if chunk.len() >= SLEEP_EVERY {
+                            for _ in 1..n {
+                                for f in chunk.iter() {
+                                    *st = write(&p, &cfg, 0, f, &valid, st)?;
+                                }
+                            }
+                            chunk.clear();
+                        }
+                        Ok(())
+                    };
+                    for f in &before {
+                        sleep_on(&mut st, &mut chunk)?;
+                        st = write(&p, &cfg, 0, f, &valid, &st)?;
+                        chunk.push(f);
+                    }
+                    sleep_on(&mut st, &mut chunk)?;
+                    let ask = frame(&format!(
+                        "show none colour none ask a noise {}",
+                        noise[n_idle]
+                    ));
+                    // The ask's door token is the sixth word.
+                    let r = crate::model::host_f32(&retrieve(&p, &cfg, 0, &ask, &st)?)?;
+                    let r = &r[5 * D..6 * D];
+                    let mut proj = [0f32; 4];
+                    for (c, dir) in colours.iter().enumerate() {
+                        proj[c] = r.iter().zip(dir.iter()).map(|(a, b)| a * b).sum();
+                    }
+                    let argmax = (0..4).fold(0, |b, i| if proj[i] > proj[b] { i } else { b });
+                    let wrong = proj[1..].iter().copied().fold(f32::MIN, f32::max);
+                    rows.push(AlgebraRow {
+                        rule: rule.name(),
+                        passes: n,
+                        form: form.name(),
+                        idle: n_idle,
+                        colours: proj,
+                        argmax,
+                        margin: proj[0] - wrong,
+                    });
+                }
             }
-            let ask = frame(&format!(
-                "show none colour none ask a noise {}",
-                noise[n_idle]
-            ));
-            // The ask's door token is the sixth word.
-            let r = crate::model::host_f32(&retrieve(&p, &cfg, 0, &ask, &st)?)?;
-            let r = &r[5 * D..6 * D];
-            let mut proj = [0f32; 4];
-            for (c, dir) in colours.iter().enumerate() {
-                proj[c] = r.iter().zip(dir.iter()).map(|(a, b)| a * b).sum();
-            }
-            let argmax = (0..4).fold(0, |b, i| if proj[i] > proj[b] { i } else { b });
-            rows.push(AlgebraRow {
-                form: form.name(),
-                idle: n_idle,
-                colours: proj,
-                argmax,
-            });
         }
     }
     Ok(((cos / pairs as f64) as f32, rows))
@@ -557,7 +676,7 @@ mod tests {
     use crate::{
         model::host_f32,
         s2::{
-            config::{MemoryQk, MemoryValue},
+            config::{MemoryQk, MemoryValue, MemoryWrite},
             data::{encode_record_cfg, make_batch, tests::s2_tok},
             golden::golden_params,
             model::{
@@ -776,6 +895,122 @@ mod tests {
                 let (_, m1) = wake(&p, &off, &f[0], off.n_exits(), &zero).unwrap();
                 let (l1, _) = wake(&p, &off, &f[1], off.n_exits(), &m1).unwrap();
                 assert!(l1.all_close(&plain, 1e-5, 1e-5, None).unwrap());
+            }
+        });
+    }
+
+    #[test]
+    fn the_exact_write_solves_its_system_and_carries_a_gradient() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            // spd_solve against MLX's CPU inverse, on K Kᵀ + λI with a repeated key.
+            let key = mlx_rs::random::key(3).unwrap();
+            let k = mlx_rs::random::normal::<f32>(&[2, 1, 6, 8][..], 0.0, 1.0, &key).unwrap();
+            let k = l2norm(
+                &ops::concatenate(
+                    &[
+                        k.clone(),
+                        k.take_axis(Array::from_slice(&[0], &[1]), 2).unwrap(),
+                    ],
+                    2,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let g = ops::matmul(&k, k.transpose_axes(&[0, 1, 3, 2]).unwrap())
+                .unwrap()
+                .add(
+                    ops::eye::<f32>(7, None, None)
+                        .unwrap()
+                        .multiply(Array::from_f32(EXACT_LAMBDA))
+                        .unwrap(),
+                )
+                .unwrap();
+            let r = mlx_rs::random::normal::<f32>(
+                &[2, 1, 7, 8][..],
+                0.0,
+                1.0,
+                &mlx_rs::random::key(4).unwrap(),
+            )
+            .unwrap();
+            let want = ops::matmul(mlx_rs::linalg::inv(&g).unwrap(), &r).unwrap();
+            let got = spd_solve(&g, &r).unwrap();
+            let back = ops::matmul(&g, &got).unwrap();
+            assert!(back.all_close(&r, 1e-3, 1e-3, None).unwrap(), "G·X = R");
+            assert!(
+                got.all_close(&want, 1e-2, 1e-2, None).unwrap(),
+                "against linalg::inv"
+            );
+            // The gradient flows through the solve (MLX's inverse has none).
+            let f = |p: HashMap<Rc<str>, Array>, _: ()| -> R<Vec<Array>> {
+                Ok(vec![spd_solve(&p["g"], &r)?.square()?.sum(None)?])
+            };
+            let mut m = HashMap::new();
+            m.insert(Rc::<str>::from("g"), g.clone());
+            let (_, grads) = keyed_value_and_grad(f)(m, ()).unwrap();
+            assert!(total(&grads["g"]) > 0.0);
+        });
+    }
+
+    #[test]
+    fn each_write_rule_stores_what_it_says() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let base = v2(sleepy(), MemoryValue::Token);
+            let p = init(&base, S2Parts::DECISION, 6).unwrap();
+            let f = frames(&base, &["show a colour red ask none noise 3"]);
+            let zero = Memory::zeros(&base, 2).unwrap();
+            let (_, _, written) =
+                forward_prepared_mem(&p, &base, &f[0], base.n_exits(), None, Some(&zero.0))
+                    .unwrap();
+            let x = written[0].as_ref().unwrap();
+            let valid = &f[0].valid;
+            let n_valid = (host_f32(&valid.as_dtype(Dtype::Float32).unwrap().sum(None).unwrap())
+                .unwrap()[0]
+                / 2.0) as usize;
+            let y = layer_norm(x, w(&p, &name(0, "norm")).unwrap(), None, base.norm_eps).unwrap();
+            let v = project(&p, &base, 0, "v", &y).unwrap();
+            let k = keys(&p, &base, 0, x).unwrap();
+            let s0 = &zero.0[0];
+            let err_at = |cfg: &S2Config, i: i32| -> f32 {
+                let s = write(&p, cfg, 0, x, valid, s0).unwrap();
+                let at = Array::from_slice(&[i], &[1]);
+                let (ki, vi) = (k.take_axis(&at, 2).unwrap(), v.take_axis(&at, 2).unwrap());
+                let got = ops::matmul(&ki, s.transpose_axes(&[0, 1, 3, 2]).unwrap()).unwrap();
+                let e = host_f32(&got.subtract(&vi).unwrap().abs().unwrap().max(None).unwrap())
+                    .unwrap()[0];
+                e / host_f32(&vi.abs().unwrap().max(None).unwrap()).unwrap()[0]
+            };
+            let with = |w: MemoryWrite| {
+                let mut c = base.clone();
+                c.memory_write = w;
+                c
+            };
+            // W1, the last token written at full step: S k = v exactly for it.
+            // (two identical rows: half the valid flags are row 0's)
+            assert!(err_at(&with(MemoryWrite::Delta), n_valid as i32 - 1) < 1e-4);
+            // W2: S k_i ≈ v_i for every valid token that is not a repeat (λ = 1e-3).
+            assert!(
+                err_at(&with(MemoryWrite::Exact), 0) < 0.05,
+                "{}",
+                err_at(&with(MemoryWrite::Exact), 0)
+            );
+            // v1 stores a small part of each pair (β/n ≈ 0.5/n).
+            assert!(err_at(&with(MemoryWrite::Average), 0) > 0.5);
+            // Every rule trains the read-out at step 0 and runs through a sleep.
+            let two = frames(
+                &base,
+                &[
+                    "show a colour red ask none noise 3",
+                    "show none colour none ask a noise 1",
+                ],
+            );
+            for rule in [MemoryWrite::Delta, MemoryWrite::Exact, MemoryWrite::Centred] {
+                let cfg = with(rule);
+                let g = grads_of(&cfg, &p, &two);
+                assert!(total(&g["mem.0.out.weight"]) > 0.0, "{rule:?}");
+                let m = sleep(&p, &cfg, &[&f[0]], zero.clone(), Sleep::passes(3)).unwrap();
+                assert!(m.0.iter().all(|s| total(s) > 0.0), "{rule:?}");
             }
         });
     }

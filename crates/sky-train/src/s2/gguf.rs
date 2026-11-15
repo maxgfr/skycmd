@@ -379,6 +379,9 @@ pub fn to_gguf(
     if !cfg.memory_value.is_token() {
         w.add_kv(k("memory_value"), cfg.memory_value.name());
     }
+    if !cfg.memory_write.is_average() {
+        w.add_kv(k("memory_write"), cfg.memory_write.name());
+    }
     if cfg.parallax {
         w.add_kv(k("parallax"), true);
     }
@@ -572,6 +575,11 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         Some("frame") => crate::s2::config::MemoryValue::Frame,
         Some(k) => bail!("{ARCH}.memory_value {k:?} (token or frame)"),
     };
+    let memory_write = match g.get_str(&format!("{ARCH}.memory_write")) {
+        None => crate::s2::config::MemoryWrite::Average,
+        Some(k) => crate::s2::config::MemoryWrite::parse(k)
+            .ok_or_else(|| anyhow!("{ARCH}.memory_write {k:?} (average, delta, exact, centred)"))?,
+    };
     let state_loops = g
         .get_u64(&format!("{ARCH}.state_loops"))
         .map_or(1, |v| v as usize);
@@ -600,6 +608,7 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         memory,
         memory_qk,
         memory_value,
+        memory_write,
         memory_run: Default::default(),
         parallax,
         xsa,
