@@ -435,7 +435,10 @@ def cmd_leak_check(a) -> None:
         counts[bench][0] += 1
         counts[bench][1] += int(h.size)
         if h.size and pool.size:
-            hit = h[np.isin(h, pool)]
+            # pool is sorted and unique: a binary search per run (np.isin would sort the
+            # 8-million-hash pool again for every benchmark series)
+            idx = np.minimum(np.searchsorted(pool, h), pool.size - 1)
+            hit = h[pool[idx] == h]
             if hit.size:
                 matched.append(np.unique(hit))
                 where[f"{bench}:{name}"] = where.get(f"{bench}:{name}", 0) + int(hit.size)
@@ -453,7 +456,13 @@ def cmd_leak_check(a) -> None:
     }
     for stem, v in sources.items():
         n_runs = sum(int(h.size) for h in v["per_series"])
-        hits = [int(np.isin(h, matched_h).sum()) if h.size and matched_h.size else 0 for h in v["per_series"]]
+        def n_hits(h):
+            if not h.size or not matched_h.size:
+                return 0
+            idx = np.minimum(np.searchsorted(matched_h, h), matched_h.size - 1)
+            return int((matched_h[idx] == h).sum())
+
+        hits = [n_hits(h) for h in v["per_series"]]
         report["sources"][stem] = {
             "series": len(v["ids"]),
             "runs": n_runs,
