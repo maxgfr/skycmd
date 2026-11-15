@@ -666,6 +666,287 @@ pub fn algebra(
     Ok(((cos / pairs as f64) as f32, rows))
 }
 
+// ------------------------------------------------- amendment 2: D1, D2, the contrastive C1
+
+/// Width of the synthetic states of C1.
+const SYN_D: usize = 96;
+/// Noise numbers drawn per draw (one per frame up to 32 idle frames and the ask; as C1 draws).
+const SYN_NOISE: usize = 34;
+/// The four colours of `recall`, in the order of C1's projections.
+pub const SYN_COLOURS: [&str; 4] = ["red", "green", "blue", "yellow"];
+
+/// One draw of C1's synthetic setting: the word vectors and the noise numbers of `seed`,
+/// drawn in the same order as [`algebra`] (seed 0 is the draw of C1 and of amendment 1's sweep).
+pub struct Synth {
+    vec_of: std::collections::HashMap<String, Vec<f32>>,
+    noise: Vec<usize>,
+}
+
+impl Synth {
+    pub fn new(seed: u64) -> Synth {
+        let mut rng = crate::rng::Rng::new(seed);
+        let gauss = |rng: &mut crate::rng::Rng| -> Vec<f32> {
+            (0..SYN_D)
+                .map(|_| {
+                    let (u1, u2) = (rng.f64().max(1e-12), rng.f64());
+                    ((-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()) as f32
+                })
+                .collect()
+        };
+        let unit = |v: Vec<f32>| -> Vec<f32> {
+            let n = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+            v.into_iter().map(|x| x / n).collect()
+        };
+        let shared = unit(gauss(&mut rng));
+        let mut words: Vec<String> = [
+            "show", "colour", "ask", "noise", "none", "a", "b", "c", "red", "green", "blue",
+            "yellow",
+        ]
+        .iter()
+        .map(|w| w.to_string())
+        .collect();
+        words.extend((0..100).map(|n| n.to_string()));
+        let mut vec_of = std::collections::HashMap::new();
+        for word in &words {
+            let mut u = gauss(&mut rng);
+            let along: f32 = u.iter().zip(&shared).map(|(a, b)| a * b).sum();
+            u.iter_mut().zip(&shared).for_each(|(a, b)| *a -= along * b);
+            let u = unit(u);
+            let x: Vec<f32> = u
+                .iter()
+                .zip(&shared)
+                .map(|(a, b)| 0.6f32.sqrt() * a + 0.4f32.sqrt() * b)
+                .collect();
+            vec_of.insert(word.clone(), x);
+        }
+        let noise = (0..SYN_NOISE).map(|_| rng.below(100)).collect();
+        Synth { vec_of, noise }
+    }
+
+    fn frame(&self, text: &str) -> Array {
+        let flat: Vec<f32> = text
+            .split(' ')
+            .flat_map(|w| self.vec_of[w].iter().copied())
+            .collect();
+        Array::from_slice(&flat, &[1, (flat.len() / SYN_D) as i32, SYN_D as i32])
+    }
+
+    fn show(&self, colour: usize) -> Array {
+        self.frame(&format!(
+            "show a colour {} ask none noise 46",
+            SYN_COLOURS[colour]
+        ))
+    }
+
+    /// The four colour word vectors.
+    pub fn colours(&self) -> [&[f32]; 4] {
+        SYN_COLOURS.map(|c| self.vec_of[c].as_slice())
+    }
+}
+
+/// C1's memory layer: one head at d = 96, `Wqk = Wv = I` in f32, gates at zero.
+pub fn synth_layer(rule: MemoryWrite, form: MemoryValue) -> R<(S2Config, ParamMap)> {
+    let mut cfg = S2Config::tiny(300);
+    (cfg.hidden_size, cfg.head_count) = (SYN_D, Some(1));
+    (cfg.state_layers, cfg.exits) = (1, vec![1]);
+    (cfg.memory, cfg.memory_qk) = (true, MemoryQk::Shared);
+    (cfg.memory_value, cfg.memory_write) = (form, rule);
+    let mut p = ParamMap::new();
+    let eye = ops::eye::<f32>(SYN_D as i32, None, None)?;
+    p.insert(name(0, "norm").into(), ops::ones::<f32>(&[SYN_D as i32])?);
+    p.insert(name(0, "qk").into(), eye.clone());
+    p.insert(name(0, "v").into(), eye);
+    for gate in ["alpha", "beta"] {
+        p.insert(name(0, gate).into(), ops::zeros::<f32>(&[SYN_D as i32])?);
+    }
+    Ok((cfg, p))
+}
+
+/// `r` at the ask's door token after the show frame of `colour`, `idle` idle frames and a sleep
+/// every [`SLEEP_EVERY`] frames with `passes` passes, as [`algebra`] plays it.
+pub fn synth_read(
+    syn: &Synth,
+    cfg: &S2Config,
+    p: &ParamMap,
+    colour: usize,
+    idle: usize,
+    passes: usize,
+) -> R<Vec<f32>> {
+    let valid = Array::from_slice(&[true; 8], &[1, 8]);
+    let mut before = vec![syn.show(colour)];
+    before.extend(
+        syn.noise[..idle]
+            .iter()
+            .map(|x| syn.frame(&format!("show none colour none ask none noise {x}"))),
+    );
+    let mut st = ops::zeros::<f32>(&[1, 1, SYN_D as i32, SYN_D as i32])?;
+    let mut chunk: Vec<&Array> = Vec::new();
+    for f in &before {
+        if chunk.len() >= SLEEP_EVERY {
+            for _ in 1..passes {
+                for c in &chunk {
+                    st = write(p, cfg, 0, c, &valid, &st)?;
+                }
+            }
+            chunk.clear();
+        }
+        st = write(p, cfg, 0, f, &valid, &st)?;
+        chunk.push(f);
+    }
+    if chunk.len() >= SLEEP_EVERY {
+        for _ in 1..passes {
+            for c in &chunk {
+                st = write(p, cfg, 0, c, &valid, &st)?;
+            }
+        }
+    }
+    let ask = syn.frame(&format!(
+        "show none colour none ask a noise {}",
+        syn.noise[idle]
+    ));
+    let r = crate::model::host_f32(&retrieve(p, cfg, 0, &ask, &st)?)?;
+    Ok(r[5 * SYN_D..6 * SYN_D].to_vec())
+}
+
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+fn cos(a: &[f32], b: &[f32]) -> f32 {
+    dot(a, b) / (dot(a, a).sqrt() * dot(b, b).sqrt()).max(1e-12)
+}
+
+fn argmax4(v: [f32; 4]) -> usize {
+    (0..4).fold(0, |b, i| if v[i] > v[b] { i } else { b })
+}
+
+/// C1's raw decoding: the colour of the largest projection on the four colour vectors.
+pub fn decode_raw(r: &[f32], colours: &[&[f32]; 4]) -> usize {
+    argmax4(colours.map(|c| dot(r, c)))
+}
+
+/// Amendment 2's contrastive decoding: the readings of one episode played with each of the four
+/// colours, minus their mean, each matched to the nearest colour direction (cosine). True when
+/// the four are matched to their own colour.
+pub fn decode_contrastive(reads: &[Vec<f32>; 4], colours: &[&[f32]; 4]) -> bool {
+    let mean: Vec<f32> = (0..SYN_D)
+        .map(|j| reads.iter().map(|r| r[j]).sum::<f32>() / 4.0)
+        .collect();
+    (0..4).all(|c| {
+        let z: Vec<f32> = reads[c].iter().zip(&mean).map(|(a, m)| a - m).collect();
+        argmax4(colours.map(|k| cos(&z, k))) == c
+    })
+}
+
+/// D1 and D2 of amendment 2, with W2 under form `frame`, after the show frame alone.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Diagnostic {
+    pub draws: usize,
+    /// Largest |S·k_door − v_door| over every case.
+    pub max_abs_diff: f32,
+    /// The largest |v_door| (for scale).
+    pub max_abs_value: f32,
+    /// D1: cases (draw × colour shown) whose stored value decodes right under C1's raw projection.
+    pub d1_right: usize,
+    pub d1_cases: usize,
+    /// D2: draws whose four stored values all decode right contrastively.
+    pub d2_right: usize,
+}
+
+pub fn diagnostic(seeds: std::ops::Range<u64>) -> R<Diagnostic> {
+    let (cfg, p) = synth_layer(MemoryWrite::Exact, MemoryValue::Frame)?;
+    let valid = Array::from_slice(&[true; 8], &[1, 8]);
+    let mut out = Diagnostic {
+        draws: seeds.clone().count(),
+        max_abs_diff: 0.0,
+        max_abs_value: 0.0,
+        d1_right: 0,
+        d1_cases: 0,
+        d2_right: 0,
+    };
+    for seed in seeds {
+        let syn = Synth::new(seed);
+        let colours = syn.colours();
+        let mut stored: Vec<Vec<f32>> = Vec::new();
+        for c in 0..4 {
+            let x = syn.show(c);
+            let st = write(
+                &p,
+                &cfg,
+                0,
+                &x,
+                &valid,
+                &ops::zeros::<f32>(&[1, 1, 96, 96])?,
+            )?;
+            // The door is the second word of the show frame: its query is its key.
+            let r = crate::model::host_f32(&retrieve(&p, &cfg, 0, &x, &st)?)?;
+            let r = &r[SYN_D..2 * SYN_D];
+            // The stored value of form `frame`: LN(x_door + x̄)·I.
+            let mean = x.mean_axis(1, true)?;
+            let v = layer_norm(&x.add(&mean)?, w(&p, &name(0, "norm"))?, None, cfg.norm_eps)?;
+            let v = crate::model::host_f32(&v)?[SYN_D..2 * SYN_D].to_vec();
+            for (a, b) in r.iter().zip(&v) {
+                out.max_abs_diff = out.max_abs_diff.max((a - b).abs());
+                out.max_abs_value = out.max_abs_value.max(b.abs());
+            }
+            out.d1_cases += 1;
+            out.d1_right += (decode_raw(&v, &colours) == c) as usize;
+            stored.push(v);
+        }
+        let stored: [Vec<f32>; 4] = stored.try_into().expect("four colours");
+        out.d2_right += decode_contrastive(&stored, &colours) as usize;
+    }
+    Ok(out)
+}
+
+/// One cell of the contrastive sweep: the draws whose four colours were all matched.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContrastRow {
+    pub rule: &'static str,
+    pub passes: usize,
+    pub form: &'static str,
+    pub idle: usize,
+    pub right_draws: usize,
+    pub draws: usize,
+}
+
+/// Amendment 2's sweep: amendment 1's, with C1 read contrastively over the draws `seeds`.
+pub fn contrastive_sweep(
+    rules: &[MemoryWrite],
+    passes: &[usize],
+    idle: &[usize],
+    seeds: std::ops::Range<u64>,
+) -> R<Vec<ContrastRow>> {
+    let draws: Vec<Synth> = seeds.map(Synth::new).collect();
+    let mut rows = Vec::new();
+    for &rule in rules {
+        for &n in passes {
+            for form in [MemoryValue::Frame, MemoryValue::Token] {
+                let (cfg, p) = synth_layer(rule, form)?;
+                for &d in idle {
+                    let mut right = 0;
+                    for syn in &draws {
+                        let reads: Vec<Vec<f32>> = (0..4)
+                            .map(|c| synth_read(syn, &cfg, &p, c, d, n))
+                            .collect::<R<_>>()?;
+                        let reads: [Vec<f32>; 4] = reads.try_into().expect("four colours");
+                        right += decode_contrastive(&reads, &syn.colours()) as usize;
+                    }
+                    rows.push(ContrastRow {
+                        rule: rule.name(),
+                        passes: n,
+                        form: form.name(),
+                        idle: d,
+                        right_draws: right,
+                        draws: draws.len(),
+                    });
+                }
+            }
+        }
+    }
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, rc::Rc};
@@ -895,6 +1176,36 @@ mod tests {
                 let (_, m1) = wake(&p, &off, &f[0], off.n_exits(), &zero).unwrap();
                 let (l1, _) = wake(&p, &off, &f[1], off.n_exits(), &m1).unwrap();
                 assert!(l1.all_close(&plain, 1e-5, 1e-5, None).unwrap());
+            }
+        });
+    }
+
+    #[test]
+    fn the_draws_of_amendment_2_start_with_the_draw_of_c1() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            // Seed 0 of Synth is the setting of C1 and of amendment 1's sweep, reading for reading.
+            let (_, rows) = algebra(
+                &[MemoryWrite::Average, MemoryWrite::Exact],
+                &[1, 2],
+                &[1, 8],
+                0,
+            )
+            .unwrap();
+            let syn = Synth::new(0);
+            for r in &rows {
+                let rule = MemoryWrite::parse(r.rule).unwrap();
+                let form = if r.form == "frame" {
+                    MemoryValue::Frame
+                } else {
+                    MemoryValue::Token
+                };
+                let (cfg, p) = synth_layer(rule, form).unwrap();
+                let got = synth_read(&syn, &cfg, &p, 0, r.idle, r.passes).unwrap();
+                let proj = syn.colours().map(|c| dot(&got, c));
+                for (a, b) in proj.iter().zip(&r.colours) {
+                    assert!((a - b).abs() < 1e-4, "{r:?}: {proj:?}");
+                }
             }
         });
     }

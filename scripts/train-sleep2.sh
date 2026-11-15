@@ -235,7 +235,15 @@ checks() {
       write=$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1]))["adopted"]; print(a["rule"] if a else "")' "$c/sweep.json")
     fi
     if [ -z "$write" ]; then
-      failed sweep "No write rule decodes the colour at d = 1, 4 and 8 with at most 4 passes: v2 stops here (amendment 1)."
+      # Amendment 2: D1 and D2; when C1's raw decoding is unsound, the sweep once more with C1
+      # read contrastively over 20 draws (its adoption replaces the first sweep's).
+      [ "$dry" != 1 ] && [ -f "$c/diagnostic.json" ] || x nice -n 19 "$T" --cpu s2-memcheck --base "$pico_base" --seq "$seq/recall.jsonl" --out "$c" --diagnose
+      if [ "$dry" != 1 ]; then
+        write=$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1])).get("adopted"); print(a["rule"] if a else "")' "$c/diagnostic.json")
+      fi
+    fi
+    if [ -z "$write" ]; then
+      failed sweep "No write rule is right at d = 1, 4 and 8 with at most 4 passes: v2 stops here (amendments 1 and 2)."
       write="delta" # SMOKE only
     fi
   fi

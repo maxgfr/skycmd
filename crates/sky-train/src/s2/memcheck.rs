@@ -101,6 +101,11 @@ pub struct MemcheckArgs {
     /// `sweep.json` and `sweep.md`) and its adoption rule; nothing else.
     #[arg(long)]
     pub sweep: bool,
+    /// Amendment 2: the diagnostic D1 and D2 on 20 draws, its rule, and (when D1 is under 90%)
+    /// amendment 1's sweep once more with C1 read contrastively (`diagnostic.json`,
+    /// `sweep2.json`, `sweep2.md`).
+    #[arg(long)]
+    pub diagnose: bool,
     /// Only the gradient report of C3 on the three forms (`grads.json`), with no verdict: the
     /// step-0 gradient of every parameter group, v1 against v2.
     #[arg(long)]
@@ -666,7 +671,129 @@ fn sweep(out: &std::path::Path) -> Result<Option<(&'static str, usize)>> {
     Ok(adopted)
 }
 
+/// Amendment 2: the draws of the diagnostic and of the contrastive C1, and the share of right
+/// draws (or cases) that counts as right.
+pub const DIAG_SEEDS: std::ops::Range<u64> = 0..20;
+pub const DIAG_SHARE: f64 = 0.90;
+
+/// Amendment 1's adoption on the contrastive cells: the first of W1, W2, W3 right under form
+/// `frame` at 1, 4 and 8 idle frames with at most 4 passes, with the smallest such passes.
+pub fn sweep2_adopt(rows: &[memory::ContrastRow]) -> Option<(&'static str, usize)> {
+    let right = |r: &memory::ContrastRow| r.right_draws as f64 >= DIAG_SHARE * r.draws as f64;
+    for rule in SWEEP_RULES {
+        for n in SWEEP_PASSES
+            .iter()
+            .copied()
+            .filter(|n| *n <= SWEEP_MAX_PASSES)
+        {
+            let ok = SWEEP_PASS_IDLE.iter().all(|i| {
+                rows.iter().any(|r| {
+                    r.rule == rule.name()
+                        && r.passes == n
+                        && r.form == "frame"
+                        && r.idle == *i
+                        && right(r)
+                })
+            });
+            if ok {
+                return Some((rule.name(), n));
+            }
+        }
+    }
+    None
+}
+
+fn diagnose(out: &std::path::Path) -> Result<Option<(&'static str, usize)>> {
+    let d = memory::diagnostic(DIAG_SEEDS)?;
+    let d1_share = d.d1_right as f64 / d.d1_cases as f64;
+    let sound = d1_share >= DIAG_SHARE;
+    println!(
+        "D1 (W2, form frame, the show frame alone, seeds 0-19): largest |S k_door - v_door| {:.3e} (largest |v| {:.3}); the stored value decodes right under C1's raw projection in {} of {} cases ({:.0}%)",
+        d.max_abs_diff, d.max_abs_value, d.d1_right, d.d1_cases, 100.0 * d1_share
+    );
+    println!(
+        "D2: the four stored values of a draw all decode right contrastively in {} of {} draws",
+        d.d2_right, d.draws
+    );
+    let mut res = json!({"diagnostic": d, "share": DIAG_SHARE, "criterion_sound": sound});
+    if sound {
+        println!("D1 >= 90%: the criterion was sound; the rules fail and v2 stops (amendment 2).");
+        write_json(&out.join("diagnostic.json"), &res)?;
+        return Ok(None);
+    }
+    println!("D1 < 90%: C1 is read contrastively; amendment 1's sweep runs once more.");
+    let mut rules = vec![MemoryWrite::Average];
+    rules.extend(SWEEP_RULES);
+    let rows = memory::contrastive_sweep(&rules, &SWEEP_PASSES, &SWEEP_IDLE, DIAG_SEEDS)?;
+    let adopted = sweep2_adopt(&rows);
+    let mut md = format!(
+        "# Amendment 2: the write-rule sweep with C1 read contrastively\n\nThe setting of \
+         amendment 1's sweep (`sweep.md`, kept on record), over {} draws of the word vectors \
+         (seeds 0 to 19). Each cell: the draws whose four colours, played in turn, were all \
+         matched to their own colour after removing their mean; R when at least 90% of the \
+         draws are (18 of 20), W otherwise.\n",
+        d.draws
+    );
+    for form in ["frame", "token"] {
+        md += &format!(
+            "\n## Value form `{form}`\n\n| rule | N | {} |\n|---|---:|{}\n",
+            SWEEP_IDLE.map(|i| format!("d = {i}")).join(" | "),
+            "---|".repeat(SWEEP_IDLE.len())
+        );
+        for rule in &rules {
+            for n in SWEEP_PASSES {
+                let cells: Vec<String> = SWEEP_IDLE
+                    .iter()
+                    .map(|i| {
+                        let r = rows
+                            .iter()
+                            .find(|r| {
+                                r.rule == rule.name()
+                                    && r.passes == n
+                                    && r.form == form
+                                    && r.idle == *i
+                            })
+                            .expect("a cell");
+                        let ok = r.right_draws as f64 >= DIAG_SHARE * r.draws as f64;
+                        format!(
+                            "{} {}/{}",
+                            if ok { "R" } else { "W" },
+                            r.right_draws,
+                            r.draws
+                        )
+                    })
+                    .collect();
+                md += &format!("| {} | {n} | {} |\n", rule.name(), cells.join(" | "));
+            }
+        }
+    }
+    md += &match adopted {
+        Some((rule, n)) => format!(
+            "\nAdopted (the first of delta, exact, centred right under form `frame` at d = 1, \
+             4 and 8 with at most 4 passes): **{rule}**, N = **{n}**.\n"
+        ),
+        None => "\nNo rule is right at d = 1, 4 and 8 with at most 4 passes: v2 stops here \
+                 (amendments 1 and 2).\n"
+            .to_string(),
+    };
+    print!("{md}");
+    std::fs::write(out.join("sweep2.md"), &md)?;
+    write_json(
+        &out.join("sweep2.json"),
+        &json!({"rows": rows, "draws": d.draws, "share": DIAG_SHARE, "order": SWEEP_RULES.map(|r| r.name()),
+            "pass_idle": SWEEP_PASS_IDLE, "max_passes": SWEEP_MAX_PASSES,
+            "adopted": adopted.map(|(r, n)| json!({"rule": r, "passes": n}))}),
+    )?;
+    res["adopted"] = json!(adopted.map(|(r, n)| json!({"rule": r, "passes": n})));
+    write_json(&out.join("diagnostic.json"), &res)?;
+    Ok(adopted)
+}
+
 fn run(a: &MemcheckArgs) -> Result<()> {
+    if a.diagnose {
+        diagnose(&a.out)?;
+        return Ok(());
+    }
     if a.sweep {
         sweep(&a.out)?;
         return Ok(());
