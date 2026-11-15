@@ -43,6 +43,8 @@ pub struct ProbeArgs {
     pub max_pipes: u32,
     /// Read the float weights instead of the ternary ones.
     pub float: bool,
+    /// docs/s6-sleep2-prereg.md §5.2: the memory is reset to zero before every frame.
+    pub memory_off: bool,
     pub json: Option<PathBuf>,
 }
 
@@ -62,6 +64,9 @@ pub struct Episode {
 pub struct ProbeReport {
     pub game: String,
     pub memory: bool,
+    /// The memory was reset before every frame (`--memory-off`); written only then.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub memory_off: bool,
     pub passes: usize,
     pub from_seed: u64,
     pub n_episodes: usize,
@@ -85,6 +90,8 @@ struct MemPolicy<'a> {
     /// (question id, type, instructions) of the game.
     questions: Vec<(String, String, String)>,
     how: Sleep,
+    /// Reset the memory before every frame.
+    memory_off: bool,
     mem: Option<Memory>,
     /// The memory after the current frame's write, kept until the frame ends: a frame with two
     /// questions reads the same memory twice and writes once.
@@ -121,6 +128,7 @@ impl<'a> MemPolicy<'a> {
                 every: SLEEP_EVERY,
                 full: true,
             },
+            memory_off: false,
             mem: None,
             next: None,
             chunk: Vec::new(),
@@ -148,6 +156,11 @@ impl Policy for MemPolicy<'_> {
         self.last_steps = steps;
         if let Some(m) = self.next.take() {
             self.mem = Some(m);
+        }
+        if self.memory_off && self.mem.is_some() {
+            // Nothing carries from one frame to the next: no memory, so no sleep either.
+            self.mem = Some(Memory::zeros(self.cfg, 1).expect("memory"));
+            self.chunk.clear();
         }
         if !self.chunk.is_empty() && (self.chunk.len() >= self.how.every || g.pause()) {
             let mem = self.mem.take().expect("a memory model");
@@ -275,13 +288,18 @@ pub fn probe(a: &ProbeArgs) -> Result<Vec<ProbeReport>> {
     if passes.is_empty() || passes.contains(&0) {
         bail!("--passes needs values >= 1");
     }
+    if a.memory_off && !cfg.memory {
+        bail!("--memory-off needs a model with a memory");
+    }
     let mut out = Vec::new();
     for &n in &passes {
         let mut pol = MemPolicy::new(&cfg, &p, &tok, &a.game, n)?;
+        pol.memory_off = a.memory_off;
         let report = mlx_rs::with_device(mlx_rs::Device::cpu(), || -> Result<ProbeReport> {
             let mut r = ProbeReport {
                 game: a.game.clone(),
                 memory: cfg.memory,
+                memory_off: a.memory_off,
                 passes: n,
                 from_seed: a.from_seed,
                 n_episodes: a.episodes,
@@ -333,7 +351,11 @@ pub fn probe(a: &ProbeArgs) -> Result<Vec<ProbeReport>> {
         println!(
             "{:8} {} N {}: score {:.4} over {} episodes from seed {}{}",
             report.game,
-            if report.memory { "memory" } else { "no memory" },
+            match (report.memory, report.memory_off) {
+                (true, false) => "memory",
+                (true, true) => "memory off",
+                _ => "no memory",
+            },
             report.passes,
             report.score,
             report.n_episodes,
@@ -413,6 +435,48 @@ mod tests {
                     differ(&awake[t], &slept[t]),
                     "frame {t}: the sleep changed nothing"
                 );
+            }
+        });
+    }
+
+    #[test]
+    fn with_the_memory_off_the_reader_answers_as_its_base() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            // docs/s6-sleep2-prereg.md §5.2: a memory reset before every frame leaves the
+            // computation of the frame alone (a zero memory adds nothing), whatever N is.
+            let (_d, tok) = s2_tok();
+            let mut cfg = ladder("s6-nano");
+            cfg.memory = true;
+            cfg.memory_qk = crate::s2::config::MemoryQk::Shared;
+            cfg.memory_value = crate::s2::config::MemoryValue::Frame;
+            cfg.vocab_size = 262;
+            let p = golden_params(&cfg, 7).unwrap();
+            let mut plain = cfg.clone();
+            (plain.memory, plain.memory_qk, plain.memory_value) =
+                (false, Default::default(), Default::default());
+            let none = answers(&plain, &p, &tok, 1);
+            let on = answers(&cfg, &p, &tok, 1);
+            assert!(
+                (1..8).all(|t| differ(&none[t], &on[t])),
+                "the memory is read"
+            );
+            for n in [1, 4] {
+                let mut pol = MemPolicy::new(&cfg, &p, &tok, "rule110", n).unwrap();
+                pol.memory_off = true;
+                let mut g = make_game("rule110", 19).unwrap();
+                let q = &g.questions()[0];
+                let opts = q.canonical_options();
+                pol.new_episode();
+                let mut t = 0;
+                while !g.done() {
+                    pol.observe(&*g);
+                    let l = pol.decide("rule110", q.id, &g.state_text(), &opts);
+                    assert!(!differ(&l, &none[t]), "N = {n}, frame {t}");
+                    g.apply(argmax(&l), false);
+                    t += 1;
+                }
+                assert_eq!(t, 8);
             }
         });
     }

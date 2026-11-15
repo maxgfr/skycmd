@@ -125,7 +125,16 @@ pub struct SeqData {
     pub train: Vec<Vec<usize>>,
     /// Per train sequence and frame: the game paused before that frame.
     pub pauses: Vec<Vec<bool>>,
+    /// Per train sequence and frame: the frame is an ask of `recall` ([`is_ask`]; meaningful
+    /// for `recall` only).
+    pub asks: Vec<Vec<bool>>,
     pub k: usize,
+}
+
+/// True for the state of a `recall` ask frame (`... ask <door> ...`, the door not `none`).
+pub fn is_ask(state: &str) -> bool {
+    let words: Vec<&str> = state.split_whitespace().collect();
+    words.windows(2).any(|w| w[0] == "ask" && w[1] != "none")
 }
 
 /// Loads `s2-seqgen` output (a file or a directory) with the stream settings of `cfg`.
@@ -137,6 +146,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
     // The loader keeps the file order within each split: rebuild the train sequences.
     let mut frames: Vec<(u64, usize)> = Vec::new();
     let mut paused: Vec<bool> = Vec::new();
+    let mut asked: Vec<bool> = Vec::new();
     for file in list_jsonl(path)? {
         let f = std::fs::File::open(&file)?;
         for line in BufReader::new(f).lines() {
@@ -152,6 +162,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
                     v["seq_t"].as_u64().context("record without seq_t")? as usize,
                 ));
                 paused.push(v["pause"].as_bool().unwrap_or(false));
+                asked.push(is_ask(v["state"].as_str().unwrap_or("")));
             }
         }
     }
@@ -194,10 +205,15 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
         .iter()
         .map(|s| s.iter().map(|&i| paused[i]).collect())
         .collect();
+    let asks = train
+        .iter()
+        .map(|s| s.iter().map(|&i| asked[i]).collect())
+        .collect();
     Ok(SeqData {
         data,
         train,
         pauses,
+        asks,
         k,
     })
 }
@@ -267,6 +283,8 @@ pub struct FrameBatch {
     pub frames: Vec<S2Batch>,
     /// The game paused before frame `t` (the pauses of a game do not depend on the episode).
     pub pauses: Vec<bool>,
+    /// `[K, n]`, 1 where the frame of a sequence is a `recall` ask ([`SeqData::asks`]).
+    pub asks: mlx_rs::Array,
     pub n_rows: usize,
     pub n_tokens: usize,
 }
@@ -290,9 +308,16 @@ pub fn sample_frames(sd: &SeqData, n: usize, rng: &mut Rng, pad_to: usize) -> Fr
     }
     let pauses = sd.pauses[picked[0]].clone();
     debug_assert!(picked.iter().all(|&s| sd.pauses[s] == pauses));
+    let mut asks = vec![0f32; sd.k * n];
+    for (r, &s) in picked.iter().enumerate() {
+        for t in 0..sd.k {
+            asks[t * n + r] = sd.asks[s][t] as u8 as f32;
+        }
+    }
     FrameBatch {
         frames,
         pauses,
+        asks: mlx_rs::Array::from_slice(&asks, &[sd.k as i32, n as i32]),
         n_rows: n * sd.k,
         n_tokens,
     }
@@ -439,6 +464,37 @@ mod tests {
             &cfg
         )
         .is_err());
+    }
+
+    #[test]
+    fn the_asks_of_recall_are_marked_frame_by_frame() {
+        let dir = tempfile::tempdir().unwrap();
+        let rec = dir.path().join("recall.jsonl");
+        generate("recall", 6, 64, 5, &rec).unwrap();
+        let lines: Vec<serde_json::Value> = std::fs::read_to_string(&rec)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let in_file = lines
+            .iter()
+            .filter(|x| x["split"] != "val" && x["split"] != "test")
+            .filter(|x| !x["state"].as_str().unwrap().contains("ask none"))
+            .count();
+        assert!(in_file > 0);
+        assert!(is_ask("show none colour none ask b noise 7"));
+        assert!(!is_ask("show a colour red ask none noise 46"));
+        let _g = crate::test_util::lock();
+        let (_d, tok) = crate::s2::data::tests::s2_tok();
+        let mut cfg = S2Config::tiny(262);
+        cfg.fuse_numbers = true;
+        cfg.max_state_tokens = 96;
+        let sd = SleepData::load(&[rec], None, &tok, &cfg).unwrap();
+        let marked: usize = sd.games[0].1.asks.iter().flatten().filter(|a| **a).count();
+        assert_eq!(marked, in_file);
+        let mut rng = Rng::new(2);
+        let (_, b) = sd.sample(3, &mut rng, 16);
+        assert_eq!(b.asks.shape(), &[64, 3]);
     }
 
     #[test]

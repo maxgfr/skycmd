@@ -9,6 +9,7 @@ pub mod es;
 pub mod eval;
 pub mod gguf;
 pub mod golden;
+pub mod memcheck;
 pub mod memory;
 pub mod model;
 pub mod numeric;

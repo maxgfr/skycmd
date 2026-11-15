@@ -25,6 +25,10 @@ use sky_train::{
     about = "Train skycmd-s1 and skycmd-s2 decision models with mlx-rs"
 )]
 struct Cli {
+    /// Run MLX on the CPU (its default device becomes the CPU before any computation): the
+    /// checks of docs/s6-sleep2-prereg.md §3 run next to a GPU training.
+    #[arg(long, global = true)]
+    cpu: bool,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -423,6 +427,21 @@ enum Cmd {
         /// Backpropagate through every sleep pass instead of the last one only.
         #[arg(long)]
         sleep_full: bool,
+        /// docs/s6-sleep2-prereg.md §2 (M5): log every sequence step (game, loss, the
+        /// cross-entropy of recall's ask frames) and the gradient norm per parameter group
+        /// every 50 sequence steps.
+        #[arg(long)]
+        seq_log: bool,
+        /// AdamW rate multiplier of the memory weights mem.* (docs/s6-sleep2-prereg.md §2, M3).
+        #[arg(long, default_value_t = 1.0)]
+        mem_lr_mult: f32,
+        /// The memory read adds nothing (its read-out held at zero): C4's control
+        /// (docs/s6-sleep2-prereg.md §3).
+        #[arg(long)]
+        memory_read_off: bool,
+        /// The memory projections stay float under QAT: C4's second retry (choice O5).
+        #[arg(long)]
+        memory_float: bool,
         #[arg(long, default_value_t = 20)]
         log_every: u64,
         #[arg(long, default_value_t = 1000)]
@@ -550,11 +569,18 @@ enum Cmd {
         /// Read the float weights instead of the ternary ones.
         #[arg(long)]
         float: bool,
+        /// The memory is reset to zero before every frame (docs/s6-sleep2-prereg.md §5.2).
+        #[arg(long)]
+        memory_off: bool,
         #[arg(long)]
         tokenizer: Option<PathBuf>,
         #[arg(long)]
         json: Option<PathBuf>,
     },
+    /// docs/s6-sleep2-prereg.md §3: the checks C1 (retrieval algebra), C2 (the colour read from
+    /// the memory at initialisation) and C3 (the first gradient), on train seeds only. Run it
+    /// with --cpu.
+    S2Memcheck(s2::memcheck::MemcheckArgs),
     /// s3: temporal sequences (SPEC-S3 §7): K consecutive decision points per sequence.
     S2Seqgen {
         /// Comma-separated games.
@@ -630,7 +656,12 @@ fn main() -> Result<()> {
     {
         mlx_rs::memory::set_cache_limit((gb * (1u64 << 30) as f64) as usize)?;
     }
-    match Cli::parse().cmd {
+    let cli = Cli::parse();
+    if cli.cpu {
+        mlx_rs::Device::set_default(&mlx_rs::Device::cpu());
+        println!("MLX device: cpu");
+    }
+    match cli.cmd {
         Cmd::Bench {
             config,
             mlm_batch,
@@ -869,6 +900,10 @@ fn main() -> Result<()> {
             sleep_batch,
             sleep_passes,
             sleep_full,
+            seq_log,
+            mem_lr_mult,
+            memory_read_off,
+            memory_float,
             log_every,
             eval_every,
             checkpoint_minutes,
@@ -887,7 +922,10 @@ fn main() -> Result<()> {
             out,
             resume,
             batch,
-            opt: opt.build(1e-3),
+            opt: sky_train::optim::OptConfig {
+                mem_lr_mult,
+                ..opt.build(1e-3)
+            },
             seed,
             qat_frac,
             loop_dropout,
@@ -906,6 +944,11 @@ fn main() -> Result<()> {
             sleep_batch,
             sleep_passes,
             sleep_full,
+            seq_log,
+            memory_run: s2::config::MemoryRun {
+                read_off: memory_read_off,
+                float: memory_float,
+            },
             dis,
             exit_kd: exit_kd.map(|weight| ExitKd {
                 weight,
@@ -1027,6 +1070,7 @@ fn main() -> Result<()> {
             passes,
             max_pipes,
             float,
+            memory_off,
             tokenizer,
             json,
         } => {
@@ -1039,9 +1083,11 @@ fn main() -> Result<()> {
                 passes,
                 max_pipes,
                 float,
+                memory_off,
                 json,
             })?;
         }
+        Cmd::S2Memcheck(a) => s2::memcheck::memcheck(&a)?,
         Cmd::S2Seqgen {
             games,
             n_seq,

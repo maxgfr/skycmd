@@ -68,6 +68,54 @@ pub struct StepStats {
     pub tokens: usize,
 }
 
+/// The readings of one sequence step for the training log (`docs/s6-sleep2-prereg.md` §2, M5).
+#[derive(Debug, Clone, Default)]
+pub struct SeqReport {
+    /// Σ over the ask frames of the deep-supervision cross-entropy (the loss's own measure).
+    pub ask_ce_sum: f64,
+    /// Σ over the ask frames of the cross-entropy at the last exit.
+    pub ask_ce_last_sum: f64,
+    /// Ask frames in the batch (0 for a game other than `recall`).
+    pub asks: f64,
+    /// Gradient norm of each parameter group ([`GROUPS`]), before clipping.
+    pub groups: Option<BTreeMap<String, f64>>,
+}
+
+/// Parameter groups of the gradient report: name prefixes, and `other` for the rest
+/// (embeddings, exit norms, the scorer).
+pub const GROUPS: [&str; 4] = ["mem.", "blk.", "fusion.", "static."];
+
+/// The group of a parameter for the gradient report (`mem`, `blk`, `fusion`, `static`, `other`).
+pub fn group_name(name: &str) -> &'static str {
+    GROUPS
+        .iter()
+        .find(|g| name.starts_with(**g))
+        .map_or("other", |g| g.trim_end_matches('.'))
+}
+
+/// The norm of the gradient of each parameter group.
+pub fn group_norms(grads: &ParamMap) -> Result<BTreeMap<String, f64>> {
+    let mut sums: BTreeMap<&'static str, Array> = BTreeMap::new();
+    for (k, g) in grads {
+        let sq = g.square()?.sum(None)?;
+        let e = sums.entry(group_name(k));
+        match e {
+            std::collections::btree_map::Entry::Occupied(mut o) => {
+                let acc = o.get().add(&sq)?;
+                o.insert(acc);
+            }
+            std::collections::btree_map::Entry::Vacant(v) => {
+                v.insert(sq);
+            }
+        }
+    }
+    mlx_rs::transforms::eval(sums.values())?;
+    Ok(sums
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), (v.item_exact::<f32>() as f64).sqrt()))
+        .collect())
+}
+
 /// An s2 training session.
 pub struct S2Session {
     pub cfg: S2Config,
@@ -443,6 +491,54 @@ impl S2Session {
             grad_norm,
             tokens: batch.n_tokens,
         })
+    }
+
+    /// [`Self::sleep_step`] with the readings of the training log of `docs/s6-sleep2-prereg.md`
+    /// §2 (M5): the cross-entropy of the `recall` ask frames apart, and with `groups`, the norm
+    /// of the gradient of each parameter group before clipping. The update is the same.
+    pub fn sleep_step_report(
+        &mut self,
+        batch: &crate::s2::seq::FrameBatch,
+        lr_scale: f32,
+        qat: bool,
+        how: crate::s2::memory::Sleep,
+        groups: bool,
+    ) -> Result<(StepStats, SeqReport)> {
+        let wv = model::exit_weight_vec(&self.cfg, None);
+        let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+        let cfg = &self.cfg;
+        let f = |p: std::collections::HashMap<std::rc::Rc<str>, Array>,
+                 b: &crate::s2::seq::FrameBatch|
+         -> mlx_rs::error::Result<Vec<Array>> {
+            crate::s2::memory::seq_loss_asks(&p, cfg, &b.frames, &b.pauses, &wts, qat, how, &b.asks)
+        };
+        let (values, grads) =
+            mlx_rs::transforms::keyed_value_and_grad(f)(self.params.clone(), batch)?;
+        let [loss, deep, last, asks]: [Array; 4] = values
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("four outputs expected"))?;
+        let groups = if groups {
+            Some(group_norms(&grads)?)
+        } else {
+            None
+        };
+        let (loss, grad_norm) =
+            apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?;
+        mlx_rs::transforms::eval([&deep, &last, &asks])?;
+        self.state.step += 1;
+        Ok((
+            StepStats {
+                loss,
+                grad_norm,
+                tokens: batch.n_tokens,
+            },
+            SeqReport {
+                ask_ce_sum: deep.item_exact::<f32>() as f64,
+                ask_ce_last_sum: last.item_exact::<f32>() as f64,
+                asks: asks.item_exact::<f32>() as f64,
+                groups,
+            },
+        ))
     }
 
     /// Atomic checkpoint into `dir` (via `dir.tmp`).
@@ -1543,6 +1639,13 @@ pub struct S2DecideArgs {
     pub sleep_passes: Vec<usize>,
     /// Backpropagate through every sleep pass instead of the last one only.
     pub sleep_full: bool,
+    /// docs/s6-sleep2-prereg.md §2 (M5): one log line per sequence step (its game, its loss and,
+    /// for `recall`, the cross-entropy of its ask frames), and the gradient norm of every
+    /// parameter group every 50 sequence steps.
+    pub seq_log: bool,
+    /// Runtime switches of the memory (C4's control and retry: the read held at zero, float
+    /// memory projections under QAT).
+    pub memory_run: crate::s2::config::MemoryRun,
     /// s4 deep improvement supervision: sharpening exponent of the first exit's target
     /// (rising linearly to 1 at the last exit); `None` disables it.
     pub dis: Option<f32>,
@@ -1700,6 +1803,28 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         );
     }
     s.cfg.qat_grad_a = a.qat_grad_a;
+    s.cfg.memory_run = a.memory_run;
+    if a.memory_run != Default::default() {
+        if !s.cfg.memory {
+            bail!("--memory-read-off and --memory-float need a memory config");
+        }
+        println!(
+            "memory: read {}, projections {} under QAT",
+            if a.memory_run.read_off {
+                "held at zero"
+            } else {
+                "on"
+            },
+            if a.memory_run.float {
+                "float"
+            } else {
+                "ternary"
+            }
+        );
+    }
+    if s.opt.cfg.mem_lr_mult != 1.0 {
+        println!("memory: AdamW rate x{} on mem.*", s.opt.cfg.mem_lr_mult);
+    }
     if a.qat_grad_a > 0.0 {
         println!(
             "StableQAT: surrogate QAT gradient, amplitude {}",
@@ -1822,6 +1947,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         Some(sl)
     };
     let mut seq_loss_sum = (0.0f64, 0usize);
+    let mut seq_steps = 0u64;
     while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
         brake.rest(&mut t0);
         let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
@@ -1874,7 +2000,25 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                     every: crate::s2::memory::SLEEP_EVERY,
                     full: a.sleep_full,
                 };
-                let st = s.sleep_step(&b, lr_scale, qat, how)?;
+                let st = if a.seq_log {
+                    seq_steps += 1;
+                    let (st, rep) =
+                        s.sleep_step_report(&b, lr_scale, qat, how, seq_steps.is_multiple_of(50))?;
+                    let mut rec = json!({"step": s.state.step, "seq_game": sl.games[g].0,
+                        "passes": passes, "seq_step_loss": st.loss, "grad_norm": st.grad_norm});
+                    if rep.asks > 0.0 {
+                        rec["asks"] = rep.asks.into();
+                        rec["ask_ce"] = (rep.ask_ce_sum / rep.asks).into();
+                        rec["ask_ce_last"] = (rep.ask_ce_last_sum / rep.asks).into();
+                    }
+                    if let Some(gr) = rep.groups {
+                        rec["grad_norm_groups"] = json!(gr);
+                    }
+                    log.write(&rec)?;
+                    st
+                } else {
+                    s.sleep_step(&b, lr_scale, qat, how)?
+                };
                 if !st.loss.is_finite() {
                     bail!(
                         "non-finite sequence loss at step {} ({}, {passes} passes)",
