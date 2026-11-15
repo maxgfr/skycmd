@@ -23,7 +23,7 @@ tags:
 > flip. s6-cast-pico scored **nGMASE 0.9471** and **nWQL 0.6646**: it failed on both metrics, and
 > with flip too (0.9099 / 0.6417). The goal of beating TinyCast (0.774 / 0.545 as published) is not
 > met either. The file is published so that the result can be checked and run (owner's decision of
-> 15/11/2026, item 8 of the pre-registration's amendments); the verdict does not change. Numbers:
+> 15/11/2026, item 9 of the pre-registration's amendments); the verdict does not change. Numbers:
 > [BENCH.md, section s6-cast-pico](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast-pico-probabilistic-forecasting-pre-registered-gate-failed).
 
 **A 143 KB ternary probabilistic forecaster built on the s6 encoder.** 369,792 parameters. Given
