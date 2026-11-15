@@ -139,6 +139,81 @@ enum Secrets2Step {
     },
 }
 
+/// The inputs every source-reading step of the s6-route-nano build needs.
+#[derive(clap::Args, Clone)]
+struct RouteSources {
+    /// The data folder: `src/` and `models/` as `scripts/route/pins.json` fetches them.
+    #[arg(long)]
+    data: PathBuf,
+    /// `data/decisions/when2call.jsonl` (its train / val / test partition is v1's).
+    #[arg(long, default_value = "data/decisions/when2call.jsonl")]
+    when2call: PathBuf,
+    #[arg(long, default_value = "data/decisions/banking77.jsonl")]
+    banking77: PathBuf,
+    #[arg(long, default_value = "data/commands/massive.jsonl")]
+    massive: PathBuf,
+}
+
+impl RouteSources {
+    fn paths(&self) -> sky_data::route::sources::SourcePaths {
+        sky_data::route::sources::SourcePaths {
+            src: self.data.join("src"),
+            when2call: self.when2call.clone(),
+            banking77: self.banking77.clone(),
+            massive: self.massive.clone(),
+            descriptions: Default::default(),
+        }
+    }
+}
+
+/// The steps of the s6-route-nano data build (`docs/s6-nano2-prereg.md`, section 4;
+/// `scripts/build-route-data.sh` runs them in order). `--out` is the build folder.
+#[derive(Subcommand)]
+enum RouteStep {
+    /// The intent names the teacher describes: <out>/teacher/describe-intent.items.jsonl.
+    Intents {
+        #[command(flatten)]
+        src: RouteSources,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Every source read: <out>/stage/{tools,requests,texts}.jsonl (needs the intent
+    /// descriptions, <out>/teacher/describe-intent.jsonl).
+    Requests {
+        #[command(flatten)]
+        src: RouteSources,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Clusters, splits and caps; the test files (written once), the validation slates, the
+    /// plan of the training slates and the items of the false-negative and rewrite jobs (needs
+    /// <out>/emb from scripts/route-embed.py).
+    Split {
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// The training and validation records (<out>/records/<group>/{train,val}.jsonl) with the
+    /// teacher's answers.
+    Slates {
+        #[arg(long)]
+        out: PathBuf,
+        /// Without the teacher's answers (hard slates unfiltered, renamed gold with its own
+        /// description): marked provisional in BUILD.json; never trained on outside a smoke run.
+        #[arg(long)]
+        provisional: bool,
+    },
+    /// <out>/BUILD.json: inputs, counts, hashes, the test files' hashes, the head window.
+    Manifest {
+        #[arg(long)]
+        data: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// `s2-truncation --json` reports as <window>=<path>, one per candidate window.
+        #[arg(long, value_delimiter = ',')]
+        truncation: Vec<String>,
+    },
+}
+
 #[derive(Subcommand)]
 enum Cmd {
     /// Download decision datasets and write one SPEC decision JSONL per source.
@@ -287,6 +362,12 @@ enum Cmd {
     Secrets2 {
         #[command(subcommand)]
         step: Secrets2Step,
+    },
+    /// s6-route-nano: the data of a tool router that reads descriptions
+    /// (`scripts/build-route-data.sh` runs the steps in order).
+    Route {
+        #[command(subcommand)]
+        step: RouteStep,
     },
     /// s6-ear: audio clips → log-mel features (`sky_infer::audio`), test WAVs and clip manifests
     /// under --out (`docs/s6-ear-prereg.md`). Sets: smart-turn, speech-commands, mswc, mimi
@@ -544,6 +625,21 @@ enum TeacherTask {
         #[arg(long, default_value_t = 0.2)]
         temperature: f64,
     },
+    /// s6-route-nano (4.5): one description per intent, from its name.
+    DescribeIntent {
+        #[command(flatten)]
+        job: RouteJobArgs,
+    },
+    /// s6-route-nano (4.5): which tools of a hard slate could handle its request.
+    FalseNegatives {
+        #[command(flatten)]
+        job: RouteJobArgs,
+    },
+    /// s6-route-nano (4.5): one rewrite of a tool's description.
+    RewriteDescription {
+        #[command(flatten)]
+        job: RouteJobArgs,
+    },
     /// s6: gold / teacher mix of the labels that agree with their gold answer (no API call).
     MixLabels {
         #[arg(long, default_value = "data/teacher/glm_labels.jsonl")]
@@ -556,6 +652,21 @@ enum TeacherTask {
         #[arg(long, default_value_t = 0.5)]
         alpha: f32,
     },
+}
+
+/// The files of one s6-route-nano teacher job; resumable, a test item refused.
+#[derive(clap::Args, Clone)]
+struct RouteJobArgs {
+    /// <build>/teacher/<job>.items.jsonl (sky-data route).
+    #[arg(long)]
+    items: PathBuf,
+    /// <build>/teacher/<job>.jsonl: answers are appended; a rerun does what is left.
+    #[arg(long)]
+    out: PathBuf,
+    #[arg(long, default_value_t = 4)]
+    jobs: usize,
+    #[arg(long, default_value_t = 0.2)]
+    temperature: f64,
 }
 
 fn main() -> Result<()> {
@@ -824,6 +935,45 @@ fn main() -> Result<()> {
                 }
             };
             // counts only: no step prints a value or a line
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        Cmd::Route { step } => {
+            use sky_data::route::build as rb;
+            let report = match step {
+                RouteStep::Intents { src, out } => rb::intents(&src.paths(), &out)?,
+                RouteStep::Requests { src, out } => rb::requests(&src.paths(), &out)?,
+                RouteStep::Split { out } => rb::split(&rb::SplitOptions {
+                    out,
+                    seed: cli.seed,
+                })?,
+                RouteStep::Slates { out, provisional } => rb::build_slates(&rb::SlatesOptions {
+                    out,
+                    seed: cli.seed,
+                    provisional,
+                })?,
+                RouteStep::Manifest {
+                    data,
+                    out,
+                    truncation,
+                } => {
+                    let truncation = truncation
+                        .iter()
+                        .map(|t| {
+                            let (w, p) = t.split_once('=').ok_or_else(|| {
+                                anyhow::anyhow!("--truncation wants <window>=<path>, not {t}")
+                            })?;
+                            Ok((w.parse::<usize>()?, PathBuf::from(p)))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    rb::manifest(&rb::ManifestOptions {
+                        data,
+                        out,
+                        seed: cli.seed,
+                        truncation,
+                    })?
+                }
+            };
+            // counts only: no step prints a request or a tool of the test side
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Cmd::FetchAudio {
@@ -1120,6 +1270,37 @@ fn main() -> Result<()> {
                 "[teacher] endpoint {} model {} max_calls {} batch {}",
                 cfg.base_url, cfg.model, cfg.max_calls, cfg.batch
             );
+            let route_job = match &task {
+                TeacherTask::DescribeIntent { job } => {
+                    Some((teacher::RouteJob::DescribeIntent, job.clone()))
+                }
+                TeacherTask::FalseNegatives { job } => {
+                    Some((teacher::RouteJob::FalseNegatives, job.clone()))
+                }
+                TeacherTask::RewriteDescription { job } => {
+                    Some((teacher::RouteJob::RewriteDescription, job.clone()))
+                }
+                _ => None,
+            };
+            if let Some((kind, job)) = route_job {
+                let mut cfg = cfg;
+                cfg.temperature = job.temperature;
+                cfg.max_tokens = 8192;
+                let s = teacher::route_label(&cfg, kind, &job.items, &job.out, job.jobs)?;
+                println!(
+                    "{}: wrote {} answers to {:?} ({} refused by moderation); calls {} ({} failed batches), tokens in {} out {}, {:.1}s",
+                    kind.name(),
+                    s.written,
+                    job.out,
+                    s.refused,
+                    s.calls,
+                    s.failed_batches,
+                    s.input_tokens,
+                    s.output_tokens,
+                    t0.elapsed().as_secs_f64()
+                );
+                return Ok(());
+            }
             let mut t = Teacher::new(cfg);
             match task {
                 TeacherTask::ParaphraseQuestions { input, out, n } => {
@@ -1193,6 +1374,11 @@ fn main() -> Result<()> {
                         t0.elapsed().as_secs_f64()
                     );
                     return Ok(());
+                }
+                TeacherTask::DescribeIntent { job }
+                | TeacherTask::FalseNegatives { job }
+                | TeacherTask::RewriteDescription { job } => {
+                    unreachable!("{:?}", job.items)
                 }
                 TeacherTask::ExportQuestions { .. } | TeacherTask::MixLabels { .. } => {
                     unreachable!()

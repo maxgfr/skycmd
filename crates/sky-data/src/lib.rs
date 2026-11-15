@@ -17,6 +17,7 @@ pub mod num;
 pub mod plan;
 pub mod record;
 pub mod rng;
+pub mod route;
 pub mod s4;
 pub mod s5;
 pub mod secrets;

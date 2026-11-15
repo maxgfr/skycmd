@@ -676,9 +676,400 @@ pub fn drone_orders(
     Ok((have.len(), dropped))
 }
 
+// ------------------------------------------------------------------- s6-route-nano (4.5)
+
+/// The three teacher jobs of `docs/s6-nano2-prereg.md` 4.5. Their items come from
+/// `sky-data route` (`<build>/teacher/<job>.items.jsonl`); a job never sends an item whose
+/// split is `test`, and refuses the whole file if it holds one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RouteJob {
+    /// One description per intent, from its name alone.
+    DescribeIntent,
+    /// For a request and the tools of its hard slate: which of them could handle it.
+    FalseNegatives,
+    /// One rewrite of a tool's description: the same meaning in other words.
+    RewriteDescription,
+}
+
+pub const ROUTE_SYSTEM: &str = "You are a careful annotator for a tool router: given tools as a name and a one-sentence description, it picks the tool that should handle a user's request. You reply with one JSON object and nothing else: no prose, no Markdown.";
+
+impl RouteJob {
+    pub fn name(self) -> &'static str {
+        match self {
+            RouteJob::DescribeIntent => "describe-intent",
+            RouteJob::FalseNegatives => "false-negatives",
+            RouteJob::RewriteDescription => "rewrite-description",
+        }
+    }
+
+    /// The prompt of one call; the items are numbered 1..n (as `label_prompt` does).
+    pub fn prompt(self, batch: &[Value]) -> String {
+        let num = |i: usize, mut v: Value| {
+            v["id"] = json!((i + 1).to_string());
+            v
+        };
+        let items: Vec<Value> = batch
+            .iter()
+            .enumerate()
+            .map(|(i, x)| match self {
+                RouteJob::DescribeIntent => num(i, json!({"name": x["name"]})),
+                RouteJob::FalseNegatives => {
+                    let tools: Vec<Value> = x["options"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .enumerate()
+                        .map(|(k, o)| json!({"n": k + 1, "tool": o}))
+                        .collect();
+                    num(i, json!({"request": x["request"], "tools": tools}))
+                }
+                RouteJob::RewriteDescription => num(
+                    i,
+                    json!({"name": x["name"], "description": x["description"]}),
+                ),
+            })
+            .collect();
+        let items = serde_json::to_string(&items).unwrap_or_default();
+        match self {
+            RouteJob::DescribeIntent => format!(
+                "Each item below is the name of an intent: something a user may want from an assistant. \
+                 For each, write the description of a tool that handles that intent: one sentence in plain English, \
+                 at most 20 words, saying what the user wants; no example request, no quotation marks, and do not \
+                 repeat the name.\n\
+                 Reply with exactly: {{\"items\": [{{\"id\": \"<id>\", \"d\": \"<sentence>\"}}, ...]}} with one item per input id.\n\
+                 Items:\n{items}"
+            ),
+            RouteJob::FalseNegatives => format!(
+                "Each item below is a user's request and a numbered list of tools, each a name and a description. \
+                 For each item, list every tool that could handle the request: a tool can handle it when calling it \
+                 would do what the user asks. Judge each tool on its own; list none when no tool can.\n\
+                 Reply with exactly: {{\"items\": [{{\"id\": \"<id>\", \"able\": [tool numbers]}}, ...]}} with one item per input id.\n\
+                 Items:\n{items}"
+            ),
+            RouteJob::RewriteDescription => format!(
+                "Each item below is a tool: a name and a description. For each, rewrite the description in other \
+                 words with the same meaning: one sentence in plain English, at most 30 words, without the tool's \
+                 name; keep what the tool does and what it needs, add nothing.\n\
+                 Reply with exactly: {{\"items\": [{{\"id\": \"<id>\", \"d\": \"<sentence>\"}}, ...]}} with one item per input id.\n\
+                 Items:\n{items}"
+            ),
+        }
+    }
+
+    /// The valid answers of a reply, each `{id, description}` or `{id, able}` with the item's
+    /// own id; unknown numbers, empty texts and option numbers out of range are dropped.
+    pub fn parse(self, reply: &Value, batch: &[Value]) -> Vec<Value> {
+        let mut out = Vec::new();
+        let mut seen = HashSet::new();
+        let Some(items) = reply.get("items").and_then(Value::as_array) else {
+            return out;
+        };
+        for it in items {
+            let key = match it.get("id") {
+                Some(Value::String(k)) => k.trim().parse::<usize>().ok(),
+                Some(Value::Number(n)) => n.as_u64().map(|n| n as usize),
+                _ => None,
+            };
+            let Some(i) = key.filter(|k| (1..=batch.len()).contains(k)).map(|k| k - 1) else {
+                continue;
+            };
+            let id = batch[i]["id"].clone();
+            let answer = match self {
+                RouteJob::DescribeIntent | RouteJob::RewriteDescription => it
+                    .get("d")
+                    .and_then(Value::as_str)
+                    .map(|d| d.split_whitespace().collect::<Vec<_>>().join(" "))
+                    .filter(|d| !d.is_empty())
+                    .map(|d| json!({"id": id, "description": d})),
+                RouteJob::FalseNegatives => {
+                    let n = batch[i]["options"].as_array().map_or(0, Vec::len);
+                    it.get("able").and_then(Value::as_array).and_then(|a| {
+                        let v: Option<Vec<usize>> = a
+                            .iter()
+                            .map(|x| {
+                                x.as_u64()
+                                    .map(|x| x as usize)
+                                    .filter(|x| (1..=n).contains(x))
+                            })
+                            .collect();
+                        v.map(|mut v| {
+                            v.sort_unstable();
+                            v.dedup();
+                            json!({"id": id, "able": v})
+                        })
+                    })
+                }
+            };
+            if let Some(a) = answer {
+                if seen.insert(i) {
+                    out.push(a);
+                }
+            }
+        }
+        out
+    }
+}
+
+/// The items of a job file that are left to do: neither answered nor refused before. Refuses a
+/// file that holds a test item.
+pub fn route_todo(items: &Path, out: &Path) -> Result<(Vec<Value>, usize, usize)> {
+    let all: Vec<Value> = read_jsonl(items)?;
+    if let Some(t) = all.iter().find(|x| x["split"].as_str() == Some("test")) {
+        bail!(
+            "{}: item {} is of the test split; the teacher never sees a test request (docs/s6-nano2-prereg.md 4.5)",
+            items.display(),
+            t["id"]
+        );
+    }
+    let ids = |p: &Path| -> Result<HashSet<String>> {
+        Ok(if p.exists() {
+            read_jsonl::<Value>(p)?
+                .iter()
+                .filter_map(|v| v["id"].as_str().map(str::to_string))
+                .collect()
+        } else {
+            HashSet::new()
+        })
+    };
+    let done = ids(out)?;
+    let refused = ids(&crate::distill::refused_path(out))?;
+    let (mut n_done, mut n_refused) = (0, 0);
+    let mut todo = Vec::new();
+    for x in all {
+        let id = x["id"].as_str().unwrap_or("").to_string();
+        if done.contains(&id) {
+            n_done += 1;
+        } else if refused.contains(&id) {
+            n_refused += 1;
+        } else {
+            todo.push(x);
+        }
+    }
+    Ok((todo, n_done, n_refused))
+}
+
+/// One batch through `call`, halved on moderation refusals (as `distill::label_batch`).
+pub fn route_batch<C, S>(
+    call: &mut C,
+    job: RouteJob,
+    b: &[Value],
+    sink: &mut S,
+) -> Result<(usize, usize)>
+where
+    C: FnMut(&[Value]) -> Result<Value>,
+    S: FnMut(&[Value], &[crate::distill::Refused]),
+{
+    match call(b) {
+        Ok(reply) => {
+            let a = job.parse(&reply, b);
+            sink(&a, &[]);
+            Ok((a.len(), 0))
+        }
+        Err(e) if crate::distill::is_moderated(&e) && b.len() > 1 => {
+            let (l, r) = b.split_at(b.len() / 2);
+            let (x, y) = route_batch(call, job, l, sink)?;
+            let (z, w) = route_batch(call, job, r, sink)?;
+            Ok((x + z, y + w))
+        }
+        Err(e) if crate::distill::is_moderated(&e) => {
+            sink(
+                &[],
+                &[crate::distill::Refused {
+                    id: b[0]["id"].as_str().unwrap_or("").to_string(),
+                    src: job.name().into(),
+                    reason: "moderation (1301)".into(),
+                }],
+            );
+            Ok((0, 1))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Runs a job on the items left, `jobs` workers sharing the call budget; answers and refused
+/// items are appended to `out` and its `.refused.jsonl` as they come, so a run resumes.
+pub fn route_label(
+    cfg: &TeacherConfig,
+    job: RouteJob,
+    items: &Path,
+    out: &Path,
+    jobs: usize,
+) -> Result<crate::distill::LabelStats> {
+    use crate::distill::{LabelStats, Refused, MAX_FAILED_IN_A_ROW};
+    use std::sync::Mutex;
+    let (todo, done, refused) = route_todo(items, out)?;
+    eprintln!(
+        "[route] {}: {} items to do ({done} answered, {refused} refused by moderation); {} calls of {} items",
+        job.name(),
+        todo.len(),
+        todo.len().div_ceil(cfg.batch),
+        cfg.batch
+    );
+    if cfg.max_calls == 0 || todo.is_empty() {
+        return Ok(LabelStats::default());
+    }
+    if let Some(d) = out.parent() {
+        fs::create_dir_all(d)?;
+    }
+    let file = Mutex::new(OpenOptions::new().create(true).append(true).open(out)?);
+    let refused_out = Mutex::new(
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(crate::distill::refused_path(out))?,
+    );
+    let write = |f: &Mutex<fs::File>, lines: Vec<String>| {
+        if lines.is_empty() {
+            return;
+        }
+        let mut f = f.lock().unwrap();
+        for l in lines {
+            let _ = writeln!(f, "{l}");
+        }
+        let _ = f.flush();
+    };
+    let stats = Mutex::new(LabelStats::default());
+    let batches: Vec<&[Value]> = todo.chunks(cfg.batch).collect();
+    let jobs = jobs.max(1);
+    let per_job = cfg.max_calls.div_ceil(jobs);
+    std::thread::scope(|s| {
+        for j in 0..jobs {
+            let (file, refused_out, stats, batches, write) =
+                (&file, &refused_out, &stats, &batches, &write);
+            let mut c = cfg.clone();
+            c.max_calls = per_job;
+            s.spawn(move || {
+                let mut t = Teacher::new(c);
+                let (mut written, mut gone, mut failed, mut streak) = (0, 0, 0, 0);
+                let mut sink = |a: &[Value], r: &[Refused]| {
+                    write(file, a.iter().map(|v| v.to_string()).collect());
+                    write(
+                        refused_out,
+                        r.iter().filter_map(|x| serde_json::to_string(x).ok()).collect(),
+                    );
+                };
+                for b in batches.iter().skip(j).step_by(jobs) {
+                    let mut call = |b: &[Value]| t.call_json(ROUTE_SYSTEM, &job.prompt(b));
+                    match route_batch(&mut call, job, b, &mut sink) {
+                        Ok((n, k)) => {
+                            written += n;
+                            gone += k;
+                            streak = 0;
+                            if n + k < b.len() {
+                                eprintln!("[route] worker {j}: {n} / {} valid", b.len());
+                            }
+                        }
+                        Err(e) if e.is::<BudgetExhausted>() => break,
+                        Err(e) => {
+                            failed += 1;
+                            streak += 1;
+                            eprintln!("[route] worker {j}: batch failed: {e:#}");
+                            if streak >= MAX_FAILED_IN_A_ROW {
+                                eprintln!("[route] worker {j}: {streak} failed batches in a row, stopping (rerun to resume)");
+                                break;
+                            }
+                        }
+                    }
+                }
+                let mut st = stats.lock().unwrap();
+                st.written += written;
+                st.refused += gone;
+                st.failed_batches += failed;
+                st.calls += t.calls;
+                st.input_tokens += t.input_tokens;
+                st.output_tokens += t.output_tokens;
+            });
+        }
+    });
+    Ok(stats.into_inner().unwrap())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn route_items(dir: &Path, split: &str) -> PathBuf {
+        let p = dir.join("x.items.jsonl");
+        let items = vec![
+            json!({"id": "a:1", "split": "train", "request": "turn on the lights", "options": ["lights_on: Turns lights on.", "weather: Gives the weather."]}),
+            json!({"id": "a:2", "split": split, "request": "what is the weather", "options": ["lights_on: Turns lights on.", "weather: Gives the weather."]}),
+        ];
+        write_jsonl(&p, &items).unwrap();
+        p
+    }
+
+    #[test]
+    fn route_jobs_refuse_test_items_and_resume() {
+        let d = std::env::temp_dir().join(format!("sky-route-teacher-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        let out = d.join("x.jsonl");
+        let p = route_items(&d, "test");
+        let e = route_todo(&p, &out).unwrap_err();
+        assert!(format!("{e}").contains("test split"));
+        let p = route_items(&d, "val");
+        let (todo, done, _) = route_todo(&p, &out).unwrap();
+        assert_eq!((todo.len(), done), (2, 0));
+        append_jsonl(&out, &[json!({"id": "a:1", "able": [1]})]).unwrap();
+        let (todo, done, _) = route_todo(&p, &out).unwrap();
+        assert_eq!((todo.len(), done), (1, 1));
+        assert_eq!(todo[0]["id"], "a:2");
+        fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn route_prompts_and_answers() {
+        let batch = vec![
+            json!({"id": "r1", "split": "train", "request": "q", "options": ["a: A.", "b: B.", "c: C."]}),
+            json!({"id": "r2", "split": "val", "request": "p", "options": ["a: A."]}),
+        ];
+        let pr = RouteJob::FalseNegatives.prompt(&batch);
+        assert!(pr.contains(r#""id":"1""#) && !pr.contains("r1") && pr.contains(r#""n":3"#));
+        let a = RouteJob::FalseNegatives.parse(
+            &json!({"items": [{"id": "1", "able": [3, 1, 1]}, {"id": 2, "able": [2]}, {"id": "9", "able": []}]}),
+            &batch,
+        );
+        // the second answer names an option the item does not have
+        assert_eq!(a, vec![json!({"id": "r1", "able": [1, 3]})]);
+        let d = vec![json!({"id": "massive:alarm_set", "split": "train", "name": "alarm_set"})];
+        assert!(!RouteJob::DescribeIntent.prompt(&d).contains("massive"));
+        let a = RouteJob::DescribeIntent.parse(
+            &json!({"items": [{"id": "1", "d": "  Set an\\nalarm. "}]}),
+            &d,
+        );
+        assert_eq!(a[0]["description"], "Set an\\nalarm.");
+        assert!(RouteJob::RewriteDescription
+            .parse(&json!({"items": [{"id": "1", "d": " "}]}), &d)
+            .is_empty());
+    }
+
+    #[test]
+    fn route_batches_isolate_refused_items() {
+        let batch: Vec<Value> = (0..6)
+            .map(|i| json!({"id": format!("i{i}"), "split": "train", "name": "x"}))
+            .collect();
+        let mut call = |b: &[Value]| -> Result<Value> {
+            if b.iter().any(|x| x["id"] == "i4") {
+                bail!(r#"HTTP 400: {{"error":{{"code":"1301"}}}}"#);
+            }
+            Ok(
+                json!({"items": (1..=b.len()).map(|k| json!({"id": k.to_string(), "d": "ok"})).collect::<Vec<_>>()}),
+            )
+        };
+        let (mut got, mut gone) = (Vec::new(), Vec::new());
+        let (n, k) = route_batch(
+            &mut call,
+            RouteJob::DescribeIntent,
+            &batch,
+            &mut |a: &[Value], r: &[crate::distill::Refused]| {
+                got.extend_from_slice(a);
+                gone.extend_from_slice(r);
+            },
+        )
+        .unwrap();
+        assert_eq!((n, k), (5, 1));
+        assert_eq!(gone[0].id, "i4");
+    }
 
     #[test]
     fn debug_redacts_key() {
