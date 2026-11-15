@@ -704,3 +704,43 @@ In each memory run the `recall` score is the same at N = 1, 2 and 4, overall and
 - **The probe is sound**: the fact is on screen for one frame, the ask frame shows only the door, and the answer key and the option order are checked by tests and on the training data.
 - **A fact, not an explanation:** at P1's last step the gradients reaching the memory projections (1.6e-5 to 3.2e-5) are 10 to 20 times smaller than those of the base blocks (about 3e-4).
 - **Not tested:** no unit test checks that a hand-written fact reads back as the right answer through the memory (a show frame, idle frames, then an ask giving the right colour). That test is still to add. There is no rerun.
+
+## LFM3-1.7B: System 1 first, System 2 when needed, pre-registered, failed
+
+Pre-registration: [`docs/lfm3-s1s2-prereg.md`](docs/lfm3-s1s2-prereg.md), its criteria in §6 and its amendments 1 to 5 (all before any run; amendment 2 cancels amendment 1, so the run is the original local protocol). No weight of LFM3 is trained: `LiquidAI/LFM3-1.7B-MLX-4bit` at revision `deb2986b`, 4-bit, mlx-vlm 0.7.11, on the Apple M5. Run: `scripts/lfm3-s1s2.sh` (`experiments/lfm3-s1s2/s1s2.py`); log `runs/lfm3-s1s2.log`; tables `runs/lfm3-s1s2/report-calib.md` (calibration) and `runs/lfm3-s1s2/report.md` (test), numbers `runs/lfm3-s1s2/summary.json`.
+
+**What was tested.** Whether a confidence probe on the answer given without thinking (System 1, an empty `<think></think>`, greedy) can decide, question by question, when the model should think (System 2: thinking on, Liquid AI's sampling for maths, the thinking closed after B tokens, B = 256 or 1,024), and keep the accuracy of always thinking for half its tokens. The probe is a logistic regression on 6 features of the System 1 output, fitted on the calibration split; the threshold τ comes from conformal risk control at α = 0.02 on the calibration split (n = 600), where a question costs 1 when the router is wrong and System 2 alone is right. A question sent to System 2 counts the tokens of both modes.
+
+**The run.** One run, started by `runs/chain.log` on 14/11/2026 at 23:58:15 and ended on 15/11/2026 at 12:44:33 with exit code 0 (12 h 46 min). Brake modes (`runs/brake.log`): 0.85 with 50:10 from the start to 08:31, 0.5 with 45:15 (on battery) from 08:31 to 09:08, then 0.95 with 55:5 to the end. The brake only sleeps between two questions; the tokens and `seconds` are not affected (amendments 2 to 5). Calibration (600 questions: 300 GSM8K train, 300 MATH train) was generated first, then the test (1,000 questions: 500 GSM8K test, 500 MATH-500), in the three modes s1, s2-256 and s2-1024.
+
+**The chosen budget.** B\* is the budget whose always-System-2 accuracy is best on the calibration split, fixed before the test was read: **1,024** (0.797 against 0.742 for 256). τ = 0.332, calibration risk 0.018, the same for both budgets (the probe reads only System 1).
+
+**s2-1024, the chosen budget** (`s1 share`: the share of questions answered by System 1; `s2 forced`: the share of questions whose System 2 thinking reached the budget and was closed):
+
+| split | task | n | s1 acc | s2 acc | router acc | oracle | s1 tok | s2 tok | router tok | s1 share | s2 forced |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| calib | gsm8k | 300 | 0.887 | 0.923 | **0.913** | 0.947 | 329 | 640 | 428 | 0.93 | 0.17 |
+| calib | math | 300 | 0.487 | 0.670 | **0.690** | 0.693 | 740 | 1227 | 1578 | 0.77 | 0.50 |
+| calib | all | 600 | 0.687 | 0.797 | **0.802** | 0.820 | 535 | 934 | 1003 | 0.85 | 0.33 |
+| test | gsm8k | 500 | 0.824 | 0.878 | **0.862** | 0.910 | 396 | 728 | 547 | 0.90 | 0.23 |
+| test | math | 500 | 0.510 | 0.714 | **0.710** | 0.718 | 722 | 1188 | 1518 | 0.78 | 0.46 |
+| test | all | 1000 | 0.667 | 0.796 | **0.786** | 0.814 | 559 | 958 | 1032 | 0.84 | 0.35 |
+
+**s2-256, reported:**
+
+| split | task | n | s1 acc | s2 acc | router acc | oracle | s1 tok | s2 tok | router tok | s1 share | s2 forced |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| calib | gsm8k | 300 | 0.887 | 0.917 | **0.913** | 0.950 | 329 | 455 | 394 | 0.93 | 0.62 |
+| calib | math | 300 | 0.487 | 0.567 | **0.593** | 0.597 | 740 | 843 | 1303 | 0.89 | 0.87 |
+| calib | all | 600 | 0.687 | 0.742 | **0.753** | 0.773 | 535 | 649 | 848 | 0.91 | 0.74 |
+| test | gsm8k | 500 | 0.824 | 0.854 | **0.850** | 0.884 | 396 | 506 | 495 | 0.90 | 0.69 |
+| test | math | 500 | 0.510 | 0.594 | **0.608** | 0.614 | 722 | 819 | 1245 | 0.88 | 0.86 |
+| test | all | 1000 | 0.667 | 0.724 | **0.729** | 0.749 | 559 | 663 | 870 | 0.89 | 0.77 |
+
+**The pre-registered claims** (test, B\* = 1,024; the block of `runs/lfm3-s1s2.log`):
+
+- **H1 (diagnostic, no threshold):** thinking helps LFM3-1.7B in maths. System 1 0.824 and System 2 0.878 on GSM8K; 0.510 and 0.714 on MATH-500.
+- **H2, accuracy kept:** router 0.786 ≥ System 2 0.796 − 0.02: **yes**.
+- **H3, compute halved:** router 1,032 tokens ≤ 0.5 × System 2's 958: **no**. System 1 alone already uses 559 tokens on average, more than half of System 2's, and every question sent to System 2 pays for both.
+- **H4, better than both modes:** router ≥ max(System 1, System 2) + 0.01: **no** (0.786 against 0.796 for System 2 alone).
+- **Verdict: failure** (success needs H2 and H3). The oracle, the better of the two answers for each question, is 0.814: the ceiling of a perfect router at this budget.

@@ -5,7 +5,7 @@ outline: [2, 3]
 
 # Results: what works, what does not
 
-Every model on this page was judged against criteria fixed before any test run, and failures are published like successes. The s6 family (November 2026) comes first, then s5 (October 2026).
+Every model on this page was judged against criteria fixed before any test run, and failures are published like successes. The s6 family (November 2026) comes first, then the System 1 / System 2 router of LFM3-1.7B (November 2026), then s5 (October 2026).
 
 ## s6 (November 2026)
 
@@ -151,6 +151,27 @@ s6-sleep adds a fast-weight memory to a decision model and lets it rerun its las
 
 - **The rule** (result): the memory works if the first run at N = 1 beats the control by at least 0.10. It is 0.019 below it. **The pilot says the memory does not work, so no nano run took place**, no hypothesis was tested on the test seeds, and nothing is published.
 - **What the readings show** (result): in each memory run, `recall` does not change between N = 1, 2 and 4. The secondary probe, `rule110`, is reported and decides nothing: 0.4674 to 0.4700 for the first run, 0.5423 for the three others at every N.
+
+## LFM3-1.7B: System 1 first, System 2 when needed (November 2026) {#lfm3-s1s2}
+
+No skycmd model here, and no weight trained: LFM3-1.7B (Liquid AI, 4-bit MLX build, revision `deb2986b`, run locally with mlx-vlm) answers maths questions, first without thinking (**System 1**). A 6-coefficient logistic probe on that answer decides whether to ask again with thinking on (**System 2**, the thinking closed after a budget of 256 or 1,024 tokens). Its threshold comes from conformal risk control (α = 0.02) on a calibration split, the same tool as the early exits of the s6 models. A question sent to System 2 counts the tokens of both. Pre-registered in [`docs/lfm3-s1s2-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/lfm3-s1s2-prereg.md) (amendments 1 to 5, all before the run). It ran once, from 14/11/2026 at 23:58 to 15/11/2026 at 12:44 (12 h 46 min), under the machine's brake modes (0.85 with 50:10, then 0.5 with 45:15 on battery from 08:31 to 09:08, then 0.95 with 55:5), which only sleep between two questions.
+
+The budget, chosen on the calibration split before the test was read as the best always-System-2 accuracy, is **1,024** tokens (0.797 against 0.742 for 256); τ = 0.332. On the test split, 1,000 questions (500 GSM8K, 500 MATH-500), with that budget (`runs/lfm3-s1s2/report.md`):
+
+| task | n | System 1 alone | System 2 alone | router | oracle | tokens: S1 / S2 / router | answered by S1 | S2 forced |
+|---|---:|---:|---:|---:|---:|---|---:|---:|
+| GSM8K | 500 | 0.824 | 0.878 | **0.862** | 0.910 | 396 / 728 / 547 | 0.90 | 0.23 |
+| MATH-500 | 500 | 0.510 | 0.714 | **0.710** | 0.718 | 722 / 1188 / 1518 | 0.78 | 0.46 |
+| all | 1,000 | 0.667 | 0.796 | **0.786** | 0.814 | 559 / 958 / 1032 | 0.84 | 0.35 |
+
+On the calibration split (600 questions, GSM8K and MATH train): System 1 0.687, System 2 0.797, router 0.802, oracle 0.820, tokens 535 / 934 / 1003, answered by S1 0.85, S2 forced 0.33. "S2 forced" is the share of questions whose thinking reached the budget and was closed.
+
+- **H2, accuracy kept** (result): router 0.786 ≥ System 2 0.796 − 0.02: **yes**.
+- **H3, compute halved** (result): router 1,032 tokens ≤ 0.5 × 958: **no**. The router uses more tokens than always thinking: System 1 alone already takes 559 tokens on average, more than half of System 2's 958, and every question sent to System 2 pays for both.
+- **H4, better than both modes** (result): **no** (0.786 against 0.796 for System 2 alone).
+- **Verdict: failure.** Success needed H2 and H3. Thinking helps this model in maths (H1, a diagnostic without a threshold: 0.824 against 0.878 on GSM8K, 0.510 against 0.714 on MATH-500), and the oracle (the better of the two answers per question, 0.814) leaves little room above System 2 alone.
+- **With a budget of 256** (reported): System 1 0.667, System 2 0.724, router 0.729, oracle 0.749, tokens 559 / 663 / 870.
+- **The fine-tuning that was to follow** ([`docs/lfm3-ft-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/lfm3-ft-prereg.md)) has not run. Its pre-registration sets no condition on this result: it measures the router again on the base and on the fine-tuned model, and its own verdict (gates G1 to G3) is separate from the router's.
 
 ## s5 (October 2026)
 

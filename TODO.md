@@ -60,7 +60,7 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
   - **s6-secrets v3 failed on G1 again** (`docs/s6-secrets3-prereg.md`, result block): not a new model but secretgate's default rules and the v2 verifier together (a line is flagged when either flags it, tau3 0.34933 committed in `370f60f` before the test read), judged on the seven gates of v2, a second look at test files already read once, with the system defined after the first reading. Union 0.8477 against 0.7332 + 0.15 on every repository (the model alone was 0.8561; union minus model −0.0084 [−0.0181, 0.0072]); the six other gates hold. On validation all seven held; the 221 test repositories did not confirm it. No third reading: the work on this model ends (`runs/s6-secrets3/eval-test/results.md`, `BENCH.md`).
   - **s6-sleep stopped by its pilot** (`docs/s6-sleep-prereg.md` §5): `recall` 0.2460 for the memory at N = 1 against 0.2650 for the control without memory, +0.10 asked; no nano run (`runs/s6-sleep/pilot.json`, `BENCH.md`).
   - **secretgate 1.8.1 released on 14/11** with the fixes found while measuring v1: https://github.com/maxgfr/secretgate/releases/tag/v1.8.1
-  - **LFM3 S1/S2 running since 14/11 23:58** (`runs/lfm3-s1s2.log`).
+  - **LFM3 S1/S2 ended on 15/11 at 12:44 with the verdict "failure"** (§6; `runs/lfm3-s1s2/report.md`, `BENCH.md`). Test, 1,000 questions, budget 1,024 chosen on calibration: System 1 alone 0.667 at 559 tokens, System 2 alone 0.796 at 958, the router 0.786 at 1,032, the oracle 0.814. H2 (accuracy kept) yes, H3 (compute halved) no, H4 (better than both modes) no. `docs/lfm3-ft-prereg.md` sets no condition on this result (§6.1).
   - **The four failed models are published as results** (owner's decision of 15/11/2026; the last amendment of each pre-registration): s6-micro-v1, s6-ear-nano, s6-cast-pico and s6-secrets-verify-pico, on the site (manifest `gate: failed`, never a default) and prepared for Hugging Face (cards opening with the failure; Spaces for the first three, card only for the last; `scripts/hf-publish.py`, upload by the owner). Verdicts unchanged; nothing enters secretgate.
   - **What remains:** s6-micro v2 as pre-registered in amendment 12 of `docs/s6-gen-prereg.md`, LFM3 fine-tuned (§6.1), §7, the full test pass.
 - **After the publications of 14/11/2026 (same day).**
@@ -317,6 +317,15 @@ Un modèle qui échoue n'est pas publié, mais son résultat va quand même dans
 
 Le but est autant de précision, voire plus, pour bien moins de calcul.
 
+**Outcome (15/11/2026): failure.** One run, from 14/11 at 23:58:15 to 15/11 at 12:44:33, exit code 0 (12 h 46 min, `runs/chain.log`), under the brake modes 0.85 with 50:10 until 08:31, 0.5 with 45:15 (on battery) from 08:31 to 09:08, then 0.95 with 55:5 to the end (`runs/brake.log`). Model `LiquidAI/LFM3-1.7B-MLX-4bit@deb2986b`, α = 0.02. Tables: `runs/lfm3-s1s2/report-calib.md`, `runs/lfm3-s1s2/report.md`; all of them in `BENCH.md`, section "LFM3-1.7B".
+
+- **Budget B\* = 1,024**, chosen before the test as the best always-s2 accuracy on calibration (0.797 against 0.742 for s2-256). τ = 0.332, calibration risk 0.018.
+- **Calibration** (600, s2-1024): s1 0.687, s2 0.797, router 0.802, oracle 0.820; tokens 535 / 934 / 1003; s1 share 0.85, s2 forced 0.33.
+- **Test** (s2-1024): GSM8K (500) s1 0.824, s2 0.878, router 0.862, oracle 0.910, tokens 396 / 728 / 547, s1 share 0.90, s2 forced 0.23; MATH-500 (500) s1 0.510, s2 0.714, router 0.710, oracle 0.718, tokens 722 / 1188 / 1518, s1 share 0.78, s2 forced 0.46; all (1,000) s1 0.667, s2 0.796, router 0.786, oracle 0.814, tokens 559 / 958 / 1032, s1 share 0.84, s2 forced 0.35.
+- **Claims** (the block of `runs/lfm3-s1s2.log`): H2 router 0.786 ≥ 0.796 − 0.02: **yes**; H3 router 1032 ≤ 0.5 × 958 tokens: **no**; H4 router ≥ max(s1, s2) + 0.01: **no**. Verdict: **failure**. H1: thinking helps on both tasks.
+- s2-256 (reported): test all s1 0.667, s2 0.724, router 0.729, oracle 0.749, tokens 559 / 663 / 870.
+- The checklist below is kept as written before the run.
+
 **Prêt le 03/11/2026 :**
 - `scripts/lfm3-s1s2.sh` (étapes `data smoke calib test route`) et `experiments/lfm3-s1s2/s1s2.py` ;
 - le modèle `LiquidAI/LFM3-1.7B-MLX-4bit` (rév. `deb2986b`, 0,97 Go) déjà téléchargé ;
@@ -349,6 +358,8 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
   Chacun passe par un amendement daté du pré-enregistrement.
 
 ### 6.1 LFM3 fine-tuné (`docs/lfm3-ft-prereg.md`) — **rien n'a tourné**
+
+> **After the failure of S1/S2 (15/11/2026).** `docs/lfm3-ft-prereg.md` says nothing about running the fine-tuning when S1/S2 fails: it sets no precondition on the router's result and does not change its goal. Its only sentences on the router are in §1, « Il ne remplace pas le routeur : le routeur est mesuré sur le modèle de base **et** sur le modèle fine-tuné, avec le même protocole (§5). », and in §6, « Ce verdict est celui du fine-tuning. Il est distinct du « LFM3 amélioré » du routeur (H4 de `docs/lfm3-s1s2-prereg.md`), que le rapport donne sous son propre nom (« H4 »). » Its amendment 1 reuses the base generations of `runs/lfm3-s1s2` as the reference if the conversion check of the smoke allows it. Whether to run it is the owner's decision; nothing has run.
 
 > **Changement du 05/11/2026 : tout se fait sur le M5, plus sur HF Jobs** (décision de l'utilisateur). Le texte ci-dessous décrit encore la version HF Jobs. Avant le moindre calcul, il faut l'amendement 1 de `docs/lfm3-ft-prereg.md` et l'amendement 2 de `docs/lfm3-s1s2-prereg.md`, qui remplace le 1 (§9.2), ainsi qu'un mode local dans `scripts/lfm3-ft.sh`.
 > - **Génération et évaluation :** avec mlx-vlm, comme `experiments/lfm3-s1s2/s1s2.py` (mlx-lm ne charge pas LFM3, et vLLM ne tourne pas sur Mac).
