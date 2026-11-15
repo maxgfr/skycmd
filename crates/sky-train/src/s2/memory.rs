@@ -45,6 +45,9 @@ pub const SLEEP_EVERY: usize = 8;
 pub const ALPHA_BIAS: f32 = 6.0;
 /// Floor of `‖x‖²` in the key and query normalization.
 pub const NORM_EPS: f32 = 1e-6;
+/// Classes of the auxiliary head of a `memory_aux` config: the colours of `recall`
+/// (`s2::seq::COLOURS`).
+pub const AUX_CLASSES: usize = crate::s2::seq::COLOURS.len();
 /// The projections of a memory layer (ternary in the export): `q`, `k`, `v`, `out` in v1, `qk`,
 /// `v`, `out` with a shared query/key projection.
 const MATRICES: [&str; 5] = ["q", "k", "qk", "v", "out"];
@@ -98,6 +101,14 @@ pub(crate) fn specs(out: &mut Vec<(String, Vec<i32>, Init)>, cfg: &S2Config) {
         out.push((format!("{p}.out.weight"), vec![d, d], Init::Zeros));
         out.push((format!("{p}.alpha.weight"), vec![d], Init::Zeros));
         out.push((format!("{p}.beta.weight"), vec![d], Init::Zeros));
+        if cfg.memory_aux {
+            // Training only: the colour asked, decoded from what the layer retrieves.
+            out.push((
+                format!("{p}.aux.weight"),
+                vec![AUX_CLASSES as i32, d],
+                Init::TruncNormal(0.02),
+            ));
+        }
     }
 }
 
@@ -105,7 +116,8 @@ pub(crate) fn specs(out: &mut Vec<(String, Vec<i32>, Init)>, cfg: &S2Config) {
 pub fn param_count(cfg: &S2Config) -> usize {
     let d = cfg.hidden_size;
     let matrices = inputs(cfg).len() + 1;
-    cfg.state_layers * (matrices * d * d + 3 * d)
+    let aux = if cfg.memory_aux { AUX_CLASSES * d } else { 0 };
+    cfg.state_layers * (matrices * d * d + 3 * d + aux)
 }
 
 /// The memory of a batch of streams: one `[B, H, hd, hd]` array (f32) per memory layer.
@@ -185,6 +197,28 @@ pub(crate) fn keys(p: &ParamMap, cfg: &S2Config, l: usize, x: &Array) -> R<Array
     l2norm(&project(p, cfg, l, key_part(cfg), &y)?)
 }
 
+/// The gates of the write of memory layer `l` for a frame's block output `x` `[B, T, d]`
+/// (`valid` `[B, T]`): the write strengths `β_i = σ(wβ·x_i)` `[B, T]` and the decay
+/// `α = σ(mean_i(wα·x_i) + 6)` `[B, 1]`, the mean over the valid tokens (f32).
+pub(crate) fn gates(p: &ParamMap, l: usize, x: &Array, valid: &Array) -> R<(Array, Array)> {
+    let xf = to_f32(x.clone())?;
+    let gate = |part: &str| -> R<Array> {
+        xf.multiply(to_f32(w(p, &name(l, part))?.clone())?)?
+            .sum_axis(-1, None)
+    };
+    let on = valid.as_dtype(Dtype::Float32)?;
+    let n = ops::maximum(on.sum_axis(-1, true)?, Array::from_f32(1.0))?;
+    let beta = ops::sigmoid(gate("beta")?)?;
+    let alpha = ops::sigmoid(
+        gate("alpha")?
+            .multiply(&on)?
+            .sum_axis(-1, true)?
+            .divide(&n)?
+            .add(Array::from_f32(ALPHA_BIAS))?,
+    )?;
+    Ok((beta, alpha))
+}
+
 /// The write of memory layer `l` from a frame's block output `x` `[B, T, d]` (`valid` `[B, T]`):
 /// one gated delta-rule step over the valid tokens.
 pub(crate) fn write(
@@ -223,11 +257,6 @@ pub(crate) fn write(
             project(p, cfg, l, "v", &yv)?
         }
     };
-    let xf = to_f32(x.clone())?;
-    let gate = |part: &str| -> R<Array> {
-        xf.multiply(to_f32(w(p, &name(l, part))?.clone())?)?
-            .sum_axis(-1, None)
-    };
     if cfg.memory_write == MemoryWrite::Exact {
         // W2: S ← S + (V − S Kᵀ)(K Kᵀ + λI)⁻¹ K over the valid tokens (the padding has zero
         // keys and values, so it adds nothing). With the rows of `err` the (v_i − S k_i)ᵀ:
@@ -242,20 +271,13 @@ pub(crate) fn write(
         let sol = spd_solve(&g, &err)?;
         return s.add(ops::matmul(sol.transpose_axes(&[0, 1, 3, 2])?, &km)?);
     }
+    let (beta, alpha) = gates(p, l, x, valid)?;
     let beta = match cfg.memory_write {
         // W1: a fresh model (wβ = 0) takes full steps.
-        MemoryWrite::Delta => ops::sigmoid(gate("beta")?)?.multiply(Array::from_f32(2.0))?,
-        _ => ops::sigmoid(gate("beta")?)?,
+        MemoryWrite::Delta => beta.multiply(Array::from_f32(2.0))?,
+        _ => beta,
     };
-    let alpha = ops::sigmoid(
-        gate("alpha")?
-            .multiply(&on)?
-            .sum_axis(-1, true)?
-            .divide(&n)?
-            .add(Array::from_f32(ALPHA_BIAS))?,
-    )?
-    .reshape(&[b, 1, 1, 1])?;
-    let kept = s.multiply(&alpha)?;
+    let kept = s.multiply(alpha.reshape(&[b, 1, 1, 1])?)?;
     if cfg.memory_write == MemoryWrite::Delta {
         // W1: token by token, S ← S + β_i (v_i − S k_i) k_iᵀ, the padding skipped.
         let w = beta.multiply(&on)?;
@@ -408,13 +430,30 @@ pub fn seq_loss(
     qat: bool,
     how: Sleep,
 ) -> R<Array> {
-    Ok(seq_frames(p, cfg, frames, pauses, wts, qat, how)?.0)
+    Ok(seq_frames(p, cfg, frames, pauses, wts, qat, how, None)?.loss)
+}
+
+/// The ask frames of a `recall` batch: `ask` `[K, B]` (1 on an ask frame) and `colour` `[K, B]`
+/// (i32, the colour that answers it, as its index in `s2::seq::COLOURS`).
+#[derive(Clone, Copy)]
+pub struct Asks<'a> {
+    pub ask: &'a Array,
+    pub colour: &'a Array,
 }
 
 /// [`seq_loss`] and, for the training log of `docs/s6-sleep2-prereg.md` §2 (M5), the
-/// cross-entropy of the ask frames apart: `ask` `[K, B]` (1 on an ask frame of `recall`).
-/// Returns `[loss, Σ deep-supervision CE over the asks, Σ last-exit CE over the asks, asks]`;
-/// only the loss carries a gradient.
+/// cross-entropy of the ask frames apart. Returns `[loss, Σ deep-supervision CE over the asks,
+/// Σ last-exit CE over the asks, asks, Σ auxiliary CE over the asks, asks the auxiliary head
+/// decodes right]`; only the loss carries a gradient.
+///
+/// With a `memory_aux` config and `cfg.memory_run.aux_weight > 0`
+/// (`docs/s6-sleep3-diagnosis.md`), the loss also holds `aux_weight ·` the mean over the ask
+/// frames and the memory layers of the cross-entropy of the colour asked, decoded by
+/// `mem.{l}.aux` from the mean over the valid tokens of what layer `l` retrieves at the block's
+/// last application (before the read-out): a gradient that reaches the keys, the values and the
+/// gates of the memory without waiting for the read-out or for the answer. With
+/// `cfg.memory_run.aux_probe` that gradient stops at the reading: the head is then a linear
+/// probe of the memory, which it does not train.
 #[allow(clippy::too_many_arguments)]
 pub fn seq_loss_asks(
     p: &ParamMap,
@@ -424,23 +463,83 @@ pub fn seq_loss_asks(
     wts: &Array,
     qat: bool,
     how: Sleep,
-    ask: &Array,
+    asks: Asks<'_>,
 ) -> R<Vec<Array>> {
-    let (loss, logits) = seq_frames(p, cfg, frames, pauses, wts, qat, how)?;
+    let out = seq_frames(p, cfg, frames, pauses, wts, qat, how, Some(asks))?;
     let e = cfg.n_exits() as i32;
     let one_hot: Vec<f32> = (0..e).map(|i| (i == e - 1) as u8 as f32).collect();
     let last = Array::from_slice(&one_hot, &[e]);
     let (mut deep, mut tail) = (Array::from_f32(0.0), Array::from_f32(0.0));
-    for (t, (l, b)) in logits.iter().zip(frames).enumerate() {
-        let on = ask.index(t as i32);
+    for (t, (l, b)) in out.logits.iter().zip(frames).enumerate() {
+        let on = asks.ask.index(t as i32);
         let l = stop_gradient(l)?;
         deep = deep.add(frame_ce_rows(&l, b, wts)?.multiply(&on)?.sum(None)?)?;
         tail = tail.add(frame_ce_rows(&l, b, &last)?.multiply(&on)?.sum(None)?)?;
     }
-    Ok(vec![loss, deep, tail, ask.sum(None)?])
+    Ok(vec![
+        out.loss,
+        deep,
+        tail,
+        asks.ask.sum(None)?,
+        stop_gradient(&out.aux_ce)?,
+        out.aux_right,
+    ])
 }
 
-/// The loss of [`seq_loss`] and the logits of every frame.
+/// What [`seq_frames`] returns.
+struct SeqOut {
+    /// The loss of [`seq_loss`], plus the weighted auxiliary term when there is one.
+    loss: Array,
+    /// The logits of every frame.
+    logits: Vec<Array>,
+    /// Σ over the ask frames (and the memory layers) of the auxiliary cross-entropy, and the
+    /// number of them the auxiliary head decodes right; zeros without an auxiliary head.
+    aux_ce: Array,
+    aux_right: Array,
+}
+
+/// The auxiliary reading of memory layer `l` at one frame: per row, the cross-entropy of the
+/// colour asked and whether the head's argmax is that colour (`x` the block output before the
+/// read, `s` the memory the frame reads, `colour` `[B]` i32).
+fn aux_rows(
+    p: &ParamMap,
+    cfg: &S2Config,
+    l: usize,
+    x: &Array,
+    valid: &Array,
+    s: &Array,
+    colour: &Array,
+) -> R<(Array, Array)> {
+    let r = to_f32(retrieve(p, cfg, l, x, s)?)?;
+    let r = if cfg.memory_run.aux_probe {
+        stop_gradient(&r)?
+    } else {
+        r
+    };
+    let on = valid.as_dtype(Dtype::Float32)?;
+    let n = ops::maximum(on.sum_axis(-1, true)?, Array::from_f32(1.0))?;
+    let pooled = r
+        .multiply(on.reshape(&[x.dim(0), x.dim(1), 1])?)?
+        .sum_axis(1, None)?
+        .divide(&n)?;
+    let logits = linear(&pooled, &to_f32(w(p, &name(l, "aux"))?.clone())?, None)?;
+    let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+    let classes = Array::from_iter(0..AUX_CLASSES as i32, &[1, AUX_CLASSES as i32]);
+    let target = colour
+        .reshape(&[-1, 1])?
+        .eq(&classes)?
+        .as_dtype(Dtype::Float32)?;
+    let ce = target.multiply(&logp)?.sum_axis(-1, None)?.negative()?;
+    let right = ops::indexing::argmax_axis(&logits, -1, None)?
+        .as_dtype(Dtype::Int32)?
+        .eq(colour)?
+        .as_dtype(Dtype::Float32)?;
+    Ok((ce, right))
+}
+
+/// The loss of [`seq_loss`] and the logits of every frame; with `asks`, a `memory_aux` config
+/// and a positive `aux_weight`, the auxiliary term of [`seq_loss_asks`] as well.
+#[allow(clippy::too_many_arguments)]
 fn seq_frames(
     p: &ParamMap,
     cfg: &S2Config,
@@ -449,9 +548,12 @@ fn seq_frames(
     wts: &Array,
     qat: bool,
     how: Sleep,
-) -> R<(Array, Vec<Array>)> {
+    asks: Option<Asks<'_>>,
+) -> R<SeqOut> {
     let p = &*prepare(p, cfg, qat)?;
     let n_exits = cfg.n_exits();
+    let aux = asks.filter(|_| cfg.memory && cfg.memory_aux && cfg.memory_run.aux_weight > 0.0);
+    let (mut aux_ce, mut aux_right) = (Array::from_f32(0.0), Array::from_f32(0.0));
     let mut total: Option<Array> = None;
     let mut seen = Vec::with_capacity(frames.len());
     let mut add = |l: Array| -> R<()> {
@@ -470,7 +572,18 @@ fn seq_frames(
                 mem = sleep(p, cfg, &chunk, mem, how)?;
                 chunk.clear();
             }
-            let (logits, next) = wake(p, cfg, b, n_exits, &mem)?;
+            let (logits, _, written) =
+                forward_prepared_mem(p, cfg, b, n_exits, None, Some(&mem.0))?;
+            if let Some(a) = aux {
+                let (on, colour) = (a.ask.index(t as i32), a.colour.index(t as i32));
+                for (l, x) in written.iter().enumerate() {
+                    let Some(x) = x else { continue };
+                    let (ce, right) = aux_rows(p, cfg, l, x, &b.valid, &mem.0[l], &colour)?;
+                    aux_ce = aux_ce.add(ce.multiply(&on)?.sum(None)?)?;
+                    aux_right = aux_right.add(stop_gradient(&right.multiply(&on)?.sum(None)?)?)?;
+                }
+            }
+            let next = after_writes(p, cfg, &written, &b.valid, &mem)?;
             add(frame_ce(&logits, b, wts)?)?;
             seen.push(logits);
             mem = next;
@@ -483,10 +596,135 @@ fn seq_frames(
             seen.push(logits);
         }
     }
-    let loss = total
+    let mut loss = total
         .expect("at least one frame")
         .divide(Array::from_f32(frames.len() as f32))?;
-    Ok((loss, seen))
+    if let Some(a) = aux {
+        // The mean over the ask frames and the memory layers.
+        let n = ops::maximum(
+            a.ask
+                .sum(None)?
+                .multiply(Array::from_f32(cfg.state_layers as f32))?,
+            Array::from_f32(1.0),
+        )?;
+        loss = loss.add(
+            aux_ce
+                .divide(&n)?
+                .multiply(Array::from_f32(cfg.memory_run.aux_weight))?,
+        )?;
+    }
+    Ok(SeqOut {
+        loss,
+        logits: seen,
+        aux_ce,
+        aux_right,
+    })
+}
+
+/// What one memory layer did along a sequence batch (`docs/s6-sleep3-diagnosis.md`): every factor
+/// of the gradient of its weights, as means over the batch.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct LayerTrace {
+    /// The write strength `β_i`, over the valid tokens of every frame: mean and largest.
+    pub beta_mean: f64,
+    pub beta_max: f64,
+    /// The decay `α`, over the rows of every frame: mean and smallest.
+    pub alpha_mean: f64,
+    pub alpha_min: f64,
+    /// `‖S‖` (Frobenius, per row) of the memory a frame reads: mean over every frame, and over
+    /// the ask frames.
+    pub s_norm: f64,
+    pub s_norm_ask: f64,
+    /// Over the valid tokens of the ask frames, at the block's last application: `‖x‖` (the
+    /// block output), `‖r‖` (what is retrieved, before the read-out) and `‖r·Wo‖` (what the
+    /// read adds).
+    pub x_norm_ask: f64,
+    pub r_norm_ask: f64,
+    pub read_norm_ask: f64,
+}
+
+/// The memory along one sequence batch, layer by layer: the sequence is played as
+/// [`seq_loss`] plays it (same parameters, same quantization, same sleeps), without a gradient.
+/// `ask` is `[K, B]`, 1 on an ask frame.
+pub fn trace(
+    p: &ParamMap,
+    cfg: &S2Config,
+    frames: &[S2Batch],
+    pauses: &[bool],
+    qat: bool,
+    how: Sleep,
+    ask: &Array,
+) -> R<Vec<LayerTrace>> {
+    let p = &*prepare(p, cfg, qat)?;
+    let nl = cfg.state_layers;
+    let zero = || Array::from_f32(0.0);
+    // Per layer: Σβ, max β, Σα, min α, Σ‖S‖, Σ‖S‖ on asks, Σ‖x‖, Σ‖r‖, Σ‖r·Wo‖ on ask tokens.
+    let mut acc: Vec<[Array; 9]> = (0..nl)
+        .map(|_| {
+            let mut a: [Array; 9] = std::array::from_fn(|_| zero());
+            a[3] = Array::from_f32(1.0);
+            a
+        })
+        .collect();
+    // Valid tokens, rows, ask rows, valid tokens of ask rows.
+    let mut count: [Array; 4] = std::array::from_fn(|_| zero());
+    let token_norm =
+        |x: &Array| -> R<Array> { to_f32(x.clone())?.square()?.sum_axis(-1, None)?.sqrt() };
+    let mut mem = Memory::zeros(cfg, frames[0].ids.dim(0))?;
+    let mut chunk: Vec<&S2Batch> = Vec::new();
+    for (t, b) in frames.iter().enumerate() {
+        let pause = pauses.get(t).copied().unwrap_or(false);
+        if !chunk.is_empty() && (chunk.len() >= how.every || pause) {
+            mem = sleep(p, cfg, &chunk, mem, how)?;
+            chunk.clear();
+        }
+        let (_, _, written) = forward_prepared_mem(p, cfg, b, cfg.n_exits(), None, Some(&mem.0))?;
+        let on = b.valid.as_dtype(Dtype::Float32)?;
+        let asked = ask.index(t as i32);
+        let on_ask = on.multiply(asked.reshape(&[-1, 1])?)?;
+        count[0] = count[0].add(on.sum(None)?)?;
+        count[1] = count[1].add(Array::from_f32(on.dim(0) as f32))?;
+        count[2] = count[2].add(asked.sum(None)?)?;
+        count[3] = count[3].add(on_ask.sum(None)?)?;
+        for (l, a) in acc.iter_mut().enumerate() {
+            let Some(x) = &written[l] else { continue };
+            let s = &mem.0[l];
+            let (beta, alpha) = gates(p, l, x, &b.valid)?;
+            let beta = beta.multiply(&on)?;
+            let s_norm = s.square()?.sum_axes(&[1, 2, 3], None)?.sqrt()?;
+            let r = retrieve(p, cfg, l, x, s)?;
+            let read = linear(&r, w(p, &name(l, "out"))?, None)?;
+            a[0] = a[0].add(beta.sum(None)?)?;
+            a[1] = ops::maximum(&a[1], beta.max(None)?)?;
+            a[2] = a[2].add(alpha.sum(None)?)?;
+            a[3] = ops::minimum(&a[3], alpha.min(None)?)?;
+            a[4] = a[4].add(s_norm.sum(None)?)?;
+            a[5] = a[5].add(s_norm.multiply(&asked)?.sum(None)?)?;
+            a[6] = a[6].add(token_norm(x)?.multiply(&on_ask)?.sum(None)?)?;
+            a[7] = a[7].add(token_norm(&r)?.multiply(&on_ask)?.sum(None)?)?;
+            a[8] = a[8].add(token_norm(&read)?.multiply(&on_ask)?.sum(None)?)?;
+        }
+        mem = after_writes(p, cfg, &written, &b.valid, &mem)?;
+        // The graph of a long sequence is cut frame by frame: nothing here needs a gradient.
+        mlx_rs::transforms::eval(mem.0.iter().chain(acc.iter().flatten()).chain(count.iter()))?;
+        chunk.push(b);
+    }
+    let f = |a: &Array| a.item_exact::<f32>() as f64;
+    let per = |a: &Array, n: &Array| if f(n) > 0.0 { f(a) / f(n) } else { 0.0 };
+    Ok(acc
+        .iter()
+        .map(|a| LayerTrace {
+            beta_mean: per(&a[0], &count[0]),
+            beta_max: f(&a[1]),
+            alpha_mean: per(&a[2], &count[1]),
+            alpha_min: f(&a[3]),
+            s_norm: per(&a[4], &count[1]),
+            s_norm_ask: per(&a[5], &count[2]),
+            x_norm_ask: per(&a[6], &count[3]),
+            r_norm_ask: per(&a[7], &count[3]),
+            read_norm_ask: per(&a[8], &count[3]),
+        })
+        .collect())
 }
 
 /// Check C1 of `docs/s6-sleep2-prereg.md` §3, the retrieval algebra: one reading.
@@ -1125,6 +1363,124 @@ mod tests {
                     }
                 }
                 assert_eq!(seen, cfg.state_layers * (inputs(&cfg).len() + 4));
+            }
+        });
+    }
+
+    #[test]
+    fn the_trace_of_a_fresh_memory_reads_its_gates_its_state_and_a_silent_read() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let cfg = v2(sleepy(), MemoryValue::Frame);
+            let f = frames(
+                &cfg,
+                &[
+                    "show a colour red ask none noise 3",
+                    "show none colour none ask none noise 8",
+                    "show none colour none ask a noise 1",
+                ],
+            );
+            let ask = Array::from_slice(&[0.0f32, 0.0, 0.0, 0.0, 1.0, 1.0], &[3, 2]);
+            let pauses = [false; 3];
+            let run = |p: &ParamMap| trace(p, &cfg, &f, &pauses, true, Sleep::AWAKE, &ask).unwrap();
+            // A fresh model: β = σ(0), α = σ(6), a state that the frames wrote, a reading of it,
+            // and a read that adds nothing (Wo = 0).
+            let fresh = run(&init(&cfg, S2Parts::DECISION, 4).unwrap());
+            assert_eq!(fresh.len(), cfg.state_layers);
+            for l in &fresh {
+                assert!((l.beta_mean - 0.5).abs() < 1e-6 && (l.beta_max - 0.5).abs() < 1e-6);
+                let alpha = 1.0 / (1.0 + (-ALPHA_BIAS as f64).exp());
+                assert!((l.alpha_mean - alpha).abs() < 1e-6 && (l.alpha_min - alpha).abs() < 1e-6);
+                assert!(l.s_norm > 0.0 && l.s_norm_ask > l.s_norm, "{l:?}");
+                assert!(l.x_norm_ask > 0.0 && l.r_norm_ask > 0.0, "{l:?}");
+                assert_eq!(l.read_norm_ask, 0.0);
+            }
+            // Random weights: the read adds something, and the gates have moved.
+            let random = run(&golden_params(&cfg, 3).unwrap());
+            assert!(random.iter().all(|l| l.read_norm_ask > 0.0));
+            assert!(random.iter().any(|l| (l.beta_mean - 0.5).abs() > 1e-3));
+        });
+    }
+
+    #[test]
+    fn the_auxiliary_loss_trains_the_memory_from_its_reading() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let mut cfg = v2(sleepy(), MemoryValue::Frame);
+            let plain_count = param_count(&cfg);
+            cfg.memory_aux = true;
+            cfg.validate().unwrap();
+            let d = cfg.hidden_size;
+            assert_eq!(
+                param_count(&cfg),
+                plain_count + cfg.state_layers * AUX_CLASSES * d
+            );
+            assert!(!is_ternary("mem.0.aux.weight"));
+            let mut bad = sleepy();
+            (bad.memory, bad.memory_aux) = (false, true);
+            assert!(bad.validate().is_err(), "an auxiliary head needs a memory");
+            let f = frames(
+                &cfg,
+                &[
+                    "show a colour red ask none noise 3",
+                    "show none colour none ask none noise 8",
+                    "show none colour none ask a noise 1",
+                ],
+            );
+            let ask = Array::from_slice(&[0.0f32, 0.0, 0.0, 0.0, 1.0, 1.0], &[3, 2]);
+            let colour = Array::from_slice(&[0i32, 0, 0, 0, 2, 3], &[3, 2]);
+            let wv = exit_weight_vec(&cfg, None);
+            let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+            let pauses = [false; 3];
+            let p = init(&cfg, S2Parts::DECISION, 4).unwrap();
+            let run = |weight: f32, probe: bool| {
+                let mut c = cfg.clone();
+                (c.memory_run.aux_weight, c.memory_run.aux_probe) = (weight, probe);
+                let g = |q: HashMap<Rc<str>, Array>, _: ()| -> R<Vec<Array>> {
+                    let asks = Asks {
+                        ask: &ask,
+                        colour: &colour,
+                    };
+                    seq_loss_asks(&q, &c, &f, &pauses, &wts, true, Sleep::AWAKE, asks)
+                };
+                let (out, grads) = keyed_value_and_grad(g)(p.clone(), ()).unwrap();
+                let v: Vec<f32> = out.iter().map(|a| a.item_exact::<f32>()).collect();
+                (v, grads)
+            };
+            let size = |g: &HashMap<Rc<str>, Array>, part: &str| total(&g[name(0, part).as_str()]);
+            // Weight 0: the loss of `seq_loss`, no auxiliary reading, and at step 0 no gradient
+            // in the memory but the read-out's (the head itself has none).
+            let (off, g_off) = run(0.0, false);
+            let plain = seq_loss(&p, &cfg, &f, &pauses, &wts, true, Sleep::AWAKE)
+                .unwrap()
+                .item_exact::<f32>();
+            assert_eq!(off[0], plain);
+            assert_eq!((off[3], off[4], off[5]), (2.0, 0.0, 0.0));
+            for part in ["qk", "v", "beta", "alpha", "aux"] {
+                assert_eq!(size(&g_off, part), 0.0, "{part}");
+            }
+            assert!(size(&g_off, "out") > 0.0);
+            // Weight 1: the loss holds the mean auxiliary cross-entropy over the two asks and
+            // the memory layers (near ln 4 for a fresh head), and its gradient reaches the keys,
+            // the values, the write gate and the head, where the answer's reaches none of them
+            // while the read-out is zero.
+            let (on, g_on) = run(1.0, false);
+            let n = 2.0 * cfg.state_layers as f32;
+            let ln4 = (AUX_CLASSES as f32).ln();
+            assert!((on[4] / n - ln4).abs() < 0.1, "{}", on[4] / n);
+            assert!((on[0] - (plain + on[4] / n)).abs() < 1e-5);
+            assert!(on[5] <= n);
+            for part in ["qk", "v", "beta", "aux"] {
+                assert!(size(&g_on, part) > 0.0, "{part}: no gradient");
+            }
+            // (The read-out gets some of it too: the reading of a later application of the
+            // block depends on what the earlier ones added.)
+            // As a probe: the head alone is trained.
+            let (probe, g_probe) = run(1.0, true);
+            assert_eq!(probe[4], on[4]);
+            assert!(size(&g_probe, "aux") > 0.0);
+            for part in ["qk", "v", "beta", "alpha"] {
+                assert_eq!(size(&g_probe, part), 0.0, "{part}");
             }
         });
     }

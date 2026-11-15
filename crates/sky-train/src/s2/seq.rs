@@ -128,7 +128,32 @@ pub struct SeqData {
     /// Per train sequence and frame: the frame is an ask of `recall` ([`is_ask`]; meaningful
     /// for `recall` only).
     pub asks: Vec<Vec<bool>>,
+    /// Per train sequence and frame: the colour a `recall` ask is answered by, as its index in
+    /// [`COLOURS`] ([`answer_colour`]); 0 on every other frame.
+    pub colours: Vec<Vec<i32>>,
     pub k: usize,
+}
+
+/// The colours of `recall`, in the order of the auxiliary head of a memory
+/// (`S2Config::memory_aux`).
+pub const COLOURS: [&str; 4] = ["red", "green", "blue", "yellow"];
+
+/// The colour that answers a `recall` ask record, as its index in [`COLOURS`]: the label of the
+/// option of largest target (`red: the red key`). `None` for any other record.
+pub fn answer_colour(v: &serde_json::Value) -> Option<usize> {
+    if !is_ask(v["state"].as_str()?) {
+        return None;
+    }
+    let target = v["target"].as_array()?;
+    let best = (0..target.len()).max_by(|&a, &b| {
+        let (x, y) = (
+            target[a].as_f64().unwrap_or(0.0),
+            target[b].as_f64().unwrap_or(0.0),
+        );
+        x.total_cmp(&y)
+    })?;
+    let label = v["opts"].get(best)?.as_str()?.split(':').next()?.trim();
+    COLOURS.iter().position(|c| *c == label)
 }
 
 /// True for the state of a `recall` ask frame (`... ask <door> ...`, the door not `none`).
@@ -147,6 +172,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
     let mut frames: Vec<(u64, usize)> = Vec::new();
     let mut paused: Vec<bool> = Vec::new();
     let mut asked: Vec<bool> = Vec::new();
+    let mut colour: Vec<i32> = Vec::new();
     for file in list_jsonl(path)? {
         let f = std::fs::File::open(&file)?;
         for line in BufReader::new(f).lines() {
@@ -163,6 +189,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
                 ));
                 paused.push(v["pause"].as_bool().unwrap_or(false));
                 asked.push(is_ask(v["state"].as_str().unwrap_or("")));
+                colour.push(answer_colour(&v).unwrap_or(0) as i32);
             }
         }
     }
@@ -209,11 +236,16 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
         .iter()
         .map(|s| s.iter().map(|&i| asked[i]).collect())
         .collect();
+    let colours = train
+        .iter()
+        .map(|s| s.iter().map(|&i| colour[i]).collect())
+        .collect();
     Ok(SeqData {
         data,
         train,
         pauses,
         asks,
+        colours,
         k,
     })
 }
@@ -285,6 +317,8 @@ pub struct FrameBatch {
     pub pauses: Vec<bool>,
     /// `[K, n]`, 1 where the frame of a sequence is a `recall` ask ([`SeqData::asks`]).
     pub asks: mlx_rs::Array,
+    /// `[K, n]` (i32): the colour that answers each ask ([`SeqData::colours`]).
+    pub colours: mlx_rs::Array,
     pub n_rows: usize,
     pub n_tokens: usize,
 }
@@ -309,15 +343,18 @@ pub fn sample_frames(sd: &SeqData, n: usize, rng: &mut Rng, pad_to: usize) -> Fr
     let pauses = sd.pauses[picked[0]].clone();
     debug_assert!(picked.iter().all(|&s| sd.pauses[s] == pauses));
     let mut asks = vec![0f32; sd.k * n];
+    let mut colours = vec![0i32; sd.k * n];
     for (r, &s) in picked.iter().enumerate() {
         for t in 0..sd.k {
             asks[t * n + r] = sd.asks[s][t] as u8 as f32;
+            colours[t * n + r] = sd.colours[s][t];
         }
     }
     FrameBatch {
         frames,
         pauses,
         asks: mlx_rs::Array::from_slice(&asks, &[sd.k as i32, n as i32]),
+        colours: mlx_rs::Array::from_slice(&colours, &[sd.k as i32, n as i32]),
         n_rows: n * sd.k,
         n_tokens,
     }
@@ -495,6 +532,29 @@ mod tests {
         let mut rng = Rng::new(2);
         let (_, b) = sd.sample(3, &mut rng, 16);
         assert_eq!(b.asks.shape(), &[64, 3]);
+        // The colour that answers each ask: the label of its target option, and 0 elsewhere.
+        assert_eq!(b.colours.shape(), &[64, 3]);
+        let mut seen = [0usize; COLOURS.len()];
+        for x in lines
+            .iter()
+            .filter(|x| is_ask(x["state"].as_str().unwrap()))
+        {
+            let c = answer_colour(x).expect("an ask is answered by a colour");
+            let target = x["target"].as_array().unwrap();
+            let best = target.iter().position(|t| t.as_f64() == Some(1.0)).unwrap();
+            let opt = x["opts"][best].as_str().unwrap();
+            assert_eq!(opt.split(':').next().unwrap().trim(), COLOURS[c]);
+            seen[c] += 1;
+        }
+        assert!(seen.iter().all(|n| *n > 0), "{seen:?}");
+        assert!(lines
+            .iter()
+            .filter(|x| !is_ask(x["state"].as_str().unwrap()))
+            .all(|x| answer_colour(x).is_none()));
+        let game = &sd.games[0].1;
+        for (asks, colours) in game.asks.iter().zip(&game.colours) {
+            assert!(asks.iter().zip(colours).all(|(a, c)| *a || *c == 0));
+        }
     }
 
     #[test]

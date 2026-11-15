@@ -85,6 +85,19 @@ pub struct OptConfig {
     /// then not written, so the configs of earlier runs are unchanged.
     #[serde(default = "default_one", skip_serializing_if = "is_one")]
     pub mem_lr_mult: f32,
+    /// AdamW learning-rate multiplier of the input projections of the memory (`mem.*.q`, `k`,
+    /// `qk`, `v`), on top of `mem_lr_mult`; 0 holds them at their initialization
+    /// (docs/s6-sleep3-diagnosis.md). 1 by default, and then not written.
+    #[serde(default = "default_one", skip_serializing_if = "is_one")]
+    pub mem_in_lr_mult: f32,
+    /// AdamW learning-rate multiplier of the gates of the memory (`mem.*.alpha`, `mem.*.beta`),
+    /// on top of `mem_lr_mult`; 0 holds them at their initialization
+    /// (docs/s6-sleep3-diagnosis.md). 1 by default, and then not written.
+    #[serde(default = "default_one", skip_serializing_if = "is_one")]
+    pub mem_gate_lr_mult: f32,
+    /// No weight decay on the memory matrices (`mem.*`). Off by default, and then not written.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mem_no_decay: bool,
     /// Recipe that wrote this config ([`OPT_RECIPE`]); a config saved before the
     /// field existed reads as recipe 1.
     #[serde(default = "legacy_recipe")]
@@ -101,6 +114,23 @@ fn default_one() -> f32 {
 
 fn is_one(x: &f32) -> bool {
     *x == 1.0
+}
+
+fn is_false(x: &bool) -> bool {
+    !*x
+}
+
+/// True for the input projections of a memory layer (`mem.{l}.{q,k,qk,v}.weight`).
+pub fn is_mem_input(name: &str) -> bool {
+    name.starts_with("mem.")
+        && ["q", "k", "qk", "v"]
+            .iter()
+            .any(|m| name.ends_with(&format!(".{m}.weight")))
+}
+
+/// True for the gates of a memory layer (`mem.{l}.alpha.weight`, `mem.{l}.beta.weight`).
+pub fn is_mem_gate(name: &str) -> bool {
+    name.starts_with("mem.") && (name.ends_with(".alpha.weight") || name.ends_with(".beta.weight"))
 }
 
 fn default_polish() -> usize {
@@ -130,6 +160,9 @@ impl Default for OptConfig {
             muon: true,
             head_lr_mult: 1.0,
             mem_lr_mult: 1.0,
+            mem_in_lr_mult: 1.0,
+            mem_gate_lr_mult: 1.0,
+            mem_no_decay: false,
             recipe: OPT_RECIPE,
         }
     }
@@ -264,6 +297,12 @@ impl Optimizer {
                 Group::Muon if !c.muon => Group::AdamDecay,
                 g => g,
             };
+            let group = match group {
+                Group::AdamDecay if c.mem_no_decay && name.starts_with("mem.") => {
+                    Group::AdamNoDecay
+                }
+                g => g,
+            };
             let adam_lr = if c.head_lr_mult != 1.0 && !name.starts_with("encoder.") {
                 adam_lr * c.head_lr_mult
             } else {
@@ -271,6 +310,16 @@ impl Optimizer {
             };
             let adam_lr = if c.mem_lr_mult != 1.0 && name.starts_with("mem.") {
                 adam_lr * c.mem_lr_mult
+            } else {
+                adam_lr
+            };
+            let adam_lr = if c.mem_in_lr_mult != 1.0 && is_mem_input(name) {
+                adam_lr * c.mem_in_lr_mult
+            } else {
+                adam_lr
+            };
+            let adam_lr = if c.mem_gate_lr_mult != 1.0 && is_mem_gate(name) {
+                adam_lr * c.mem_gate_lr_mult
             } else {
                 adam_lr
             };
@@ -515,6 +564,73 @@ mod tests {
             assert!(j.get("mem_lr_mult").is_none());
             let back: OptConfig = serde_json::from_value(j).unwrap();
             assert_eq!(back.mem_lr_mult, 1.0);
+        });
+    }
+
+    #[test]
+    fn the_gate_rate_and_the_decay_switch_touch_the_memory_only() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (lr, wd) = (0.01f32, 0.5f32);
+            let step = |cfg: OptConfig, name: &str, shape: &[i32]| -> f32 {
+                let mut params = ParamMap::new();
+                let mut grads = ParamMap::new();
+                params.insert(name.into(), ops::ones::<f32>(shape).unwrap());
+                grads.insert(name.into(), ops::ones::<f32>(shape).unwrap());
+                let mut o = Optimizer::new(cfg);
+                o.update(&mut params, &grads, 1.0).unwrap();
+                params[name].max(None).unwrap().item_exact::<f32>()
+            };
+            let cfg = |gate: f32, no_decay: bool| OptConfig {
+                adam_lr: lr,
+                weight_decay: wd,
+                clip_norm: 0.0,
+                muon: false,
+                mem_in_lr_mult: gate,
+                mem_gate_lr_mult: gate,
+                mem_no_decay: no_decay,
+                ..Default::default()
+            };
+            // A rate of 0 holds the gates and the input projections where they are, and
+            // nothing else.
+            for (name, shape, held) in [
+                ("mem.0.beta.weight", &[4][..], true),
+                ("mem.0.alpha.weight", &[4][..], true),
+                ("mem.0.norm.weight", &[4][..], false),
+                ("blk.0.beta.weight", &[4][..], false),
+            ] {
+                let after = step(cfg(0.0, false), name, shape);
+                let want = if held { 1.0 } else { 1.0 - lr };
+                assert!((after - want).abs() < 1e-6, "{name}: {after} vs {want}");
+            }
+            for (name, held) in [
+                ("mem.0.qk.weight", true),
+                ("mem.1.v.weight", true),
+                ("mem.0.k.weight", true),
+                ("mem.0.out.weight", false),
+                ("blk.0.attn_qkv.weight", false),
+            ] {
+                let after = step(cfg(0.0, true), name, &[4, 4]);
+                assert_eq!((after - 1.0).abs() < 1e-6, held, "{name}: {after}");
+            }
+            // Without decay a memory matrix takes the Adam step alone; the others still decay.
+            let decayed = (1.0 - lr * wd) - lr;
+            for (name, no_decay, want) in [
+                ("mem.0.out.weight", false, decayed),
+                ("mem.0.out.weight", true, 1.0 - lr),
+                ("fusion.0.attn_q.weight", true, decayed),
+            ] {
+                let after = step(cfg(1.0, no_decay), name, &[4, 4]);
+                assert!((after - want).abs() < 1e-6, "{name}: {after} vs {want}");
+            }
+            // The defaults are not written, so earlier configs are unchanged.
+            let j = serde_json::to_value(OptConfig::default()).unwrap();
+            for key in ["mem_in_lr_mult", "mem_gate_lr_mult", "mem_no_decay"] {
+                assert!(j.get(key).is_none(), "{key}");
+            }
+            let back: OptConfig = serde_json::from_value(j).unwrap();
+            assert!(back.mem_in_lr_mult == 1.0 && back.mem_gate_lr_mult == 1.0);
+            assert!(!back.mem_no_decay);
         });
     }
 

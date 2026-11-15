@@ -77,8 +77,60 @@ pub struct SeqReport {
     pub ask_ce_last_sum: f64,
     /// Ask frames in the batch (0 for a game other than `recall`).
     pub asks: f64,
+    /// With the auxiliary loss of a `memory_aux` config: Σ over the ask frames of its
+    /// cross-entropy, and the asks its head decodes right.
+    pub aux_ce_sum: f64,
+    pub aux_right: f64,
     /// Gradient norm of each parameter group ([`GROUPS`]), before clipping.
     pub groups: Option<BTreeMap<String, f64>>,
+    /// The memory trace of the step ([`memory_trace`]), when asked for.
+    pub memory: Option<serde_json::Value>,
+}
+
+/// The memory trace of one sequence step (`--memory-trace`, `docs/s6-sleep3-diagnosis.md`),
+/// read before the update: per `mem.*` tensor the norm of its gradient (`grad`) and of its
+/// weights (`weight`), per memory projection the norm of its ternary form and its share of
+/// zeros (`ternary`), and per memory layer the gates, the state and the reading along the batch
+/// (`layers`, [`crate::s2::memory::trace`]).
+fn memory_trace(
+    params: &ParamMap,
+    grads: &ParamMap,
+    cfg: &S2Config,
+    batch: &crate::s2::seq::FrameBatch,
+    qat: bool,
+    how: crate::s2::memory::Sleep,
+) -> Result<serde_json::Value> {
+    let norm = |a: &Array| -> Result<f64> {
+        Ok(a.square()?.sum(None)?.sqrt()?.item_exact::<f32>() as f64)
+    };
+    let (mut grad, mut weight, mut ternary) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+    for (k, v) in params.iter().filter(|(k, _)| k.starts_with("mem.")) {
+        weight.insert(k.to_string(), norm(v)?);
+        if let Some(g) = grads.get(k) {
+            grad.insert(k.to_string(), norm(g)?);
+        }
+        if crate::s2::memory::is_ternary(k) {
+            let q = model::ternarize(v)?;
+            let zeros = q
+                .eq(Array::from_f32(0.0))?
+                .as_dtype(mlx_rs::Dtype::Float32)?
+                .mean(None)?;
+            ternary.insert(
+                k.to_string(),
+                json!({"norm": norm(&q)?, "zeros": zeros.item_exact::<f32>()}),
+            );
+        }
+    }
+    let layers = crate::s2::memory::trace(
+        params,
+        cfg,
+        &batch.frames,
+        &batch.pauses,
+        qat,
+        how,
+        &batch.asks,
+    )?;
+    Ok(json!({"grad": grad, "weight": weight, "ternary": ternary, "layers": layers}))
 }
 
 /// Parameter groups of the gradient report: name prefixes, and `other` for the rest
@@ -503,6 +555,7 @@ impl S2Session {
         qat: bool,
         how: crate::s2::memory::Sleep,
         groups: bool,
+        trace: bool,
     ) -> Result<(StepStats, SeqReport)> {
         let wv = model::exit_weight_vec(&self.cfg, None);
         let wts = Array::from_slice(&wv, &[wv.len() as i32]);
@@ -510,21 +563,30 @@ impl S2Session {
         let f = |p: std::collections::HashMap<std::rc::Rc<str>, Array>,
                  b: &crate::s2::seq::FrameBatch|
          -> mlx_rs::error::Result<Vec<Array>> {
-            crate::s2::memory::seq_loss_asks(&p, cfg, &b.frames, &b.pauses, &wts, qat, how, &b.asks)
+            let asks = crate::s2::memory::Asks {
+                ask: &b.asks,
+                colour: &b.colours,
+            };
+            crate::s2::memory::seq_loss_asks(&p, cfg, &b.frames, &b.pauses, &wts, qat, how, asks)
         };
         let (values, grads) =
             mlx_rs::transforms::keyed_value_and_grad(f)(self.params.clone(), batch)?;
-        let [loss, deep, last, asks]: [Array; 4] = values
+        let [loss, deep, last, asks, aux_ce, aux_right]: [Array; 6] = values
             .try_into()
-            .map_err(|_| anyhow::anyhow!("four outputs expected"))?;
+            .map_err(|_| anyhow::anyhow!("six outputs expected"))?;
         let groups = if groups {
             Some(group_norms(&grads)?)
         } else {
             None
         };
+        let memory = if trace && self.cfg.memory {
+            Some(memory_trace(&self.params, &grads, cfg, batch, qat, how)?)
+        } else {
+            None
+        };
         let (loss, grad_norm) =
             apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?;
-        mlx_rs::transforms::eval([&deep, &last, &asks])?;
+        mlx_rs::transforms::eval([&deep, &last, &asks, &aux_ce, &aux_right])?;
         self.state.step += 1;
         Ok((
             StepStats {
@@ -536,7 +598,10 @@ impl S2Session {
                 ask_ce_sum: deep.item_exact::<f32>() as f64,
                 ask_ce_last_sum: last.item_exact::<f32>() as f64,
                 asks: asks.item_exact::<f32>() as f64,
+                aux_ce_sum: aux_ce.item_exact::<f32>() as f64,
+                aux_right: aux_right.item_exact::<f32>() as f64,
                 groups,
+                memory,
             },
         ))
     }
@@ -1643,9 +1708,14 @@ pub struct S2DecideArgs {
     /// for `recall`, the cross-entropy of its ask frames), and the gradient norm of every
     /// parameter group every 50 sequence steps.
     pub seq_log: bool,
+    /// With `seq_log`: the memory trace of every sequence step ([`memory_trace`]).
+    pub memory_trace: bool,
     /// Runtime switches of the memory (C4's control and retry: the read held at zero, float
     /// memory projections under QAT).
     pub memory_run: crate::s2::config::MemoryRun,
+    /// Standard deviation of a truncated-normal start of the read-out of the memory
+    /// (`mem.*.out.weight`) in place of zero; 0 keeps the zero start. A fresh run only.
+    pub memory_out_init: f32,
     /// s4 deep improvement supervision: sharpening exponent of the first exit's target
     /// (rising linearly to 1 at the last exit); `None` disables it.
     pub dis: Option<f32>,
@@ -1776,6 +1846,29 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             let n = expand_pretrained(&mut p, &src, &cfg)?;
             println!("initialized {n} tensors from {}", file.display());
         }
+        if a.memory_out_init > 0.0 {
+            if !cfg.memory {
+                bail!("--memory-out-init needs a memory config");
+            }
+            let mut key = mlx_rs::random::key(a.seed ^ 0x6f75_7421)?;
+            let mut names: Vec<_> = p.keys().cloned().collect();
+            names.sort();
+            for name in names {
+                if name.starts_with("mem.") && name.ends_with(".out.weight") {
+                    let (k, next) = mlx_rs::random::split(&key, 2)?;
+                    key = next;
+                    let shape = p[&name].shape().to_vec();
+                    let w =
+                        mlx_rs::random::truncated_normal::<f32, f32>(-2.0, 2.0, &shape[..], &k)?
+                            .multiply(Array::from_f32(a.memory_out_init))?;
+                    p.insert(name, w);
+                }
+            }
+            println!(
+                "memory: read-out started at a truncated normal of deviation {}",
+                a.memory_out_init
+            );
+        }
         let mut s = S2Session::new(
             cfg.clone(),
             p,
@@ -1806,7 +1899,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     s.cfg.memory_run = a.memory_run;
     if a.memory_run != Default::default() {
         if !s.cfg.memory {
-            bail!("--memory-read-off and --memory-float need a memory config");
+            bail!("--memory-read-off, --memory-float and --memory-out-float need a memory config");
         }
         println!(
             "memory: read {}, projections {} under QAT",
@@ -1817,6 +1910,8 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             },
             if a.memory_run.float {
                 "float"
+            } else if a.memory_run.out_float {
+                "ternary, the read-out float"
             } else {
                 "ternary"
             }
@@ -1824,6 +1919,29 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     }
     if s.opt.cfg.mem_lr_mult != 1.0 {
         println!("memory: AdamW rate x{} on mem.*", s.opt.cfg.mem_lr_mult);
+    }
+    if s.opt.cfg.mem_gate_lr_mult != 1.0 {
+        println!(
+            "memory: AdamW rate of the gates x{} on top",
+            s.opt.cfg.mem_gate_lr_mult
+        );
+    }
+    if a.memory_run.aux_weight > 0.0 {
+        if !s.cfg.memory_aux || !a.seq_log {
+            bail!("--memory-aux-weight needs a memory_aux config and --seq-log");
+        }
+        println!(
+            "memory: auxiliary loss (the colour asked, decoded from the reading) at weight {}{}",
+            a.memory_run.aux_weight,
+            if a.memory_run.aux_probe {
+                ", as a probe (it does not train the memory)"
+            } else {
+                ""
+            }
+        );
+    }
+    if s.opt.cfg.mem_no_decay {
+        println!("memory: no weight decay on mem.*");
     }
     if a.qat_grad_a > 0.0 {
         println!(
@@ -2002,17 +2120,31 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 };
                 let st = if a.seq_log {
                     seq_steps += 1;
-                    let (st, rep) =
-                        s.sleep_step_report(&b, lr_scale, qat, how, seq_steps.is_multiple_of(50))?;
+                    let (st, rep) = s.sleep_step_report(
+                        &b,
+                        lr_scale,
+                        qat,
+                        how,
+                        seq_steps.is_multiple_of(50),
+                        a.memory_trace,
+                    )?;
                     let mut rec = json!({"step": s.state.step, "seq_game": sl.games[g].0,
                         "passes": passes, "seq_step_loss": st.loss, "grad_norm": st.grad_norm});
                     if rep.asks > 0.0 {
                         rec["asks"] = rep.asks.into();
                         rec["ask_ce"] = (rep.ask_ce_sum / rep.asks).into();
                         rec["ask_ce_last"] = (rep.ask_ce_last_sum / rep.asks).into();
+                        if s.cfg.memory_aux && s.cfg.memory_run.aux_weight > 0.0 {
+                            let n = rep.asks * s.cfg.state_layers as f64;
+                            rec["aux_ce"] = (rep.aux_ce_sum / n).into();
+                            rec["aux_acc"] = (rep.aux_right / n).into();
+                        }
                     }
                     if let Some(gr) = rep.groups {
                         rec["grad_norm_groups"] = json!(gr);
+                    }
+                    if let Some(m) = rep.memory {
+                        rec["memory"] = m;
                     }
                     log.write(&rec)?;
                     st

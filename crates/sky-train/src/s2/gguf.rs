@@ -422,7 +422,12 @@ pub fn to_gguf(
     w.add_kv(k("weight_format"), format.name());
     write_tokenizer(&mut w, tokenizer_json, cfg.vocab_size)?;
 
-    for (name, shape) in param_shapes(cfg, S2Parts::DECISION) {
+    // The auxiliary head of a memory is for training only: it is not exported.
+    let exported = S2Config {
+        memory_aux: false,
+        ..cfg.clone()
+    };
+    for (name, shape) in param_shapes(&exported, S2Parts::DECISION) {
         let a = p
             .get(name.as_str())
             .ok_or_else(|| anyhow!("missing parameter {name}"))?;
@@ -609,6 +614,8 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         memory_qk,
         memory_value,
         memory_write,
+        // The auxiliary head is for training only: an exported model has none.
+        memory_aux: false,
         memory_run: Default::default(),
         parallax,
         xsa,

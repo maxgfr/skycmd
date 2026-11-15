@@ -58,6 +58,11 @@ pub struct S2Config {
     /// when not `average`.
     #[serde(default, skip_serializing_if = "MemoryWrite::is_average")]
     pub memory_write: MemoryWrite,
+    /// `docs/s6-sleep3-diagnosis.md`: a training-only linear head per memory layer
+    /// (`mem.{l}.aux.weight`) that decodes the colour asked from what the layer retrieves at a
+    /// `recall` ask frame (`s2::memory::seq_loss_asks`). Written only when set.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub memory_aux: bool,
     /// Runtime switches of the memory checks (never saved).
     #[serde(skip)]
     pub memory_run: MemoryRun,
@@ -230,12 +235,19 @@ impl MemoryWrite {
 
 /// Runtime switches of a memory model, for the checks of `docs/s6-sleep2-prereg.md` §3
 /// (never saved: a checkpoint always reads and quantizes its memory as trained).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct MemoryRun {
     /// The read adds nothing (`x ← x`): C4's control, the read-out `Wo` forced to zero.
     pub read_off: bool,
     /// The memory projections stay float under QAT (C4's second retry, choice O5).
     pub float: bool,
+    /// The read-out `Wo` alone stays float under QAT (docs/s6-sleep3-diagnosis.md).
+    pub out_float: bool,
+    /// Weight of the auxiliary loss of a `memory_aux` config in the sequence loss (0: none).
+    pub aux_weight: f32,
+    /// The auxiliary head reads what the memory retrieves without training it: a linear probe
+    /// (the gradient of the auxiliary loss stops at the reading and reaches the head alone).
+    pub aux_probe: bool,
 }
 
 /// Classes of the Mimi codebook 0 predicted by the s6-ear pretraining head (`mimi.decoder`).
@@ -372,6 +384,9 @@ impl S2Config {
         {
             bail!("memory_qk, memory_value and memory_write need memory");
         }
+        if self.memory_aux && !self.memory {
+            bail!("memory_aux needs memory");
+        }
         if let Some(es) = &self.ffn_es {
             if es.expand == 0 || es.fan_in == 0 || es.fan_in > self.hidden_size {
                 bail!("ffn_es: expand must be >= 1 and fan_in in 1..=hidden_size");
@@ -478,6 +493,7 @@ impl S2Config {
             memory_qk: MemoryQk::Separate,
             memory_value: MemoryValue::Token,
             memory_write: MemoryWrite::Average,
+            memory_aux: false,
             memory_run: MemoryRun::default(),
             parallax: false,
             xsa: false,

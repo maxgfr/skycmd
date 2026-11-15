@@ -34,8 +34,13 @@ pub(crate) mod test_util {
 
     static LOCK: Mutex<()> = Mutex::new(());
 
-    /// Serializes tests that run MLX graphs (the Metal device is shared).
+    /// Serializes tests that run MLX graphs (the Metal device is shared). With `SKY_TEST_CPU`
+    /// set, they run on the CPU: the tests can then be run while a training holds the GPU.
     pub fn lock() -> MutexGuard<'static, ()> {
-        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+        let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        if std::env::var_os("SKY_TEST_CPU").is_some() {
+            mlx_rs::Device::set_default(&mlx_rs::Device::cpu());
+        }
+        guard
     }
 }

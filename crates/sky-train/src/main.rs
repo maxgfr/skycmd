@@ -432,6 +432,11 @@ enum Cmd {
         /// every 50 sequence steps.
         #[arg(long)]
         seq_log: bool,
+        /// With --seq-log: the memory trace of every sequence step (per mem.* tensor the norm
+        /// of its gradient and of its weights, the gates, the state and the reading;
+        /// docs/s6-sleep3-diagnosis.md).
+        #[arg(long, requires = "seq_log")]
+        memory_trace: bool,
         /// AdamW rate multiplier of the memory weights mem.* (docs/s6-sleep2-prereg.md §2, M3).
         #[arg(long, default_value_t = 1.0)]
         mem_lr_mult: f32,
@@ -442,6 +447,33 @@ enum Cmd {
         /// The memory projections stay float under QAT: C4's second retry (choice O5).
         #[arg(long)]
         memory_float: bool,
+        /// The read-out of the memory alone stays float under QAT
+        /// (docs/s6-sleep3-diagnosis.md).
+        #[arg(long)]
+        memory_out_float: bool,
+        /// Standard deviation of a truncated-normal start of the read-out of the memory, in
+        /// place of zero (0: the zero start; a fresh run only).
+        #[arg(long, default_value_t = 0.0)]
+        memory_out_init: f32,
+        /// Weight of the auxiliary loss of a memory_aux config: the colour asked, decoded from
+        /// what the memory retrieves at the ask frames of recall (0: none; needs --seq-log).
+        #[arg(long, default_value_t = 0.0)]
+        memory_aux_weight: f32,
+        /// With --memory-aux-weight: the auxiliary head does not train the memory (its gradient
+        /// stops at the reading): a linear probe of what the memory retrieves.
+        #[arg(long)]
+        memory_aux_probe: bool,
+        /// AdamW rate multiplier of the input projections of the memory (mem.*.q, k, qk, v),
+        /// on top of --mem-lr-mult; 0 holds them at their initialization.
+        #[arg(long, default_value_t = 1.0)]
+        mem_in_lr_mult: f32,
+        /// AdamW rate multiplier of the gates of the memory (mem.*.alpha, mem.*.beta), on top
+        /// of --mem-lr-mult; 0 holds them at their initialization.
+        #[arg(long, default_value_t = 1.0)]
+        mem_gate_lr_mult: f32,
+        /// No weight decay on the memory matrices mem.*.
+        #[arg(long)]
+        mem_no_decay: bool,
         #[arg(long, default_value_t = 20)]
         log_every: u64,
         #[arg(long, default_value_t = 1000)]
@@ -901,9 +933,17 @@ fn main() -> Result<()> {
             sleep_passes,
             sleep_full,
             seq_log,
+            memory_trace,
             mem_lr_mult,
             memory_read_off,
             memory_float,
+            memory_out_float,
+            memory_out_init,
+            memory_aux_weight,
+            memory_aux_probe,
+            mem_in_lr_mult,
+            mem_gate_lr_mult,
+            mem_no_decay,
             log_every,
             eval_every,
             checkpoint_minutes,
@@ -924,6 +964,9 @@ fn main() -> Result<()> {
             batch,
             opt: sky_train::optim::OptConfig {
                 mem_lr_mult,
+                mem_in_lr_mult,
+                mem_gate_lr_mult,
+                mem_no_decay,
                 ..opt.build(1e-3)
             },
             seed,
@@ -945,10 +988,15 @@ fn main() -> Result<()> {
             sleep_passes,
             sleep_full,
             seq_log,
+            memory_trace,
             memory_run: s2::config::MemoryRun {
                 read_off: memory_read_off,
                 float: memory_float,
+                out_float: memory_out_float,
+                aux_weight: memory_aux_weight,
+                aux_probe: memory_aux_probe,
             },
+            memory_out_init,
             dis,
             exit_kd: exit_kd.map(|weight| ExitKd {
                 weight,

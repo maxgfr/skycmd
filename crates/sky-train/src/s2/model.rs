@@ -438,7 +438,9 @@ pub(crate) fn prepare<'a>(p: &'a ParamMap, cfg: &S2Config, qat: bool) -> R<Cow<'
     let mut out = ParamMap::with_capacity(p.len());
     for (k, v) in p {
         // C4's second retry (docs/s6-sleep2-prereg.md §3): float memory projections under QAT.
-        let float_mem = cfg.memory_run.float && k.starts_with("mem.");
+        let run = cfg.memory_run;
+        let float_mem =
+            k.starts_with("mem.") && (run.float || (run.out_float && k.ends_with(".out.weight")));
         let mut v = if qat && is_ternary(k) && !float_mem {
             if cfg.qat_grad_a > 0.0 {
                 ternarize_stable(v, cfg.qat_grad_a)?
