@@ -361,9 +361,9 @@ def run_hashes(x):
     # a polynomial hash of the 32 bit patterns, wrapping in 64 bits, then a final mix
     mult = np.uint64(0x9E3779B97F4A7C15)
     powers = np.ones(RUN, dtype=np.uint64)
-    for i in range(1, RUN):
-        powers[i] = powers[i - 1] * mult
     with np.errstate(over="ignore"):
+        for i in range(1, RUN):
+            powers[i] = powers[i - 1] * mult
         h = (bits * powers).sum(axis=1, dtype=np.uint64)
         h ^= h >> np.uint64(31)
         h *= np.uint64(0xBF58476D1CE4E5B9)
