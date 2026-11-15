@@ -95,20 +95,23 @@ rep() { x python3 -I scripts/s6-sleep2-report.py "$@"; }
 # rate <width> <size pilot scale>: v1's peak rate (scripts/train-sleep.sh): `rate 96 1` = 2e-3.
 rate() { LC_ALL=C awk -v b="${LR_SCALE:-2.0}" -v c="$2" -v d="$1" 'BEGIN { printf "%.3g", 1e-3 * b * sqrt(96 / d) * c }'; }
 
-# config <base checkpoint> <out.json> <form: frame|token|none> <name>: the base's config with the
-# v2 memory (shared qk, the value form of C2) or without memory (the control).
+# config <base checkpoint> <out.json> <form: frame|token|none> <name> [write rule]: the base's
+# config with the v2 memory (shared qk, the value form of C2, the write rule of amendment 1's
+# sweep) or without memory (the control).
 config() {
   [ "$dry" = 1 ] && { echo "+ config $*"; return; }
-  python3 -I - "$1/config.json" "$2" "$3" "$4" <<'EOF'
+  python3 -I - "$1/config.json" "$2" "$3" "$4" "${5:-average}" <<'EOF'
 import json, sys
-src, dst, form, name = sys.argv[1:]
+src, dst, form, name, write = sys.argv[1:]
 c = json.load(open(src))
 c["temperature"] = {}
 c["name"] = name
-for k in ("memory", "memory_qk", "memory_value"):
+for k in ("memory", "memory_qk", "memory_value", "memory_write"):
     c.pop(k, None)
 if form != "none":
     c.update(memory=True, memory_qk="shared", memory_value=form)
+    if write != "average":
+        c["memory_write"] = write
 json.dump(c, open(dst, "w"), indent=2)
 EOF
 }
@@ -221,14 +224,28 @@ checks() {
   local -a sizes=(--episodes "$c2_eps" --rows "$c2_rows" --batches "$c3_batches" --batch "$c3_batch")
   # C1 first, alone: the first failing check stops the script.
   [ "$dry" != 1 ] && [ -f "$c/c1.json" ] || x nice -n 19 "$T" --cpu s2-memcheck --base "$pico_base" --seq "$seq/recall.jsonl" --out "$c" --c1-only
-  [ "$(passed "$c/c1.json")" = true ] || failed C1 "No GPU training starts before C1 to C4 pass (docs/s6-sleep2-prereg.md §3); §11 names no next step for C1, which an amendment or a new pre-registration settles."
-  [ "$dry" != 1 ] && [ -f "$c/c3.json" ] || x nice -n 19 "$T" --cpu s2-memcheck --base "$pico_base" --seq "$seq/recall.jsonl" --out "$c" "${sizes[@]}"
+  # Amendment 1: C1 failed with v1's write rule; the write rule is chosen by the sweep on C1's
+  # synthetic states (W1 delta, W2 exact, W3 centred, in that order), before C2.
+  local write=average
+  if [ "$dry" = 1 ] || [ "$(passed "$c/c1.json")" != true ]; then
+    [ "$dry" != 1 ] && [ -f "$c/sweep.json" ] || x nice -n 19 "$T" --cpu s2-memcheck --base "$pico_base" --seq "$seq/recall.jsonl" --out "$c" --sweep
+    if [ "$dry" = 1 ]; then
+      write=RULE
+    else
+      write=$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1]))["adopted"]; print(a["rule"] if a else "")' "$c/sweep.json")
+    fi
+    if [ -z "$write" ]; then
+      failed sweep "No write rule decodes the colour at d = 1, 4 and 8 with at most 4 passes: v2 stops here (amendment 1)."
+      write="delta" # SMOKE only
+    fi
+  fi
+  [ "$dry" != 1 ] && [ -f "$c/c3.json" ] || x nice -n 19 "$T" --cpu s2-memcheck --base "$pico_base" --seq "$seq/recall.jsonl" --out "$c" --write "$write" "${sizes[@]}"
   [ "$(passed "$c/c2.json")" = true ] || failed C2 "Both v2 forms are under 0.40: no GPU run; the next step is the per-token delta rule or a frame cache, by a new pre-registration (§11)."
   [ "$(passed "$c/c3.json")" = true ] || failed C3 "No GPU training starts before C1 to C4 pass (§3); §11 names no next step for C3, which an amendment or a new pre-registration settles."
   form=FORM
   [ "$dry" = 1 ] || form=$(json_get "$c/c2.json" adopted)
   [ -n "$form" ] || form=frame # SMOKE only: C2 adopted nothing
-  config "$pico_base" "$c/sleep2.json" "$form" s6-sleep2-pico
+  config "$pico_base" "$c/sleep2.json" "$form" s6-sleep2-pico "$write"
   c4 "$c/c4" --mem-lr-mult 10
   if [ "$(passed "$c/c4/c4.json")" != true ]; then
     # §3: the only retries allowed, after C2 passed: mem.* at x30, and float memory projections.
@@ -244,7 +261,7 @@ checks() {
 }
 
 pilot() {
-  local p=$root/pilot v=$root/checks/verdict.json form=FORM mult=10 a_steps b_steps
+  local p=$root/pilot v=$root/checks/verdict.json form=FORM write=RULE mult=10 a_steps b_steps
   local -a mem_flags=()
   no_other_training
   if [ "$dry" != 1 ]; then
@@ -262,13 +279,14 @@ pilot() {
       exit 1
     fi
     form=$(json_get "$v" form)
+    write=$(json_get "$root/checks/c2.json" write)
     [ -n "$form" ] || form=frame # SMOKE only
     mult=$(json_get "$v" mem_lr_mult)
     [ "$(json_get "$v" mem_float)" = true ] && mem_flags+=(--memory-float)
   fi
   mem_flags+=(--mem-lr-mult "$mult")
   x mkdir -p "$p"
-  config "$pico_base" "$p/sleep2.json" "$form" s6-sleep2-pico
+  config "$pico_base" "$p/sleep2.json" "$form" s6-sleep2-pico "$write"
   config "$pico_base" "$p/control.json" none s6-pico-control2
   # M, phase A, then the in-sample stop (§5.1).
   decide "$p/m-a" "$p/sleep2.json" "$pico_base" --minutes "$phase_a_min" "${phase_a[@]}" "${mem_flags[@]}"
