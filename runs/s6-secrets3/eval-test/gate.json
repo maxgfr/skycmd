@@ -1,0 +1,125 @@
+{
+ "experiment": "s6-secrets v3 (docs/s6-secrets3-prereg.md, section 3)",
+ "split": "test",
+ "system": "union",
+ "is_the_pre_registered_gate": true,
+ "second_look": "Second look: v3 reads test files that were read once for v2 (docs/s6-secrets2-prereg.md, Result of 15/11/2026), and its system (the union of the default engine and the model, with tau3) was defined after that reading.",
+ "uuid_choice": "Gated universe: the rows whose CredData category is exactly `UUID` are removed, for every system (amendment 2 of docs/s6-secrets2-prereg.md). That choice was made after reading the training and validation rows and before any test file was read. Full universe: every meta row.",
+ "universe_of_G1_G2_G3": "gated",
+ "thresholds_of_the_systems": {
+  "union": 0.34933,
+  "union-lr": 0.155049,
+  "union-tau-v2": 0.2598114609718323
+ },
+ "tau3_json": {
+  "commit": "370f60f8d6c96c47bb54533f1ea96dfe67f48c2d",
+  "committed_at": "2026-11-15T09:05:11+01:00"
+ },
+ "test_read": "2026-11-15T09:07:55+01:00 tau3.json at 370f60f8d6c96c47bb54533f1ea96dfe67f48c2d",
+ "thresholds": {
+  "G1": 0.15,
+  "G2": 0.1,
+  "G4": 0.08,
+  "G5": 0.05,
+  "G6_us": 3000.0,
+  "G7": 0.01
+ },
+ "gates": {
+  "G1": {
+   "holds": false,
+   "why": [
+    "every repository: 0.8477 < betterleaks 0.7332 + 0.15"
+   ],
+   "parts": {
+    "all": {
+     "union": 0.8476584022038568,
+     "reference": "betterleaks",
+     "reference_f1": 0.7331706324994914,
+     "holds": false,
+     "union_full_universe": 0.8085515673501508,
+     "reference_full_universe": 0.6948352283677008
+    },
+    "without_largest": {
+     "union": 0.806197018415668,
+     "reference": "betterleaks",
+     "reference_f1": 0.5366782394445068,
+     "holds": true,
+     "union_full_universe": 0.7314195139133498,
+     "reference_full_universe": 0.478586403114705
+    }
+   }
+  },
+  "G2": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "union": 0.8476584022038568,
+     "reference": "cbx-17m",
+     "reference_f1": 0.6830408023706406,
+     "holds": true,
+     "union_full_universe": 0.8085515673501508,
+     "reference_full_universe": 0.6433056077273946
+    },
+    "without_largest": {
+     "union": 0.806197018415668,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8492975734355045,
+     "holds": true,
+     "union_full_universe": 0.7314195139133498,
+     "reference_full_universe": 0.7614232567013259
+    }
+   }
+  },
+  "G3": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "union": 0.8476584022038568,
+     "reference": "union-lr",
+     "reference_f1": 0.7881889763779527,
+     "holds": true,
+     "union_full_universe": 0.8085515673501508,
+     "reference_full_universe": 0.7525364285416057
+    },
+    "without_largest": {
+     "union": 0.806197018415668,
+     "reference": "union-lr",
+     "reference_f1": 0.7170614359733531,
+     "holds": true,
+     "union_full_universe": 0.7314195139133498,
+     "reference_full_universe": 0.6518194806286243
+    }
+   }
+  },
+  "G4": {
+   "holds": true,
+   "why": [],
+   "union": 0.807294233612617,
+   "gitleaks": 0.7103825136612022
+  },
+  "G5": {
+   "holds": true,
+   "why": [],
+   "ece": 0.007254120589195562,
+   "ece_full_universe": 0.007244945672683589,
+   "copied_from_v2": true
+  },
+  "G6": {
+   "holds": true,
+   "why": [],
+   "median_us": 1605.833,
+   "copied_from_v2": true
+  },
+  "G7": {
+   "holds": true,
+   "why": [],
+   "files": 30,
+   "of": 8825,
+   "share": 0.0033994334277620396
+  }
+ },
+ "all_hold": false,
+ "verdict": "FAIL on a second look (G1): the work on this model ends, no third reading (section 3)"
+}

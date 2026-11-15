@@ -1,0 +1,123 @@
+{
+ "experiment": "s6-secrets v3 (docs/s6-secrets3-prereg.md, section 3)",
+ "split": "validation",
+ "system": "union",
+ "is_the_pre_registered_gate": false,
+ "second_look": "Second look: v3 reads test files that were read once for v2 (docs/s6-secrets2-prereg.md, Result of 15/11/2026), and its system (the union of the default engine and the model, with tau3) was defined after that reading.",
+ "uuid_choice": "Gated universe: the rows whose CredData category is exactly `UUID` are removed, for every system (amendment 2 of docs/s6-secrets2-prereg.md). That choice was made after reading the training and validation rows and before any test file was read. Full universe: every meta row.",
+ "universe_of_G1_G2_G3": "gated",
+ "thresholds_of_the_systems": {
+  "union": 0.34933,
+  "union-lr": 0.155049,
+  "union-tau-v2": 0.2598114609718323
+ },
+ "tau3_json": {
+  "commit": "370f60f8d6c96c47bb54533f1ea96dfe67f48c2d",
+  "committed_at": "2026-11-15T09:05:11+01:00"
+ },
+ "test_read": null,
+ "thresholds": {
+  "G1": 0.15,
+  "G2": 0.1,
+  "G4": 0.08,
+  "G5": 0.05,
+  "G6_us": 3000.0,
+  "G7": 0.01
+ },
+ "gates": {
+  "G1": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "union": 0.8963210702341138,
+     "reference": "secretgate-default",
+     "reference_f1": 0.5196850393700787,
+     "holds": true,
+     "union_full_universe": 0.8011753183153771,
+     "reference_full_universe": 0.4347826086956522
+    },
+    "without_largest": {
+     "union": 0.857638888888889,
+     "reference": "secretgate-default",
+     "reference_f1": 0.6136363636363636,
+     "holds": true,
+     "union_full_universe": 0.7962382445141066,
+     "reference_full_universe": 0.5378486055776892
+    }
+   }
+  },
+  "G2": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "union": 0.8963210702341138,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8872901678657074,
+     "holds": true,
+     "union_full_universe": 0.8011753183153771,
+     "reference_full_universe": 0.7724425887265136
+    },
+    "without_largest": {
+     "union": 0.857638888888889,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8190854870775348,
+     "holds": true,
+     "union_full_universe": 0.7962382445141066,
+     "reference_full_universe": 0.7292035398230089
+    }
+   }
+  },
+  "G3": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "union": 0.8963210702341138,
+     "reference": "union-lr",
+     "reference_f1": 0.8660714285714285,
+     "holds": true,
+     "union_full_universe": 0.8011753183153771,
+     "reference_full_universe": 0.76078431372549
+    },
+    "without_largest": {
+     "union": 0.857638888888889,
+     "reference": "union-lr",
+     "reference_f1": 0.8048780487804879,
+     "holds": true,
+     "union_full_universe": 0.7962382445141066,
+     "reference_full_universe": 0.7264150943396228
+    }
+   }
+  },
+  "G4": {
+   "holds": true,
+   "why": [],
+   "union": 0.7979576951130561,
+   "gitleaks": 0.6804550155118925
+  },
+  "G5": {
+   "holds": true,
+   "why": [],
+   "ece": 0.013461832490164563,
+   "ece_full_universe": 0.015148173130974007,
+   "copied_from_v2": true
+  },
+  "G6": {
+   "holds": true,
+   "why": [],
+   "median_us": 1866.375,
+   "copied_from_v2": true
+  },
+  "G7": {
+   "holds": true,
+   "why": [],
+   "files": 30,
+   "of": 8825,
+   "share": 0.0033994334277620396
+  }
+ },
+ "all_hold": true,
+ "verdict": "REHEARSAL on validation: the gate would hold on these numbers; nothing is decided on validation"
+}
