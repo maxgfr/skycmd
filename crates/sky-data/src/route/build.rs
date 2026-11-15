@@ -439,12 +439,21 @@ fn tool_slates(
         let k = reqs[*i];
         let ok = ok_for(k);
         let mut rng = cx.rng(&format!("route/{name}/pair/{}", k.r.id));
+        // the gold replaced in its place by one more distractor of the same rule, the other
+        // options where they were: an answer that keeps its position kept its answer (7.3)
         let mut tools = s.without_gold().tools;
-        slates::fill(&mut tools, slates::TEST_TOOLS, pool, &mut rng, &|t| {
+        let want = tools.len() + 1;
+        slates::fill(&mut tools, want, pool, &mut rng, &|t| {
             Some(t) != k.gold && ok(t)
         });
-        rng.shuffle(&mut tools);
-        let twin = Slate::new(tools, None);
+        let mut twin_tools = s.tools.clone();
+        let gp = s.gold.unwrap();
+        twin_tools[gp] = *tools.last().unwrap();
+        if tools.len() < s.tools.len() {
+            // no tool left in the pool: the gold's place stays empty
+            twin_tools.remove(gp);
+        }
+        let twin = Slate::new(twin_tools, None);
         pairs.push(cx.record(
             &format!("{name}-pairs"),
             split,
@@ -1456,8 +1465,9 @@ pub struct ManifestOptions {
     pub data: PathBuf,
     pub out: PathBuf,
     pub seed: u64,
-    /// `sky-train s2-truncation --json` reports, one per head window (`<window>=<path>`).
-    pub truncation: Vec<(usize, PathBuf)>,
+    /// `sky-train s2-truncation --json` reports, one per size and head window
+    /// (`<size>:<window>=<path>`; each size with its own config and tokenizer).
+    pub truncation: Vec<(String, usize, PathBuf)>,
 }
 
 fn hash_tree(root: &Path, rel: &str, out: &mut BTreeMap<String, Value>) -> Result<()> {
@@ -1528,11 +1538,28 @@ pub fn manifest(o: &ManifestOptions) -> Result<Value> {
             }
         }
     }
-    let mut trunc = Vec::new();
-    for (w, p) in &o.truncation {
-        trunc.push((*w, super::read_json(p)?));
+    let mut by_size: BTreeMap<String, Vec<(usize, Value)>> = BTreeMap::new();
+    for (size, w, p) in &o.truncation {
+        by_size
+            .entry(size.clone())
+            .or_default()
+            .push((*w, super::read_json(p)?));
     }
-    let window = head_window(&trunc);
+    let window: BTreeMap<String, Option<usize>> = by_size
+        .iter()
+        .map(|(s, t)| (s.clone(), head_window(t)))
+        .collect();
+    let reports: BTreeMap<String, Vec<Value>> = by_size
+        .iter()
+        .map(|(s, t)| {
+            (
+                s.clone(),
+                t.iter()
+                    .map(|(w, r)| json!({"window": w, "all": r["all"]}))
+                    .collect(),
+            )
+        })
+        .collect();
     let counts: BTreeMap<String, Value> = ["requests", "split", "slates"]
         .iter()
         .filter_map(|k| {
@@ -1558,7 +1585,7 @@ pub fn manifest(o: &ManifestOptions) -> Result<Value> {
         "test files (hashed for the amendment of 4.6, item 1; never read before section 7)": test,
         "truncation": {
             "rule": "the smallest of 160, 256, 320 at which at most 5% of the training and validation records have an option shrunk (s2-truncation `head`)",
-            "reports": trunc.iter().map(|(w, r)| json!({"window": w, "all": r["all"]})).collect::<Vec<_>>(),
+            "reports": reports,
             "window": window,
         },
         "counts": counts,

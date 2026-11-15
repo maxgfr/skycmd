@@ -208,7 +208,7 @@ enum RouteStep {
         data: PathBuf,
         #[arg(long)]
         out: PathBuf,
-        /// `s2-truncation --json` reports as <window>=<path>, one per candidate window.
+        /// `s2-truncation --json` reports as <size>:<window>=<path>, one per size and window.
         #[arg(long, value_delimiter = ',')]
         truncation: Vec<String>,
     },
@@ -959,10 +959,14 @@ fn main() -> Result<()> {
                     let truncation = truncation
                         .iter()
                         .map(|t| {
-                            let (w, p) = t.split_once('=').ok_or_else(|| {
-                                anyhow::anyhow!("--truncation wants <window>=<path>, not {t}")
-                            })?;
-                            Ok((w.parse::<usize>()?, PathBuf::from(p)))
+                            let bad = || {
+                                anyhow::anyhow!(
+                                    "--truncation wants <size>:<window>=<path>, not {t}"
+                                )
+                            };
+                            let (k, p) = t.split_once('=').ok_or_else(bad)?;
+                            let (size, w) = k.split_once(':').ok_or_else(bad)?;
+                            Ok((size.to_string(), w.parse::<usize>()?, PathBuf::from(p)))
                         })
                         .collect::<Result<Vec<_>>>()?;
                     rb::manifest(&rb::ManifestOptions {
