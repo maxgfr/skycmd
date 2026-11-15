@@ -1,0 +1,11 @@
+The files of this directory come from autogluon/fev (https://github.com/autogluon/fev),
+Apache-2.0, at commit 9cf943c388e5cfaf352175ea3c69e408b197d997:
+
+- tasks.yaml          benchmarks/chronos_zeroshot/tasks.yaml (the 27 tasks of the Chronos
+                      zero-shot benchmark, "Chronos-ZS")
+- seasonal_naive.csv  benchmarks/chronos_zeroshot/results/seasonal_naive.csv (the seasonal-naive
+                      reference every relative MASE and WQL divides by; fev 0.6.0)
+
+They are copied unchanged. TinyCast (raws-labs/tinycast, Apache-2.0) vendors the same
+seasonal_naive.csv byte for byte in evidence/chronos-zs/comparators/ and reports 0.8800 / 0.7218
+relative MASE / WQL against it (evidence/chronos-zs/README.md).

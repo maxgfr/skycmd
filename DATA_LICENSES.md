@@ -218,11 +218,36 @@ Read from the parquet copies of `autogluon/chronos_datasets` (https://huggingfac
 
 Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` config that is in a test set (M1, M3, M4, M5, NN5, tourism, traffic, weather, electricity, solar, hospital, covid deaths, car parts, ETT, exchange rate, FRED-MD, Dominick, ERCOT, CIF 2016, Australian electricity, KDD Cup 2018, temperature–rain, Saugeen, US births).
 
+## s6-cast v2: new real series (`scripts/cast2-data.py`, `docs/s6-cast2-prereg.md` §3.2, C3)
+
+The candidates of §3.2's selection rule, checked on 15/11/2026 from metadata only (`scripts/cast2-data.py list`: listings, object listings, HTTP headers, licence files); nothing of them is downloaded yet. Rule 1 is the licence as its publisher states it, rule 2 the exclusion list (GIFT-Eval's datasets, the 27 Chronos-ZS tasks of `eval/chronos-zs/tasks.yaml`, the v1 list below, the datasets the benchmarks draw from), rule 3 the content check of §3.3 (`scripts/cast2-data.py leak-check`), pending until the data is fetched. The list that trains is frozen by an amendment of the pre-registration before training.
+
+| source | publisher | licence (stated by) | rule 1 | rule 2 | size (metadata) | training | publication of the series |
+|---|---|---|---|---|---|---|---|
+| `uscrn_subhourly` (5-minute sensors: air, surface and soil temperature, precipitation, solar radiation, humidity, soil moisture, wetness, wind) | NOAA NCEI, U.S. Climate Reference Network (`ncei.noaa.gov/pub/data/uscrn/products/subhourly01`) | public domain (a U.S. Government work, as v1's USHCN; the product README states no other terms) | yes | yes | 2025: 159 station files, 2,256,400,800 bytes; at most 1,431 series, 11,722,752 points (last 8,192 points per station and column) | allowed | allowed |
+| `azure_vm_traces_2017` (5-minute VM CPU readings) | Microsoft, Azure Public Dataset V1 | CC-BY-4.0 (`LICENSE` of github.com/Azure/AzurePublicDataset) | yes | yes | 125 files, 84,202,453,652 bytes; 1,246,539,221 readings (the dataset page) | allowed, with attribution | allowed, with attribution |
+| `borg_cluster_data_2011` (5-minute task usage windows) | Google, cluster-data `ClusterData2011_2` | CC-BY-4.0 (`ClusterData2011_2.md`) | yes | yes | `task_usage`: 500 files, 42,120,256,604 bytes | allowed, with attribution | allowed, with attribution |
+
+Only `uscrn_subhourly` has a fetch (`scripts/cast2-data.py fetch`); the pre-registration fixes no rule to build or cap series from the per-VM and per-task records of the other two, so they wait for that rule. No second-level source passed; the band's weight goes to synthetic stand-ins (§3.4).
+
+Not kept:
+
+| source | why |
+|---|---|
+| Alibaba cluster-trace-v2018 (github.com/alibaba/clusterdata) | rule 1: no licence file; the README allows use "as long as it is for research or study purpose" |
+| Salesforce/lotsa_data and Salesforce/GiftEvalPretrain copies (Alibaba, Azure and Borg traces, PEMS, LargeST, BuildingsBench, IDEAL, ...) | open choice O3 of the pre-registration (not used; "for research purposes only"); a constituent is taken from its own publisher instead |
+| LargeST (PEMS 5-minute traffic) | rule 1: CC-BY-NC-4.0 |
+| Caltrans PeMS | rule 1: no licence of the rule is stated |
+| `autogluon/chronos_datasets` sub-hourly configs (`electricity_15min`, `solar`, `solar_1h`, `taxi_30min`) | rule 2: electricity and solar are GIFT-Eval datasets; `taxi_30min` is 30-minute data of the Chronos training corpus |
+
+TinyCast's own overlap list (20 benchmark names and 66 gridded-weather names, `evidence/corpus-resolution.json` of raws-labs/tinycast at `628c0be`) is not published with its names in that repository, so rule 2 cannot be extended by it.
+
 ## s6-cast evaluation and reference models
 | item | license | how it is used |
 |---|---|---|
 | Salesforce/GiftEval (https://huggingface.co/datasets/Salesforce/GiftEval) | Apache-2.0, released for research use | test windows exported locally (`scripts/gift-eval.py`) to score s6-cast and the references; never trained on, never redistributed |
 | `eval/gift-eval/` (dataset properties, seasonal-naive reference) | Apache-2.0 (Salesforce, via TinyCast's `tinycast/reference/`; see `eval/gift-eval/NOTICE`) | denominators of the normalized metrics |
+| `eval/chronos-zs/` (the 27 tasks of the Chronos zero-shot benchmark, the seasonal-naive reference) | Apache-2.0 (autogluon/fev at `9cf943c`; see `eval/chronos-zs/NOTICE`) | the task list and the denominators of `scripts/chronos-zs.py`; the benchmark's series are read only to score and to hash for the leakage check, never trained on |
 | TinyCast (https://github.com/raws-labs/tinycast, https://huggingface.co/raws-labs/tinycast) | Apache-2.0 (code and weights) | ported to Rust (`sky_infer::cast::tinycast`) as a reference forecaster; its pinned GIFT-Eval results are in `eval/gift-eval/gift_eval_tinycast.csv` |
 | Timestral-5M (https://huggingface.co/mistralai/Timestral-5M) | Modified MIT (attribution required; not for companies above $20M monthly revenue without a commercial license) | exported to ONNX (`scripts/timestral-onnx.py`) and shipped with its license (`site/public/models/ref/TIMESTRAL-LICENSE.txt`) as a browser reference |
 
