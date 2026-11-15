@@ -3,7 +3,8 @@
 # the computed-periodicity front end, band-matched real series, the v2 generator periods, the
 # sign flip at 0.5, 720 working minutes). Modelled on scripts/train-cast.sh (v1).
 #
-# Usage: scripts/train-cast2.sh [data] [pilot] [train] [export] [latency] [eval] [chronos] [gate]
+# Usage: scripts/train-cast2.sh [data] [chronos-check] [pilot] [train] [export] [latency] [eval]
+#                              [chronos] [gate]
 #   (default: all of them but data, in this order; the order is the pre-registration's: no v2
 #   score is read before the checks of §7.1, the latencies of §7.2 and the harness check of §7.3)
 #   data     the v1 real series (sky-data fetch-series, cast-synth --games) and GIFT-Eval's windows
@@ -25,8 +26,9 @@
 #   eval     §7.1: the two checks (seasonal naive nGMASE 1.00 +- 0.02, the TinyCast port's files
 #            give back 0.7856 / 0.5570), the TinyCast port without flip once, then v2 without flip
 #            (gated) and with flip (reported)
-#   chronos  §7.3: the Chronos-ZS export, the harness check (the TinyCast port with flip within
-#            0.02 of 0.880 / 0.722), then v2 without flip
+#   chronos-check  §7.3: the Chronos-ZS export and the harness check (the TinyCast port with flip
+#            within 0.02 of 0.880 / 0.722); G3 is a gate only if it passed before training starts
+#   chronos  the harness check if not on file, then v2 without flip on Chronos-ZS
 #   gate     §8: the verdict (G1, G2, G3) with the reported items of §9 and the disclosure of §10
 #            (scripts/s6-cast2-gate.py), into <run>/GATE.md and gate.json
 #
@@ -175,13 +177,16 @@ data() {
 
 # No training before the leakage check: every file of data/series2 was checked and kept.
 check_leak() {
-  note "check that $data_dir/leak.json covers every file of data/series2 and keeps each"
+  # a smoke run reads the real run's check (the data is shared; the smoke writes none)
+  local leak=$data_dir/leak.json
+  [ -n "$smoke" ] && [ ! -f "$leak" ] && leak=runs/s6-cast2-data/leak.json
+  note "check that $leak covers every file of data/series2 and keeps each"
   [ "$dry" = 1 ] && return
   if ! compgen -G "data/series2/*.jsonl" >/dev/null; then
     echo "== no new real series in data/series2: C3 is not made (§3.2: only by amendment)"
     return
   fi
-  python3 -I - "$data_dir/leak.json" data/series2 <<'EOF'
+  python3 -I - "$leak" data/series2 <<'EOF'
 import json, pathlib, sys
 leak, d = sys.argv[1], pathlib.Path(sys.argv[2])
 r = json.load(open(leak))["sources"]
@@ -205,6 +210,10 @@ fresh_or_resume() {
 }
 
 pilot() {
+  if [ -f "$pilot_dir/choice.json" ]; then
+    echo "== pilot: done, $pilot_dir/choice.json kept"
+    return
+  fi
   check_leak
   local p
   for p in plain distill; do
@@ -351,19 +360,25 @@ eval_all() {
   score "$gout/$name-flip" "$name-flip"
 }
 
-chronos() {
+# §7.3: the harness check, the TinyCast port with flip as published. G3 stays a gate only when it
+# passes before training starts (§8): run this step first.
+chronos_check() {
   if [ -n "$smoke" ]; then
     echo "== SMOKE: no Chronos-ZS"
     return
   fi
   [ -f data/chronos-zs/monash_traffic__w0.json ] || x uv run --python 3.12 scripts/chronos-zs.py export \
     --cache data/chronos-zs-src --out data/chronos-zs
-  # §7.3: the harness check, the TinyCast port with flip as published, before v2 is read
   if [ ! -f "$cout/tinycast/check.json" ]; then
     x "$B/sky-cast-eval" run --model "$golden" --windows data/chronos-zs --out "$cout/tinycast" --flip
     x uv run --python 3.12 scripts/chronos-zs.py score --cache data/chronos-zs-src --forecasts "$cout/tinycast" --name TinyCast-ours
     x uv run --python 3.12 scripts/chronos-zs.py check --forecasts "$cout/tinycast" || true
   fi
+}
+
+chronos() {
+  [ -n "$smoke" ] && { echo "== SMOKE: no Chronos-ZS"; return; }
+  chronos_check
   x "$B/sky-cast-eval" run --model "$m/$name.gguf" --windows data/chronos-zs --out "$cout/$name"
   x uv run --python 3.12 scripts/chronos-zs.py score --cache data/chronos-zs-src --forecasts "$cout/$name" --name "$name"
 }
@@ -388,14 +403,15 @@ if [ ${#steps[@]} -eq 0 ]; then
 fi
 for s in "${steps[@]}"; do
   case "$s" in
-    data | pilot | train | export | latency | eval | chronos | gate) ;;
-    *) echo "unknown step $s (data, pilot, train, export, latency, eval, chronos, gate)" >&2; exit 2 ;;
+    data | chronos-check | pilot | train | export | latency | eval | chronos | gate) ;;
+    *) echo "unknown step $s (data, chronos-check, pilot, train, export, latency, eval, chronos, gate)" >&2; exit 2 ;;
   esac
 done
 [ "$dry" = 1 ] || cargo build -q --release -p sky-train -p sky-infer -p sky-data
 for s in "${steps[@]}"; do
   case "$s" in
     data) data ;;
+    chronos-check) chronos_check ;;
     pilot) pilot ;;
     train) train ;;
     export) export_model ;;
