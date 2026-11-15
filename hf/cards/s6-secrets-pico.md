@@ -85,7 +85,9 @@ secret question was asked on each chunk. Every flag is a false positive:
   model judges it in its context), with its own pre-registration. Nothing is promised.
 - That second version, s6-secrets-verify-pico, was pre-registered and trained once (15/11/2026).
   On 221 real CredData test repositories its line F1 is 0.8561, against 0.7332 for the best rule
-  scanner, where its gate asked for +0.15: it failed and is not published.
+  scanner, where its gate asked for +0.15: it failed its gate; its file is published as a result
+  (owner's decision of 15/11/2026):
+  [s6-secrets-verify-pico](https://huggingface.co/{{USER}}/s6-secrets-verify-pico).
 
 Latency, measured by us on an Apple M5 while a GPU training was running (an idle machine may be
 faster): median 786 to 789 µs per decision natively over the 7,984 bench questions, 1,420 to

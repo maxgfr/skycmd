@@ -28,6 +28,52 @@
     ]
   },
   {
+    "model": "s6-micro-v1",
+    "kind": "game",
+    "emoji": "🧪",
+    "color_from": "gray",
+    "color_to": "indigo",
+    "tagline": "Failed its pre-registered gate, published as a result: a 2.4 MB ternary model for four games and typed questions, 0.547 on the typed-decisions bench but ECE 0.0821 against a guard of 0.08.",
+    "short_description": "Failed its gate: 2.4 MB s6 model, a result",
+    "notes": [
+      "The gate (docs/s6-gen-prereg.md §6): at least 0.45 on the typed-decisions bench, ECE at most 0.08, no game more than 5% below s3-pico. It reached 0.547 and plays every game at s3-pico's score, but its ECE is 0.0821 at full depth: it failed, and is recommended for no use.",
+      "Published at full depth (its three exit thresholds set to 1). Its four-times-smaller sibling s6-nano passed the same gate.",
+      "Expect mistakes on questions in free text: 0.430 on When2Call, 0.052 on NOTAM subjects."
+    ]
+  },
+  {
+    "model": "s6-ear-nano",
+    "kind": "ear",
+    "emoji": "👂",
+    "color_from": "gray",
+    "color_to": "purple",
+    "tagline": "Failed three of its four pre-registered gates, published as a result: a 899 KB ternary model that hears the last 10 s of audio and answers typed questions about it.",
+    "short_description": "Failed its gates: 899 KB audio model, a result",
+    "notes": [
+      "End of turn 0.5681 against 0.8518 for Smart Turn v3.2 on the same clips (fail); 12 Speech Commands keywords 0.8885 against 0.90 (fail); zero-shot keywords 0.2100 in English (pass, bar 0.20) and 0.1330 in French (fail).",
+      "Its control, trained the same way without the Mimi pretraining, is more accurate on all four sets: the pretraining did not help in this run. The control is not published.",
+      "The demo answers at full depth, where the gates were read; the file keeps the exit thresholds its training run stored (choice 0.5, score 0.9, noul 0.68)."
+    ]
+  },
+  {
+    "model": "s6-cast-pico",
+    "kind": "forecast",
+    "emoji": "📉",
+    "color_from": "gray",
+    "color_to": "blue",
+    "tagline": "Failed its pre-registered gate, published as a result: a 143 KB ternary forecaster (nine deciles) that scores nGMASE 0.9471 and nWQL 0.6646 on GIFT-Eval, where the gate asked for 0.838 and 0.587.",
+    "short_description": "Failed its gate: 143 KB forecaster, a result",
+    "notes": [
+      "The gate was to beat the training-free FLAIR on GIFT-Eval (nGMASE ≤ 0.838 and nWQL ≤ 0.587), with the goal of beating TinyCast (0.774 / 0.545). It met neither, with or without flip (0.9099 / 0.6417 with flip).",
+      "It beats the seasonal naive on WQL in 84 of 97 configurations, but on MASE only in 52; on MASE, medium and long horizons are worse than the seasonal naive.",
+      "s6-cast-pico starts unticked: tick it to compare it with TinyCast and the seasonal naive on the same series."
+    ]
+  },
+  {
+    "model": "s6-secrets-verify-pico",
+    "space": false
+  },
+  {
     "model": "s5-lite",
     "kind": "decision",
     "proofs": true,
