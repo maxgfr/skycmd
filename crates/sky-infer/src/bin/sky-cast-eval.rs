@@ -219,8 +219,8 @@ fn cmd_calibrate(model: &Path, out: &Path, alpha: f64, delta: f32, n: usize) -> 
         let (_, y) = synth::mixed(seed, len);
         let ctx_patches = 4 + (i * 7919) % (c.context_patches.saturating_sub(4) + 1);
         let ctx = &y[len - c.horizon() - ctx_patches * c.patch..len - c.horizon()];
-        let (_, vals, mask) = prep::prepare(ctx, c.patch, c.context_patches);
-        let outs = m.forward_window(&vals, &mask, true)?;
+        // the model's own inputs: with the v2 front end, the periods and the draft too
+        let outs = m.forward_inputs(&m.inputs(ctx), true)?;
         runs.push(
             outs.iter()
                 .map(|q| q.iter().skip(med).step_by(levels).copied().collect())

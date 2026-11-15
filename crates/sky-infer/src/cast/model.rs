@@ -3,6 +3,10 @@
 //! The context's leading empty patches (left padding of a short history) are dropped instead of
 //! masked: RoPE scores depend only on relative positions, so the kept patches keep their absolute
 //! positions and give the same outputs as the masked training graph.
+//!
+//! With the v2 front end (docs/s6-cast2-prereg.md §4.2–4.3), each patch row also carries its
+//! phase channels, and `draft_proj` of the pass's seasonal draft is added to the decoder
+//! queries; [`prep::inputs`] computes both, as sky-train's data producer does.
 
 use sky_gguf::Gguf;
 
@@ -37,8 +41,11 @@ pub struct DecBlock {
 #[derive(Clone, Debug)]
 pub struct CastModel {
     pub cfg: CastConfig,
-    /// `[d, 2·patch]` with bias: a patch's values then its observation mask.
+    /// `[d, 2·patch + 2K]` with bias: a patch's values, its observation mask, then (v2) its
+    /// phase channels.
     pub patch_proj: Lin,
+    /// v2: `[d, 2·patch + 2K]` with bias, the seasonal draft of a query patch into its query.
+    pub draft_proj: Option<Lin>,
     pub blocks: Vec<Block>,
     pub loop_emb: Option<Vec<f32>>,
     pub attn_norm_loop: Option<Ln>,
@@ -169,8 +176,15 @@ impl CastModel {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        let l = cfg.layout();
+        let draft_proj = if cfg.draft {
+            Some(src.lin("draft_proj", d, l.draft_width(), true)?)
+        } else {
+            None
+        };
         Ok(CastModel {
-            patch_proj: src.lin("patch_proj", d, 2 * cfg.patch, true)?,
+            patch_proj: src.lin("patch_proj", d, l.patch_width(), true)?,
+            draft_proj,
             blocks,
             loop_emb,
             attn_norm_loop,
@@ -191,6 +205,9 @@ impl CastModel {
 
     fn lins_mut(&mut self) -> Vec<&mut Lin> {
         let mut v: Vec<&mut Lin> = vec![&mut self.patch_proj, &mut self.head];
+        if let Some(dp) = &mut self.draft_proj {
+            v.push(dp);
+        }
         for b in &mut self.blocks {
             v.extend([&mut b.qkv, &mut b.out, &mut b.down]);
             if let Some(up) = &mut b.up {
@@ -349,13 +366,13 @@ impl CastModel {
         blk.down.forward(act, t, x, true);
     }
 
-    /// The decoder over one exit's latents `h` (`[t][d]`): normalized quantiles
-    /// `[horizon][levels]`.
-    fn decode(&self, h: &[f32], t: usize) -> Vec<f32> {
+    /// The decoder over one exit's latents `h` (`[t][d]`) from the queries `query`
+    /// (`[horizon_patches][d]`): normalized quantiles `[horizon][levels]`.
+    fn decode(&self, h: &[f32], t: usize, query: &[f32]) -> Vec<f32> {
         let c = &self.cfg;
         let (d, nh, hd, eps) = (c.hidden_size, c.num_heads, c.head_dim(), c.norm_eps);
         let nq = c.horizon_patches;
-        let mut x = self.query.clone();
+        let mut x = query.to_vec();
         let mut hn = vec![0.0; nq * d];
         let mut q = vec![0.0; nq * d];
         let mut kvn = vec![0.0; t * d];
@@ -408,19 +425,53 @@ impl CastModel {
         out
     }
 
-    /// One pass over a prepared window (`patches` values and mask, `context_patches · patch`
+    /// One pass over a prepared v1 window (`patches` values and mask, `context_patches · patch`
     /// each): the normalized quantiles `[horizon][levels]` of every exit run. With `full`, every
     /// exit runs; otherwise the pass stops at the first exit whose median moved less than
-    /// `exit_tolerance` from the previous exit's.
+    /// `exit_tolerance` from the previous exit's. A model with the v2 front end needs its
+    /// periods and draft too: [`CastModel::forward_inputs`].
     pub fn forward_window(&self, vals: &[f32], mask: &[f32], full: bool) -> Result<Vec<Vec<f32>>> {
+        if self.cfg.periods > 0 {
+            return Err(Error::InvalidRequest(
+                "this model has the periodicity front end: use forward_inputs".into(),
+            ));
+        }
+        self.forward_inputs(
+            &prep::Inputs {
+                norm: prep::Norm {
+                    lo: 0.0,
+                    scale: 1.0,
+                },
+                vals: vals.to_vec(),
+                mask: mask.to_vec(),
+                periods: Vec::new(),
+                phase: Vec::new(),
+                draft: Vec::new(),
+            },
+            full,
+        )
+    }
+
+    /// One pass over the inputs of a window ([`prep::inputs`] with this model's layout): the
+    /// normalized quantiles `[horizon][levels]` of every exit run, as [`Self::forward_window`].
+    pub fn forward_inputs(&self, inp: &prep::Inputs, full: bool) -> Result<Vec<Vec<f32>>> {
         let c = &self.cfg;
+        let l = c.layout();
         let (d, p) = (c.hidden_size, c.patch);
         let n = c.context();
+        let (vals, mask) = (&inp.vals, &inp.mask);
         if vals.len() != n || mask.len() != n {
             return Err(Error::InvalidRequest(format!(
                 "window of {} values, expected {n}",
                 vals.len()
             )));
+        }
+        if inp.phase.len() != c.context_patches * l.phase_width()
+            || inp.draft.len() != c.horizon_patches * l.draft_width()
+        {
+            return Err(Error::InvalidRequest(
+                "the window's front-end inputs do not match the model".into(),
+            ));
         }
         let valid = prep::patch_valid(mask, p);
         let Some(j0) = valid.iter().position(|&v| v) else {
@@ -430,13 +481,14 @@ impl CastModel {
         };
         let t = c.context_patches - j0;
         let pos: Vec<usize> = (j0..c.context_patches).collect();
-        let mut u = vec![0.0; t * 2 * p];
-        for (r, j) in (j0..c.context_patches).enumerate() {
-            u[r * 2 * p..r * 2 * p + p].copy_from_slice(&vals[j * p..(j + 1) * p]);
-            u[r * 2 * p + p..(r + 1) * 2 * p].copy_from_slice(&mask[j * p..(j + 1) * p]);
-        }
+        let u = prep::patch_rows(inp, &l, j0);
         let mut x = vec![0.0; t * d];
         self.patch_proj.forward(&u, t, &mut x, false);
+        // the decoder queries: learned, plus the projected draft (v2)
+        let mut query = self.query.clone();
+        if let Some(dp) = &self.draft_proj {
+            dp.forward(&inp.draft, c.horizon_patches, &mut query, true);
+        }
         let mut sc = Scratch::default();
         let nb = c.state_blocks;
         let mut outs: Vec<Vec<f32>> = Vec::new();
@@ -462,7 +514,7 @@ impl CastModel {
             self.block(blk, norm, &mut x, t, &pos, &mut sc);
             if let Some(e) = c.exits.iter().position(|&ex| ex == a + 1) {
                 self.exit_norms[e].apply(&x, d, c.norm_eps, &mut hbuf);
-                let q = self.decode(&hbuf, t);
+                let q = self.decode(&hbuf, t, &query);
                 let stop = !full
                     && c.exit_tolerance > 0.0
                     && outs.last().is_some_and(|prev: &Vec<f32>| {
@@ -481,14 +533,21 @@ impl CastModel {
         Ok(outs)
     }
 
+    /// The model inputs of the raw `context` (its last `context()` points), front end
+    /// included.
+    pub fn inputs(&self, context: &[f32]) -> prep::Inputs {
+        prep::inputs(context, &self.cfg.layout())
+    }
+
     /// One pass on the raw `context` (its last `context()` points): the quantiles of the last
-    /// exit run, in the context's units, and the number of exits run.
+    /// exit run, in the context's units, and the number of exits run. The periods are detected
+    /// again on every pass, rolled-out medians included.
     fn pass(&self, context: &[f32], full: bool) -> Result<(Vec<f32>, usize)> {
-        let c = &self.cfg;
-        let (norm, vals, mask) = prep::prepare(context, c.patch, c.context_patches);
-        let outs = self.forward_window(&vals, &mask, full)?;
+        let inp = self.inputs(context);
+        let outs = self.forward_inputs(&inp, full)?;
         let used = outs.len();
         let q = outs.into_iter().last().expect("at least one exit");
+        let norm = inp.norm;
         Ok((q.into_iter().map(|v| norm.invert(v)).collect(), used))
     }
 

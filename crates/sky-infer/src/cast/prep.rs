@@ -1,6 +1,13 @@
 //! Shared forecasting pieces (docs/SPEC-S6-CAST.md §2, §6): per-window min-max normalization,
 //! patching, the seasonal-naive reference, the GIFT-Eval metrics and a periodogram period
 //! detector. Used by training (sky-train), inference ([`super::CastModel`]) and the browser.
+//!
+//! The computed-periodicity front end of s6-cast v2 (docs/s6-cast2-prereg.md §4.2, §4.3) is
+//! here too, in one place for both sides: [`inputs`] gives every model input of a context (the
+//! patches, the detected periods, the phase channels and the seasonal draft), and sky-train's
+//! data producer and [`super::CastModel`] both call it.
+
+use super::tinycast;
 
 /// Min-max normalization of a context window: `x̃ = (x − lo) / scale`, from the observed (finite)
 /// values only. A constant window maps to 0 (`scale = 1`), an empty one to the identity.
@@ -74,6 +81,188 @@ pub fn prepare(context: &[f32], patch: usize, n_patches: usize) -> (Norm, Vec<f3
     let norm = Norm::fit(tail);
     let (vals, mask) = patches(tail, norm, patch, n_patches);
     (norm, vals, mask)
+}
+
+/// Significance level of the period detector (docs/s6-cast2-prereg.md §4.2: α = 0.05).
+pub const PERIOD_ALPHA: f64 = 0.05;
+/// Phase bins of the draft's binned mean (§4.3 (b): 16 bins of p₁).
+pub const DRAFT_BINS: usize = 16;
+
+/// The shape of a model's input: enough to prepare a window for it, on either side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Layout {
+    pub patch: usize,
+    pub context_patches: usize,
+    pub horizon_patches: usize,
+    /// Detected periods `K` (0: no front end, s6-cast v1).
+    pub periods: usize,
+    /// A seasonal draft per query patch.
+    pub draft: bool,
+}
+
+impl Layout {
+    /// Points read (the detector's window too).
+    pub fn context(&self) -> usize {
+        self.patch * self.context_patches
+    }
+
+    /// Phase channels per patch: sin and cos per period.
+    pub fn phase_width(&self) -> usize {
+        2 * self.periods
+    }
+
+    /// Width of a patch's input row: values, mask, phase channels.
+    pub fn patch_width(&self) -> usize {
+        2 * self.patch + self.phase_width()
+    }
+
+    /// Width of a query's draft row: lag copy, binned mean, phase channels (0 without a draft).
+    pub fn draft_width(&self) -> usize {
+        if self.draft {
+            2 * self.patch + self.phase_width()
+        } else {
+            0
+        }
+    }
+}
+
+/// Every model input of a context window.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Inputs {
+    pub norm: Norm,
+    /// `context()` normalized values (0 where missing) and their mask, as [`prepare`].
+    pub vals: Vec<f32>,
+    pub mask: Vec<f32>,
+    /// The `K` detected periods, strongest first, 0 for an empty slot (empty without a front
+    /// end).
+    pub periods: Vec<usize>,
+    /// `[context_patches][2K]` phase channels.
+    pub phase: Vec<f32>,
+    /// `[horizon_patches][draft_width]` draft rows (empty without a draft).
+    pub draft: Vec<f32>,
+}
+
+/// The model inputs of `context` (its last `context()` points): [`prepare`], then with a front
+/// end the periods ([`detect_periods`]), the phase channels ([`phase_channels`]) and the draft
+/// ([`draft`]). Training and inference call this one function.
+pub fn inputs(context: &[f32], l: &Layout) -> Inputs {
+    let (norm, vals, mask) = prepare(context, l.patch, l.context_patches);
+    if l.periods == 0 {
+        return Inputs {
+            norm,
+            vals,
+            mask,
+            periods: Vec::new(),
+            phase: Vec::new(),
+            draft: Vec::new(),
+        };
+    }
+    let periods = detect_periods(context, l.context(), l.periods);
+    let phase = phase_channels(&periods, l.patch, l.context_patches);
+    let draft = if l.draft {
+        draft(&vals, &mask, &periods, l.patch, l.horizon_patches)
+    } else {
+        Vec::new()
+    };
+    Inputs {
+        norm,
+        vals,
+        mask,
+        periods,
+        phase,
+        draft,
+    }
+}
+
+/// The detected periods of a context (§4.2): TinyCast's `significant_periods` (`k` periods,
+/// α = [`PERIOD_ALPHA`]) on TinyCast's prepared window of its last `len` points (left-padded
+/// with the first value, gaps linearly interpolated, min-max normalized). This is the port's
+/// detector input exactly ([`tinycast::prepare_context`], [`tinycast::window_minmax`]).
+pub fn detect_periods(context: &[f32], len: usize, k: usize) -> Vec<usize> {
+    let w = tinycast::prepare_context(context, len);
+    let (x, _, _) = tinycast::window_minmax(&w);
+    tinycast::significant_periods(&x, k, PERIOD_ALPHA)
+}
+
+/// `sin(2π·t/p_k)` and `cos(2π·t/p_k)` for each period `p_k` into `out` (`2K` values), 0 and 0
+/// for an empty slot (`p_k = 0`). The phase is reduced to `t mod p` first and computed in f64.
+pub fn phase_at(t: usize, periods: &[usize], out: &mut [f32]) {
+    for (k, &p) in periods.iter().enumerate() {
+        let (s, c) = if p == 0 {
+            (0.0, 0.0)
+        } else {
+            let a = 2.0 * std::f64::consts::PI * (t % p) as f64 / p as f64;
+            (a.sin() as f32, a.cos() as f32)
+        };
+        out[2 * k] = s;
+        out[2 * k + 1] = c;
+    }
+}
+
+/// The phase channels of the patches (§4.2), `[n_patches][2K]`: patch `j`'s phase at its last
+/// point, window position `t_j = (j + 1)·patch − 1` (positions count from the first point of
+/// the `n_patches · patch`-point window, left padding included).
+pub fn phase_channels(periods: &[usize], patch: usize, n_patches: usize) -> Vec<f32> {
+    let w = 2 * periods.len();
+    let mut out = vec![0.0; n_patches * w];
+    for (j, row) in out.chunks_exact_mut(w.max(1)).enumerate().take(n_patches) {
+        phase_at((j + 1) * patch - 1, periods, row);
+    }
+    out
+}
+
+/// The seasonal draft of one pass (§4.3), `[horizon_patches][2·patch + 2K]`, in the window's
+/// normalized units, from the prepared window (`vals`, `mask`, `n` points) and its periods.
+/// Future step `i` sits at window position `n + i`. Query patch `q` gets:
+/// - (a) the lag copy of its `patch` steps: [`seasonal_naive`] of the observed values with
+///   season `p₁` (the value one or more periods before, earlier cycles over missing values), or
+///   the last observed value when no period passes (`p₁ = 0`, season 1);
+/// - (b) TinyCast's phase-binned mean of the observed values ([`DRAFT_BINS`] bins of `p₁`,
+///   [`tinycast::phase_binned_mean`]);
+/// - the phase channels of its first step, position `n + q·patch`.
+pub fn draft(
+    vals: &[f32],
+    mask: &[f32],
+    periods: &[usize],
+    patch: usize,
+    horizon_patches: usize,
+) -> Vec<f32> {
+    let n = vals.len();
+    let h = patch * horizon_patches;
+    let p1 = periods.first().copied().unwrap_or(0);
+    let observed: Vec<f32> = vals
+        .iter()
+        .zip(mask)
+        .map(|(&v, &m)| if m > 0.0 { v } else { f32::NAN })
+        .collect();
+    let lag = seasonal_naive(&observed, p1.max(1), h);
+    let binned = tinycast::phase_binned_mean(vals, Some(mask), h, p1, DRAFT_BINS);
+    let k2 = 2 * periods.len();
+    let w = 2 * patch + k2;
+    let mut out = vec![0.0; horizon_patches * w];
+    for (q, row) in out.chunks_exact_mut(w).enumerate() {
+        row[..patch].copy_from_slice(&lag[q * patch..(q + 1) * patch]);
+        row[patch..2 * patch].copy_from_slice(&binned[q * patch..(q + 1) * patch]);
+        phase_at(n + q * patch, periods, &mut row[2 * patch..]);
+    }
+    out
+}
+
+/// The input rows of the patches from `j0` on (`[C − j0][patch_width]`): values, mask, then the
+/// phase channels when the layout has them.
+pub fn patch_rows(inp: &Inputs, l: &Layout, j0: usize) -> Vec<f32> {
+    let (p, k2) = (l.patch, l.phase_width());
+    let w = l.patch_width();
+    let mut u = vec![0.0; (l.context_patches - j0) * w];
+    for (r, j) in (j0..l.context_patches).enumerate() {
+        let row = &mut u[r * w..(r + 1) * w];
+        row[..p].copy_from_slice(&inp.vals[j * p..(j + 1) * p]);
+        row[p..2 * p].copy_from_slice(&inp.mask[j * p..(j + 1) * p]);
+        if k2 > 0 {
+            row[2 * p..].copy_from_slice(&inp.phase[j * k2..(j + 1) * k2]);
+        }
+    }
+    u
 }
 
 /// Per patch: whether it holds at least one observation (attention keys of empty patches are
@@ -323,6 +512,150 @@ mod tests {
         // median off by 1 on both steps: 2 · 0.5 · 1 · 2 steps / 1 level counted... per level mean
         let (l, a) = wql_parts(&[2.0, 4.0], &[vec![3.0], vec![5.0]], &[0.5]);
         assert_eq!((l, a), (2.0, 6.0));
+    }
+
+    fn layout(periods: usize, draft: bool) -> Layout {
+        Layout {
+            patch: 8,
+            context_patches: 40,
+            horizon_patches: 2,
+            periods,
+            draft,
+        }
+    }
+
+    fn sine(n: usize, p: f32) -> Vec<f32> {
+        (0..n)
+            .map(|t| 10.0 + 3.0 * (2.0 * std::f32::consts::PI * t as f32 / p).sin())
+            .collect()
+    }
+
+    #[test]
+    fn without_a_front_end_inputs_are_prepare() {
+        let h = sine(500, 24.0);
+        let (n, v, m) = prepare(&h, 8, 40);
+        let i = inputs(&h, &layout(0, false));
+        assert_eq!((i.norm, i.vals, i.mask), (n, v, m));
+        assert!(i.periods.is_empty() && i.phase.is_empty() && i.draft.is_empty());
+        assert_eq!(layout(0, false).patch_width(), 16);
+        assert_eq!(layout(4, true).patch_width(), 24);
+        assert_eq!(layout(4, true).draft_width(), 24);
+        assert_eq!(layout(4, false).draft_width(), 0);
+    }
+
+    #[test]
+    fn a_known_period_is_found_and_drives_the_phase_and_the_draft() {
+        // a clean 20-step cycle over the whole 320-point window
+        let h = sine(800, 20.0);
+        let l = layout(4, true);
+        let i = inputs(&h, &l);
+        assert_eq!(i.periods[0], 20, "{:?}", i.periods);
+        assert_eq!(i.periods, detect_periods(&h, 320, 4));
+        // the detector reads TinyCast's prepared window of the last 320 points
+        let (x, _, _) = tinycast::window_minmax(&h[h.len() - 320..]);
+        assert_eq!(i.periods, tinycast::significant_periods(&x, 4, 0.05));
+        // phase channels: patch j at position 8j + 7
+        assert_eq!(i.phase.len(), 40 * 8);
+        for j in [0usize, 5, 39] {
+            let t = (8 * j + 7) as f64;
+            let a = 2.0 * std::f64::consts::PI * t / 20.0;
+            assert!((i.phase[j * 8] - a.sin() as f32).abs() < 1e-6);
+            assert!((i.phase[j * 8 + 1] - a.cos() as f32).abs() < 1e-6);
+        }
+        // the draft: the lag copy is the value 20 steps before (normalized), the binned mean of
+        // a clean cycle is close to it, the phase is that of the query's first step
+        assert_eq!(i.draft.len(), 2 * 24);
+        for q in 0..2 {
+            let row = &i.draft[q * 24..(q + 1) * 24];
+            for s in 0..8 {
+                let step = q * 8 + s;
+                let src = 320 + step - 20 * (step / 20 + 1);
+                assert_eq!(row[s], i.vals[src], "q {q} s {s}");
+                assert!(
+                    (row[8 + s] - row[s]).abs() < 0.1,
+                    "{} vs {}",
+                    row[8 + s],
+                    row[s]
+                );
+            }
+            let mut ph = [0.0f32; 8];
+            phase_at(320 + 8 * q, &i.periods, &mut ph);
+            assert_eq!(&row[16..], &ph);
+        }
+    }
+
+    #[test]
+    fn no_period_gives_empty_slots_and_a_last_value_draft() {
+        let l = layout(4, true);
+        let flat = vec![7.5f32; 300];
+        let i = inputs(&flat, &l);
+        assert_eq!(i.periods, vec![0; 4]);
+        assert!(i.phase.iter().all(|&v| v == 0.0));
+        // constant: normalized to 0, the lag copy is the last value, the binned mean the mean
+        for q in 0..2 {
+            let row = &i.draft[q * 24..(q + 1) * 24];
+            assert!(row.iter().all(|&v| v == 0.0), "{row:?}");
+        }
+        // a trend with no cycle: no period passes, the lag copy repeats the last observation
+        let trend: Vec<f32> = (0..320).map(|t| t as f32).collect();
+        let i = inputs(&trend, &l);
+        if i.periods[0] == 0 {
+            assert!(i.draft[..8].iter().all(|&v| v == 1.0));
+            assert!(i.draft[24..32].iter().all(|&v| v == 1.0));
+        }
+    }
+
+    #[test]
+    fn a_short_history_is_left_padded_for_the_detector_and_masked_for_the_draft() {
+        let l = layout(4, true);
+        let mut h = sine(29, 6.0);
+        h[3] = f32::NAN;
+        let i = inputs(&h, &l);
+        // the detector's window: 291 copies of the first value, then the 29 points, gap filled
+        let w = tinycast::prepare_context(&h, 320);
+        assert_eq!(w.len(), 320);
+        assert!(w[..291].iter().all(|&v| v == h[0]));
+        assert!(w.iter().all(|v| v.is_finite()));
+        assert_eq!(i.periods, detect_periods(&h, 320, 4));
+        // the draft reads observed points only: the left padding and the gap never count
+        let p1 = i.periods[0];
+        let obs: Vec<f32> = i
+            .vals
+            .iter()
+            .zip(&i.mask)
+            .map(|(&v, &m)| if m > 0.0 { v } else { f32::NAN })
+            .collect();
+        let lag = seasonal_naive(&obs, p1.max(1), 16);
+        assert_eq!(&i.draft[..8], &lag[..8]);
+        assert!(i.draft.iter().all(|v| v.is_finite()));
+        let mean_obs = {
+            let v: Vec<f64> = obs
+                .iter()
+                .filter(|v| v.is_finite())
+                .map(|&v| v as f64)
+                .collect();
+            (v.iter().sum::<f64>() / v.len() as f64) as f32
+        };
+        // without a period every future step is in bin 0, the mean of the observed points
+        let binned = tinycast::phase_binned_mean(&i.vals, Some(&i.mask), 16, 0, DRAFT_BINS);
+        assert!(binned.iter().all(|&v| v == mean_obs));
+        // the patch rows: values, mask, then the phase channels; the left padding dropped
+        let j0 = 40 - 4; // 29 points in patches of 8
+        let u = patch_rows(&i, &l, j0);
+        assert_eq!(u.len(), 4 * 24);
+        assert_eq!(&u[..8], &i.vals[j0 * 8..j0 * 8 + 8]);
+        assert_eq!(&u[8..16], &i.mask[j0 * 8..j0 * 8 + 8]);
+        assert_eq!(&u[16..24], &i.phase[j0 * 8..j0 * 8 + 8]);
+    }
+
+    #[test]
+    fn the_binned_mean_without_a_mask_is_tinycasts() {
+        let x: Vec<f32> = (0..100).map(|t| ((t * 7) % 13) as f32 / 13.0).collect();
+        let ones = vec![1.0f32; 100];
+        assert_eq!(
+            tinycast::phase_binned_mean(&x, None, 30, 12, 16),
+            tinycast::phase_binned_mean(&x, Some(&ones), 30, 12, 16)
+        );
     }
 
     #[test]

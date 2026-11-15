@@ -8,6 +8,11 @@
 //! steps × `quantiles` levels per query, made non-crossing around the median. The output is
 //! mapped back with the window's normalization.
 //!
+//! s6-cast v2 (docs/s6-cast2-prereg.md §4) adds a computed-periodicity front end, set by two
+//! GGUF keys (a v1 file has neither, so it has no front end): `skycmd-cast.periods` (K) appends
+//! the phase channels of K detected periods to every patch, and `skycmd-cast.draft` adds
+//! `draft_proj` of a value-space seasonal draft to every decoder query ([`prep::inputs`]).
+//!
 //! [`synth`] holds the synthetic generators of pretraining and [`prep`] the shared normalization,
 //! patching, seasonal-naive reference and GIFT-Eval metrics. [`tinycast`] is a port of TinyCast
 //! (RAWS Labs, Apache-2.0), the reference s6-cast is measured against; [`Forecaster`] loads
@@ -62,6 +67,10 @@ pub struct CastConfig {
     /// over the horizon) from the previous exit's. 0 runs every exit.
     pub exit_tolerance: f32,
     pub weight_format: String,
+    /// Periods of the front end's detector (GGUF `periods`; 0: no front end, v1).
+    pub periods: usize,
+    /// A seasonal draft added to the decoder queries (GGUF `draft`; needs `periods`).
+    pub draft: bool,
 }
 
 impl CastConfig {
@@ -87,6 +96,17 @@ impl CastConfig {
     /// Index of the median level.
     pub fn median_index(&self) -> usize {
         self.quantiles.len() / 2
+    }
+
+    /// The input layout of a window ([`prep::inputs`]).
+    pub fn layout(&self) -> prep::Layout {
+        prep::Layout {
+            patch: self.patch,
+            context_patches: self.context_patches,
+            horizon_patches: self.horizon_patches,
+            periods: self.periods,
+            draft: self.draft,
+        }
     }
 
     /// The encoder as an s2 configuration (the shape [`crate::s2`]'s block loader reads).
@@ -173,6 +193,12 @@ impl CastConfig {
         if self.exit_tolerance.is_nan() || self.exit_tolerance < 0.0 {
             return bad("exit_tolerance");
         }
+        if self.periods > 64 {
+            return bad("periods");
+        }
+        if self.draft && self.periods == 0 {
+            return bad("a draft needs the detected periods");
+        }
         Ok(())
     }
 
@@ -225,6 +251,8 @@ impl CastConfig {
                 .get_str(&key("weight_format"))
                 .unwrap_or("f32")
                 .to_string(),
+            periods: int("periods").unwrap_or(0),
+            draft: flag("draft"),
         };
         cfg.validate()?;
         Ok(cfg)

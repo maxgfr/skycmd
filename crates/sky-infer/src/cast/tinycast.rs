@@ -618,15 +618,7 @@ impl TinyCastModel {
                 window.len()
             )));
         }
-        // WindowMinMax
-        let filled: Vec<f32> = window
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
-        let lo = filled.iter().copied().fold(f32::INFINITY, f32::min);
-        let hi = filled.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let range = (hi - lo).max(RANGE_MIN);
-        let x: Vec<f32> = filled.iter().map(|&v| (v - lo) / range).collect();
+        let (x, lo, range) = window_minmax(window);
 
         let periods = significant_periods(&x, c.top_k_periods, c.significance_alpha);
         let n_pe = c.n_pe();
@@ -715,40 +707,7 @@ impl TinyCastModel {
     /// The predictor's context (`_left_pad_to_len` then the NaN imputation of
     /// `_prepare_context_matrix`): `seq_len` finite points.
     pub fn prepare(&self, history: &[f32]) -> Vec<f32> {
-        let l = self.cfg.seq_len;
-        let mut a: Vec<f32> = if history.len() >= l {
-            history[history.len() - l..].to_vec()
-        } else {
-            let fill = history.first().copied().unwrap_or(0.0);
-            let mut a = vec![fill; l - history.len()];
-            a.extend_from_slice(history);
-            a
-        };
-        if a.iter().any(|v| v.is_nan()) {
-            let valid: Vec<usize> = (0..l).filter(|&i| !a[i].is_nan()).collect();
-            if valid.len() >= 2 {
-                a = interp(&a, &valid);
-            } else {
-                forward_fill(&mut a);
-            }
-        }
-        // forward fill, then backward fill what is left, then 0
-        let mut ff = a.clone();
-        forward_fill(&mut ff);
-        let mut bf: Vec<f32> = a.iter().rev().copied().collect();
-        forward_fill(&mut bf);
-        bf.reverse();
-        ff.iter()
-            .zip(&bf)
-            .map(|(&f, &b)| {
-                let v = if f.is_nan() { b } else { f };
-                if v.is_nan() {
-                    0.0
-                } else {
-                    v
-                }
-            })
-            .collect()
+        prepare_context(history, self.cfg.seq_len)
     }
 
     /// The autoregressive rollout (`_decode_autoregressive`): whole chunks, `[steps · chunk]
@@ -821,6 +780,60 @@ impl TinyCastModel {
     }
 }
 
+/// The predictor's context of `history` (`_left_pad_to_len` then the NaN imputation of
+/// `_prepare_context_matrix`): its last `l` points, left-padded with its first value when
+/// shorter, gaps linearly interpolated (constant beyond the ends) when at least two points are
+/// observed, else forward then backward filled, then 0. `l` finite points.
+pub fn prepare_context(history: &[f32], l: usize) -> Vec<f32> {
+    let mut a: Vec<f32> = if history.len() >= l {
+        history[history.len() - l..].to_vec()
+    } else {
+        let fill = history.first().copied().unwrap_or(0.0);
+        let mut a = vec![fill; l - history.len()];
+        a.extend_from_slice(history);
+        a
+    };
+    if a.iter().any(|v| v.is_nan()) {
+        let valid: Vec<usize> = (0..l).filter(|&i| !a[i].is_nan()).collect();
+        if valid.len() >= 2 {
+            a = interp(&a, &valid);
+        } else {
+            forward_fill(&mut a);
+        }
+    }
+    // forward fill, then backward fill what is left, then 0
+    let mut ff = a.clone();
+    forward_fill(&mut ff);
+    let mut bf: Vec<f32> = a.iter().rev().copied().collect();
+    forward_fill(&mut bf);
+    bf.reverse();
+    ff.iter()
+        .zip(&bf)
+        .map(|(&f, &b)| {
+            let v = if f.is_nan() { b } else { f };
+            if v.is_nan() {
+                0.0
+            } else {
+                v
+            }
+        })
+        .collect()
+}
+
+/// `WindowMinMax(eps_clamp=1e-5)` of a window: non-finite values read as 0, the range clamped
+/// to 1e-5. The normalized window, its minimum and its range.
+pub fn window_minmax(window: &[f32]) -> (Vec<f32>, f32, f32) {
+    let filled: Vec<f32> = window
+        .iter()
+        .map(|&v| if v.is_finite() { v } else { 0.0 })
+        .collect();
+    let lo = filled.iter().copied().fold(f32::INFINITY, f32::min);
+    let hi = filled.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let range = (hi - lo).max(RANGE_MIN);
+    let x: Vec<f32> = filled.iter().map(|&v| (v - lo) / range).collect();
+    (x, lo, range)
+}
+
 /// `_numpy_fill`: each NaN takes the last non-NaN value before it (leading NaNs stay).
 fn forward_fill(a: &mut [f32]) {
     let mut last = f32::NAN;
@@ -861,7 +874,7 @@ fn interp(a: &[f32], valid: &[usize]) -> Vec<f32> {
 
 /// Phase bin of position `t` under period `p` (0 = rejected, everything in bin 0), computed in
 /// f32 as PyTorch does: `min(floor((t mod p) / p · nb), nb − 1)`.
-fn phase_bin(t: usize, p: usize, nb: usize) -> usize {
+pub fn phase_bin(t: usize, p: usize, nb: usize) -> usize {
     let p = p.max(1) as f32;
     let frac = (t as f32 % p) / p;
     ((frac * nb as f32) as usize).min(nb - 1)
@@ -897,15 +910,40 @@ fn phase_profile(h: &[f32], d: usize, p: usize, nb: usize, gmean: &[f32]) -> Vec
 /// `_seasonal_naive`: the mean normalized value per phase bin of the dominant period `p0`,
 /// read at each future step's phase (the context mean when the bin is empty).
 fn seasonal_naive(x: &[f32], horizon: usize, p0: usize, nb: usize) -> Vec<f32> {
+    phase_binned_mean(x, None, horizon, p0, nb)
+}
+
+/// TinyCast's `_seasonal_naive` over the observed points of `x` (`mask` > 0; every point
+/// without a mask): the mean value per phase bin of `p0` (`nb` bins, positions `0..len`), read
+/// at the phase of each future step `len + i` (the mean of the observed points when its bin is
+/// empty, 0 when no point is observed). Without a mask this is TinyCast's own computation.
+pub fn phase_binned_mean(
+    x: &[f32],
+    mask: Option<&[f32]>,
+    horizon: usize,
+    p0: usize,
+    nb: usize,
+) -> Vec<f32> {
     let l = x.len();
+    let seen = |t: usize| mask.is_none_or(|m| m[t] > 0.0);
     let mut sum = vec![0.0f64; nb];
     let mut cnt = vec![0usize; nb];
+    let (mut total, mut n) = (0.0f64, 0usize);
     for (t, &v) in x.iter().enumerate() {
+        if !seen(t) {
+            continue;
+        }
         let b = phase_bin(t, p0, nb);
         sum[b] += v as f64;
         cnt[b] += 1;
+        total += v as f64;
+        n += 1;
     }
-    let mean = (x.iter().map(|&v| v as f64).sum::<f64>() / l as f64) as f32;
+    let mean = if n == 0 {
+        0.0
+    } else {
+        (total / n as f64) as f32
+    };
     (0..horizon)
         .map(|i| {
             let b = phase_bin(l + i, p0, nb);

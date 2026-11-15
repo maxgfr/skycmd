@@ -9,7 +9,7 @@
 //! ```
 //!
 //! Prints the forecast as JSON (`levels`, `quantiles` `[horizon][levels]`, exits used); with
-//! `--bench N`, the median latency of N forecasts instead. `convert-tinycast` turns the Hugging
+//! `--bench N`, the median, p90 and p95 latency of N forecasts instead. `convert-tinycast` turns the Hugging
 //! Face release of TinyCast (raws-labs/tinycast) into a `skycmd-tinycast` GGUF file.
 
 use std::time::Instant;
@@ -87,11 +87,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect();
         us.sort_by(f64::total_cmp);
         println!(
-            "{}: {} points of history, horizon {horizon}: median {:.0} µs, p90 {:.0} µs ({} runs)",
+            "{}: {} points of history, horizon {horizon}: median {:.0} µs, p90 {:.0} µs, p95 {:.0} µs ({} runs)",
             m.name(),
             history.len(),
             us[us.len() / 2],
             us[us.len() * 9 / 10],
+            us[us.len() * 95 / 100],
             us.len()
         );
         return Ok(());
