@@ -615,6 +615,49 @@ The announced goal (G2 at −0.05) is met; it is not a gate and changes nothing.
 - **Unlabelled-line alarms** (accepted flags on lines with no meta row, per 1,000 test files; CredData never judged those lines): model 99.7, Gitleaks 27.0, secretgate default 30.5, Betterleaks 39.1, cbx-17M 486.6, generator 4,469.8.
 - **Not measured:** the whole-scan latency of §9 (not built); the accuracy of the kind question on the test and the `test_wild.csv` file of the issue-report archive are not in the results files.
 
+### s6-secrets v3: the rules and the verifier together, a second look, gate failed
+
+Pre-registration: [`docs/s6-secrets3-prereg.md`](docs/s6-secrets3-prereg.md), frozen on 15/11/2026, with its result block. Results: [`runs/s6-secrets3/eval-test/results.md`](runs/s6-secrets3/eval-test/results.md) and `gate.json` next to it, the thresholds [`runs/s6-secrets3/tau3.json`](runs/s6-secrets3/tau3.json), the validation rehearsal `runs/s6-secrets3/eval-validation/`, and the diagnosis that led to it, made on training and validation repositories only, [`docs/s6-secrets3-diagnosis.md`](docs/s6-secrets3-diagnosis.md).
+
+**Failed on G1 again (15/11/2026); the work on this model ends.** v3 is not a new model. It is the system a user of secretgate would get: a line is flagged when secretgate's default engine (commit `4e93cfa`, filters on) flags it, or when the v2 verifier (the evaluated file above, unchanged) accepts a candidate of the frozen generator on it with P(real) ≥ tau3 = 0.34933. Nothing was trained and no scanner, model or baseline was rerun: every flag is the v2 evaluation's. It was judged on the seven gates of v2, on test files already read once for v2. G1 fails again on every repository: the union is at 0.8477 against Betterleaks 0.7332 + 0.15 = 0.8832, where the model alone was at 0.8561. The six other gates hold. On validation all seven held (union 0.8963 on every validation repository); the 221 test repositories did not confirm it. As §3 of the pre-registration wrote, there is no third reading. The reading of v2 does not change.
+
+**Order of operations.**
+
+1. The diagnosis (training and validation repositories only, no test file opened) and the pre-registration, frozen before any test file was read for v3 (`19778c7`).
+2. tau3 (0.34933) and the union threshold of the logistic regression (0.155049) chosen on the 16 validation repositories and committed in `runs/s6-secrets3/tau3.json` at 09:05:11 on 15/11 (`370f60f`), before the test read.
+3. The gate script at 09:07. Before any v3 computation, the unchanged scorer was rerun and gave the files of v2 again, byte for byte.
+4. The test read once, at 09:07:55 (`runs/s6-secrets3/TEST-READ`: "tau3.json at 370f60f8d6c96c47bb54533f1ea96dfe67f48c2d").
+
+**On every table below.** Gated universe: the rows whose CredData category is exactly `UUID` are removed, for every system (amendment 2 of `docs/s6-secrets2-prereg.md`); that choice was made after reading the training and validation rows and before any test file was read; the full universe keeps every meta row. Second look: v3 reads test files that were read once for v2, and its system (the union of the default engine and the model, with tau3) was defined after that reading.
+
+**The seven gates, as read** (`gate.json`, gated universe):
+
+| gate | condition | measured | verdict |
+|---|---|---|---|
+| G1, every repository | line F1 of the union ≥ best rule scanner + 0.15 | 0.8477 against Betterleaks 0.7332 + 0.15 = 0.8832 | **fails** |
+| G1, without the largest repository | same | 0.8062 against Betterleaks 0.5367 + 0.15 = 0.6867 | holds |
+| G2, both readings | line F1 of the union ≥ cbx-17M − 0.10 | 0.8477 against 0.6830 − 0.1; 0.8062 against 0.8493 − 0.1 | holds |
+| G3, both readings | line F1 of the union > the same union with the size-matched logistic regression in the model's seat (at 0.155049) | 0.8477 against 0.7882; 0.8062 against 0.7171 | holds |
+| G4 | issue-report candidate F1 of the union ≥ Gitleaks + 0.08 | 0.8073 against 0.7104 + 0.08 = 0.7904 | holds |
+| G5 | ECE of the model ≤ 0.05 (v2's) | 0.0073 | holds |
+| G6 | native median ≤ 3 ms per candidate (v2's) | 1,606 µs | holds |
+| G7 | clean real files flagged by the union ≤ 1.0% | 0.34% (30 of 8,825) | holds |
+
+**The union against the model alone** (test, CredData, line level):
+
+| system | gated precision | gated recall | **gated F1** | gated F1 without the largest | full F1 | full F1 without the largest |
+|---|---:|---:|---:|---:|---:|---:|
+| union at tau3 0.34933 (v3) | 0.8039 | 0.8965 | **0.8477** | 0.8062 | 0.8086 | 0.7314 |
+| union at v2's τ\* 0.2598 (reported) | 0.7872 | 0.9038 | 0.8415 | 0.7990 | 0.8034 | 0.7268 |
+| model alone at τ\* 0.2598 (v2) | 0.8387 | 0.8741 | 0.8561 | 0.8114 | 0.8153 | 0.7348 |
+| secretgate default engine | 0.8176 | 0.6560 | 0.7279 | 0.5072 | 0.6877 | 0.4445 |
+| Betterleaks 1.10.1 | 0.7694 | 0.7002 | 0.7332 | 0.5367 | 0.6948 | 0.4786 |
+
+- **Paired bootstrap** over test repositories (1,000 resamples, 95%), line F1 of the union minus the model alone: −0.0084 [−0.0181, 0.0072] on every repository and −0.0052 [−0.0188, 0.0118] without the largest (gated); −0.0067 [−0.0158, 0.0074] and −0.0034 [−0.0162, 0.0112] (full). On validation the union was above the model alone (0.8963 at tau3, 0.8834 at τ\*, against 0.8603).
+- **The lines the union adds over the model alone** (gated, line units; T a positive line, X a negative line with an X row, F the other negative lines): at tau3 it adds 305 T, 135 X and 649 F, and drops 75 T, 39 X and 224 F (lines the model accepts at τ\* and not at tau3, which the default engine does not flag); at τ\* it adds the same and drops none. The default engine flags 8,262 of the 39,196 gated line units, at a precision of 0.8176 on the test, so the lines it adds cost more in false alarms than they bring.
+- **Issue reports**: candidate F1 of the union 0.8073 (precision 0.7178, recall 0.9223), against 0.8162 for the model alone. **Clean real text**: 30 files flagged by the union (3 by the default engine only, 19 by the verifier only, 8 by both), against 31 for the model alone.
+- **What it means.** On these test files, neither the verifier alone (v2) nor the system made of the rules and the verifier (v3) reaches a line F1 0.15 above the best rule scanner over all repositories; both do on 220 repositories of 221, and both hold every other gate.
+
 ## s6-sleep: the pico pilot, memory not shown, no nano run
 
 Pre-registration: [`docs/s6-sleep-prereg.md`](docs/s6-sleep-prereg.md), the pilot's rules in §5, amendments 1 to 5 (all before any run). Run: `scripts/train-sleep.sh`; log `runs/s6-sleep.log`; the probe readings `runs/s6-sleep/pilot/p{1,2,3,4}/dev/{recall,rule110}.json`; the three rules applied by `scripts/s6-sleep-report.py pilot`, written to `runs/s6-sleep/pilot.json` (run again on a copy of the probe files on 15/11, it writes the same file). The report of §10 (`REPORT.md`) needs the nano runs, so it does not exist.
