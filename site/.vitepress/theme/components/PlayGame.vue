@@ -9,6 +9,8 @@ import {
   formatInt,
   formatKB,
   gameModels,
+  gateSuffix,
+  isFailed,
   loadEngine,
   loadManifest,
   loadWasm,
@@ -224,12 +226,13 @@ function release(key: string) {
 }
 
 /** Keeps the selected model if it knows the game `k`; otherwise s3-pico (it plays all four
- * games), else the first model trained on `k`, else the oracle. An explicit oracle choice stays. */
+ * games), else the first model trained on `k` that did not fail its gate, else the first one,
+ * else the oracle. An explicit oracle choice stays. */
 function preferModelFor(k: GameKind) {
   if (selected.value === ORACLE) return
   const ok = models.value.filter((e) => playsGame(e, k))
   if (ok.some((e) => e.file === selected.value)) return
-  const m = ok.find((e) => e.name.startsWith('s3')) ?? ok[0]
+  const m = ok.find((e) => e.name.startsWith('s3')) ?? ok.find((e) => !isFailed(e)) ?? ok[0]
   selected.value = m ? m.file : ORACLE
 }
 
@@ -345,7 +348,7 @@ onMounted(async () => {
   models.value = gameModels(await loadManifest())
   status.value = ''
   makeRunner()
-  const first = models.value.find((e) => playsGame(e, kind.value))
+  const first = models.value.find((e) => playsGame(e, kind.value) && !isFailed(e)) ?? models.value.find((e) => playsGame(e, kind.value))
   if (first) selected.value = first.file
   preferModelFor(kind.value)
 })
@@ -390,7 +393,7 @@ function pct(p: number) {
         <select v-model="selected" :disabled="mode === 'human'">
           <optgroup v-for="g in groups" :key="g.family" :label="g.label">
             <option v-for="m in g.items" :key="m.file" :value="m.file">
-              {{ m.name }} · {{ formatInt(m.params) }} params · {{ formatKB(m.bytes) }}{{ m.weight_format ? ` · ${m.weight_format}` : '' }}
+              {{ m.name }} · {{ formatInt(m.params) }} params · {{ formatKB(m.bytes) }}{{ m.weight_format ? ` · ${m.weight_format}` : '' }}{{ gateSuffix(m) }}
             </option>
           </optgroup>
           <option :value="ORACLE">oracle · coded rules, no model</option>
@@ -415,6 +418,11 @@ function pct(p: number) {
     <p v-if="status" class="status">{{ status }}</p>
     <p v-else-if="oracleOn && !error" class="status">No model loaded: the game's coded oracle is playing (it reads the full simulator).</p>
     <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="mode === 'ai' && engine && isFailed(selectedEntry)" class="failed">
+      <strong>{{ selectedEntry!.name }} failed its pre-registered gate: published as a result, not for use.</strong>
+      <template v-if="selectedEntry!.gate_note"> {{ selectedEntry!.gate_note }}.</template>
+      <template v-if="selectedEntry!.gate_url"> <a :href="selectedEntry!.gate_url">The result</a>.</template>
+    </p>
 
     <div class="layout">
       <div
@@ -637,6 +645,13 @@ function pct(p: number) {
 }
 .ghost:hover {
   border-color: var(--vp-c-brand-1);
+}
+.failed {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--vp-c-danger-soft);
 }
 .status,
 .error {

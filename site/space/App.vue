@@ -3,6 +3,8 @@
 // model and the demos to show; the model file and the wasm module are part of the Space, and
 // everything runs in the browser.
 import { onMounted, ref } from 'vue'
+import EarDemo from '../.vitepress/theme/components/EarDemo.vue'
+import ForecastView from '../.vitepress/theme/components/ForecastView.vue'
 import LiveDecide from '../.vitepress/theme/components/LiveDecide.vue'
 import LiveProof from '../.vitepress/theme/components/LiveProof.vue'
 import PlayGame from '../.vitepress/theme/components/PlayGame.vue'
@@ -12,13 +14,19 @@ interface SpaceConfig {
   model: string
   title: string
   tagline: string
-  /** `secrets`: the API-key demo of s6-secrets-pico (manifest `task: secrets`). */
-  kind: 'decision' | 'game' | 'secrets'
+  /** `secrets`: the API-key demo of s6-secrets-pico (manifest `task: secrets`). `ear`: the Listen
+   * demo (manifest `task: ear`). `forecast`: the Forecast demo (`models/forecast.json`). */
+  kind: 'decision' | 'game' | 'secrets' | 'ear' | 'forecast'
   proofs?: boolean
   model_repo: string
   notes?: string[]
   /** Game shown first (game Spaces): flappy, rescue, dodge or doom. */
   game?: string
+  /** The model's pre-registered gate (from the manifest). A failed model's Space opens with a
+   * notice that says so, with the numbers and the link to the result. */
+  gate?: 'passed' | 'failed'
+  gate_note?: string
+  gate_url?: string
 }
 
 const cfg = ref<SpaceConfig | null>(null)
@@ -95,6 +103,11 @@ onMounted(async () => {
     <template v-else-if="cfg">
       <header>
         <h1>{{ cfg.title }}</h1>
+        <p v-if="cfg.gate === 'failed'" class="space-failed">
+          <strong>Failed its pre-registered gate: published as a result, not for use.</strong>
+          <template v-if="cfg.gate_note"> {{ cfg.gate_note }}.</template>
+          <template v-if="cfg.gate_url"> <a :href="cfg.gate_url">The result</a>.</template>
+        </p>
         <p class="tagline">{{ cfg.tagline }}</p>
         <p class="links">
           <a :href="cfg.model_repo">Model card</a> ·
@@ -139,6 +152,36 @@ onMounted(async () => {
             not carry over to real files, where the model flags 59.8% of clean files at p ≥ 0.9. The line answer is weak (0.686 on the bench, and right on
             383 of the 1,010 texts that do expose a secret): do not rely on it.
           </p>
+        </section>
+      </template>
+      <template v-else-if="cfg.kind === 'ear'">
+        <section>
+          <h2>Has the speaker finished? Which word was said?</h2>
+          <p>
+            Use the microphone or a sample clip: every 80 ms the model hears the last 10.24 s and answers two typed
+            questions, the end of a turn and a word among the 12 classes of Speech Commands. The log-mel front-end runs
+            in the same WebAssembly module, and the audio never leaves your browser. The model answers at full depth,
+            where its gates were read, and says "not sure" below 0.5.
+          </p>
+          <EarDemo />
+          <p class="space-note">
+            Sample clips, CC-BY-4.0: “yes” from Speech Commands v0.02 (Warden, 2018), test split; the two French clips
+            from <code>pipecat-ai/smart-turn-data-v3.2-test</code> (Pipecat), test split. The model never trains on
+            either split.
+          </p>
+        </section>
+      </template>
+      <template v-else-if="cfg.kind === 'forecast'">
+        <section>
+          <h2>Forecast a series</h2>
+          <p>
+            Pick a series: each forecaster returns nine quantiles, and the chart shows its median and its 10–90 % band.
+            <strong>Backtest</strong> hides the last steps and scores the forecasts (MASE below 1 beats repeating the
+            last season). TinyCast (RAWS Labs, Apache-2.0,
+            <a href="./models/ref/TINYCAST-NOTICE.txt">NOTICE</a>), ported to Rust, runs in the same WebAssembly
+            module as a reference: s6-cast-pico was to beat FLAIR (its gate) and TinyCast (its goal), and did neither.
+          </p>
+          <ForecastView />
         </section>
       </template>
       <template v-else>

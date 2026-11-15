@@ -15,9 +15,12 @@ import { withBase } from 'vitepress'
 import {
   clockStepMicros,
   DecisionTimes,
+  defaultModel,
   engineLabel,
   formatInt,
   formatMicros,
+  gateSuffix,
+  isFailed,
   loadEngine,
   loadManifest,
   questionModels,
@@ -37,7 +40,8 @@ import {
 type Mode = 'playground' | 'tools' | 'triage' | 'guard' | 's6' | 'secrets'
 type QT = 'choice' | 'score' | 'noul'
 
-/** `prefer`: the model selected first, by name (default: the iso model, else the first one). */
+/** `prefer`: the model selected first, by name (default: the iso model, else the first one that did
+ * not fail its gate). */
 const props = defineProps<{ mode: Mode; prefer?: string }>()
 
 interface Answer {
@@ -163,8 +167,7 @@ onMounted(async () => {
   model.value =
     models.value.find((m) => m.name === props.prefer) ??
     models.value.find((m) => m.arch === 'skycmd-iso') ??
-    models.value[0] ??
-    null
+    defaultModel(models.value)
   if (!model.value) {
     status.value = isSecrets
       ? 'The secret-detection model is not published on this site.'
@@ -338,7 +341,7 @@ function caseLabel(c: DemoCase) {
       </label>
       <label v-if="models.length > 1">Model
         <select v-model="model">
-          <option v-for="m in models" :key="m.file" :value="m">{{ m.name }} · {{ m.weight_format }}</option>
+          <option v-for="m in models" :key="m.file" :value="m">{{ m.name }} · {{ m.weight_format }}{{ gateSuffix(m) }}</option>
         </select>
       </label>
       <label v-if="mode === 'playground' || mode === 's6'">Type
@@ -353,6 +356,12 @@ function caseLabel(c: DemoCase) {
       </label>
       <span v-else-if="model && model.full_depth" class="live-note">full depth, as published</span>
     </div>
+
+    <p v-if="model && isFailed(model)" class="live-banner live-failed">
+      <strong>{{ model.name }} failed its pre-registered gate: published as a result, not for use.</strong>
+      <template v-if="model.gate_note"> {{ model.gate_note }}.</template>
+      <template v-if="model.gate_url"> <a :href="model.gate_url">The result</a>.</template>
+    </p>
 
     <p v-if="lang === 'fr'" class="live-banner">
       s5 est un petit modèle anglais ; il n'a pas de version française, voir
@@ -696,6 +705,9 @@ function caseLabel(c: DemoCase) {
 }
 .live-safe {
   background: var(--vp-c-tip-soft);
+}
+.live-failed {
+  background: var(--vp-c-danger-soft);
 }
 .live-cards {
   display: grid;

@@ -3,7 +3,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { GameRunner } from '../lib/runner'
-import { gameModels, loadEngine, loadManifest, loadWasm } from '../lib/wasm'
+import { gameModels, isFailed, loadEngine, loadManifest, loadWasm } from '../lib/wasm'
 import { live } from '../lib/store'
 
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -37,10 +37,10 @@ onMounted(async () => {
         live.best = h.best
       },
     })
-    const models = gameModels(await loadManifest())
-    if (models.length) {
+    // the home page never plays with a model that failed its gate
+    const entry = gameModels(await loadManifest()).find((m) => !isFailed(m))
+    if (entry) {
       try {
-        const entry = models[0]
         const engine = await loadEngine(entry)
         runner.setEngine(engine, entry.name)
         live.model = entry.name

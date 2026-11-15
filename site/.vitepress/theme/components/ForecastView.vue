@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The /forecast/ page: pick a series, forecast it in the browser with every published forecaster
-// (s6-cast if one passes its gate, TinyCast in wasm, Timestral-5M in onnxruntime-web, seasonal naive),
-// and compare the median and the 10–90 % band, the latency and, in backtest mode, the MASE.
+// (s6-cast and TinyCast in wasm, Timestral-5M in onnxruntime-web, seasonal naive), and compare the
+// median and the 10–90 % band, the latency and, in backtest mode, the MASE. An s6-cast that failed
+// its gate (`gate` in forecast.json) is listed under a notice with its numbers and starts unticked.
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   coverage,
@@ -59,6 +60,9 @@ let runId = 0
 
 const entryOf = (k: ModelKey) => entries.value.find((e) => (k === 's6-cast' ? e.name.startsWith('s6-cast') : e.name === k))
 const available = (k: ModelKey) => k === 'Seasonal naive' || !!entryOf(k)
+const failedOf = (k: ModelKey) => entryOf(k)?.gate === 'failed'
+/** The listed forecasters that failed their gate (published as results, not for use). */
+const failedEntries = computed(() => MODEL_KEYS.filter(failedOf).map((k) => entryOf(k)!))
 
 /** The full series of the selected source. */
 const series = computed<number[]>(() => {
@@ -157,6 +161,8 @@ onMounted(async () => {
     return
   }
   ;[entries.value, demos.value] = await Promise.all([loadForecastModels(), loadDemoSeries()])
+  // a model that failed its gate never runs by default: it is ticked by hand
+  for (const k of MODEL_KEYS) if (failedOf(k)) enabled.value[k] = false
   status.value = ''
   await run()
 })
@@ -322,6 +328,11 @@ function latency(us: number): string {
 
 <template>
   <div class="forecast">
+    <p v-for="e in failedEntries" :key="e.name" class="failed">
+      <strong>{{ e.name }} failed its pre-registered gate: published as a result, not for use.</strong>
+      <template v-if="e.gate_note"> {{ e.gate_note }}.</template> It starts unticked; tick it to see how it forecasts.
+      <template v-if="e.gate_url"> <a :href="e.gate_url">The result</a>.</template>
+    </p>
     <div class="toolbar">
       <label class="field">
         <span>Series</span>
@@ -368,7 +379,8 @@ function latency(us: number): string {
         />
         <span class="key" :class="`s${SLOT[k]}`" aria-hidden="true" />
         <span>{{ k }}</span>
-        <span v-if="!available(k)" class="badge">failed its gate, not published</span>
+        <span v-if="!available(k)" class="badge">{{ k === 's6-cast' ? 'not published' : 'not in this demo' }}</span>
+        <span v-else-if="failedOf(k) && !loading[k]" class="badge failed-badge">{{ entryOf(k)!.name }} · failed its gate</span>
         <span v-else-if="loading[k]" class="badge">{{ loading[k] }}</span>
         <span v-else-if="k === 'Timestral-5M' && !enabled[k]" class="badge">23 MB, on demand</span>
       </label>
@@ -446,7 +458,7 @@ function latency(us: number): string {
     <p class="note">
       MASE divides the mean absolute error of the median by the history's own seasonal-naive error (season
       {{ season }}{{ demo ? '' : ', from the periodogram' }}); below 1 beats repeating the last season. Every model runs
-      on this page: the wasm module for TinyCast and the seasonal naive, onnxruntime-web for Timestral.
+      on this page: the wasm module for s6-cast, TinyCast and the seasonal naive, onnxruntime-web for Timestral.
       <span v-if="demo"> Series: {{ demo.credit }}.</span>
     </p>
   </div>
@@ -543,6 +555,17 @@ input.seed {
   border: 1px solid var(--vp-c-divider);
   border-radius: 999px;
   padding: 1px 8px;
+}
+.failed-badge {
+  color: var(--vp-c-danger-1);
+  border-color: var(--vp-c-danger-1);
+}
+.failed {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--vp-c-danger-soft);
 }
 .key {
   display: inline-block;

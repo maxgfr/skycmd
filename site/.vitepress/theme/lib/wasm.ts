@@ -60,11 +60,22 @@ export interface ModelEntry {
   /** `f32`, `f16`, `q8_0` or `ternary`. */
   weight_format?: string
   /** `generic`: a decision model for free-text questions (s4, s5: the Live page), not for the games.
-   * `general`: both, the games and free-text questions (s6-nano). `secrets`: the four questions of
-   * the API-key jev only (s6-secrets-pico, its own demo). Absent: the games only. */
+   * `general`: both, the games and free-text questions (s6-nano, s6-micro-v1). `secrets`: the four
+   * questions of the API-key jev only (s6-secrets-pico, its own demo). `secrets-verify`: one rule
+   * candidate judged in its context (s6-secrets-verify-pico; no demo). `ear`: an audio state
+   * (s6-ear, the Listen page). `forecast`: a forecaster, not a decision engine (s6-cast, the
+   * Forecast page; `forecast.json` lists it there). Absent: the games only. */
   task?: string
   /** Published at full depth: the file's exit thresholds are 1, so early exit is off. */
   full_depth?: boolean
+  /** The pre-registered gate of the model, for the s6 models: `passed`, or `failed`, in which case
+   * its file is published as a result, not for use (owner's decision of 15/11/2026). Every list
+   * says so, and no picker selects a failed model by default. */
+  gate?: 'passed' | 'failed'
+  /** The gate and the numbers, in one line (shown next to a failed model). */
+  gate_note?: string
+  /** Where the result is written (a section of BENCH.md). */
+  gate_url?: string
   /** s6-ear: the System 2 hand-off thresholds per question type (conformal, `ear-gate.py crc`). */
   route?: Record<string, number>
   /** The games the model was trained and measured on (`sky-arena`); absent = every game. */
@@ -76,14 +87,35 @@ export function playsGame(entry: Pick<ModelEntry, 'games'>, game: string): boole
   return !entry.games || entry.games.includes(game)
 }
 
+/** Whether the model failed its pre-registered gate (its file is published as a result only). */
+export function isFailed(entry: Pick<ModelEntry, 'gate'> | null | undefined): boolean {
+  return entry?.gate === 'failed'
+}
+
+/** ` · failed its gate` for a failed model, else empty: appended to every model label. */
+export function gateSuffix(entry: Pick<ModelEntry, 'gate'> | null | undefined): string {
+  return isFailed(entry) ? ' · failed its gate' : ''
+}
+
+/** The list in its order, failed models last (a stable sort). */
+export function failedLast<T extends Pick<ModelEntry, 'gate'>>(list: T[]): T[] {
+  return [...list].sort((a, b) => Number(isFailed(a)) - Number(isFailed(b)))
+}
+
+/** The model a picker selects by default: `prefer` by name if listed, else the first model that
+ * did not fail its gate, else the first one. */
+export function defaultModel<T extends Pick<ModelEntry, 'name' | 'gate'>>(list: T[], prefer?: string): T | null {
+  return list.find((m) => m.name === prefer) ?? list.find((m) => !isFailed(m)) ?? list[0] ?? null
+}
+
 /** The models that play the games: entries without a task, and the `general` ones. */
 export function gameModels(list: ModelEntry[]): ModelEntry[] {
-  return list.filter((m) => !m.task || m.task === 'general')
+  return failedLast(list.filter((m) => !m.task || m.task === 'general'))
 }
 
 /** The models that answer free-text questions (the Live page): `generic` and `general` entries. */
 export function questionModels(list: ModelEntry[]): ModelEntry[] {
-  return list.filter((m) => m.task === 'generic' || m.task === 'general')
+  return failedLast(list.filter((m) => m.task === 'generic' || m.task === 'general'))
 }
 
 /** Model family of a manifest entry (from `arch`, else from the name). */

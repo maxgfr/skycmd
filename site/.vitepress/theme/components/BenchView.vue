@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // The /bench/ page: size vs accuracy vs latency per model (public/bench.json), plus an
-// in-browser benchmark of every published model through the wasm `bench()` export.
+// in-browser benchmark of every published text decision model through the wasm `bench()` export
+// (an audio or forecasting model has no Flappy state to read and is not timed here). A model that
+// failed its pre-registered gate is listed with that status (manifest `gate`).
 import { computed, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { engineLabel, familyOf, formatInt, loadEngine, loadManifest, loadWasm, type ModelEntry } from '../lib/wasm'
+import { engineLabel, familyOf, formatInt, isFailed, loadEngine, loadManifest, loadWasm, type ModelEntry } from '../lib/wasm'
 
 interface BenchRow {
   name: string
@@ -77,11 +79,15 @@ onMounted(async () => {
   loaded.value = true
 })
 
+/** The models `bench()` can time: text decision models (not s6-ear, whose state is audio, nor
+ * s6-cast, a forecaster). */
+const benchable = (m: ModelEntry) => m.task !== 'ear' && m.task !== 'forecast'
+
 async function runBench() {
   running.value = true
   try {
     const mod = await loadWasm()
-    for (const m of manifest.value) {
+    for (const m of manifest.value.filter(benchable)) {
       progress.value = `Loading ${m.name}…`
       const engine = await loadEngine(m)
       progress.value = `Running ${m.name}…`
@@ -109,7 +115,18 @@ function family(r: BenchRow): string {
   const l = local.value[r.name]
   if (l?.family) return l.family
   const m = manifest.value.find((e) => e.name === r.name)
+  if (m?.task === 'forecast') return 'cast'
   return familyOf({ name: r.name, arch: r.arch ?? m?.arch })
+}
+
+/** The gate column: `failed`, `passed`, or a dash for the models published without one. */
+function gate(r: BenchRow): string {
+  const m = manifest.value.find((e) => e.name === r.name)
+  return m?.gate ?? '—'
+}
+
+function entryOf(r: BenchRow): ModelEntry | undefined {
+  return manifest.value.find((e) => e.name === r.name)
 }
 
 function depth(r: BenchRow): string {
@@ -176,6 +193,7 @@ function kbLabel(e: number) {
         <thead>
           <tr>
             <th>model</th>
+            <th>gate</th>
             <th>family</th>
             <th>params</th>
             <th>file</th>
@@ -195,6 +213,10 @@ function kbLabel(e: number) {
         <tbody>
           <tr v-for="r in rows" :key="r.name">
             <td><strong>{{ r.name }}</strong></td>
+            <td :class="{ failed: gate(r) === 'failed' }" :title="entryOf(r)?.gate_note">
+              <a v-if="entryOf(r)?.gate_url" :href="entryOf(r)!.gate_url">{{ gate(r) }}</a>
+              <template v-else>{{ gate(r) }}</template>
+            </td>
             <td>{{ family(r) }}</td>
             <td>{{ fmtInt(r.params) }}</td>
             <td>{{ fmtKB(r.bytes) }}</td>
@@ -206,12 +228,12 @@ function kbLabel(e: number) {
             <td>{{ fmtNum(r.nll) }}</td>
             <td>{{ fmtNum(r.ece) }}</td>
             <td>{{ fmtUs(r.native_us) }}</td>
-            <td :class="{ fresh: local[r.name] }">{{ fmtUs(wasmUs(r)) }}</td>
+            <td :class="{ fresh: local[r.name] }">{{ entryOf(r) && !benchable(entryOf(r)!) && !wasmUs(r) ? 'not timed here' : fmtUs(wasmUs(r)) }}</td>
             <td>{{ local[r.name] ? formatInt(local[r.name].decisions_per_s) : '—' }}</td>
             <td>{{ depth(r) }}</td>
           </tr>
           <tr v-if="loaded && !rows.length">
-            <td colspan="15" class="empty">No model is published yet. Run the training scripts to fill this table.</td>
+            <td colspan="16" class="empty">No model is published yet. Run the training scripts to fill this table.</td>
           </tr>
         </tbody>
       </table>
@@ -220,6 +242,9 @@ function kbLabel(e: number) {
       <template v-if="generated">Data from {{ generated }}. </template><template v-if="note">{{ note }}. </template>A WASM decision answers both questions of
       Flappy Drone and steps the physics: s1 runs two full forward passes, s2 encodes the state once for both questions (the
       question and options come from its cache) and may stop at an early exit. The native column times a single question.
+      The button times the text decision models only: s6-ear-nano hears audio and s6-cast-pico forecasts series, so
+      neither reads a Flappy state. A <strong>failed</strong> gate means the model missed its pre-registered gate: its
+      file is published as a result, not for use; the link gives its numbers.
     </p>
 
     <figure v-if="chart" class="chart">
@@ -285,6 +310,11 @@ td:first-child {
 }
 td.fresh {
   color: var(--vp-c-brand-1);
+  font-weight: 700;
+}
+td.failed,
+td.failed a {
+  color: var(--vp-c-danger-1);
   font-weight: 700;
 }
 .empty {

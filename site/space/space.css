@@ -73,3 +73,11 @@ footer {
 .space-error {
   color: var(--vp-c-danger-1);
 }
+
+.space-failed {
+  margin: 8px 0 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 15px;
+  background: var(--vp-c-danger-soft);
+}

@@ -33,6 +33,11 @@ export interface ForecastModelEntry {
   url: string
   credit: string
   gift_eval?: { nGMASE: number; nWQL: number; source: string }
+  /** s6-cast: its pre-registered gate; `failed` = published as a result, not for use (owner's
+   * decision of 15/11/2026). With the one-line numbers and the link to the result. */
+  gate?: 'passed' | 'failed'
+  gate_note?: string
+  gate_url?: string
 }
 
 export interface DemoSeries {

@@ -4,9 +4,11 @@
 // it (`Engine.decideAudio`): has the speaker finished their turn, which word was said. The
 // log-mel front-end runs inside the wasm module, the same code as natively. Nothing leaves the
 // page. Below the System 2 threshold the demo says it would hand the clip to a larger model.
+// A model that failed its pre-registered gate (manifest `gate`) is shown under a notice that says
+// so, with its numbers, and answers at full depth, where its gate was read.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { engineLabel, formatInt, loadManifest, loadWasm, type ModelEntry, type WasmEngine } from '../lib/wasm'
+import { engineLabel, formatInt, isFailed, loadManifest, loadWasm, type ModelEntry, type WasmEngine } from '../lib/wasm'
 
 const RATE = 16000
 const WINDOW = 163840 // 128 frames of 80 ms = 10.24 s
@@ -283,8 +285,12 @@ onMounted(async () => {
     if (!res.ok) throw new Error(`${found.file}: HTTP ${res.status}`)
     const e = new mod.Engine(new Uint8Array(await res.arrayBuffer()))
     if (!e.isAudio()) throw new Error(`${found.name} is not an audio (s6-ear) model`)
+    // the file of a failed model is published as evaluated, with the exit thresholds of its
+    // calibration; its gate was read at full depth, so the demo answers there
+    const full = isFailed(found)
+    if (full) e.setExitThreshold(1)
     engine.value = e
-    status.value = `${e.name()} · ${formatInt(e.n_params())} parameters · ${(e.file_bytes() / 1024).toFixed(0)} KB · ${engineLabel()}`
+    status.value = `${e.name()} · ${formatInt(e.n_params())} parameters · ${(e.file_bytes() / 1024).toFixed(0)} KB${full ? ' · full depth, as its gate was read' : ''} · ${engineLabel()}`
   } catch (err) {
     error.value = String(err)
     status.value = ''
@@ -300,11 +306,15 @@ onBeforeUnmount(() => {
 <template>
   <div class="ear">
     <p v-if="!entry && !status" class="ear-note">
-      <strong>No s6-ear model is published.</strong> The first one failed its
-      <a href="https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md">pre-registered gates</a>. This demo is
-      wired to the engine and will answer here as soon as a model passes them.
+      <strong>No s6-ear model is listed on this page.</strong> The first one failed its
+      <a href="https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md">pre-registered gates</a>.
     </p>
     <template v-else>
+      <p v-if="isFailed(entry)" class="ear-failed">
+        <strong>{{ entry!.name }} failed its pre-registered gate: published as a result, not for use.</strong>
+        <template v-if="entry!.gate_note"> {{ entry!.gate_note }}.</template>
+        <template v-if="entry!.gate_url"> <a :href="entry!.gate_url">The result</a>.</template>
+      </p>
       <p class="ear-status">{{ status }}</p>
       <div class="ear-controls">
         <button :disabled="!engine" @click="running === 'mic' ? stop() : startMic()">
@@ -360,6 +370,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .ear { border: 1px solid var(--vp-c-divider); border-radius: 8px; padding: 16px; margin: 16px 0; }
 .ear-note { margin: 0; }
+.ear-failed { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; background: var(--vp-c-danger-soft); }
 .ear-status { margin: 0 0 12px; color: var(--vp-c-text-2); font-size: 0.9em; }
 .ear-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .ear-controls button {
