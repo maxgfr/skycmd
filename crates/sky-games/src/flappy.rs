@@ -554,6 +554,38 @@ mod tests {
             assert!(frames < 200);
         }
         assert!(!g.alive);
+        // The crash is on the ground: the frame that first puts the drone's box below 0.
+        assert!(g.y - DRONE_HH < 0.0 && g.y - DRONE_HH > MAX_FALL * DT - 1e-3);
+        assert!(g.stats().crashed);
+    }
+
+    /// Gliding level into the first pipe's wall (below its gap) crashes on the first frame the
+    /// boxes overlap, and the crash is what `stats` reports.
+    #[test]
+    fn hitting_a_pipe_crashes_on_the_first_overlapping_frame() {
+        let mut g = Flappy::new(2);
+        let p = g.pipes[0];
+        // Hold the drone level, under the gap, by resetting its altitude each frame.
+        let y = p.gap_bottom - DRONE_HH - 5.0;
+        assert!(y - DRONE_HH > 0.0);
+        let mut out = None;
+        while g.alive {
+            g.y = y;
+            g.vy = GRAVITY * DT;
+            let o = g.step(FlappyAction::Glide);
+            let x = Flappy::pipe_x(&p, g.frame);
+            let overlap = x < DRONE_X + DRONE_HW && x + PIPE_W > DRONE_X - DRONE_HW;
+            assert_eq!(!g.alive, overlap, "frame {}", g.frame);
+            out = Some(o);
+        }
+        let o = out.unwrap();
+        assert!(o.done && o.info.event == Event::Crashed);
+        assert_eq!(g.score(), 0);
+        assert!(g.stats().crashed);
+        // Hitting the ceiling crashes too.
+        let mut g = Flappy::new(2);
+        g.y = HEIGHT - DRONE_HH - 1.0;
+        assert!(g.step(FlappyAction::Thrust).done && !g.alive);
     }
 
     #[test]

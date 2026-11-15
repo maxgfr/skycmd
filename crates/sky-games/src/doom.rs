@@ -2859,6 +2859,64 @@ mod tests {
         );
     }
 
+    /// A fireball that reaches a player at 1 health ends the episode as a death, counted in the
+    /// stats (`crashed`) the page and the arena read.
+    #[test]
+    fn a_fatal_fireball_ends_the_episode_as_a_death() {
+        let mut g = Doom::new(5);
+        g.veto_enabled = false;
+        g.monsters.clear();
+        g.player.health = 1;
+        let (x, y, a) = (g.player.x, g.player.y, g.player.angle);
+        g.projectiles.push(Projectile {
+            id: 999,
+            x: x + 0.6 * a.cos(),
+            y: y + 0.6 * a.sin(),
+            vx: -PROJ_SPEED * a.cos(),
+            vy: -PROJ_SPEED * a.sin(),
+            damage: 10,
+        });
+        let mut last = None;
+        for _ in 0..40 {
+            if g.done() {
+                break;
+            }
+            last = Some(g.step_human(None));
+        }
+        let out = last.unwrap();
+        assert!(g.dead && out.done, "health {}", g.player.health);
+        assert_eq!(out.info.event, Event::Died);
+        assert!(DecisionGame::stats(&g).crashed);
+    }
+
+    /// Walls block and slide by design: walking and strafing into them never leaves the
+    /// player's circle inside a wall, and never hurts.
+    #[test]
+    fn walls_stop_the_player_without_damage() {
+        let mut g = Doom::new(8);
+        g.veto_enabled = false;
+        g.monsters.clear();
+        let hp = g.player.health;
+        let moves = [
+            DoomAction::Forward,
+            DoomAction::StrafeLeft,
+            DoomAction::Forward,
+            DoomAction::StrafeRight,
+            DoomAction::TurnLeft,
+        ];
+        for t in 0..3000 {
+            if g.done() {
+                break;
+            }
+            let a = moves[(t / 60) % moves.len()];
+            g.step_human(Some(a));
+            let p = &g.player;
+            assert!(!g.circle_hits_walls(p.x, p.y, PLAYER_RADIUS * 0.99, None), "tick {t}");
+        }
+        assert_eq!(g.player.health, hp);
+        assert!(!g.dead);
+    }
+
     #[test]
     fn state_text_has_fourteen_pairs() {
         let g = Doom::new(6);

@@ -892,4 +892,153 @@ mod tests {
         let far = single(Obstacle { x0: 80.0, ..tower });
         assert_eq!(far.veto(DodgeAction::Continue), None);
     }
+
+    const TOWER: Obstacle = Obstacle {
+        x0: 20.0,
+        len: 4.0,
+        top: 6.0,
+        ceil: Z_MAX,
+        deck: false,
+        gap: 0.0,
+        side: 1.0,
+    };
+
+    /// True when the drone's box overlaps the body of `o` in all three axes (the gap excluded).
+    fn overlaps_body(g: &Dodge, o: &Obstacle) -> bool {
+        let (g0, g1) = o.gap_range();
+        let in_gap = o.gap > 0.0 && g.y - HW >= g0 && g.y + HW <= g1;
+        g.x + HL > o.x0 && g.x - HL < o.x1() && g.z - HH < o.top && !in_gap
+    }
+
+    #[test]
+    fn continue_into_a_tower_crashes_on_the_first_overlapping_frame() {
+        let mut g = single(TOWER);
+        g.veto_enabled = false;
+        let mut last = None;
+        while !g.done() {
+            let out = g.step(DodgeAction::Continue);
+            // The test runs after the move: the frame that first overlaps is the crash frame.
+            assert_eq!(g.crashed, overlaps_body(&g, &TOWER), "frame {}", g.frame);
+            last = Some(out);
+        }
+        let out = last.unwrap();
+        assert!(g.crashed && out.done);
+        assert_eq!(out.info.event, Event::Crashed);
+        assert_eq!(out.reward, -10.0);
+        assert_eq!(g.score(), 0);
+        assert_eq!(g.stats().crashed, true);
+        // The drone moves at most 11 m/s / 60 Hz = 0.18 m per frame: it stops less than one
+        // frame of travel inside the obstacle (no tunnelling through a 3 m deep obstacle).
+        let depth = g.x + HL - TOWER.x0;
+        assert!(depth > 0.0 && depth <= CRUISE_V * DT + 1e-4, "depth {depth}");
+        // A finished episode stays finished.
+        assert!(g.step(DodgeAction::Continue).done);
+        assert_eq!(g.frame, g.stats().steps);
+    }
+
+    #[test]
+    fn the_side_walls_floor_and_ceiling_crash() {
+        for (y, z) in [
+            (Y_MAX - HW + 0.01, Z_CRUISE),
+            (-(Y_MAX - HW + 0.01), Z_CRUISE),
+            (0.0, HH - 0.01),
+            (0.0, Z_MAX - HH + 0.01),
+        ] {
+            let mut g = single(Obstacle { x0: 500.0, ..TOWER });
+            g.veto_enabled = false;
+            g.y = y;
+            g.ty = y;
+            g.z = z;
+            g.tz = z;
+            let out = g.tick();
+            assert!(g.crashed && out.done, "y {y} z {z}");
+            assert_eq!(out.info.event, Event::Crashed);
+        }
+    }
+
+    /// The autopilot targets stay inside the corridor and the airspace, so no maneuver reaches a
+    /// side wall, the ground or the ceiling: every crash of random play is an obstacle crash.
+    #[test]
+    fn no_maneuver_reaches_the_side_walls() {
+        let mut rng = SmallRng::seed_from_u64(7);
+        let (mut y_max, mut z_min, mut z_max, mut crashes) = (0.0f32, Z_MAX, 0.0f32, 0);
+        let mut g = Dodge::new(3);
+        for _ in 0..300 {
+            g.reset();
+            g.veto_enabled = false;
+            while !g.done() {
+                let a = DodgeAction::from_index(rng.gen_range(0..4));
+                g.step(a);
+                y_max = y_max.max(g.y.abs() + HW);
+                z_min = z_min.min(g.z - HH);
+                z_max = z_max.max(g.z + HH);
+            }
+            if g.crashed {
+                crashes += 1;
+                let hit = g.obstacles.iter().any(|o| {
+                    overlaps_body(&g, o)
+                        || (o.deck
+                            && g.x + HL > o.x0 - DECK_OVERHANG
+                            && g.x - HL < o.x1() + DECK_OVERHANG
+                            && g.z + HH > o.ceil)
+                });
+                assert!(hit, "a crash without an obstacle at x {} y {} z {}", g.x, g.y, g.z);
+            }
+        }
+        assert!(crashes > 0);
+        assert!(y_max < Y_MAX, "|y| + HW reached {y_max}");
+        assert!(z_min > 0.0 && z_max < Z_MAX, "z span {z_min}..{z_max}");
+    }
+
+    /// With the reflex on, a policy that asks `continue` in front of an impassable wall never
+    /// crashes: the reflex brakes, the drone creeps up to the wall and waits there until the
+    /// 120 s timeout. Nothing touches: the hitbox stays short of the wall.
+    #[test]
+    fn the_reflex_holds_continue_short_of_an_impassable_wall() {
+        let wall = Obstacle {
+            x0: 30.0,
+            top: 14.0,
+            ceil: 14.5,
+            deck: true,
+            ..TOWER
+        };
+        assert!(wall.impassable());
+        let mut g = single(wall);
+        let mut min_gap = f32::MAX;
+        while !g.done() {
+            g.step(DodgeAction::Continue);
+            min_gap = min_gap.min(wall.x0 - (g.x + HL));
+        }
+        assert!(!g.crashed && g.timed_out && g.frame == MAX_FRAMES);
+        assert!(g.vetoes > 0);
+        assert_eq!(g.score(), 0);
+        assert!(min_gap > 0.0, "gap {min_gap}");
+        // The drone ends close to the wall's front face.
+        assert!(min_gap < 1.0, "gap {min_gap}");
+    }
+
+    /// `around` through a lateral gap flies inside the obstacle's x/z footprint (what a side view
+    /// shows) without touching it: the gap is beside the body, not in front of it.
+    #[test]
+    fn around_through_a_gap_crosses_the_side_view_footprint() {
+        let gapped = Obstacle {
+            x0: 30.0,
+            top: 12.0,
+            ceil: 13.0,
+            deck: true,
+            gap: 3.2,
+            ..TOWER
+        };
+        let mut g = single(gapped);
+        g.veto_enabled = false;
+        let mut inside = 0;
+        while !g.done() && g.next == 0 {
+            g.step(DodgeAction::Around);
+            let side_view = g.x + HL > gapped.x0 && g.x - HL < gapped.x1() && g.z - HH < gapped.top;
+            inside += side_view as u32;
+            assert!(!overlaps_body(&g, &gapped));
+        }
+        assert!(!g.crashed && g.score() == 1);
+        assert!(inside > 0);
+    }
 }

@@ -841,4 +841,103 @@ mod tests {
         assert_eq!(g.veto(RescueAction::South), Some(RescueAction::ReturnHome));
         assert_eq!(g.veto(RescueAction::West), None);
     }
+
+    /// An open 12x12 board with the base at (6, 6), no hiker on the path, full battery.
+    fn open_board() -> Rescue {
+        let mut g = Rescue::new(11);
+        g.cells = [EMPTY; CELLS];
+        g.base = 6 * N + 6;
+        g.hikers = [CELLS - 1, CELLS - 2, CELLS - 3];
+        g.rescued = [false; N_HIKERS];
+        g.base_map = g.cost_to(g.base);
+        for h in 0..N_HIKERS {
+            g.hiker_maps[h] = g.cost_to(g.hikers[h]);
+        }
+        g.pos = 5 * N + 5;
+        g.battery = BATTERY_MAX;
+        g
+    }
+
+    /// Wind cells (the arrows of the board) never push the drone: a move lands on the cell it
+    /// names, and the wind only sets its battery cost, 3 when the move enters a cell whose wind
+    /// blows against it, 1 otherwise (with or across the wind). Hovering in wind costs 1.
+    #[test]
+    fn wind_costs_battery_and_never_moves_the_drone() {
+        // (wind of the entered cell, move, expected cost)
+        let cases = [
+            (Dir::W, RescueAction::East, 3),
+            (Dir::E, RescueAction::West, 3),
+            (Dir::S, RescueAction::North, 3),
+            (Dir::N, RescueAction::South, 3),
+            (Dir::E, RescueAction::East, 1),
+            (Dir::N, RescueAction::East, 1),
+            (Dir::S, RescueAction::East, 1),
+        ];
+        for (wind, action, cost) in cases {
+            let mut g = open_board();
+            let d = action.dir().unwrap();
+            let to = neighbor(g.pos, d).unwrap();
+            g.cells[to] = WIND_N + wind.index() as u8;
+            let out = g.step(action);
+            assert!(!out.done && !out.info.vetoed);
+            assert_eq!(g.pos, to, "{wind:?} {action:?}: the drone lands where it was sent");
+            assert_eq!(BATTERY_MAX - g.battery, cost, "{wind:?} {action:?}");
+            // Hovering in the wind cell: no drift, cost 1.
+            let b = g.battery;
+            g.step(RescueAction::Hover);
+            assert_eq!(g.pos, to);
+            assert_eq!(b - g.battery, 1);
+        }
+    }
+
+    /// The snapshot's cell codes name the wind's direction in row/column terms the page's
+    /// arrows use: north = row - 1 (up), south = row + 1, east = column + 1, west = column - 1.
+    #[test]
+    fn wind_codes_follow_the_grid_axes() {
+        for (k, d) in DIRS.iter().enumerate() {
+            let code = WIND_N + k as u8;
+            assert_eq!(wind_of(code), Some(*d));
+            let from = 5 * N + 5;
+            let (r, c) = rc(neighbor(from, *d).unwrap());
+            let step = (r as i32 - 5, c as i32 - 5);
+            let expected = match code {
+                2 => (-1, 0),
+                3 => (1, 0),
+                4 => (0, 1),
+                5 => (0, -1),
+                _ => unreachable!(),
+            };
+            assert_eq!(step, expected, "code {code}");
+        }
+    }
+
+    /// Arrow keys and buttons reach the core as moves; with the reflex on, a move into a rock
+    /// or off the board becomes `hover` and a move that would strand the drone becomes
+    /// `return_home`, which can fly the opposite way to the arrow pressed.
+    #[test]
+    fn the_reflex_can_turn_a_move_into_the_opposite_direction() {
+        let mut g = open_board();
+        // Two cells east of the base, with just enough battery to fly home.
+        g.pos = 6 * N + 8;
+        g.battery = g.home_cost() + 1;
+        let out = g.step(RescueAction::East);
+        assert!(out.info.vetoed);
+        assert_eq!(g.last_action, RescueAction::ReturnHome);
+        assert_eq!(g.pos, 6 * N + 7, "pressed east, flew west");
+        // Off the board: hover.
+        let mut g = open_board();
+        g.pos = 0;
+        g.prev = 0;
+        let out = g.step(RescueAction::North);
+        assert!(out.info.vetoed && !g.crashed);
+        assert_eq!(g.last_action, RescueAction::Hover);
+        assert_eq!(g.pos, 0);
+        // Without the reflex the same move crashes.
+        let mut g = open_board();
+        g.veto_enabled = false;
+        g.pos = 0;
+        let out = g.step(RescueAction::North);
+        assert!(out.done && g.crashed);
+        assert_eq!(out.info.event, Event::Crashed);
+    }
 }
