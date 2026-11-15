@@ -418,6 +418,7 @@ Amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md). The pub
 - **What it means.** The gate is on `secret_bench` and stays passed; nothing in it is reread or changed. The model cannot be used to scan real files, and it stays published as the result of its pre-registration, not as a tool.
 - **What it does not test.** Recall on real secrets was not measured (no real secret is in that corpus), and the files come from two projects and one dependency tree.
 - **Next.** A second version, if one is made, would be a different task (a rule finds the candidate and the model judges it in its context), with its own pre-registration before any run. Nothing is promised.
+- **Outcome (15/11).** That second version was pre-registered, trained once and tested on real repositories. It failed its gate on G1 and is not published (section "s6-secrets-verify-pico" below).
 
 ## s6-ear-nano: first run, gates failed
 
@@ -462,3 +463,154 @@ Pre-registration: [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md), gate in §
 - **By term** (geometric means of the per-configuration ratios, computed from the `all_results.csv` files): MASE 0.860 short, 1.046 medium, 1.105 long, against 0.756, 0.806, 0.848 for our TinyCast port. Medium and long horizons are worse than the seasonal naive.
 - **By domain**, MASE / WQL: Econ/Fin 1.018 / 0.901, Energy 1.080 / 0.800, Healthcare 0.760 / 0.614, Nature 0.862 / 0.467, Sales 0.753 / 0.457, Transport 0.833 / 0.644, Web/CloudOps 0.983 / 0.662; our TinyCast port 0.894 / 0.841, 0.882 / 0.661, 0.735 / 0.639, 0.757 / 0.358, 0.734 / 0.445, 0.669 / 0.510, 0.750 / 0.562. Healthcare is the only domain where its WQL is below TinyCast's. The worst configurations are `solar/10T/long` and `solar/10T/medium` (MASE ratios 2.729 and 2.282, against 0.973 and 0.955 for our TinyCast port).
 - **Not measured by the run:** the latency, the mean number of exits used on GIFT-Eval (the calibration gives 3.64 of 4 on its synthetic windows) and the gap to Timestral-5M, whose GIFT-Eval scores are not in the repository.
+
+## s6-secrets-verify-pico (s6-secrets v2): a verifier of rule candidates, pre-registered, gate failed
+
+Pre-registration: [`docs/s6-secrets2-prereg.md`](docs/s6-secrets2-prereg.md), gate in §8, amendments 1 to 8 (all before the run) and its result block of 15/11. Results: [`runs/s6-secrets2/eval-test/results.md`](runs/s6-secrets2/eval-test/results.md) and `gate.json` next to it (the test, opened once), `runs/s6-secrets2/eval-validation/results.md` (the validation rehearsal), the freeze of the generator [`runs/s6-secrets2/generator.json`](runs/s6-secrets2/generator.json), and the run's report and logs in `runs/s6-secrets-verify-pico/` (`report.md`, `pretrain.log`, `decide.log`).
+
+**Failed on G1, not published.** On the CredData test (221 real repositories), the model's line F1 is 0.8561, against 0.7332 for the best rule scanner (Betterleaks): +0.123 where the gate asked for +0.15. The six other gates hold. As §11 wrote before the run, "on real repositories the verifier adds too little to the rules it filters. s6-secrets is not continued in this form." The model is not published, not rerun, and does not enter secretgate. This is the project's best result on real data, and it is a failed gate.
+
+**The task.** v1 (above) reads a whole text and fails on real files. v2 judges one candidate at a time. A rule proposes a candidate span, and a 250 KB ternary model answers about that value, in its context: "Is this value a real credential that should be revoked?" (gated) and "What kind of value is this?" (a real credential, an example or test value, not a credential; reported only). It is trained and tested on real repositories (Samsung CredData) and on issue reports whose test values are real (Zenodo 10.5281/zenodo.19622962). Synthetic candidates are used in training only.
+
+**The generator, `sg-cand-1`.** secretgate's own engine in a candidate mode: the 222 gitleaks rules it ships plus its built-in rules, with the entropy gates, the placeholder test, the stopwords and the allowlists turned off (the filters the verifier is meant to replace), plus a `generic-keyword` rule (a credential keyword in a name, a separator, a value) and, after the one revision allowed (amendment 2), an `auth-scheme` rule. Frozen at secretgate commit `4e93cfa` before any test file was read (amendment 3).
+
+- **Recall on the training and validation repositories** (share of T rows a candidate overlaps): 0.8763 on the gated universe (2,606 of 2,974), 0.6383 on the full one (2,649 of 4,150), against 0.3894 and 0.2790 for secretgate's default engine. The target was 0.95; it was missed and the generator was kept as it was, as §2.2 says. 13.5 candidates per 1,000 lines.
+- **On the test repositories** it overlaps 0.9260 of the gated T rows and 0.8367 of all of them. Its misses count as false negatives for every candidate-based system.
+
+**The gated universe.** The rows whose CredData category is exactly `UUID` are removed from the line and candidate universes, for every system (amendment 2): in the training repositories most of their T rows are identifiers of Postman collection exports (783 of 1,176, in two repositories). **This choice was made after reading training and validation rows and before any test file was read.** G1, G2, G3 and G5 are read on the gated universe, and every number below is also given on the full universe.
+
+**Data and splits, by repository.**
+
+- **CredData** at `01e3d135`, 337 repositories. Training: 100 repositories of the cbx-secrets-detector-17M list (licences checked, all permissive); validation: 16 of that list, chosen by a hash fixed before the download; test: the other 221 (7,372 files; 10,463 T rows on the gated universe, 11,603 on the full one). One test repository holds 5,165 of the 10,463 gated T rows, so G1 to G3 had to hold twice: on all 221 repositories and on the 220 left without it (amendment 1).
+- **Issue reports**: the paper's splits (test 8,123 candidates, 888 secrets). Test values stay as published; training values are replaced by a word-preserving shape, whose rules were corrected three times before training (amendments 4, 5 and 7).
+- **Decontamination** (a training or validation line that also occurs in a test repository is removed): 260 of the 2,127 T candidates of training, 75 of the 459 of validation (amendment 4).
+- **Weak negatives**: candidates on unlabelled lines of the training repositories, 4,986 distinct states from 95 repositories after the correction of amendment 4; two hand readings of 200 found no real credential (amendments 4 and 5).
+- **Training items read by the decision training**: CredData 49,864, issue reports 40,057, synthetic 40,000, drawn with the weights 0.45 / 0.35 / 0.20.
+- **A deviation (amendment 4).** Before any training, while the data folder was explored, the header and the first two rows of the meta file of one test repository were printed: two T rows of category Password, with their line numbers and offsets. No content of a test file was read and nothing was chosen from it; since then every read of `meta/` goes through a guard on the split.
+
+**Model and run.** The s6-secrets-pico graph as it is (s3-pico: 1 state block × 4 loops, exits after each loop, d 96, vocabulary 1,024), state window 320 (the 5% rule of §4.3 kept it: 3.31% of 93,938 states truncated), head window 192: 445,345 parameters, ternary GGUF of 249,984 bytes. The pretraining starts from v1's pretraining stack (amendment 7). One run, seed 0, on 14/11 from 19:39 to 20:42, brake mode duty 0.85 with 50 minutes of work and 10 of rest, exit code 0, no restart (`report.md`):
+
+| phase | budget | steps |
+|---|---:|---:|
+| MLM pretraining: `data/text-open`, `data/text`, the obfuscated files of the CredData training repositories (30% of the text), numeric curriculum | 12 working min | 11,296 (final val loss 1.4062) |
+| decision training on the three sources, QAT over the last 90 %, loop dropout 0.25 | 30 working min | 14,117 |
+
+The operating threshold τ\* = 0.2598 (F1-optimal on the 1,589 CredData validation candidates) was stored in the GGUF with the F0.5 and F2 presets (0.468437 and 0.0780795) before the test was opened. Every reading below is the ternary file at full depth.
+
+**Test, CredData, line level** (the gated unit: a line is positive if it holds a T row; a system flags a line if it accepts a candidate on it or reports a span over it; generator misses are false negatives):
+
+| system | gated precision | gated recall | **gated F1** | gated F1 without the largest | full F1 | full F1 without the largest |
+|---|---:|---:|---:|---:|---:|---:|
+| **model** | 0.8387 | 0.8741 | **0.8561** | 0.8114 | 0.8153 | 0.7348 |
+| Betterleaks 1.10.1 | 0.7694 | 0.7002 | 0.7332 | 0.5367 | 0.6948 | 0.4786 |
+| secretgate default engine | 0.8176 | 0.6560 | 0.7279 | 0.5072 | 0.6877 | 0.4445 |
+| Gitleaks 8.30.1 | 0.8546 | 0.5980 | 0.7037 | 0.4080 | 0.6626 | 0.3507 |
+| detect-secrets 1.5.0 | 0.5504 | 0.2329 | 0.3273 | 0.5014 | 0.3075 | 0.4534 |
+| cbx-secrets-detector-17M | 0.8265 | 0.5820 | 0.6830 | 0.8493 | 0.6433 | 0.7614 |
+| size-matched logistic regression (256 KiB) | 0.7345 | 0.8652 | 0.7945 | 0.7179 | 0.7579 | 0.6510 |
+| potion-base-2M + logistic regression | 0.4966 | 0.8955 | 0.6389 | 0.5536 | 0.6160 | 0.5172 |
+| generator alone | 0.2942 | 0.9418 | 0.4483 | 0.3231 | 0.4399 | 0.3158 |
+| CredSweeper 1.19.6, ML off | 0.4512 | 0.9970 | 0.6213 | 0.5428 | 0.6441 | 0.5891 |
+| CredSweeper 1.19.6, ML on (in sample, no gate) | 0.9946 | 0.9925 | 0.9935 | 0.9872 | 0.9938 | 0.9889 |
+
+- **False alarms** (share of F and X lines flagged, gated): model 0.0599, Betterleaks 0.0748, Gitleaks 0.0363, cbx-17M 0.0435, logistic regression 0.1114.
+- **Macro F1** over the 51 test repositories with at least 20 gated T rows: model 0.8091, cbx-17M 0.8133, logistic regression 0.7287, Betterleaks 0.5606.
+
+**Test, CredData, candidate level** (gated universe: 33,809 candidates, 9,623 positive):
+
+| system | precision | recall | F1 | PR-AUC | recall at 1% false alarms | ECE |
+|---|---:|---:|---:|---:|---:|---:|
+| **model** (τ\* 0.2598) | 0.8363 | 0.9344 | **0.8827** | 0.9335 | 0.5556 | **0.0073** |
+| logistic regression (threshold 0.1550) | 0.7331 | 0.9282 | 0.8192 | 0.8648 | 0.2657 | 0.0786 |
+| potion-base-2M + LR (threshold 0.0786) | 0.4882 | 0.9504 | 0.6451 | 0.7103 | 0.0924 | 0.0972 |
+| generator alone | 0.2846 | 1.0000 | 0.4431 | | | |
+
+On the full universe the model's candidate F1 is 0.8832 and its ECE 0.0072.
+
+**Test, issue reports** (8,123 candidates, 888 secrets, values as published; candidate level):
+
+| system | precision | recall | F1 |
+|---|---:|---:|---:|
+| **model** | 0.7484 | 0.8975 | **0.8162** (ECE 0.0211) |
+| cbx-secrets-detector-17M | 0.8830 | 0.8412 | 0.8616 |
+| Gitleaks 8.30.1 | 0.9028 | 0.5856 | 0.7104 |
+| secretgate default engine | 0.7699 | 0.5991 | 0.6738 |
+| logistic regression | 0.5042 | 0.8874 | 0.6430 |
+| Betterleaks 1.10.1 | 0.6102 | 0.6171 | 0.6137 |
+| CredSweeper, ML on (out of sample here) | 0.3740 | 0.7185 | 0.4919 |
+| CredSweeper, ML off | 0.3087 | 0.8074 | 0.4466 |
+| potion-base-2M + LR | 0.2417 | 0.9223 | 0.3831 |
+| generator alone | 0.2198 | 0.7883 | 0.3437 |
+| detect-secrets | 0.3461 | 0.2950 | 0.3185 |
+
+- **End to end** (the generator and the model on the issue texts, the dataset's positives as the reference; 3,068 accepted flags): F1 0.3219 when the precision counts every accepted flag, 0.7405 when it counts the flags on a dataset candidate only. The logistic regression: 0.2822 and 0.7185.
+- **Obfuscation sensitivity** (candidate F1 as published minus F1 after CredData's obfuscation function): model −0.0336 (0.8498 on the obfuscated values), logistic regression −0.0361, Gitleaks +0.0618, cbx-17M +0.0594. The function also rewrites the key names inside a candidate string, so this is a reported number only (amendment 6).
+
+**Clean real text** (§7.7: 8,825 real source, configuration and documentation files of secretgate, its dependency tree and this repository, read without their path, as secretgate's census reads them):
+
+| system | files with an accepted candidate | share | accepted candidates |
+|---|---:|---:|---:|
+| **model** | 31 | **0.35%** | 110 |
+| logistic regression | 77 | 0.87% | 323 |
+| potion-base-2M + LR | 401 | 4.54% | 969 |
+| secretgate default engine | 11 | 0.12% | 57 |
+| generator alone | 2,161 | 24.49% | 14,756 |
+
+v1 flagged 59.8% of a 719-file subset of real files (amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md)). With the file's path given, the generator proposes candidates in 2.12% of the files and the default engine flags 0.08%.
+
+**Hand reading of the 110 accepted candidates (§7.7).** The pre-registration asks for every accepted candidate on clean text to be read and for the count that looks like a real credential; its result block listed this as still to do. It was done on 15/11, after the gate was read, and completes §7.7. The 110 candidates of the 31 files were read one by one with their line. **None of the 110 looks like a real credential.** By structure:
+
+| group | candidates | what they are |
+|---|---:|---|
+| test fixtures shaped like secrets | 34 | mixed-class passwords, passwords inside connection strings and fixture keys split into parts, in secretgate's tests and fixture file (33) and in a test of this repository's synthetic secret generator (1): 26 distinct values in 6 files |
+| provider-format keys on a rule's allowlist | 16 | GCP-format values in secretgate's generated rule file, listed in the allowlist of the `gcp-api-key` rule of the gitleaks rule set it ships; 15 have random-looking bodies and one is a sequential-alphabet placeholder. By shape they cannot be told from a live key; whether any is live was not checked |
+| example credentials of library documentation | 10 | one example GitHub token of a library's README, 7 times; base64 example values of another README whose decoded text says it is not a real password, 3 times |
+| masked placeholders | 2 | a run of X's under a password name, in a library's source |
+| public hashes, fingerprints and public keys | 5 | certificate public-key pins in documentation comments (2), release GPG key fingerprints (2), a base64 trust-root file of public keys (1) |
+| code | 28 | type and state names, hexadecimal character codes, function calls, array lookups and an npm script (26 in dependencies and in this repository's sources, 2 in secretgate's tests) |
+| prose and package metadata | 6 | author fields of package files (4), a translated compiler message, an emoji keyword list |
+| other test values, not shaped like a secret | 9 | short dummies, paths, repeated letters, a placeholder word, a dictionary word, base64 of plain words |
+| **total** | **110** | 16 in secretgate's sources (1 file), 44 in its tests (7 files), 48 in its dependency tree (21 files), 2 in this repository (2 files) |
+
+The gate uses the raw share (0.35%), as §7.7 says; this reading changes nothing in it.
+
+**Latency and size** (§7.5; measured on the Apple M5 while the GPU was idle, before the baselines ran): native median 1,606 µs per candidate at full depth over 68,110 candidates (372 µs at the first exit); WASM (`parity-node.mjs`, 200 test candidates, a copy with its thresholds at 1) median 2,666 µs, largest gap with the native probabilities 4.17e-07, same answer on 200 of 200. Accuracy on the real question by exit: 0.9461, 0.9580, 0.9600, 0.9614.
+
+**The seven gates, as read** (`gate.json`):
+
+| gate | condition | measured | verdict |
+|---|---|---|---|
+| G1, every repository | line F1 ≥ best rule scanner + 0.15 | 0.8561 against Betterleaks 0.7332 + 0.15 = 0.8832 | **fails** |
+| G1, without the largest repository | same | 0.8114 against Betterleaks 0.5367 + 0.15 = 0.6867 | holds |
+| G2, both readings | line F1 ≥ cbx-17M − 0.10 | 0.8561 against 0.6830 − 0.1; 0.8114 against 0.8493 − 0.1 | holds |
+| G3, both readings | line F1 > size-matched logistic regression | 0.8561 against 0.7945; 0.8114 against 0.7179 | holds |
+| G4 | issue-report candidate F1 ≥ Gitleaks + 0.08 | 0.8162 against 0.7104 + 0.08 = 0.7904 | holds |
+| G5 | ECE ≤ 0.05 on CredData test candidates | 0.0073 | holds |
+| G6 | native median ≤ 3 ms per candidate | 1,606 µs | holds |
+| G7 | clean real files flagged ≤ 1.0% | 0.35% (31 of 8,825) | holds |
+
+The announced goal (G2 at −0.05) is met; it is not a gate and changes nothing. **Verdict: failed on G1, not published.** A later attempt would be a new design with its own pre-registration.
+
+**Reported with the result, not a way around the gate.**
+
+- **Uncertainty** (paired bootstrap over test repositories, 1,000 resamples, 95%, gated universe): line F1 of the model minus Betterleaks +0.1229 [0.0413, 0.3613] on every repository and +0.2748 [0.1743, 0.3796] without the largest; minus cbx-17M +0.1730 [−0.0654, 0.3074] and −0.0379 [−0.0765, −0.0058]; minus the logistic regression +0.0615 [0.0435, 0.1197] and +0.0935 [0.0646, 0.1302]. ECE 0.0073 [0.0040, 0.0174].
+- **The largest repository** holds 5,165 of the 10,463 gated T rows, and the rule scanners do well on it: without it Betterleaks goes from 0.7332 to 0.5367 and the model from 0.8561 to 0.8114. The gate asked for both readings, and the one on every repository is missed.
+- **The bar** of +0.15 was fixed before any measurement, with Gitleaks' published 0.442 in mind; on this test Gitleaks is at 0.7037 and Betterleaks at 0.7332. It was not moved.
+- **By category** (gated, line F1; positive lines: Password 1,714, Token 777, Key 4,029, Secret 1,389, API 209, Auth 1,016, other 2,966):
+
+  | system | Password | Token | Key | Secret | API | Auth | other | scope `test` | scope `src` |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | model | 0.838 | 0.824 | 0.864 | 0.905 | 0.541 | 0.881 | 0.873 | 0.884 | 0.767 |
+  | Betterleaks | 0.545 | 0.672 | 0.838 | 0.897 | 0.459 | 0.251 | 0.638 | 0.770 | 0.667 |
+  | cbx-17M | 0.904 | 0.929 | 0.266 | 0.945 | 0.898 | 0.936 | 0.876 | 0.634 | 0.880 |
+  | logistic regression | 0.689 | 0.746 | 0.795 | 0.909 | 0.358 | 0.837 | 0.854 | 0.842 | 0.567 |
+
+  The model's weakest category is API (0.541), where cbx-17M is at 0.898; cbx-17M's weakest is Key (0.266), where the model is at 0.864.
+- **The UUID rows** were removed from the gated universe by a choice made after reading training and validation rows and before any test file; the full-universe numbers are in the tables above (model line F1 0.8153 against 0.6948 for Betterleaks).
+- **The deviation of amendment 4** (one test meta file seen before training) is above.
+- **CredSweeper's ML was trained on a random 85% of all CredData lines**, so its CredData numbers (line F1 0.9935) are in sample and enter no gate. On the issue reports, out of sample, its candidate F1 is 0.4919.
+- **cbx-17M was rerun out of sample here.** It was trained on the 116 repositories of its list, our training and validation repositories, and none of the 221 test repositories; it ran once on the CPU through the same scorer (57,098 CPU seconds). Its card's numbers (0.805 and so on) are on another test, which is not public, and are not compared.
+- **Validation** (the rehearsal, read before the test, no gate): line F1 0.8603 for the model and 0.8604 for the logistic regression on every validation repository.
+- **The value-only probe** (§9; trained on CredData training, scored on validation): ROC-AUC 0.9197, PR-AUC 0.8202. The shape of a value alone separates T from F and X on CredData, the artefact §10 warns about; G4, on real values, holds.
+- **Unlabelled-line alarms** (accepted flags on lines with no meta row, per 1,000 test files; CredData never judged those lines): model 99.7, Gitleaks 27.0, secretgate default 30.5, Betterleaks 39.1, cbx-17M 486.6, generator 4,469.8.
+- **Not measured:** the whole-scan latency of §9 (not built); the accuracy of the kind question on the test and the `test_wild.csv` file of the issue-report archive are not in the results files.
