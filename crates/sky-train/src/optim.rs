@@ -80,6 +80,11 @@ pub struct OptConfig {
     /// initialized head next to a pretrained encoder). 1 for s1 / s2.
     #[serde(default = "default_one")]
     pub head_lr_mult: f32,
+    /// AdamW learning-rate multiplier of the fast-weight memory (`mem.*`, a zero-initialized
+    /// read-out next to a trained base: docs/s6-sleep2-prereg.md §2, M3). 1 by default, and
+    /// then not written, so the configs of earlier runs are unchanged.
+    #[serde(default = "default_one", skip_serializing_if = "is_one")]
+    pub mem_lr_mult: f32,
     /// Recipe that wrote this config ([`OPT_RECIPE`]); a config saved before the
     /// field existed reads as recipe 1.
     #[serde(default = "legacy_recipe")]
@@ -92,6 +97,10 @@ fn default_true() -> bool {
 
 fn default_one() -> f32 {
     1.0
+}
+
+fn is_one(x: &f32) -> bool {
+    *x == 1.0
 }
 
 fn default_polish() -> usize {
@@ -120,6 +129,7 @@ impl Default for OptConfig {
             clip_norm: 1.0,
             muon: true,
             head_lr_mult: 1.0,
+            mem_lr_mult: 1.0,
             recipe: OPT_RECIPE,
         }
     }
@@ -256,6 +266,11 @@ impl Optimizer {
             };
             let adam_lr = if c.head_lr_mult != 1.0 && !name.starts_with("encoder.") {
                 adam_lr * c.head_lr_mult
+            } else {
+                adam_lr
+            };
+            let adam_lr = if c.mem_lr_mult != 1.0 && name.starts_with("mem.") {
+                adam_lr * c.mem_lr_mult
             } else {
                 adam_lr
             };
@@ -460,6 +475,47 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_memory_rate_multiplies_the_adam_step_of_mem_parameters_only() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            // One AdamW step without decay moves every weight by `lr` (|m̂ / √v̂| = 1): the
+            // memory's by `mem_lr_mult · lr`, the others by `lr`.
+            let (lr, mult) = (0.01f32, 10.0f32);
+            let names = ["mem.0.out.weight", "fusion.0.attn_q.weight", "cls.weight"];
+            let mut params = ParamMap::new();
+            let mut grads = ParamMap::new();
+            for n in names {
+                params.insert(n.into(), ops::zeros::<f32>(&[4, 4]).unwrap());
+                grads.insert(n.into(), ops::ones::<f32>(&[4, 4]).unwrap());
+            }
+            let mut o = Optimizer::new(OptConfig {
+                adam_lr: lr,
+                weight_decay: 0.0,
+                clip_norm: 0.0,
+                muon: false,
+                mem_lr_mult: mult,
+                ..Default::default()
+            });
+            o.update(&mut params, &grads, 1.0).unwrap();
+            for n in names {
+                let moved = params[n]
+                    .abs()
+                    .unwrap()
+                    .max(None)
+                    .unwrap()
+                    .item_exact::<f32>();
+                let want = if n.starts_with("mem.") { mult * lr } else { lr };
+                assert!((moved - want).abs() < 1e-5, "{n}: {moved} vs {want}");
+            }
+            // The default is 1 and is not written, so earlier configs are unchanged.
+            let j = serde_json::to_value(OptConfig::default()).unwrap();
+            assert!(j.get("mem_lr_mult").is_none());
+            let back: OptConfig = serde_json::from_value(j).unwrap();
+            assert_eq!(back.mem_lr_mult, 1.0);
+        });
     }
 
     #[test]

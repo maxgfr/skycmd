@@ -372,6 +372,13 @@ pub fn to_gguf(
     if cfg.memory {
         w.add_kv(k("memory"), true);
     }
+    // docs/s6-sleep2-prereg.md §2: the v2 memory forms (absent = v1's, so v1 files stay identical).
+    if !cfg.memory_qk.is_separate() {
+        w.add_kv(k("memory_qk"), cfg.memory_qk.name());
+    }
+    if !cfg.memory_value.is_token() {
+        w.add_kv(k("memory_value"), cfg.memory_value.name());
+    }
     if cfg.parallax {
         w.add_kv(k("parallax"), true);
     }
@@ -555,6 +562,16 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         }
         Some(k) => bail!("{ARCH}.state_kind {k:?} (text or audio)"),
     };
+    let memory_qk = match g.get_str(&format!("{ARCH}.memory_qk")) {
+        None | Some("separate") => crate::s2::config::MemoryQk::Separate,
+        Some("shared") => crate::s2::config::MemoryQk::Shared,
+        Some(k) => bail!("{ARCH}.memory_qk {k:?} (separate or shared)"),
+    };
+    let memory_value = match g.get_str(&format!("{ARCH}.memory_value")) {
+        None | Some("token") => crate::s2::config::MemoryValue::Token,
+        Some("frame") => crate::s2::config::MemoryValue::Frame,
+        Some(k) => bail!("{ARCH}.memory_value {k:?} (token or frame)"),
+    };
     let state_loops = g
         .get_u64(&format!("{ARCH}.state_loops"))
         .map_or(1, |v| v as usize);
@@ -581,6 +598,9 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
         state_loops,
         temporal_carry,
         memory,
+        memory_qk,
+        memory_value,
+        memory_run: Default::default(),
         parallax,
         xsa,
         state_kind,
@@ -710,6 +730,54 @@ mod tests {
         let g2 = Gguf::parse(&g2b).unwrap();
         assert!(g2.get("skycmd-s2.ffn_es_seed").is_none());
         assert!(config_from_gguf(&g2).unwrap().ffn_es.is_none());
+    }
+
+    #[test]
+    fn the_v2_memory_forms_round_trip_and_v1_files_keep_their_keys() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let tok = s2_tokenizer_json();
+            let v1 = S2Config {
+                memory: true,
+                ..S2Config::tiny(262)
+            };
+            let g1b = to_gguf(
+                &init(&v1, S2Parts::DECISION, 1).unwrap(),
+                &v1,
+                &tok,
+                WeightFormat::Ternary,
+                "m1",
+            )
+            .unwrap();
+            let g1 = Gguf::parse(&g1b).unwrap();
+            assert!(
+                g1.get("skycmd-s2.memory_qk").is_none()
+                    && g1.get("skycmd-s2.memory_value").is_none()
+            );
+            let back1 = config_from_gguf(&g1).unwrap();
+            assert_eq!(
+                (back1.memory, back1.memory_qk, back1.memory_value),
+                (true, Default::default(), Default::default())
+            );
+            let v2 = S2Config {
+                memory: true,
+                memory_qk: crate::s2::config::MemoryQk::Shared,
+                memory_value: crate::s2::config::MemoryValue::Frame,
+                ..S2Config::tiny(262)
+            };
+            let p2 = init(&v2, S2Parts::DECISION, 2).unwrap();
+            let g2b = to_gguf(&p2, &v2, &tok, WeightFormat::Ternary, "m2").unwrap();
+            let g2 = Gguf::parse(&g2b).unwrap();
+            assert_eq!(g2.get_str("skycmd-s2.memory_qk"), Some("shared"));
+            assert_eq!(g2.get_str("skycmd-s2.memory_value"), Some("frame"));
+            let back = config_from_gguf(&g2).unwrap();
+            assert_eq!(
+                (back.memory, back.memory_qk, back.memory_value),
+                (true, v2.memory_qk, v2.memory_value)
+            );
+            assert!(g2.tensor("mem.0.qk.tq").is_some() && g2.tensor("mem.0.q.tq").is_none());
+            assert_eq!(params_from_gguf(&g2, &back).unwrap().len(), p2.len());
+        });
     }
 
     #[test]

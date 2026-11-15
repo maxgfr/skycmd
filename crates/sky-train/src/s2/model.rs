@@ -437,7 +437,9 @@ pub(crate) fn prepare<'a>(p: &'a ParamMap, cfg: &S2Config, qat: bool) -> R<Cow<'
     }
     let mut out = ParamMap::with_capacity(p.len());
     for (k, v) in p {
-        let mut v = if qat && is_ternary(k) {
+        // C4's second retry (docs/s6-sleep2-prereg.md §3): float memory projections under QAT.
+        let float_mem = cfg.memory_run.float && k.starts_with("mem.");
+        let mut v = if qat && is_ternary(k) && !float_mem {
             if cfg.qat_grad_a > 0.0 {
                 ternarize_stable(v, cfg.qat_grad_a)?
             } else {
@@ -1005,6 +1007,14 @@ pub(crate) fn frame_ce(logits: &Array, b: &S2Batch, wts: &Array) -> R<Array> {
         .mean_axis(-1, None)?
         .negative()?;
     ce.multiply(wts)?.sum(None)
+}
+
+/// [`frame_ce`] per row, before the mean over the rows: `Σ_e w_e · CE(exit e)` `[B]`.
+pub(crate) fn frame_ce_rows(logits: &Array, b: &S2Batch, wts: &Array) -> R<Array> {
+    let logits = masked(logits, &b.marker_mask)?;
+    let logp = logits.subtract(logits.logsumexp_axis(-1, true)?)?;
+    let ce = b.target.multiply(&logp)?.sum_axis(-1, None)?.negative()?;
+    ce.multiply(wts.reshape(&[-1, 1])?)?.sum_axis(0, None)
 }
 
 /// SPEC-S3 §7 sequence loss over `K` frames of the same rows: frame 0 cold,

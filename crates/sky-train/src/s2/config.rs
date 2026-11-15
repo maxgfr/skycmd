@@ -44,6 +44,18 @@ pub struct S2Config {
     /// per stream from frame to frame and rewritten during sleep (see `s2::memory`).
     #[serde(default, skip_serializing_if = "is_false")]
     pub memory: bool,
+    /// `docs/s6-sleep2-prereg.md` §2 (M1): the query and key projections of a memory layer,
+    /// `separate` (`q`, `k`: v1) or `shared` (one `qk`). Written only when shared.
+    #[serde(default, skip_serializing_if = "MemoryQk::is_separate")]
+    pub memory_qk: MemoryQk,
+    /// `docs/s6-sleep2-prereg.md` §2 (M2): what a memory layer writes as values, `token`
+    /// (`LN(x_i)`: v1) or `frame` (`LN(x_i + x̄)`, `x̄` the mean over the frame's valid tokens).
+    /// Written only when `frame`.
+    #[serde(default, skip_serializing_if = "MemoryValue::is_token")]
+    pub memory_value: MemoryValue,
+    /// Runtime switches of the memory checks (never saved).
+    #[serde(skip)]
+    pub memory_run: MemoryRun,
     /// SPEC-S6 §1: Parallax attention in the encoder blocks. `attn_qkv` holds a fourth
     /// projection, the probe `ρ`, normalized per head by `attn_px_norm`.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -124,6 +136,64 @@ impl StateKind {
             StateKind::Audio => "audio",
         }
     }
+}
+
+/// The query and key projections of a memory layer (`docs/s6-sleep2-prereg.md` §2, M1).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryQk {
+    /// Two independent projections `q` and `k` (s6-sleep v1).
+    #[default]
+    Separate,
+    /// One projection `qk` for both.
+    Shared,
+}
+
+impl MemoryQk {
+    pub fn is_separate(&self) -> bool {
+        *self == MemoryQk::Separate
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            MemoryQk::Separate => "separate",
+            MemoryQk::Shared => "shared",
+        }
+    }
+}
+
+/// What a memory layer writes as values (`docs/s6-sleep2-prereg.md` §2, M2).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryValue {
+    /// `v_i = heads(LN(x_i)·Wv)` (s6-sleep v1).
+    #[default]
+    Token,
+    /// `v_i = heads(LN(x_i + x̄)·Wv)`, `x̄` the mean block output over the frame's valid tokens.
+    Frame,
+}
+
+impl MemoryValue {
+    pub fn is_token(&self) -> bool {
+        *self == MemoryValue::Token
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            MemoryValue::Token => "token",
+            MemoryValue::Frame => "frame",
+        }
+    }
+}
+
+/// Runtime switches of a memory model, for the checks of `docs/s6-sleep2-prereg.md` §3
+/// (never saved: a checkpoint always reads and quantizes its memory as trained).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MemoryRun {
+    /// The read adds nothing (`x ← x`): C4's control, the read-out `Wo` forced to zero.
+    pub read_off: bool,
+    /// The memory projections stay float under QAT (C4's second retry, choice O5).
+    pub float: bool,
 }
 
 /// Classes of the Mimi codebook 0 predicted by the s6-ear pretraining head (`mimi.decoder`).
@@ -253,6 +323,9 @@ impl S2Config {
         if self.memory && (self.is_audio() || self.temporal_carry) {
             bail!("memory: text states only, and not with temporal_carry");
         }
+        if !self.memory && (!self.memory_qk.is_separate() || !self.memory_value.is_token()) {
+            bail!("memory_qk and memory_value need memory");
+        }
         if let Some(es) = &self.ffn_es {
             if es.expand == 0 || es.fan_in == 0 || es.fan_in > self.hidden_size {
                 bail!("ffn_es: expand must be >= 1 and fan_in in 1..=hidden_size");
@@ -356,6 +429,9 @@ impl S2Config {
             state_loops: 1,
             temporal_carry: false,
             memory: false,
+            memory_qk: MemoryQk::Separate,
+            memory_value: MemoryValue::Token,
+            memory_run: MemoryRun::default(),
             parallax: false,
             xsa: false,
             ffn_es: None,
