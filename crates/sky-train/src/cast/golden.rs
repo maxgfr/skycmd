@@ -2,6 +2,10 @@
 //! as f32 and ternary GGUF files, and the normalized quantiles of every exit computed by the
 //! mlx-rs graph on the weights exactly as stored. sky-infer's `tests/golden_cast.rs` must
 //! reproduce them from the contexts alone.
+//!
+//! With the v2 front end (`configs/s6-cast2-femto.json`, prefix `cast2`), three more cases test
+//! it: a context with a known period, one with none, and a short history; each case also records
+//! the periods the detector found, which `tests/golden_cast2.rs` checks before the outputs.
 
 use std::path::Path;
 
@@ -77,6 +81,24 @@ fn cases(cfg: &CastConfig) -> Vec<(String, Vec<f32>)> {
         .map(|t| t as f32 * 0.5 + (t as f32 * 0.7).sin())
         .collect();
     out.push(("longer-than-context".into(), long));
+    if cfg.periods > 0 {
+        // the front end (docs/s6-cast2-prereg.md §4.2-4.3): a clean cycle, none, a short history
+        let tau = 2.0 * std::f32::consts::PI;
+        out.push((
+            "period-24".into(),
+            (0..full + 77)
+                .map(|t| 5.0 + (tau * t as f32 / 24.0).sin() + 0.05 * ((t * 7) % 5) as f32)
+                .collect(),
+        ));
+        out.push((
+            "no-period".into(),
+            (0..full / 2).map(|t| 2.0 + t as f32 * 0.01).collect(),
+        ));
+        out.push((
+            "short-history".into(),
+            (0..p + 5).map(|t| (tau * t as f32 / 6.0).cos()).collect(),
+        ));
+    }
     out
 }
 
@@ -118,11 +140,16 @@ pub fn golden(cfg: &CastConfig, out_dir: &Path, prefix: &str, seed: u64) -> Resu
         .iter()
         .enumerate()
         .map(|(i, (name, ctx))| {
-            json!({
+            let mut case = json!({
                 "name": name,
                 "context": f32s(ctx),
                 "quantiles": {"f32": outputs[0][i], "ternary": outputs[1][i]},
-            })
+            });
+            if cfg.periods > 0 {
+                let l = cfg.layout();
+                case["periods"] = json!(sky_infer::cast::prep::inputs(ctx, &l).periods);
+            }
+            case
         })
         .collect();
     let doc = json!({

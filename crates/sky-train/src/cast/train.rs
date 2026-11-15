@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::{
     config::CastConfig,
-    data::{self, Pool, SampleOptions, Window},
+    data::{self, Band, Bands, Origin, Pool, SampleOptions, Window},
     model::{self, exit_losses},
 };
 use crate::{
@@ -121,6 +121,29 @@ pub struct TrainArgs {
     /// CPU threads of the teacher (0: all but one).
     #[arg(long, default_value_t = 0)]
     pub teacher_threads: usize,
+    /// Probability of the sign flip and of the time reversal (default: `--augment`, as v1;
+    /// docs/s6-cast2-prereg.md C5: 0.5).
+    #[arg(long)]
+    #[serde(default)]
+    pub flip_prob: Option<f64>,
+    /// The generators' period set: v1 (`synth::PERIODS`) or v2 (`synth::PERIODS_V2`, C4).
+    #[arg(long, default_value = "v1")]
+    #[serde(default = "v1_periods")]
+    pub synth_periods: String,
+    /// Real windows drawn by frequency band with these weights (`hourly=31,subhourly=30,...`;
+    /// §3.4). Unset: uniformly over the real series, as v1.
+    #[arg(long)]
+    #[serde(default)]
+    pub band_weights: Option<String>,
+    /// Periods of the synthetic series that stand in for a band without real series
+    /// (`second=360,monthly=12:4`), with `--band-weights`.
+    #[arg(long, default_value = "")]
+    #[serde(default)]
+    pub band_periods: String,
+}
+
+fn v1_periods() -> String {
+    "v1".into()
 }
 
 impl TrainArgs {
@@ -137,13 +160,23 @@ impl TrainArgs {
         }
     }
 
-    fn sample_options(&self) -> SampleOptions {
-        SampleOptions {
+    fn sample_options(&self) -> Result<SampleOptions> {
+        Ok(SampleOptions {
             real_frac: self.real_frac,
             augment: self.augment,
             mixup: self.mixup,
             missing: self.missing,
-        }
+            flip: self.flip_prob.unwrap_or(self.augment),
+            set: self.period_set()?,
+        })
+    }
+
+    fn period_set(&self) -> Result<&'static [usize]> {
+        Ok(match self.synth_periods.as_str() {
+            "v1" => &sky_infer::cast::synth::PERIODS,
+            "v2" => &sky_infer::cast::synth::PERIODS_V2,
+            other => bail!("--synth-periods {other:?}: v1 or v2"),
+        })
     }
 }
 
@@ -228,14 +261,36 @@ pub fn load_run(dir: &Path) -> Result<(CastConfig, ParamMap)> {
 
 /// Validation metrics: per exit, the mean pinball loss and the mean absolute error of the median
 /// (normalized units).
-pub fn validate(
+pub fn validate(p: &ParamMap, cfg: &CastConfig, val: &[Window], qat: bool) -> Result<ExitMetrics> {
+    Ok(validate_by_band(p, cfg, val, qat)?.0)
+}
+
+/// The last exit's mean pinball per window group: `synthetic` and each band of the held-out
+/// real series (docs/s6-cast2-prereg.md §6: validation reported by band).
+pub type BandPinball = Vec<(String, f64, usize)>;
+
+/// Per exit: the mean pinball and the mean absolute error of the median.
+pub type ExitMetrics = (Vec<f64>, Vec<f64>);
+
+/// [`validate`], and the last exit's pinball by band.
+pub fn validate_by_band(
     p: &ParamMap,
     cfg: &CastConfig,
     val: &[Window],
     qat: bool,
-) -> Result<(Vec<f64>, Vec<f64>)> {
+) -> Result<(ExitMetrics, BandPinball)> {
     let ne = cfg.n_exits();
     let (mut pin, mut mae, mut n) = (vec![0.0; ne], vec![0.0; ne], 0.0);
+    let groups: Vec<String> = std::iter::once("synthetic".to_string())
+        .chain(Band::ALL.iter().map(|b| b.name().to_string()))
+        .chain(std::iter::once("real_unbanded".to_string()))
+        .collect();
+    let group = |w: &Window| match (w.origin, w.band) {
+        (Origin::Real, Some(b)) => 1 + b as usize,
+        (Origin::Real, None) => 1 + Band::ALL.len(),
+        _ => 0,
+    };
+    let (mut gsum, mut gcnt) = (vec![0.0f64; groups.len()], vec![0usize; groups.len()]);
     let med = cfg.quantiles.len() / 2;
     for chunk in val.chunks(256) {
         let b = data::batch(cfg, chunk);
@@ -259,11 +314,39 @@ pub fn validate(
             }
             mae[e] += if cnt > 0.0 { err / cnt * w } else { 0.0 };
         }
+        // the last exit's pinball of each window, by group
+        let e = ne - 1;
+        for (r, win) in chunk.iter().enumerate() {
+            let (mut loss, mut cnt) = (0.0f64, 0usize);
+            for t in 0..h {
+                if win.ymask[t] > 0.0 {
+                    for (k, &tau) in cfg.quantiles.iter().enumerate() {
+                        let v = qh[((e * chunk.len() + r) * h + t) * nq + k];
+                        loss += sky_infer::cast::prep::pinball(win.y[t], v, tau) as f64;
+                        cnt += 1;
+                    }
+                }
+            }
+            if cnt > 0 {
+                let g = group(win);
+                gsum[g] += loss / cnt as f64;
+                gcnt[g] += 1;
+            }
+        }
         n += w;
     }
+    let by_band = groups
+        .into_iter()
+        .zip(gsum.into_iter().zip(gcnt))
+        .filter(|(_, (_, c))| *c > 0)
+        .map(|(g, (s, c))| (g, s / c as f64, c))
+        .collect();
     Ok((
-        pin.into_iter().map(|x| x / n.max(1.0)).collect(),
-        mae.into_iter().map(|x| x / n.max(1.0)).collect(),
+        (
+            pin.into_iter().map(|x| x / n.max(1.0)).collect(),
+            mae.into_iter().map(|x| x / n.max(1.0)).collect(),
+        ),
+        by_band,
     ))
 }
 
@@ -334,18 +417,43 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     let (real_val, real): (Vec<_>, Vec<_>) =
         all_series.into_iter().partition(|s| data::is_val(&s.id));
     println!("real series: {} train, {} val", real.len(), real_val.len());
+    let opts = a.sample_options()?;
+    let bands = match &a.band_weights {
+        None => None,
+        Some(w) => {
+            let b = Bands::new(
+                &real,
+                data::parse_band_weights(w)?,
+                data::parse_band_periods(&a.band_periods)?,
+            )?;
+            println!(
+                "real windows by band (share of real windows):\n{}",
+                b.describe(&real)
+            );
+            Some(b)
+        }
+    };
+    println!(
+        "generator periods {} ({}), sign flip and time reversal at {}",
+        a.synth_periods,
+        opts.set.len(),
+        opts.flip
+    );
+    // the pool's series are long enough for every period of the set (two cycles, SARIMA reads
+    // two thirds): 6,048 points for the v2 set, v1's length otherwise
     let pool_len = if a.pool_len == 0 {
-        cfg.context() + cfg.horizon() + 1024
+        (cfg.context() + cfg.horizon() + 1024).max(sky_infer::cast::synth::min_len_for(opts.set))
     } else {
         a.pool_len
     };
     let t_pool = Instant::now();
-    let mut pool = Pool::new(
+    let mut pool = Pool::new_in(
         a.seed ^ 0x9001,
         a.pool,
         pool_len,
         a.refresh,
         a.refresh_every,
+        opts.set,
     );
     if s.state.step > 0 {
         pool.rebuild(s.state.step);
@@ -356,7 +464,6 @@ pub fn train(a: &TrainArgs) -> Result<()> {
         t_pool.elapsed().as_secs_f64()
     );
     let val = data::validation(&cfg, a.val_synth, &real_val);
-    let opts = a.sample_options();
     let teacher = match &a.teacher {
         Some(p) => {
             let t = data::Teacher::load(p, &cfg)?;
@@ -399,6 +506,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     let producer = {
         let (cfg, seed, batch, frac, start) =
             (cfg.clone(), a.seed, a.batch, a.teacher_frac, s.state.step);
+        let bands = bands.clone();
         let progress_now = progress_now.clone();
         let mut cache = cache;
         std::thread::spawn(move || {
@@ -424,6 +532,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
                     step,
                     batch,
                     teach.map(|c| (c, frac)),
+                    bands.as_ref(),
                 );
                 if tx.send(w).is_err() {
                     break;
@@ -447,6 +556,8 @@ pub fn train(a: &TrainArgs) -> Result<()> {
     let mut last_ckpt = Instant::now();
     let (mut wl, mut wn, mut wtime) = (0.0f64, 0u64, Instant::now());
     let mut consecutive = 0;
+    // windows seen by origin (this invocation; a resumed run adds its own), for the report
+    let mut seen = [0u64; 4];
     while keep_going(&progress, stop_at, s.state.step, s.state.elapsed_secs) {
         brake.rest(&mut t0);
         let frac = progress.frac(s.state.step, s.state.elapsed_secs);
@@ -461,6 +572,12 @@ pub fn train(a: &TrainArgs) -> Result<()> {
             s.state.qat = true;
         }
         let windows = rx.recv().context("the batch producer stopped")??;
+        for w in &windows {
+            seen[Origin::ALL
+                .iter()
+                .position(|&o| o == w.origin)
+                .expect("origin")] += 1;
+        }
         let b = data::batch(&cfg, &windows);
         let lr_scale = wsd(frac) as f32;
         let qat = s.state.qat;
@@ -497,6 +614,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
                 &json!({"step": step, "loss": wl / wn as f64, "grad_norm": gnorm,
                 "lr_scale": lr_scale, "qat": qat, "frac": frac,
                 "windows_s": (wn as usize * a.batch) as f64 / dt,
+                "windows": windows_json(&seen),
                 "elapsed_min": s.state.elapsed_secs / 60.0}),
             )?;
             println!(
@@ -534,18 +652,35 @@ pub fn train(a: &TrainArgs) -> Result<()> {
         return Ok(());
     }
     println!("done: {} steps", s.state.step);
-    let f = validate(&s.params, &cfg, &val, false)?;
-    let t = validate(&s.params, &cfg, &val, true)?;
-    log_val(&mut log, s.state.step, "f32", &f)?;
-    log_val(&mut log, s.state.step, "ternary", &t)?;
-    if let Some(e) = &ema {
-        let f = validate(e, &cfg, &val, false)?;
-        let t = validate(e, &cfg, &val, true)?;
-        log_val(&mut log, s.state.step, "ema-f32", &f)?;
-        log_val(&mut log, s.state.step, "ema-ternary", &t)?;
+    let finals: Vec<(&str, &ParamMap, bool)> = std::iter::once(("f32", &s.params, false))
+        .chain(std::iter::once(("ternary", &s.params, true)))
+        .chain(
+            ema.iter()
+                .flat_map(|e| [("ema-f32", e, false), ("ema-ternary", e, true)]),
+        )
+        .collect();
+    for (mode, p, qat) in finals {
+        let (m, by_band) = validate_by_band(p, &cfg, &val, qat)?;
+        log_val(&mut log, s.state.step, mode, &m)?;
+        log.write(
+            &json!({"step": s.state.step, "mode": mode, "val_by_band": by_band
+            .iter()
+            .map(|(g, v, n)| (g.clone(), json!({"pinball": v, "windows": n})))
+            .collect::<serde_json::Map<_, _>>()}),
+        )?;
     }
-    log.write(&json!({"step": s.state.step, "final": true}))?;
+    log.write(&json!({"step": s.state.step, "final": true, "windows": windows_json(&seen)}))?;
     Ok(())
+}
+
+/// Windows seen by origin.
+fn windows_json(seen: &[u64; 4]) -> serde_json::Value {
+    Origin::ALL
+        .iter()
+        .zip(seen)
+        .map(|(o, n)| (o.name().to_string(), json!(n)))
+        .collect::<serde_json::Map<_, _>>()
+        .into()
 }
 
 /// The EMA weights saved as a run checkpoint of their own (same state, EMA parameters).
@@ -607,6 +742,10 @@ mod tests {
             teacher_weight: 0.5,
             teacher_frac: 0.5,
             teacher_threads: 2,
+            flip_prob: None,
+            synth_periods: "v1".into(),
+            band_weights: None,
+            band_periods: String::new(),
         };
         train(&args).unwrap();
         let st: CastState = serde_json::from_str(
@@ -648,5 +787,31 @@ mod tests {
         .unwrap();
         let log = std::fs::read_to_string(out.join("log.jsonl")).unwrap();
         assert!(log.contains("\"final\":true"));
+
+        // v2 (docs/s6-cast2-prereg.md): the front end, the v2 periods, the flip at 0.5 and the
+        // band draw with stand-ins for every band (no real series here)
+        let out = dir.path().join("v2");
+        train(&TrainArgs {
+            config: Path::new(env!("CARGO_MANIFEST_DIR")).join("../../configs/s6-cast2-femto.json"),
+            out: out.clone(),
+            steps: Some(20),
+            stop_after: None,
+            batch: 8,
+            pool: 16,
+            refresh: 8,
+            flip_prob: Some(0.5),
+            synth_periods: "v2".into(),
+            band_weights: Some(
+                "hourly=31,subhourly=30,daily=15,weekly=8,monthly=7,second=6".into(),
+            ),
+            band_periods:
+                "second=360,subhourly=288:144:96,hourly=24,daily=7,weekly=52,monthly=12:4".into(),
+            real_frac: 0.6,
+            ..args.clone()
+        })
+        .unwrap();
+        let log = std::fs::read_to_string(out.join("log.jsonl")).unwrap();
+        assert!(log.contains("\"final\":true") && log.contains("band_synthetic"));
+        assert!(log.contains("val_by_band"));
     }
 }

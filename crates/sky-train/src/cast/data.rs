@@ -3,11 +3,16 @@
 //! files, with Reverso's augmentations, missing values and variable context lengths.
 //!
 //! A window goes through exactly the preparation of inference (`sky_infer::cast::prep`):
-//! min-max normalization fitted on the context, right-aligned patches with an observation mask.
+//! min-max normalization fitted on the context, right-aligned patches with an observation mask,
+//! and with the v2 front end (docs/s6-cast2-prereg.md §4.2–4.3) the detected periods, the phase
+//! channels and the seasonal draft, all from `prep::inputs`, the function the engine calls.
+//!
+//! v2 also draws its real windows by frequency band (§3.4, [`Bands`]), with the v2 generator
+//! periods (C4) and its own sign-flip and time-reversal probability (C5, [`SampleOptions`]).
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use mlx_rs::Array;
 use sky_infer::cast::prep::{self, Norm};
 use sky_infer::cast::synth::{self, SynthRng};
@@ -31,6 +36,44 @@ pub struct Window {
     /// step mask (all 0 without a teacher, or past the teacher's horizon).
     pub tq: Vec<f32>,
     pub tmask: Vec<f32>,
+    /// v2: `[context_patches][2K]` phase channels and `[horizon_patches][draft width]` draft
+    /// (empty without the front end), as `prep::inputs` gives them.
+    pub phase: Vec<f32>,
+    pub draft: Vec<f32>,
+    /// Where the window comes from (counted in the log), and the band of its real series.
+    pub origin: Origin,
+    pub band: Option<Band>,
+}
+
+/// The source of a window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Origin {
+    /// The synthetic pool.
+    Synth,
+    /// A real series.
+    Real,
+    /// A synthetic series standing in for a band without real series (§3.4).
+    BandSynth,
+    /// A teacher cut (its targets are the teacher's quantiles too).
+    Distilled,
+}
+
+impl Origin {
+    pub const ALL: [Origin; 4] = [
+        Origin::Synth,
+        Origin::Real,
+        Origin::BandSynth,
+        Origin::Distilled,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Origin::Synth => "synthetic",
+            Origin::Real => "real",
+            Origin::BandSynth => "band_synthetic",
+            Origin::Distilled => "distilled",
+        }
+    }
 }
 
 /// Bounds of the normalized targets. A context with almost no range (a flat start followed by a
@@ -42,7 +85,14 @@ pub const TARGET_MAX: f32 = 6.0;
 /// Prepares `context` (its last `context()` points) and `target` (its first `horizon()`). `None`
 /// when the context has no observation.
 pub fn window(cfg: &CastConfig, context: &[f32], target: &[f32]) -> Option<Window> {
-    let (norm, vals, mask) = prep::prepare(context, cfg.patch, cfg.context_patches);
+    let prep::Inputs {
+        norm,
+        vals,
+        mask,
+        periods: _,
+        phase,
+        draft,
+    } = prep::inputs(context, &cfg.layout());
     let observed = prep::patch_valid(&mask, cfg.patch);
     let j0 = observed.iter().position(|&v| v)?;
     let valid = (0..cfg.context_patches).map(|j| j >= j0).collect();
@@ -64,6 +114,10 @@ pub fn window(cfg: &CastConfig, context: &[f32], target: &[f32]) -> Option<Windo
         norm,
         tq: vec![0.0; h * cfg.quantiles.len()],
         tmask: vec![0.0; h],
+        phase,
+        draft,
+        origin: Origin::Synth,
+        band: None,
     })
 }
 
@@ -89,6 +143,22 @@ pub fn batch(cfg: &CastConfig, windows: &[Window]) -> CastBatch {
             &[b as i32, h as i32, cfg.quantiles.len() as i32],
         ),
         tmask: Array::from_slice(&cat(&|w| &w.tmask), &[b as i32, h as i32]),
+        phase: (cfg.periods > 0).then(|| {
+            Array::from_slice(
+                &cat(&|w| &w.phase),
+                &[b as i32, c as i32, 2 * cfg.periods as i32],
+            )
+        }),
+        draft: cfg.draft.then(|| {
+            Array::from_slice(
+                &cat(&|w| &w.draft),
+                &[
+                    b as i32,
+                    cfg.horizon_patches as i32,
+                    cfg.layout().draft_width() as i32,
+                ],
+            )
+        }),
         rows: b,
     }
 }
@@ -263,6 +333,7 @@ impl TeacherCache {
             }
             w.tmask[t] = 1.0;
         }
+        w.origin = Origin::Distilled;
         Some(w)
     }
 }
@@ -337,8 +408,192 @@ pub fn val_group(id: &str) -> String {
     }
 }
 
+/// A frequency band of GIFT-Eval (docs/s6-cast2-prereg.md §3.4; `docs/s6-cast2-study.md` §1.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Band {
+    Second,
+    SubHourly,
+    Hourly,
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+impl Band {
+    pub const ALL: [Band; 6] = [
+        Band::Second,
+        Band::SubHourly,
+        Band::Hourly,
+        Band::Daily,
+        Band::Weekly,
+        Band::Monthly,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Band::Second => "second",
+            Band::SubHourly => "subhourly",
+            Band::Hourly => "hourly",
+            Band::Daily => "daily",
+            Band::Weekly => "weekly",
+            Band::Monthly => "monthly",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Band> {
+        Band::ALL.into_iter().find(|b| b.name() == s)
+    }
+
+    fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// The band of a real series, from its source (the id's first field) and the source's sampling
+/// interval. `None` for a source without a calendar frequency (the game trajectories) or not
+/// listed here: such a series is not drawn when the bands are on.
+pub fn band_of(id: &str) -> Option<Band> {
+    let source = id.split(':').next().unwrap_or_default();
+    Some(match source {
+        // s6-cast v1 (DATA_LICENSES.md): London smart meters every 30 minutes, wind farms,
+        // pedestrians and rideshare hourly, Wikipedia and USHCN daily
+        "london_smart_meters" => Band::SubHourly,
+        "wind_farms_hourly" | "pedestrian_counts" | "rideshare" => Band::Hourly,
+        "wind_farms_daily" | "wiki_daily" | "ushcn_daily" => Band::Daily,
+        // s6-cast v2 sources (sky-data fetch-series2, DATA_LICENSES.md)
+        "uscrn_subhourly" => Band::SubHourly,
+        _ => return None,
+    })
+}
+
+/// Band weights from `"hourly=31,subhourly=30,..."` (every band named at most once; a band left
+/// out weighs 0).
+pub fn parse_band_weights(s: &str) -> Result<[f64; 6]> {
+    let mut w = [0.0; 6];
+    let mut seen = [false; 6];
+    for part in s.split(',').filter(|p| !p.trim().is_empty()) {
+        let (k, v) = part
+            .split_once('=')
+            .with_context(|| format!("band weight {part:?}: expected band=weight"))?;
+        let b = Band::parse(k.trim()).with_context(|| format!("unknown band {k:?}"))?;
+        let v: f64 = v
+            .trim()
+            .parse()
+            .with_context(|| format!("band weight {v:?}"))?;
+        if !(v >= 0.0 && v.is_finite()) || seen[b.index()] {
+            bail!("band weight {part:?}");
+        }
+        (w[b.index()], seen[b.index()]) = (v, true);
+    }
+    if w.iter().sum::<f64>() <= 0.0 {
+        bail!("the band weights sum to 0");
+    }
+    Ok(w)
+}
+
+/// The periods of the synthetic stand-in of each band, from `"second=360,monthly=12:4"`.
+pub fn parse_band_periods(s: &str) -> Result<[Vec<usize>; 6]> {
+    let mut out: [Vec<usize>; 6] = Default::default();
+    for part in s.split(',').filter(|p| !p.trim().is_empty()) {
+        let (k, v) = part
+            .split_once('=')
+            .with_context(|| format!("band periods {part:?}: expected band=p1:p2"))?;
+        let b = Band::parse(k.trim()).with_context(|| format!("unknown band {k:?}"))?;
+        let ps = v
+            .split(':')
+            .map(|p| p.trim().parse::<usize>())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .with_context(|| format!("band periods {v:?}"))?;
+        if ps.is_empty() || ps.contains(&0) || !out[b.index()].is_empty() {
+            bail!("band periods {part:?}");
+        }
+        out[b.index()] = ps;
+    }
+    Ok(out)
+}
+
+/// The band sampling of real windows (§3.4): a band is drawn with its weight, then a training
+/// series of that band, uniformly. A band without real series is stood in for by a synthetic
+/// series whose periods are that band's (`synth`).
+#[derive(Clone, Debug)]
+pub struct Bands {
+    pub weights: [f64; 6],
+    /// Training series (indices into the real series) per band.
+    pub members: [Vec<usize>; 6],
+    /// Periods of the synthetic stand-in, per band.
+    pub synth: [Vec<usize>; 6],
+}
+
+impl Bands {
+    /// Every band of positive weight must have real series or stand-in periods.
+    pub fn new(real: &[Series], weights: [f64; 6], synth: [Vec<usize>; 6]) -> Result<Self> {
+        let mut members: [Vec<usize>; 6] = Default::default();
+        for (i, s) in real.iter().enumerate() {
+            if let Some(b) = band_of(&s.id) {
+                members[b.index()].push(i);
+            }
+        }
+        for b in Band::ALL {
+            let i = b.index();
+            if weights[i] > 0.0 && members[i].is_empty() && synth[i].is_empty() {
+                bail!(
+                    "band {} has weight {} but no real series and no stand-in periods (--band-periods)",
+                    b.name(),
+                    weights[i]
+                );
+            }
+        }
+        Ok(Bands {
+            weights,
+            members,
+            synth,
+        })
+    }
+
+    /// A band by weight, and a series of it (`None`: the band has no real series).
+    pub fn draw(&self, rng: &mut Rng) -> (Band, Option<usize>) {
+        let b = Band::ALL[rng.weighted(&self.weights)];
+        let m = &self.members[b.index()];
+        if m.is_empty() {
+            (b, None)
+        } else {
+            (b, Some(m[rng.below(m.len())]))
+        }
+    }
+
+    /// One line per band: weight, series, stand-in periods.
+    pub fn describe(&self, real: &[Series]) -> String {
+        let total: f64 = self.weights.iter().sum();
+        let mut out = Vec::new();
+        for b in Band::ALL {
+            let i = b.index();
+            let pts: usize = self.members[i].iter().map(|&k| real[k].values.len()).sum();
+            out.push(format!(
+                "  {:>9}: weight {:.3}, {} series ({pts} points){}",
+                b.name(),
+                self.weights[i] / total,
+                self.members[i].len(),
+                if self.members[i].is_empty() && self.weights[i] > 0.0 {
+                    format!(", synthetic stand-in at periods {:?}", self.synth[i])
+                } else {
+                    String::new()
+                }
+            ));
+        }
+        let unbanded: std::collections::BTreeSet<&str> = real
+            .iter()
+            .filter(|s| band_of(&s.id).is_none())
+            .map(|s| s.id.split(':').next().unwrap_or_default())
+            .collect();
+        if !unbanded.is_empty() {
+            out.push(format!("  not drawn (no band): {unbanded:?}"));
+        }
+        out.join("\n")
+    }
+}
+
 /// `n` synthetic series of `len` points from `seeds`, generated on every core.
-fn generate(seeds: &[u64], len: usize) -> Vec<Vec<f32>> {
+fn generate(seeds: &[u64], len: usize, set: &[usize]) -> Vec<Vec<f32>> {
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
     let chunk = seeds.len().div_ceil(threads).max(1);
     std::thread::scope(|s| {
@@ -347,7 +602,7 @@ fn generate(seeds: &[u64], len: usize) -> Vec<Vec<f32>> {
             .map(|c| {
                 s.spawn(move || {
                     c.iter()
-                        .map(|&sd| synth::mixed(sd, len).1)
+                        .map(|&sd| synth::mixed_in(sd, len, set).1)
                         .collect::<Vec<_>>()
                 })
             })
@@ -369,10 +624,25 @@ pub struct Pool {
     len: usize,
     refresh: usize,
     refresh_every: u64,
+    /// The generators' period set (`synth::PERIODS`, or `synth::PERIODS_V2`).
+    set: &'static [usize],
 }
 
 impl Pool {
+    /// A pool with the v1 periods.
     pub fn new(seed: u64, size: usize, len: usize, refresh: usize, refresh_every: u64) -> Self {
+        Self::new_in(seed, size, len, refresh, refresh_every, &synth::PERIODS)
+    }
+
+    /// A pool whose generators draw their periods from `set`.
+    pub fn new_in(
+        seed: u64,
+        size: usize,
+        len: usize,
+        refresh: usize,
+        refresh_every: u64,
+        set: &'static [usize],
+    ) -> Self {
         assert!(
             refresh > 0 && size.is_multiple_of(refresh),
             "the refresh block must divide the pool"
@@ -384,8 +654,9 @@ impl Pool {
             len,
             refresh,
             refresh_every: refresh_every.max(1),
+            set,
         };
-        p.series = generate(&p.seeds_at(0), len);
+        p.series = generate(&p.seeds_at(0), len, set);
         p
     }
 
@@ -414,7 +685,7 @@ impl Pool {
 
     /// The pool as it is at `step` (after a resume).
     pub fn rebuild(&mut self, step: u64) {
-        self.series = generate(&self.seeds_at(step), self.len);
+        self.series = generate(&self.seeds_at(step), self.len, self.set);
     }
 
     /// Regenerates the block due at `step`, if any, and returns its slots.
@@ -428,7 +699,7 @@ impl Pool {
         let seeds: Vec<u64> = (o * self.refresh..(o + 1) * self.refresh)
             .map(|i| self.slot_seed(i, g))
             .collect();
-        let fresh = generate(&seeds, self.len);
+        let fresh = generate(&seeds, self.len, self.set);
         for (k, s) in fresh.into_iter().enumerate() {
             self.series[o * self.refresh + k] = s;
         }
@@ -447,6 +718,10 @@ pub struct SampleOptions {
     pub mixup: f64,
     /// Probability of dropping 1–5 % of the context values.
     pub missing: f64,
+    /// Probability of the sign flip and of the time reversal (v1: `augment`; v2, C5: 0.5).
+    pub flip: f64,
+    /// The periods of the synthetic stand-ins' generators, and of the pool's.
+    pub set: &'static [usize],
 }
 
 impl Default for SampleOptions {
@@ -456,6 +731,8 @@ impl Default for SampleOptions {
             augment: 0.3,
             mixup: 0.1,
             missing: 0.1,
+            flip: 0.3,
+            set: &synth::PERIODS,
         }
     }
 }
@@ -513,7 +790,7 @@ fn cut(
     let start = srng.below(series.len() - span + 1);
     let mut seg = synth::downsample(&series[start..start + span], k);
     seg.truncate(need);
-    seg = synth::augment(srng, seg, o.augment);
+    seg = synth::augment_with(srng, seg, o.augment, o.flip);
     if let Some(m) = mix {
         if m.len() >= need && srng.coin(o.mixup) {
             let s = srng.below(m.len() - need + 1);
@@ -546,18 +823,30 @@ pub fn sample_step(
     step: u64,
     n: usize,
     teacher: Option<(&TeacherCache, f64)>,
+    bands: Option<&Bands>,
 ) -> Result<Vec<Window>> {
     let mut rng = Rng::new(hash_str(&format!("cast-step:{seed}:{step}")));
-    let mut windows = sample(cfg, pool, real, o, &mut rng, n);
+    let mut windows = sample(cfg, pool, real, o, &mut rng, n, bands);
     if let Some((cache, frac)) = teacher {
         // a share `frac` of the windows is replaced by distilled windows from the teacher cuts
         for w in windows.iter_mut() {
             if rng.f64() >= frac {
                 continue;
             }
-            let from_real = !cache.real.is_empty() && rng.f64() < o.real_frac;
-            let (cuts, y): (&[Cut], &[f32]) = if from_real {
-                let i = rng.below(cache.real.len());
+            // the real series of a distilled window: uniform (v1), or by band (v2), where a band
+            // without real series gives a pool cut (the stand-ins have no teacher cut)
+            let real_index = match bands {
+                None => (!cache.real.is_empty() && rng.f64() < o.real_frac)
+                    .then(|| rng.below(cache.real.len())),
+                Some(b) => {
+                    if !cache.real.is_empty() && rng.f64() < o.real_frac {
+                        b.draw(&mut rng).1
+                    } else {
+                        None
+                    }
+                }
+            };
+            let (cuts, y): (&[Cut], &[f32]) = if let Some(i) = real_index {
                 (&cache.real[i], &real[i].values)
             } else {
                 let i = rng.below(cache.pool.len());
@@ -566,7 +855,8 @@ pub fn sample_step(
             if cuts.is_empty() {
                 continue;
             }
-            if let Some(d) = TeacherCache::window(cfg, y, &cuts[rng.below(cuts.len())]) {
+            if let Some(mut d) = TeacherCache::window(cfg, y, &cuts[rng.below(cuts.len())]) {
+                d.band = real_index.and_then(|i| band_of(&real[i].id));
                 *w = d;
             }
         }
@@ -581,17 +871,49 @@ pub fn sample(
     o: &SampleOptions,
     rng: &mut Rng,
     n: usize,
+    bands: Option<&Bands>,
 ) -> Vec<Window> {
     let mut out = Vec::with_capacity(n);
     let mut guard = 0;
+    // the stand-in series of a band without real series: as long as the pool's v1 series
+    let stand_in_len = cfg.context() + cfg.horizon() + 1024;
     while out.len() < n && guard < 100 * n {
         guard += 1;
         let ctx = context_len(cfg, rng);
         let mut srng = SynthRng::new(rng.seed());
+        if let Some(b) = bands {
+            // v2 (§3.4): a real window with probability real_frac, its band drawn by weight
+            if rng.f64() < o.real_frac {
+                let (band, idx) = b.draw(rng);
+                let w = match idx {
+                    Some(i) => cut(cfg, &real[i].values, ctx, &mut srng, o, None).map(|mut w| {
+                        (w.origin, w.band) = (Origin::Real, Some(band));
+                        w
+                    }),
+                    None => {
+                        let (_, y) =
+                            synth::mixed_in(rng.seed(), stand_in_len, &b.synth[band.index()]);
+                        cut(cfg, &y, ctx, &mut srng, o, None).map(|mut w| {
+                            (w.origin, w.band) = (Origin::BandSynth, Some(band));
+                            w
+                        })
+                    }
+                };
+                out.extend(w);
+                continue;
+            }
+            let s = &pool.series[rng.below(pool.series.len())];
+            let m = &pool.series[rng.below(pool.series.len())];
+            out.extend(cut(cfg, s, ctx, &mut srng, o, Some(m)));
+            continue;
+        }
         let use_real = !real.is_empty() && rng.f64() < o.real_frac;
         let w = if use_real {
             let s = &real[rng.below(real.len())];
-            cut(cfg, &s.values, ctx, &mut srng, o, None)
+            cut(cfg, &s.values, ctx, &mut srng, o, None).map(|mut w| {
+                w.origin = Origin::Real;
+                w
+            })
         } else {
             let s = &pool.series[rng.below(pool.series.len())];
             let m = &pool.series[rng.below(pool.series.len())];
@@ -627,7 +949,10 @@ pub fn validation(cfg: &CastConfig, n_synth: usize, real_val: &[Series]) -> Vec<
             continue;
         }
         let (c, t) = s.values.split_at(n - cfg.horizon());
-        out.extend(window(cfg, c, t));
+        out.extend(window(cfg, c, t).map(|mut w| {
+            (w.origin, w.band) = (Origin::Real, band_of(&s.id));
+            w
+        }));
     }
     out
 }
@@ -777,6 +1102,159 @@ mod tests {
         .unwrap()
     }
 
+    fn cfg2() -> CastConfig {
+        CastConfig::load(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../configs/s6-cast2-femto.json"),
+        )
+        .unwrap()
+    }
+
+    /// Contexts with a known period, with none, a short history, missing values, and longer
+    /// than the context.
+    fn fixtures() -> Vec<Vec<f32>> {
+        let tau = 2.0 * std::f32::consts::PI;
+        let mut gaps: Vec<f32> = (0..200).map(|t| (tau * t as f32 / 12.0).sin()).collect();
+        for (i, v) in gaps.iter_mut().enumerate() {
+            if i % 9 == 4 || (60..75).contains(&i) {
+                *v = f32::NAN;
+            }
+        }
+        vec![
+            (0..400)
+                .map(|t| 3.0 + (tau * t as f32 / 24.0).sin())
+                .collect(),
+            vec![1.5; 120],
+            (0..29).map(|t| (tau * t as f32 / 6.0).cos()).collect(),
+            gaps,
+            (0..1500)
+                .map(|t| t as f32 * 0.1 + (t as f32 * 0.7).sin())
+                .collect(),
+            synth::series(synth::Kind::Sarima, 3, 333),
+        ]
+    }
+
+    /// The trainer's front end is the engine's: the window of a context holds exactly the
+    /// numbers `sky_infer::cast::CastModel` computes for it (`prep::inputs` with the layout the
+    /// engine reads from the GGUF keys), bit for bit. CPU only: no MLX array is made.
+    #[test]
+    fn front_end_parity_with_the_engine() {
+        for c in [cfg2(), cfg()] {
+            let engine = c.infer();
+            assert_eq!(engine.layout(), c.layout());
+            engine.validate().unwrap();
+            for ctx in fixtures() {
+                let w = window(&c, &ctx, &[]).unwrap();
+                let i = prep::inputs(&ctx, &engine.layout());
+                assert_eq!(w.norm, i.norm);
+                let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+                assert_eq!(bits(&w.vals), bits(&i.vals));
+                assert_eq!(bits(&w.mask), bits(&i.mask));
+                assert_eq!(bits(&w.phase), bits(&i.phase));
+                assert_eq!(bits(&w.draft), bits(&i.draft));
+                let l = c.layout();
+                assert_eq!(w.phase.len(), c.context_patches * l.phase_width());
+                assert_eq!(w.draft.len(), c.horizon_patches * l.draft_width());
+                if c.periods > 0 {
+                    assert_eq!(i.periods.len(), c.periods);
+                }
+            }
+        }
+        // the fixtures hold a detected period and a context without one
+        let l = cfg2().layout();
+        let found: Vec<usize> = fixtures()
+            .iter()
+            .map(|x| prep::inputs(x, &l).periods[0])
+            .collect();
+        assert_eq!(found[0], 24, "{found:?}");
+        assert_eq!(found[1], 0, "{found:?}");
+    }
+
+    /// The batch tensors of the front end: `[B, C, 2K]` phase channels and `[B, hq, width]`
+    /// drafts in window order (MLX on the CPU device).
+    #[test]
+    fn batch_carries_the_front_end() {
+        let _g = crate::test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let c = cfg2();
+            let ws: Vec<Window> = fixtures()
+                .iter()
+                .map(|x| window(&c, x, &[0.0; 4]).unwrap())
+                .collect();
+            let b = batch(&c, &ws);
+            let ph = b.phase.as_ref().unwrap();
+            let dr = b.draft.as_ref().unwrap();
+            assert_eq!(ph.shape(), &[ws.len() as i32, 40, 8]);
+            assert_eq!(dr.shape(), &[ws.len() as i32, 2, 24]);
+            let flat: Vec<f32> = ws.iter().flat_map(|w| w.draft.clone()).collect();
+            assert_eq!(dr.as_slice::<f32>(), flat.as_slice());
+            assert!(batch(&cfg(), &ws[..1]).phase.is_none());
+        });
+    }
+
+    #[test]
+    fn bands_parse_and_draw() {
+        let w = parse_band_weights("hourly=31,subhourly=30,daily=15,weekly=8,monthly=7,second=6")
+            .unwrap();
+        assert_eq!(w, [6.0, 30.0, 31.0, 15.0, 8.0, 7.0]);
+        assert!(parse_band_weights("hourly=1,hourly=2").is_err());
+        assert!(parse_band_weights("yearly=1").is_err());
+        let p = parse_band_periods("second=360,monthly=12:4").unwrap();
+        assert_eq!((p[0].clone(), p[5].clone()), (vec![360], vec![12, 4]));
+        let real: Vec<Series> = ["london_smart_meters:T1", "wiki_daily:T2", "flappy:0:vy"]
+            .iter()
+            .map(|id| Series {
+                id: id.to_string(),
+                values: vec![1.0; 500],
+            })
+            .collect();
+        assert_eq!(band_of("flappy:0:vy"), None);
+        // a band of positive weight with neither real series nor stand-in periods is an error
+        assert!(Bands::new(&real, w, Default::default()).is_err());
+        let synth_p = parse_band_periods("second=360,hourly=24,weekly=52,monthly=12:4").unwrap();
+        let b = Bands::new(&real, w, synth_p).unwrap();
+        assert_eq!(b.members[Band::SubHourly as usize], vec![0]);
+        assert_eq!(b.members[Band::Daily as usize], vec![1]);
+        let mut rng = Rng::new(1);
+        let mut hits = [0usize; 6];
+        let mut game = 0;
+        for _ in 0..9700 {
+            let (band, i) = b.draw(&mut rng);
+            hits[band as usize] += 1;
+            game += usize::from(i == Some(2));
+        }
+        assert_eq!(game, 0, "the game series has no band");
+        // about 31 / 97 hourly, 6 / 97 second-level
+        assert!(
+            (2700..3500).contains(&hits[Band::Hourly as usize]),
+            "{hits:?}"
+        );
+        assert!(
+            (400..800).contains(&hits[Band::Second as usize]),
+            "{hits:?}"
+        );
+        // the windows: real ones from their band, stand-ins for the empty bands
+        let c = cfg2();
+        let pool = Pool::new_in(4, 8, 6048, 2, 50, &synth::PERIODS_V2);
+        let o = SampleOptions {
+            real_frac: 0.6,
+            flip: 0.5,
+            set: &synth::PERIODS_V2,
+            ..SampleOptions::default()
+        };
+        let ws = sample(&c, &pool, &real, &o, &mut Rng::new(2), 300, Some(&b));
+        let count = |o: Origin| ws.iter().filter(|w| w.origin == o).count();
+        assert!(
+            count(Origin::Real) > 0 && count(Origin::BandSynth) > 0 && count(Origin::Synth) > 0
+        );
+        assert!(ws
+            .iter()
+            .filter(|w| w.origin == Origin::Real)
+            .all(|w| matches!(w.band, Some(Band::SubHourly | Band::Daily))));
+        assert!(ws
+            .iter()
+            .all(|w| w.phase.len() == 40 * 8 && w.draft.len() == 2 * 24));
+    }
+
     #[test]
     fn game_state_texts_become_series() {
         assert_eq!(
@@ -834,6 +1312,7 @@ mod tests {
             0,
             40,
             Some((&cache, 0.5)),
+            None,
         )
         .unwrap();
         let distilled = ws.iter().filter(|w| w.tmask[0] == 1.0).count();
@@ -874,6 +1353,7 @@ mod tests {
             &SampleOptions::default(),
             &mut Rng::new(5),
             400,
+            None,
         );
         let observed = |w: &Window| w.mask.iter().filter(|&&m| m > 0.0).count();
         // some windows read fewer than 4 patches (8–31 points), so their first patch is partial
@@ -931,7 +1411,7 @@ mod tests {
             values: (0..400).map(|t| (t as f32 * 0.3).sin()).collect(),
         }];
         let o = SampleOptions::default();
-        let draw = |seed| sample(&c, &pool, &real, &o, &mut Rng::new(seed), 32);
+        let draw = |seed| sample(&c, &pool, &real, &o, &mut Rng::new(seed), 32, None);
         let (x, y) = (draw(3), draw(3));
         assert_eq!(x.len(), 32);
         assert_eq!(

@@ -2,6 +2,10 @@
 //! forward pass (patch projection, the s2 state encoder with its exits, the cross-attention
 //! decoder and the non-crossing quantile head) and the pinball loss. sky-infer `cast::model`
 //! mirrors it on the CPU.
+//!
+//! With the v2 front end (docs/s6-cast2-prereg.md §4.2–4.3) the batch carries each window's
+//! phase channels (appended to every patch row) and its seasonal draft (projected by
+//! `draft_proj` and added to the decoder queries), both computed by `sky_infer::cast::prep`.
 
 use std::borrow::Cow;
 
@@ -35,9 +39,10 @@ const DEC_MATRICES: [&str; 5] = [
 const HEAD_SPREAD_BIAS: f32 = -3.0;
 
 /// True for the matrices stored ternary and fake-quantized during QAT: the encoder blocks (as
-/// s2), the decoder and the quantile head. `patch_proj`, `cast_query` and the norms stay float.
+/// s2), the decoder, the quantile head and (v2, docs/s6-cast2-prereg.md §4.4 and O4)
+/// `draft_proj`. `patch_proj`, `cast_query` and the norms stay float.
 pub fn is_ternary(name: &str) -> bool {
-    if name == "quant_head.weight" {
+    if name == "quant_head.weight" || name == "draft_proj.weight" {
         return true;
     }
     let dec = name.starts_with("dec.") && DEC_MATRICES.iter().any(|m| name.ends_with(m));
@@ -48,7 +53,7 @@ pub fn is_ternary(name: &str) -> bool {
 fn specs(cfg: &CastConfig) -> Vec<(String, Vec<i32>, Init)> {
     let d = cfg.hidden_size as i32;
     let ff = cfg.intermediate_size as i32;
-    let p2 = 2 * cfg.patch as i32;
+    let p2 = cfg.layout().patch_width() as i32;
     let lin = |fan_in: i32| Init::Uniform(1.0 / (fan_in as f32).sqrt());
     let mut out = vec![
         ("patch_proj.weight".to_string(), vec![d, p2], lin(p2)),
@@ -85,6 +90,11 @@ fn specs(cfg: &CastConfig) -> Vec<(String, Vec<i32>, Init)> {
         vec![cfg.horizon_patches as i32, d],
         Init::TruncNormal(0.02),
     ));
+    if cfg.draft {
+        let dw = cfg.layout().draft_width() as i32;
+        out.push(("draft_proj.weight".to_string(), vec![d, dw], lin(dw)));
+        out.push(("draft_proj.bias".to_string(), vec![d], Init::Zeros));
+    }
     for n in 0..cfg.decoder_layers {
         let p = format!("dec.{n}");
         for norm in ["q_norm", "kv_norm", "ffn_norm"] {
@@ -197,6 +207,10 @@ pub struct CastBatch {
     /// `[B, horizon]` step mask (0 without a teacher).
     pub tq: Array,
     pub tmask: Array,
+    /// v2: `[B, context_patches, 2K]` phase channels of the patches.
+    pub phase: Option<Array>,
+    /// v2: `[B, horizon_patches, 2·patch + 2K]` seasonal draft of the query patches.
+    pub draft: Option<Array>,
     pub rows: usize,
 }
 
@@ -231,10 +245,14 @@ fn forward_prepared(p: &ParamMap, cfg: &CastConfig, b: &CastBatch) -> R<Array> {
     let ne = cfg.n_exits() as i32;
     let hq = cfg.horizon_patches as i32;
     let nq = cfg.quantiles.len() as i32;
-    let u = ops::concatenate(
-        &[b.vals.reshape(&[bs, c, pl])?, b.mask.reshape(&[bs, c, pl])?],
-        -1,
-    )?;
+    let mut rows = vec![b.vals.reshape(&[bs, c, pl])?, b.mask.reshape(&[bs, c, pl])?];
+    if cfg.periods > 0 {
+        let ph = b.phase.as_ref().ok_or_else(|| {
+            Exception::custom("the config has a front end, the batch has no phase channels")
+        })?;
+        rows.push(ph.clone());
+    }
+    let u = ops::concatenate(&rows, -1)?;
     let x = linear(
         &u,
         w(p, "patch_proj.weight")?,
@@ -266,7 +284,18 @@ fn forward_prepared(p: &ParamMap, cfg: &CastConfig, b: &CastBatch) -> R<Array> {
         )
     };
     let query = w(p, "cast_query.weight")?.reshape(&[1, hq, d])?;
-    let mut xq = ops::broadcast_to(&query, &[ne * bs, hq, d])?;
+    let mut xq = if cfg.draft {
+        // v2: each window's queries are the learned ones plus its projected draft, the same for
+        // every exit (exits are stacked exit-major, as kv_in)
+        let dr = b
+            .draft
+            .as_ref()
+            .ok_or_else(|| Exception::custom("the config has a draft, the batch has none"))?;
+        let q = query.add(lin(dr, "draft_proj")?)?;
+        ops::concatenate(&vec![q; ne as usize], 0)?
+    } else {
+        ops::broadcast_to(&query, &[ne * bs, hq, d])?
+    };
     for n in 0..cfg.decoder_layers {
         let pre = format!("dec.{n}");
         let q = heads(
@@ -390,6 +419,29 @@ mod tests {
         assert!(is_ternary("dec.0.ffn_down.weight") && is_ternary("quant_head.weight"));
         assert!(is_ternary("blk.0.attn_qkv.weight") && !is_ternary("patch_proj.weight"));
         assert!(!is_ternary("dec.0.ffn_down.bias") && !is_ternary("cast_query.weight"));
+        assert!(is_ternary("draft_proj.weight") && !is_ternary("draft_proj.bias"));
+        assert_eq!(group_of("draft_proj.weight", 2), Group::AdamDecay);
+    }
+
+    /// docs/s6-cast2-prereg.md §4.4: 369,792 (v1's trained graph) + 768 (`patch_proj`'s phase
+    /// columns) + 7,008 (`draft_proj`) = 377,568.
+    #[test]
+    fn v2_parameter_count() {
+        let load = |n: &str| {
+            CastConfig::load(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join(format!("../../configs/{n}.json")),
+            )
+            .unwrap()
+        };
+        let mut v1 = load("s6-cast-pico");
+        v1.parallax = false;
+        assert_eq!(expected_count(&v1), 369_792);
+        assert_eq!(expected_count(&load("s6-cast2-pico")), 377_568);
+        let shapes = param_shapes(&load("s6-cast2-pico"));
+        let get = |n: &str| shapes.iter().find(|(k, _)| k == n).unwrap().1.clone();
+        assert_eq!(get("patch_proj.weight"), vec![96, 72]);
+        assert_eq!(get("draft_proj.weight"), vec![96, 72]);
     }
 
     #[test]
@@ -422,6 +474,8 @@ mod tests {
                 ymask: Array::from_slice(&[1.0f32, 1.0], &[1, 2]),
                 tq: Array::from_slice(&[0.5f32, 0.5, 0.5, 0.0, 0.0, 0.0], &[1, 2, 3]),
                 tmask: Array::from_slice(&[1.0f32, 0.0], &[1, 2]),
+                phase: None,
+                draft: None,
                 rows: 1,
             };
             let q = ops::zeros::<f32>(&[1, 1, 2, 3]).unwrap();

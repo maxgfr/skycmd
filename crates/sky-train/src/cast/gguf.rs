@@ -63,6 +63,13 @@ pub fn to_gguf(p: &ParamMap, cfg: &CastConfig, format: WeightFormat) -> Result<V
     w.add_kv(k("layer_norm_epsilon"), OwnedValue::F32(cfg.norm_eps));
     w.add_kv(k("exit_tolerance"), OwnedValue::F32(cfg.exit_tolerance));
     w.add_kv(k("weight_format"), format.name());
+    // the v2 front end (docs/s6-cast2-prereg.md §4.4); a v1 file has neither key
+    if cfg.periods > 0 {
+        w.add_kv(k("periods"), u(cfg.periods));
+    }
+    if cfg.draft {
+        w.add_kv(k("draft"), true);
+    }
     for (name, shape) in param_shapes(cfg) {
         let a = p
             .get(name.as_str())
@@ -122,6 +129,8 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<CastConfig> {
         rope_theta: c.rope_theta,
         norm_eps: c.norm_eps,
         exit_tolerance: c.exit_tolerance,
+        periods: c.periods,
+        draft: c.draft,
         qat_grad_a: 0.0,
     })
 }
@@ -165,9 +174,15 @@ mod tests {
     #[test]
     fn round_trip() {
         let _g = test_util::lock();
+        for name in ["s6-cast-femto", "s6-cast2-femto"] {
+            round_trip_of(name);
+        }
+    }
+
+    fn round_trip_of(name: &str) {
         let cfg = CastConfig::load(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../configs/s6-cast-femto.json"),
+                .join(format!("../../configs/{name}.json")),
         )
         .unwrap();
         let p = super::super::model::init(&cfg, 3).unwrap();
@@ -185,5 +200,12 @@ mod tests {
         let mut want = cfg.infer();
         want.weight_format = "ternary".into();
         assert_eq!(m.cfg, want);
+        // the front-end keys are written only for v2, and draft_proj is stored ternary
+        let gt = Gguf::parse(&t).unwrap();
+        let v2 = cfg.periods > 0;
+        assert_eq!(gt.get_u64("skycmd-cast.periods").is_some(), v2);
+        assert_eq!(gt.get_bool("skycmd-cast.draft").is_some(), v2);
+        assert_eq!(gt.tensor("draft_proj.tq").is_some(), v2);
+        assert_eq!(m.draft_proj.is_some(), v2);
     }
 }

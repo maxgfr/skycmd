@@ -40,6 +40,14 @@ pub struct CastConfig {
     /// Early-exit tolerance (`cast-calibrate`); 0 runs every exit.
     #[serde(default)]
     pub exit_tolerance: f32,
+    /// v2 front end (docs/s6-cast2-prereg.md §4.2): detected periods whose phase channels are
+    /// appended to every patch (0: none, v1).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub periods: usize,
+    /// v2 (§4.3): the seasonal draft of each query patch, through `draft_proj`, added to its
+    /// query.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub draft: bool,
     /// StableQAT amplitude of the ternary fake quantization (runtime only, as in s2).
     #[serde(skip)]
     pub qat_grad_a: f32,
@@ -47,6 +55,12 @@ pub struct CastConfig {
 
 fn one() -> usize {
     1
+}
+fn is_zero(v: &usize) -> bool {
+    *v == 0
+}
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 fn deciles() -> Vec<f32> {
     sky_infer::cast::DECILES.to_vec()
@@ -93,6 +107,11 @@ impl CastConfig {
 
     pub fn context(&self) -> usize {
         self.context_patches * self.patch
+    }
+
+    /// The input layout of a window, as sky-infer prepares it (`prep::inputs`).
+    pub fn layout(&self) -> sky_infer::cast::prep::Layout {
+        self.infer().layout()
     }
 
     /// Deep-supervision weights over the exits (as s2: `linspace(0.5, 1)`, normalized).
@@ -152,6 +171,8 @@ impl CastConfig {
             norm_eps: self.norm_eps,
             exit_tolerance: self.exit_tolerance,
             weight_format: "f32".into(),
+            periods: self.periods,
+            draft: self.draft,
         }
     }
 }
@@ -162,13 +183,40 @@ mod tests {
 
     #[test]
     fn ladder_configs_load() {
-        for name in ["s6-cast-pico", "s6-cast-femto"] {
+        for name in [
+            "s6-cast-pico",
+            "s6-cast-femto",
+            "s6-cast2-pico",
+            "s6-cast2-femto",
+        ] {
             let path =
                 Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../configs/{name}.json"));
             let cfg = CastConfig::load(&path).unwrap();
             assert_eq!(cfg.name, name);
             assert_eq!(cfg.quantiles, sky_infer::cast::DECILES);
             assert_eq!(*cfg.exits.last().unwrap(), cfg.depth());
+            let v2 = name.starts_with("s6-cast2");
+            assert_eq!(
+                (cfg.periods, cfg.draft),
+                if v2 { (4, true) } else { (0, false) }
+            );
         }
+        // v2 is v1's trained graph (runs/recipe/configs/s6-cast-pico.json: no Parallax, no
+        // XSA) with the front end of docs/s6-cast2-prereg.md §4
+        let load = |n: &str| {
+            CastConfig::load(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../configs/{n}.json")),
+            )
+            .unwrap()
+        };
+        let v2 = load("s6-cast2-pico");
+        let mut back = v2.clone();
+        (back.periods, back.draft, back.name) = (0, false, "s6-cast-pico".into());
+        let mut v1 = load("s6-cast-pico");
+        (v1.parallax, v1.xsa) = (false, false);
+        assert_eq!(back, v1);
+        // a v1 config serializes as before: no front-end key
+        let text = serde_json::to_string(&load("s6-cast-pico")).unwrap();
+        assert!(!text.contains("periods") && !text.contains("draft"));
     }
 }
