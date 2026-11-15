@@ -11,6 +11,14 @@
 //! const view = JSON.parse(game.snapshot());
 //! ```
 //!
+//! The secrets verifier (s6-secrets-verify-pico, [`verify`]):
+//!
+//! ```js
+//! const v = new SecretVerifier(ggufBytes, dictionaryBytes);
+//! const { p_real, state_tokens, truncated, micros } = JSON.parse(v.judge(JSON.stringify(record)));
+//! const { tau_f1 } = JSON.parse(v.thresholds());   // accepted when p_real >= tau_f1
+//! ```
+//!
 //! The Rust API ([`Model`], [`Session`], [`session::bench`]) is usable natively; the
 //! `#[wasm_bindgen]` types below are thin wrappers that turn errors into JS exceptions.
 
@@ -18,6 +26,7 @@ pub mod clock;
 pub mod forecast;
 pub mod model;
 pub mod session;
+pub mod verify;
 
 pub use model::Model;
 pub use session::{AiStep, HumanStep, Policy, Session};
@@ -212,6 +221,58 @@ impl Engine {
         Ok(Engine {
             inner: Model::load(gguf_bytes)?,
         })
+    }
+}
+
+/// The secrets verifier: s6-secrets-verify-pico judging rule candidates at full depth. The
+/// candidate JSON is documented in [`verify`].
+#[wasm_bindgen]
+pub struct SecretVerifier {
+    inner: verify::Verifier,
+}
+
+#[wasm_bindgen]
+impl SecretVerifier {
+    /// From the GGUF bytes of the model and the bytes of the word list (`dictionary.txt`).
+    #[wasm_bindgen(constructor)]
+    pub fn new(gguf_bytes: &[u8], words_bytes: &[u8]) -> Result<SecretVerifier, JsError> {
+        Ok(SecretVerifier {
+            inner: verify::Verifier::load(gguf_bytes, words_bytes).map_err(|e| JsError::new(&e))?,
+        })
+    }
+
+    /// One candidate (a JSON object) -> `{p_real, state_tokens, truncated, micros}` as JSON.
+    pub fn judge(&mut self, candidate_json: &str) -> Result<String, JsError> {
+        self.inner
+            .judge(candidate_json)
+            .map(|v| v.to_string())
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// A JSON array of candidates -> a JSON array of answers, in the same order.
+    #[wasm_bindgen(js_name = judgeMany)]
+    pub fn judge_many(&mut self, candidates_json: &str) -> Result<String, JsError> {
+        self.inner
+            .judge_many(candidates_json)
+            .map(|v| v.to_string())
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// `{tau_f1, tau_f05, tau_f2}` as JSON: the operating thresholds stored in the file.
+    pub fn thresholds(&self) -> String {
+        self.inner.thresholds().to_string()
+    }
+
+    /// The state text the model reads for a candidate (tests, parity).
+    pub fn state(&self, candidate_json: &str) -> Result<String, JsError> {
+        self.inner
+            .state(candidate_json)
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// `{name, n_params, file_bytes, window, words}` as JSON.
+    pub fn info(&self) -> String {
+        self.inner.info().to_string()
     }
 }
 

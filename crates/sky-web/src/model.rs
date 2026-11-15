@@ -69,6 +69,11 @@ impl Model {
         }
     }
 
+    /// The underlying engine, read-only.
+    pub fn engine(&self) -> &sky_infer::Engine {
+        &self.inner
+    }
+
     /// The underlying engine.
     pub fn engine_mut(&mut self) -> &mut sky_infer::Engine {
         &mut self.inner

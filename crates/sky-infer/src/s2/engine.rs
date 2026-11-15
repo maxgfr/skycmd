@@ -280,6 +280,24 @@ impl S2Engine {
         (ids, values, has_value)
     }
 
+    /// Length of the state stream `[CLS] {state} [SEP]` before its cut to `max_state_tokens`:
+    /// the state was truncated when this is larger than the window.
+    pub fn state_len_uncut(&self, state: &str) -> usize {
+        let pt = self.pt();
+        let (mut ids, mut values, mut has_value) = (Vec::new(), Vec::new(), Vec::new());
+        prompt::build_state(
+            &self.tok,
+            &pt,
+            state,
+            usize::MAX,
+            &mut ids,
+            &mut values,
+            &mut has_value,
+            None,
+        );
+        ids.len()
+    }
+
     /// Bring the static encoding of a question to the front of the LRU (encoding it on a miss).
     /// Returns whether it was cached.
     fn prepare_static<S: AsRef<str>>(
