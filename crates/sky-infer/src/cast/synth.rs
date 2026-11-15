@@ -15,6 +15,10 @@
 //!   shifts.
 //! - [`Kind::Sarima`]: seasonal ARIMA simulation with stationary AR parts (sampled through their
 //!   partial autocorrelations), optional differencing and seasonal differencing.
+//!
+//! The generators draw their periods from a period set: [`PERIODS`] (s6-cast v1, what
+//! [`series`] and [`mixed`] use) or [`PERIODS_V2`] (docs/s6-cast2-prereg.md, C4), through
+//! [`series_in`] and [`mixed_in`]. A seed gives the same series as before for the v1 set.
 
 use std::f64::consts::PI;
 
@@ -23,6 +27,20 @@ use std::f64::consts::PI;
 pub const PERIODS: [usize; 19] = [
     24, 48, 96, 168, 336, 672, 7, 14, 30, 60, 365, 730, 4, 26, 52, 6, 12, 40, 10,
 ];
+
+/// The period set of s6-cast v2 (docs/s6-cast2-prereg.md, C4): [`PERIODS`] then the daily and
+/// weekly cycles of 5- and 10-minute data and the hourly cycle of 10-second data (144, 288, 360,
+/// 1,008, 1,440, 2,016). Appended, so the v1 periods keep their indices.
+pub const PERIODS_V2: [usize; 25] = [
+    24, 48, 96, 168, 336, 672, 7, 14, 30, 60, 365, 730, 4, 26, 52, 6, 12, 40, 10, 144, 288, 360,
+    1008, 1440, 2016,
+];
+
+/// The shortest series in which every period of `set` can be drawn by every generator: two
+/// cycles, read by SARIMA from two thirds of the series (`3 · max`). 6,048 for [`PERIODS_V2`].
+pub fn min_len_for(set: &[usize]) -> usize {
+    3 * set.iter().copied().max().unwrap_or(0)
+}
 
 /// A generator family.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,20 +156,30 @@ impl SynthRng {
     }
 }
 
-/// A series of family `kind`, `len` points long, from `seed`. Always finite.
+/// A series of family `kind`, `len` points long, from `seed`, with the v1 periods. Always finite.
 pub fn series(kind: Kind, seed: u64, len: usize) -> Vec<f32> {
+    series_in(kind, seed, len, &PERIODS)
+}
+
+/// [`series`] with the periods drawn from `set` (non-empty).
+pub fn series_in(kind: Kind, seed: u64, len: usize, set: &[usize]) -> Vec<f32> {
     let mut rng = SynthRng::new(seed ^ (kind as u64).wrapping_mul(0xA24B_AED4_963E_E407));
     let raw = match kind {
-        Kind::Gp => gp(&mut rng, len),
-        Kind::Pulse => pulse(&mut rng, len),
-        Kind::Tsi => tsi(&mut rng, len),
-        Kind::Sarima => sarima(&mut rng, len),
+        Kind::Gp => gp(&mut rng, len, set),
+        Kind::Pulse => pulse(&mut rng, len, set),
+        Kind::Tsi => tsi(&mut rng, len, set),
+        Kind::Sarima => sarima(&mut rng, len, set),
     };
     finite(raw)
 }
 
-/// A series from a family drawn with [`Kind::WEIGHTS`].
+/// A series from a family drawn with [`Kind::WEIGHTS`], with the v1 periods.
 pub fn mixed(seed: u64, len: usize) -> (Kind, Vec<f32>) {
+    mixed_in(seed, len, &PERIODS)
+}
+
+/// [`mixed`] with the periods drawn from `set`.
+pub fn mixed_in(seed: u64, len: usize, set: &[usize]) -> (Kind, Vec<f32>) {
     let mut rng = SynthRng::new(seed);
     let r = rng.f64() * Kind::WEIGHTS.iter().sum::<f64>();
     let mut acc = 0.0;
@@ -163,7 +191,7 @@ pub fn mixed(seed: u64, len: usize) -> (Kind, Vec<f32>) {
             break;
         }
     }
-    (kind, series(kind, rng.next_u64(), len))
+    (kind, series_in(kind, rng.next_u64(), len, set))
 }
 
 /// Replaces non-finite values and caps the dynamic range (an exponential trend or an integrated
@@ -190,9 +218,9 @@ fn finite(v: Vec<f64>) -> Vec<f32> {
         .collect()
 }
 
-/// The generator periods that fit at least twice in `len` points (at least `[4]`).
-fn periods(len: usize) -> Vec<usize> {
-    let p: Vec<usize> = PERIODS.iter().copied().filter(|&p| 2 * p <= len).collect();
+/// The periods of `set` that fit at least twice in `len` points (at least `[4]`).
+fn periods(set: &[usize], len: usize) -> Vec<usize> {
+    let p: Vec<usize> = set.iter().copied().filter(|&p| 2 * p <= len).collect();
     if p.is_empty() {
         vec![4.min(len.max(2))]
     } else {
@@ -222,7 +250,7 @@ fn rff(rng: &mut SynthRng, len: usize, mut omega: impl FnMut(&mut SynthRng) -> f
 }
 
 /// One kernel draw from the bank (length scales relative to the series length, as on `[0, 1]`).
-fn kernel_draw(rng: &mut SynthRng, len: usize) -> Vec<f64> {
+fn kernel_draw(rng: &mut SynthRng, len: usize, set: &[usize]) -> Vec<f64> {
     let n = len as f64;
     let scale = |rng: &mut SynthRng| rng.pick(&[0.1, 1.0, 10.0]) * n;
     match rng.below(6) {
@@ -256,7 +284,7 @@ fn kernel_draw(rng: &mut SynthRng, len: usize) -> Vec<f64> {
         }
         // periodic: a Fourier series of period p with decaying harmonics
         _ => {
-            let p = rng.pick(&periods(len)) as f64;
+            let p = rng.pick(&periods(set, len)) as f64;
             let decay = rng.range(0.5, 3.0);
             let harmonics = 1 + rng.below(6);
             let coef: Vec<(f64, f64, f64)> = (1..=harmonics)
@@ -277,11 +305,11 @@ fn kernel_draw(rng: &mut SynthRng, len: usize) -> Vec<f64> {
     }
 }
 
-fn gp(rng: &mut SynthRng, len: usize) -> Vec<f64> {
+fn gp(rng: &mut SynthRng, len: usize, set: &[usize]) -> Vec<f64> {
     let n_kernels = 1 + rng.below(5);
-    let mut f = kernel_draw(rng, len);
+    let mut f = kernel_draw(rng, len, set);
     for _ in 1..n_kernels {
-        let g = kernel_draw(rng, len);
+        let g = kernel_draw(rng, len, set);
         let add = rng.coin(0.5);
         for (x, y) in f.iter_mut().zip(g) {
             *x = if add { *x + y } else { *x * y };
@@ -303,10 +331,10 @@ fn gp(rng: &mut SynthRng, len: usize) -> Vec<f64> {
 
 // ----------------------------------------------------------------------------- pulses
 
-fn pulse(rng: &mut SynthRng, len: usize) -> Vec<f64> {
+fn pulse(rng: &mut SynthRng, len: usize, set: &[usize]) -> Vec<f64> {
     let baseline = rng.normal();
     let p = if rng.coin(0.7) {
-        rng.pick(&periods(len))
+        rng.pick(&periods(set, len))
     } else {
         (8 + rng.below((len / 4).max(9) - 8)).min(len.max(2))
     };
@@ -337,7 +365,7 @@ fn pulse(rng: &mut SynthRng, len: usize) -> Vec<f64> {
 
 // ----------------------------------------------------------------------------- trend + seasonality
 
-fn tsi(rng: &mut SynthRng, len: usize) -> Vec<f64> {
+fn tsi(rng: &mut SynthRng, len: usize, set: &[usize]) -> Vec<f64> {
     let n = len as f64;
     let mut y = vec![rng.normal(); len];
     if rng.coin(0.7) {
@@ -385,7 +413,7 @@ fn tsi(rng: &mut SynthRng, len: usize) -> Vec<f64> {
         }
     }
     if rng.coin(0.8) {
-        let ps = periods(len);
+        let ps = periods(set, len);
         for _ in 0..1 + rng.below(3) {
             let p = rng.pick(&ps) as f64;
             let amp = rng.range(0.2, 2.0);
@@ -481,8 +509,8 @@ fn seasonal_poly(a: &[f64], b: &[f64], s: usize) -> Vec<f64> {
     full[1..].iter().map(|x| -x).collect()
 }
 
-fn sarima(rng: &mut SynthRng, len: usize) -> Vec<f64> {
-    let ps = periods(len.saturating_mul(2) / 3);
+fn sarima(rng: &mut SynthRng, len: usize, set: &[usize]) -> Vec<f64> {
+    let ps = periods(set, len.saturating_mul(2) / 3);
     let s = rng.pick(&ps).max(2);
     let p = rng.below(4);
     let q = rng.below(3);
@@ -555,7 +583,14 @@ fn std(v: &[f64]) -> f64 {
 /// the modulation's mean and the censoring's quantile are taken over the observed values, and a
 /// NaN is never clipped into a fake observation. Downsampling changes the length, so the window
 /// cutter applies it ([`downsample`]); mixup needs two series ([`mixup`]).
-pub fn augment(rng: &mut SynthRng, mut y: Vec<f32>, p: f64) -> Vec<f32> {
+pub fn augment(rng: &mut SynthRng, y: Vec<f32>, p: f64) -> Vec<f32> {
+    augment_with(rng, y, p, p)
+}
+
+/// [`augment`] with the sign flip and the time reversal at probability `p_flip` each, the other
+/// augmentations at `p` (docs/s6-cast2-prereg.md, C5). The draws are the same as [`augment`]'s,
+/// so `p_flip = p` gives its output exactly.
+pub fn augment_with(rng: &mut SynthRng, mut y: Vec<f32>, p: f64, p_flip: f64) -> Vec<f32> {
     let finite: Vec<f32> = y.iter().copied().filter(|v| v.is_finite()).collect();
     if rng.coin(p) && !finite.is_empty() {
         let n = y.len().max(1) as f64;
@@ -572,10 +607,10 @@ pub fn augment(rng: &mut SynthRng, mut y: Vec<f32>, p: f64) -> Vec<f32> {
             }
         });
     }
-    if rng.coin(p) {
+    if rng.coin(p_flip) {
         y.iter_mut().for_each(|v| *v = -*v);
     }
-    if rng.coin(p) {
+    if rng.coin(p_flip) {
         y.reverse();
     }
     if rng.coin(p) && finite.len() > 4 {
@@ -713,5 +748,82 @@ mod tests {
             assert!(ag.iter().filter(|v| !v.is_nan()).all(|v| v.is_finite()));
         }
         assert_eq!(downsample(&[1.0, 2.0, 3.0, 4.0, 5.0], 2), [1.0, 3.0, 5.0]);
+    }
+
+    fn fnv(h: u64, v: &[f32]) -> u64 {
+        v.iter().fold(h, |h, x| {
+            x.to_bits().to_le_bytes().iter().fold(h, |h, &b| {
+                (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3)
+            })
+        })
+    }
+
+    /// What v1's seeds produce, pinned before the v2 options were added (the hash of every
+    /// value of 4 lengths x 12 seeds x every family, the mix and two augmentations). The v2
+    /// options off must give it bit for bit.
+    #[test]
+    fn v1_output_is_pinned() {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for len in [64, 700, 3136, 6048] {
+            for seed in 0..12 {
+                for kind in Kind::ALL {
+                    h = fnv(h, &series(kind, seed, len));
+                }
+                h = fnv(h, &mixed(seed, len).1);
+                let mut rng = SynthRng::new(seed);
+                h = fnv(h, &augment(&mut rng, series(Kind::Tsi, seed, len), 0.3));
+                h = fnv(h, &augment(&mut rng, series(Kind::Gp, seed, len), 1.0));
+            }
+        }
+        assert_eq!(h, 0x5645_7413_cc8c_4e2d, "v1's generator output changed");
+        // the v1 set through the v2 entry points is v1, and flip at p is augment at p
+        for seed in 0..12 {
+            assert_eq!(
+                mixed_in(seed, 3136, &PERIODS),
+                mixed(seed, 3136),
+                "seed {seed}"
+            );
+            let y = series(Kind::Sarima, seed, 700);
+            let (mut a, mut b) = (SynthRng::new(seed), SynthRng::new(seed));
+            assert_eq!(
+                augment(&mut a, y.clone(), 0.3),
+                augment_with(&mut b, y, 0.3, 0.3)
+            );
+        }
+    }
+
+    #[test]
+    fn v2_periods_reach_the_generators() {
+        assert_eq!(&PERIODS_V2[..19], &PERIODS[..]);
+        assert_eq!(min_len_for(&PERIODS_V2), 6048);
+        // every added period can be drawn at that length, by SARIMA (two thirds) too
+        let n = min_len_for(&PERIODS_V2);
+        for p in [144, 288, 360, 1008, 1440, 2016] {
+            assert!(periods(&PERIODS_V2, n).contains(&p), "{p}");
+            assert!(periods(&PERIODS_V2, n * 2 / 3).contains(&p), "{p}");
+            assert!(!periods(&PERIODS, n).contains(&p), "{p}");
+        }
+        // the v2 set changes some series of the same seed, and stays finite and deterministic
+        let changed = (0..40)
+            .filter(|&s| mixed_in(s, n, &PERIODS_V2) != mixed(s, n))
+            .count();
+        assert!(changed > 0);
+        for s in 0..8 {
+            let (_, y) = mixed_in(s, n, &PERIODS_V2);
+            assert!(y.len() == n && y.iter().all(|v| v.is_finite()));
+            assert_eq!(mixed_in(s, n, &PERIODS_V2).1, y);
+        }
+    }
+
+    #[test]
+    fn flip_probability_is_separate() {
+        // p = 0 for the others, p_flip = 1: exactly a sign flip and a reversal
+        let y: Vec<f32> = (0..50).map(|t| t as f32).collect();
+        let mut rng = SynthRng::new(4);
+        let a = augment_with(&mut rng, y.clone(), 0.0, 1.0);
+        let want: Vec<f32> = y.iter().rev().map(|v| -v).collect();
+        assert_eq!(a, want);
+        let mut rng = SynthRng::new(4);
+        assert_eq!(augment_with(&mut rng, y.clone(), 0.0, 0.0), y);
     }
 }
