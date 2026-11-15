@@ -29,6 +29,15 @@ tags:
 > is not continued in this form. Numbers:
 > [BENCH.md, section s6-secrets-verify-pico](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-secrets-verify-pico-s6-secrets-v2-a-verifier-of-rule-candidates-pre-registered-gate-failed)
 > and [`runs/s6-secrets2/eval-test/results.md`](https://github.com/maxgfr/skycmd/blob/main/runs/s6-secrets2/eval-test/results.md).
+>
+> **The system with the rules was read too, and failed the same gate.** s6-secrets v3
+> ([`docs/s6-secrets3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets3-prereg.md))
+> flags a line when secretgate's default rules flag it or when this model, unchanged, accepts a
+> candidate on it (P(real) ≥ 0.34933). Read on the same seven gates, on a second look at the same
+> test files with the system defined after the first reading, it reached **0.8477** against
+> **0.7332 + 0.15**: G1 failed again; the six other gates held. There is no third reading, and the
+> work on this model ends
+> ([`runs/s6-secrets3/eval-test/results.md`](https://github.com/maxgfr/skycmd/blob/main/runs/s6-secrets3/eval-test/results.md)).
 
 **A 250 KB ternary verifier of secret candidates.** 445,345 parameters. A rule engine proposes a
 candidate (a value, its line, its neighbours, its file), and the model judges that one value in
