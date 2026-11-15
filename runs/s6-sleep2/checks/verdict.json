@@ -1,0 +1,16 @@
+{
+  "pass": false,
+  "needs_amendment": false,
+  "c1": true,
+  "c2": false,
+  "form": "frame",
+  "c2_deviation": "C2 missed its bar by 0.010 (form frame 0.3900 against 0.40); by amendment 4 of docs/s6-sleep2-prereg.md, a stated deviation, form frame was taken and C4 decided. This is a threshold not applied after it was read, on a readiness check and not on a result.",
+  "c3": true,
+  "c4": false,
+  "mem_lr_mult": 10,
+  "mem_float": false,
+  "c4_retries": {
+    "x30": false,
+    "float": false
+  }
+}

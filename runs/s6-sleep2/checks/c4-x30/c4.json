@@ -1,0 +1,22 @@
+{
+  "memory": {
+    "run": "runs/s6-sleep2/checks/c4-x30/mem",
+    "ask_ce_250_300": 1.387601832954251,
+    "recall_steps": 49
+  },
+  "zeroed": {
+    "run": "runs/s6-sleep2/checks/c4-x30/zero",
+    "ask_ce_250_300": 1.3878574882234846,
+    "recall_steps": 49
+  },
+  "gap": 0.00025565526923365667,
+  "bars": {
+    "ask_ce_at_most": 1.3,
+    "gap_at_least": 0.05,
+    "steps": [
+      250,
+      300
+    ]
+  },
+  "pass": false
+}
