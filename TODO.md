@@ -55,11 +55,12 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
 ## Où on en est (06/11/2026)
 
 - **15/11/2026: two more failures, read by their rules, and what remains.**
-  - **s6-cast-pico failed** both GIFT-Eval bars (nGMASE 0.9471, nWQL 0.6646 against 0.838 and 0.587); not published (`docs/big-run-report.md`).
+  - **s6-cast-pico failed** both GIFT-Eval bars (nGMASE 0.9471, nWQL 0.6646 against 0.838 and 0.587) (`docs/big-run-report.md`).
   - **s6-secrets v2 (s6-secrets-verify-pico) failed on G1** (`docs/s6-secrets2-prereg.md`, result block): line F1 0.8561 on the 221 CredData test repositories against 0.7332 for the best rule scanner, +0.123 where +0.15 was asked. The six other gates hold (0.8114 against 0.5367 without the largest repository, above cbx-17M − 0.10 and the size-matched logistic regression, issue reports 0.8162, ECE 0.0073, 1,606 µs per candidate, 0.35% of clean real files). Not published, not rerun, not continued in this form, not in secretgate. The hand reading of the 110 accepted clean-text candidates is done: none looks like a real credential (`BENCH.md`).
   - **s6-sleep stopped by its pilot** (`docs/s6-sleep-prereg.md` §5): `recall` 0.2460 for the memory at N = 1 against 0.2650 for the control without memory, +0.10 asked; no nano run (`runs/s6-sleep/pilot.json`, `BENCH.md`).
   - **secretgate 1.8.1 released on 14/11** with the fixes found while measuring v1: https://github.com/maxgfr/secretgate/releases/tag/v1.8.1
   - **LFM3 S1/S2 running since 14/11 23:58** (`runs/lfm3-s1s2.log`).
+  - **The four failed models are published as results** (owner's decision of 15/11/2026; the last amendment of each pre-registration): s6-micro-v1, s6-ear-nano, s6-cast-pico and s6-secrets-verify-pico, on the site (manifest `gate: failed`, never a default) and prepared for Hugging Face (cards opening with the failure; Spaces for the first three, card only for the last; `scripts/hf-publish.py`, upload by the owner). Verdicts unchanged; nothing enters secretgate.
   - **What remains:** s6-micro v2 as pre-registered in amendment 12 of `docs/s6-gen-prereg.md`, LFM3 fine-tuned (§6.1), §7, the full test pass.
 - **After the publications of 14/11/2026 (same day).**
   - **s6-secrets-pico fails on real text**: measured for a possible use in `secretgate`, it flags 59.8% of 719 clean real files at p >= 0.9 (`docs/s6-secrets-prereg.md`, amendment 6; secretgate pull request 19). The gate on its generated bench stands; the card, the Space, the site and `BENCH.md` say "not a scanner". Nothing entered secretgate.

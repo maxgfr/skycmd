@@ -338,7 +338,7 @@ At full depth s6-nano plays at the oracle's score in every game: 0 crashes, Resc
 **Gates** (`docs/s6-gen-prereg.md` §6; each also needs no game more than 5% below s3-pico and ECE ≤ 0.08):
 
 - **s6-nano: passed, published at full depth.** Bench 0.480 > 0.398, ECE 0.0479, no game below s3-pico. The CRC thresholds are not kept, so the published file `site/public/models/s6-nano.gguf` is the last DAgger round with its three exit thresholds set to 1 (`gguf-set`; the calibration had left them at 0.5).
-- **s6-micro: failed on calibration only, not published.** Bench 0.547 ≥ 0.45, and the announced goal of 0.50 is met; no game below s3-pico; but ECE 0.0821 at full depth and 0.0804 at the CRC thresholds, above 0.08.
+- **s6-micro: failed on calibration only.** Bench 0.547 ≥ 0.45, and the announced goal of 0.50 is met; no game below s3-pico; but ECE 0.0821 at full depth and 0.0804 at the CRC thresholds, above 0.08. It failed its gate; its file is published as a result (owner's decision of 15/11/2026), as `site/public/models/s6-micro-v1.gguf`: the last DAgger round with its three exit thresholds set to 1 (`gguf-set`), the weights of the evaluated file byte for byte (amendments 13 and 15). The name `s6-micro` stays free for the second version of amendment 12. The verdict does not change: it is recommended for no use.
 
 **From nano to micro:** bench accuracy 0.480 → 0.547, ECE 0.0479 → 0.0821, median native latency 1,488 → 7,346 µs per decision, file 715,136 → 2,420,032 bytes.
 
@@ -418,7 +418,7 @@ Amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md). The pub
 - **What it means.** The gate is on `secret_bench` and stays passed; nothing in it is reread or changed. The model cannot be used to scan real files, and it stays published as the result of its pre-registration, not as a tool.
 - **What it does not test.** Recall on real secrets was not measured (no real secret is in that corpus), and the files come from two projects and one dependency tree.
 - **Next.** A second version, if one is made, would be a different task (a rule finds the candidate and the model judges it in its context), with its own pre-registration before any run. Nothing is promised.
-- **Outcome (15/11).** That second version was pre-registered, trained once and tested on real repositories. It failed its gate on G1 and is not published (section "s6-secrets-verify-pico" below).
+- **Outcome (15/11).** That second version was pre-registered, trained once and tested on real repositories. It failed its gate on G1; its file is published as a result (owner's decision of 15/11/2026) (section "s6-secrets-verify-pico" below).
 
 ## s6-ear-nano: first run, gates failed
 
@@ -436,7 +436,7 @@ Test split, ternary, full depth:
 | zero-shot keywords, English | 1,000 | 0.2100 | 0.3020 | 0.20 (2 × chance) | pass |
 | zero-shot keywords, French | 1,000 | 0.1330 | 0.1520 | 0.20 (2 × chance) | **fail** |
 
-Three gates of four fail: s6-ear-nano is not published. The control, trained the same way without the Mimi pretraining, is more accurate on all four sets, so in this run the pretraining did not help. ECE over all test sources is 0.0081 at full depth. At the CRC thresholds the model uses 3.42 of its 4 passes on average (early exit on 21.1% of the questions), with the same verdicts. Smart Turn v3.2 has a precision of 0.783 and a recall of 0.971 on the end-of-turn clips; the pre-registration asks for the same two numbers for s6-ear, and the run did not compute them.
+Three gates of four fail: s6-ear-nano failed its gate; its file is published as a result (owner's decision of 15/11/2026), as evaluated (`site/public/models/s6-ear-nano.gguf`, amendment 5), with the exit thresholds its run stored (choice 0.5, score 0.9, noul 0.68); its control is not published. The verdict does not change. The control, trained the same way without the Mimi pretraining, is more accurate on all four sets, so in this run the pretraining did not help. ECE over all test sources is 0.0081 at full depth. At the CRC thresholds the model uses 3.42 of its 4 passes on average (early exit on 21.1% of the questions), with the same verdicts. Smart Turn v3.2 has a precision of 0.783 and a recall of 0.971 on the end-of-turn clips; the pre-registration asks for the same two numbers for s6-ear, and the run did not compute them.
 
 ## s6-cast-pico: probabilistic forecasting, pre-registered, gate failed
 
@@ -457,7 +457,7 @@ Pre-registration: [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md), gate in §
 | TinyCast, our port, with flip | 0.7856 | 0.5570 | 0.5781 |
 | seasonal naive, our harness | 0.9999 | 0.8876 | 2.6778 |
 
-**Gate** (§6): nGMASE ≤ 0.838 and nWQL ≤ 0.587, without flip. **Failed on both metrics; not published.** The goal of beating TinyCast is not met either: the gap to the published TinyCast is +0.1731 nGMASE and +0.1196 nWQL, to our generic TinyCast port +0.1615 and +0.1076. With flip the model still misses both bars.
+**Gate** (§6): nGMASE ≤ 0.838 and nWQL ≤ 0.587, without flip. **Failed on both metrics.** It failed its gate; its file is published as a result (owner's decision of 15/11/2026), as evaluated (`site/public/models/s6-cast-pico.gguf`, 142,912 bytes, item 8 of the amendments); the verdict does not change. The goal of beating TinyCast is not met either: the gap to the published TinyCast is +0.1731 nGMASE and +0.1196 nWQL, to our generic TinyCast port +0.1615 and +0.1076. With flip the model still misses both bars.
 
 - **Against the seasonal naive.** Better on nGMASE (0.9471) and on nWQL (0.6646 against 0.8876). Per configuration, its MASE is below the seasonal naive's in 52 of 97 and its WQL in 84 of 97; our TinyCast port has a lower MASE in 86 configurations and a lower WQL in 87.
 - **By term** (geometric means of the per-configuration ratios, computed from the `all_results.csv` files): MASE 0.860 short, 1.046 medium, 1.105 long, against 0.756, 0.806, 0.848 for our TinyCast port. Medium and long horizons are worse than the seasonal naive.
@@ -468,7 +468,7 @@ Pre-registration: [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md), gate in §
 
 Pre-registration: [`docs/s6-secrets2-prereg.md`](docs/s6-secrets2-prereg.md), gate in §8, amendments 1 to 8 (all before the run) and its result block of 15/11. Results: [`runs/s6-secrets2/eval-test/results.md`](runs/s6-secrets2/eval-test/results.md) and `gate.json` next to it (the test, opened once), `runs/s6-secrets2/eval-validation/results.md` (the validation rehearsal), the freeze of the generator [`runs/s6-secrets2/generator.json`](runs/s6-secrets2/generator.json), and the run's report and logs in `runs/s6-secrets-verify-pico/` (`report.md`, `pretrain.log`, `decide.log`).
 
-**Failed on G1, not published.** On the CredData test (221 real repositories), the model's line F1 is 0.8561, against 0.7332 for the best rule scanner (Betterleaks): +0.123 where the gate asked for +0.15. The six other gates hold. As §11 wrote before the run, "on real repositories the verifier adds too little to the rules it filters. s6-secrets is not continued in this form." The model is not published, not rerun, and does not enter secretgate. This is the project's best result on real data, and it is a failed gate.
+**Failed on G1.** It failed its gate; its file is published as a result (owner's decision of 15/11/2026): `site/public/models/s6-secrets-verify-pico.gguf`, the evaluated copy with its thresholds at 1 (sha256 `01e6db3fa71cc2c5563dea222c68e040d3994ee2abbb02b25491a51b8cb54f27`, amendment 9), with a card and no demo. On the CredData test (221 real repositories), the model's line F1 is 0.8561, against 0.7332 for the best rule scanner (Betterleaks): +0.123 where the gate asked for +0.15. The six other gates hold. As §11 wrote before the run, "on real repositories the verifier adds too little to the rules it filters. s6-secrets is not continued in this form." The model is not rerun, and does not enter secretgate. This is the project's best result on real data, and it is a failed gate.
 
 **The task.** v1 (above) reads a whole text and fails on real files. v2 judges one candidate at a time. A rule proposes a candidate span, and a 250 KB ternary model answers about that value, in its context: "Is this value a real credential that should be revoked?" (gated) and "What kind of value is this?" (a real credential, an example or test value, not a credential; reported only). It is trained and tested on real repositories (Samsung CredData) and on issue reports whose test values are real (Zenodo 10.5281/zenodo.19622962). Synthetic candidates are used in training only.
 
@@ -589,7 +589,7 @@ The gate uses the raw share (0.35%), as §7.7 says; this reading changes nothing
 | G6 | native median ≤ 3 ms per candidate | 1,606 µs | holds |
 | G7 | clean real files flagged ≤ 1.0% | 0.35% (31 of 8,825) | holds |
 
-The announced goal (G2 at −0.05) is met; it is not a gate and changes nothing. **Verdict: failed on G1, not published.** A later attempt would be a new design with its own pre-registration.
+The announced goal (G2 at −0.05) is met; it is not a gate and changes nothing. **Verdict: failed on G1**; its file is published as a result (owner's decision of 15/11/2026). A later attempt would be a new design with its own pre-registration.
 
 **Reported with the result, not a way around the gate.**
 

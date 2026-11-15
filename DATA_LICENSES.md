@@ -232,6 +232,19 @@ Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` 
 |---|---|---|
 | `secret_synth`, `secret_bench` | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | generated locally from the seed. Keys follow each provider's public format with random bodies, so none is a real key. 50,000 training texts (95/5 train/val by text) and 2,000 bench texts in contexts the training never shows. Never committed, except seven bench texts copied as the presets of the site demo (`site/.vitepress/theme/lib/s6-cases.ts`). |
 
+## s6-secrets v2: real candidates (`sky-data secrets2`, `docs/s6-secrets2-prereg.md`)
+
+The model trained on them, s6-secrets-verify-pico, failed its gate; its file is published as a
+result (owner's decision of 15/11/2026). None of the data below is committed or redistributed: it
+is downloaded outside the repository, and logs and reports show only hashes and lengths of values.
+
+| source | license | how it is used |
+|---|---|---|
+| Samsung/CredData (https://github.com/Samsung/CredData, pinned at `01e3d135a90f46c9a7965683b24a05d12e136b33`) | each file under the license of its source repository; the meta labels from CredData | obfuscated files only (CredData's own `download_data.py`; the transient clones with the real values are deleted). Training and validation: the 116 repositories of the cbx-secrets-detector-17M list (`CobuildX-AI/cbx-secrets-detector-17M`, `training_data_sources.csv`), each kept only if its copied license is MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause or ISC: all 116 (MIT 72, Apache-2.0 34, BSD-3-Clause 7, BSD-2-Clause 3). Test: the other 221 repositories, whatever their license, scored only. The obfuscated training files also enter the MLM pretraining (30% of its text) |
+| CredData `word_in_path.json` | Apache-2.0 (CredData) | ported as `WORD_IN_PATH` in `crates/sky-infer/src/secret_cand.rs` |
+| Secret-Leak-Detection-Issue-Report (Zenodo 10.5281/zenodo.19622962) | CC BY 4.0 | the paper's splits; each real secret of train and val replaced by a word-preserving shape before training; the test values stay as published and are only scored |
+| synthetic candidates (`sky-data secret-cand`) | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | provider formats with random bodies, at most 25% of the training items; never in a test |
+
 ## LFM3-1.7B System 1 / System 2 and its fine-tune (`data/lfm3/`, `scripts/lfm3-s1s2.sh`, `scripts/lfm3-ft.sh`, `docs/lfm3-s1s2-prereg.md`, `docs/lfm3-ft-prereg.md`)
 
 The router (`docs/lfm3-s1s2-prereg.md`) is inference only. Since its amendment 1 (05/11/2026) it runs remotely on Hugging Face Jobs, in bf16, on the base model and on the fine-tuned one.
@@ -264,7 +277,7 @@ Commercial use only within the license's revenue threshold.
 
 ## s6-ear audio (`data/ear/`, `sky-data fetch-audio`, `sky-data audio-jev`, `docs/s6-ear-prereg.md`)
 
-Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the test clips for the baselines); `data/ear` is not committed and the audio is not redistributed (the questions, the clip index and the Mimi codes are, in `skycmd-ear`). Counts (fetched on 4 November 2026, 31 GB of features):
+Only derived features are written (float16 log-mel `.npy`, and 16 kHz WAV of the test clips for the baselines); `data/ear` is not committed and the audio is not redistributed (the questions, the clip index and the Mimi codes are, in `skycmd-ear`), except three test clips, CC-BY-4.0 and credited where they are played: the samples of the Listen page (`site/public/ear/`) and of the s6-ear-nano Space. s6-ear-nano failed its gates; its file is published as a result (owner's decision of 15/11/2026). Counts (fetched on 4 November 2026, 31 GB of features):
 
 | set | train | val | test |
 |---|---:|---:|---:|
