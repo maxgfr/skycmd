@@ -54,6 +54,13 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
 
 ## Où on en est (06/11/2026)
 
+- **15/11/2026: two more failures, read by their rules, and what remains.**
+  - **s6-cast-pico failed** both GIFT-Eval bars (nGMASE 0.9471, nWQL 0.6646 against 0.838 and 0.587); not published (`docs/big-run-report.md`).
+  - **s6-secrets v2 (s6-secrets-verify-pico) failed on G1** (`docs/s6-secrets2-prereg.md`, result block): line F1 0.8561 on the 221 CredData test repositories against 0.7332 for the best rule scanner, +0.123 where +0.15 was asked. The six other gates hold (0.8114 against 0.5367 without the largest repository, above cbx-17M − 0.10 and the size-matched logistic regression, issue reports 0.8162, ECE 0.0073, 1,606 µs per candidate, 0.35% of clean real files). Not published, not rerun, not continued in this form, not in secretgate. The hand reading of the 110 accepted clean-text candidates is done: none looks like a real credential (`BENCH.md`).
+  - **s6-sleep stopped by its pilot** (`docs/s6-sleep-prereg.md` §5): `recall` 0.2460 for the memory at N = 1 against 0.2650 for the control without memory, +0.10 asked; no nano run (`runs/s6-sleep/pilot.json`, `BENCH.md`).
+  - **secretgate 1.8.1 released on 14/11** with the fixes found while measuring v1: https://github.com/maxgfr/secretgate/releases/tag/v1.8.1
+  - **LFM3 S1/S2 running since 14/11 23:58** (`runs/lfm3-s1s2.log`).
+  - **What remains:** s6-micro v2 as pre-registered in amendment 12 of `docs/s6-gen-prereg.md`, LFM3 fine-tuned (§6.1), §7, the full test pass.
 - **After the publications of 14/11/2026 (same day).**
   - **s6-secrets-pico fails on real text**: measured for a possible use in `secretgate`, it flags 59.8% of 719 clean real files at p >= 0.9 (`docs/s6-secrets-prereg.md`, amendment 6; secretgate pull request 19). The gate on its generated bench stands; the card, the Space, the site and `BENCH.md` say "not a scanner". Nothing entered secretgate.
   - **Next: s6-secrets v2, pre-registered** (`docs/s6-secrets2-prereg.md`, frozen before any download): a rule finds the candidate and the model judges it in context; real repositories (CredData, issue reports) for training and test; seven gates, one of them on clean real text (at most 1.0% of files flagged). Downloads approved by the owner on 14/11. To do: data (running), the candidate export in secretgate, the generator freeze, the pipeline (`scripts/train-secrets2.sh`), the baselines, then one run when the GPU is free.
@@ -275,6 +282,7 @@ Après 2.3, parce qu'il reprend l'`OPT` et le `LR_SCALE` adoptés (amendement 2 
 - [ ] `OPT="…" LR_SCALE=… DECIDE="…" scripts/train-secrets.sh train eval` : pré-entraînement 8 min en séquences de 256 jetons, décision 15 min sur `data/secrets` seul, calibration, export ternaire, `s2-eval` sur `secret_bench`. Graine 0, une seule fois.
 - [ ] Porte : exactitude secret **> 0,977** et service **> 0,787**, en ternaire, à pleine profondeur.
 - [ ] Le rapport donne aussi kind, line, la validation, la sortie anticipée, la taille et la latence, quel que soit le résultat.
+- **Outcome of v1 and v2 (15/11/2026).** s6-secrets-pico passed its gate on its synthetic bench and was published on 14/11, then failed on real text (59.8% of 719 clean real files flagged at p >= 0.9; amendment 6). **v2, s6-secrets-verify-pico** (`docs/s6-secrets2-prereg.md`): a rule proposes the candidate, the model judges it in context; trained once on 14/11 (19:39 to 20:42, 11,296 pretraining and 14,117 decision steps) and tested once on 221 CredData repositories and the issue reports. **Failed on G1**: line F1 0.8561 against 0.7332 for Betterleaks, +0.123 where +0.15 was asked; G1 holds without the largest repository, and G2 to G7 hold. Not published, not rerun, not continued in this form, not in secretgate. Hand reading of the 110 clean-text candidates it accepts: none looks like a real credential. The whole-scan latency of §9 was not built. Numbers: `BENCH.md`, section "s6-secrets-verify-pico".
 
 ## 4. s6-cast-pico (`docs/s6-cast-prereg.md`, `docs/SPEC-S6-CAST.md`)
 
@@ -590,6 +598,8 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
 
 ## 10. Next model: `s6-sleep-nano`, an s6 that sleeps (added 11/11/2026; pre-registered 12/11/2026, no code and no run yet)
 
+**Status (15/11/2026): stopped by the pilot, no nano run.** The pico pilot ran on 14/11 (four runs of 3,684 steps, ended at 23:58). On the dev seeds of `recall`, the memory read at N = 1 scores 0.2460 against 0.2650 for the control without memory; the rule asked for +0.10, so "the memory works" is false (truncation kept: 0.2565 against 0.2430; drawn N not kept: 0.2460 against 0.2565). `scripts/s6-sleep-report.py` wrote `runs/s6-sleep/pilot.json` with no flags for the nano arm, and `scripts/train-sleep.sh` stopped: "the pilot says the memory does not work: no nano run". In each memory run, `recall` is the same at N = 1, 2 and 4. H0 to H3 are not tested, the test seeds are not read, nothing is published. Numbers: `BENCH.md`, section "s6-sleep".
+
 **Status (12/11/2026, evening).** On branch `s6-sleep-nano`, not merged while tranches 2 to 4 run (the run rebuilds `main` at each stage): the two probes (`sky-games`: `recall`, `rule110`), the memory layer and the sleep passes (`sky-train`: `s2::memory`), the sleep training (`s2-decide --sleep-records`), the probe reader (`s2-probe`), and the run (`scripts/train-sleep.sh`, `scripts/s6-sleep-report.py`). Unit tests pass and a 40-step code check ran on s6-pico in the three forms (drawn N, fixed N with full gradient, control). `docs/s6-sleep-prereg.md` has amendments 1 and 2, both before any run. **Left:** the pilot and the nano runs, after tranche 4. The `sky-infer` engine, the golden test and the WASM `sleep()` are written only if the hypotheses hold, because they serve the publication gate alone.
 
 **Where it goes.** This is the next new model. It comes right after tranches 2 to 4 of the big run, and before the LFM3 tranches and §7, because it needs two things those tranches produce: the adopted recipe (`runs/recipe/recipe.json`) and s6-nano, its baseline.
@@ -670,8 +680,8 @@ A null result on the 4 games would say nothing if they never need memory beyond 
   - **Choice of N, by rule.** The smallest N within 1 point of the best on the dev seeds of the memory task.
   - **Test seeds**, read only once.
   - **Publication gate.** s6-nano's gate, plus H1.
-- [ ] **Pico pilot first** (`s6-sleep-pico`, same changes on s6-pico), about 1 h throttled per run, 4 runs: the fast path; fixed N = 4 with truncation; fixed N = 4 with full backpropagation; the control. A shortcut is kept only if it loses less than 1 point on the memory task against the paper's way.
-- [ ] **Then nano.** The two arms above, 3 seeds each.
+- [x] **Pico pilot first** (done 14/11/2026: the memory does not beat the control, see the status above) (`s6-sleep-pico`, same changes on s6-pico), about 1 h throttled per run, 4 runs: the fast path; fixed N = 4 with truncation; fixed N = 4 with full backpropagation; the control. A shortcut is kept only if it loses less than 1 point on the memory task against the paper's way.
+- [ ] **Then nano.** The two arms above, 3 seeds each. Not run: the pilot's rule stopped it (15/11/2026).
 - **Cost, to confirm in the pre-registration.** About 5 h throttled for the pilot and 15 to 20 h for the nano runs, so 20 to 25 h in all (about 12 h in the night mode), instead of the 55 to 80 h of the first plan. If the pilot rejects a shortcut, the paper's way comes back for it, with its cost.
 
 ### 10.4 Then: the flexible weights of §7.3 with sleep and dreaming (2606.03979)
