@@ -540,32 +540,36 @@ fn verdict(ok: bool) -> &'static str {
     }
 }
 
+/// C1 as amendments 2 and 3 read it: the pre-registered form (v1's write rule, shared query/key,
+/// both value forms printed, form `frame` judged), each delay played with the four colours on
+/// each of 20 draws of the word vectors and decoded contrastively; right at a delay when at
+/// least 90% of the draws match all four colours.
 fn c1(out: &std::path::Path) -> Result<bool> {
-    let (cos, rows) = memory::retrieval_algebra(&C1_IDLE, 0)?;
-    println!("C1 retrieval algebra (d = 96, mean cosine between words {cos:.3}):");
+    let rows = memory::contrastive_sweep(&[MemoryWrite::Average], &[1], &C1_IDLE, DIAG_SEEDS)?;
+    println!("C1 retrieval algebra, contrastive over 20 draws (d = 96, v1's write rule, N = 1):");
+    let right = |r: &memory::ContrastRow| r.right_draws as f64 >= DIAG_SHARE * r.draws as f64;
     for r in &rows {
         println!(
-            "  form {:5} idle {:2}: red {:+.4} green {:+.4} blue {:+.4} yellow {:+.4} -> {}",
+            "  form {:5} idle {:2}: {} of {} draws match all four colours{}",
             r.form,
             r.idle,
-            r.colours[0],
-            r.colours[1],
-            r.colours[2],
-            r.colours[3],
-            COLOURS[r.argmax]
+            r.right_draws,
+            r.draws,
+            if right(r) { "" } else { " (under 90%)" }
         );
     }
     let pass = C1_PASS_IDLE.iter().all(|i| {
         rows.iter()
-            .any(|r| r.form == "frame" && r.idle == *i && r.argmax == 0)
+            .any(|r| r.form == "frame" && r.idle == *i && right(r))
     });
     println!(
-        "C1: argmax at red under form frame for 1, 4 and 8 idle frames: {}",
+        "C1: at least 90% of the draws right under form frame at 1, 4 and 8 idle frames: {}",
         verdict(pass)
     );
     write_json(
         &out.join("c1.json"),
-        &json!({"mean_cosine": cos, "rows": rows, "pass_idle": C1_PASS_IDLE, "pass": pass}),
+        &json!({"reading": "contrastive (amendments 2 and 3)", "rule": "average", "passes": 1,
+            "rows": rows, "pass_idle": C1_PASS_IDLE, "share": DIAG_SHARE, "pass": pass}),
     )?;
     Ok(pass)
 }

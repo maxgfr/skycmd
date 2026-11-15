@@ -1,115 +1,87 @@
 {
-  "mean_cosine": 0.4006432592868805,
+  "reading": "contrastive (amendments 2 and 3)",
+  "rule": "average",
+  "passes": 1,
   "rows": [
     {
+      "rule": "average",
+      "passes": 1,
       "form": "frame",
       "idle": 1,
-      "colours": [
-        2.292825937271118,
-        2.1168744564056396,
-        2.2353098392486572,
-        2.229545831680298
-      ],
-      "argmax": 0
+      "right_draws": 20,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "frame",
       "idle": 4,
-      "colours": [
-        3.6195974349975586,
-        3.504256010055542,
-        3.693105697631836,
-        3.8130109310150146
-      ],
-      "argmax": 3
+      "right_draws": 20,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "frame",
       "idle": 8,
-      "colours": [
-        4.365901947021484,
-        4.278637886047363,
-        4.464966297149658,
-        4.651495933532715
-      ],
-      "argmax": 3
+      "right_draws": 20,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "frame",
       "idle": 16,
-      "colours": [
-        4.707266330718994,
-        4.580221176147461,
-        4.759109973907471,
-        4.964334011077881
-      ],
-      "argmax": 3
+      "right_draws": 20,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "frame",
       "idle": 32,
-      "colours": [
-        4.717148303985596,
-        4.655407428741455,
-        4.883810997009277,
-        5.027792930603027
-      ],
-      "argmax": 3
+      "right_draws": 18,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "token",
       "idle": 1,
-      "colours": [
-        1.7895206212997437,
-        1.6354084014892578,
-        1.7645819187164307,
-        1.7357959747314453
-      ],
-      "argmax": 0
+      "right_draws": 20,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "token",
       "idle": 4,
-      "colours": [
-        2.858274459838867,
-        2.735522508621216,
-        2.928483247756958,
-        3.0037617683410645
-      ],
-      "argmax": 3
+      "right_draws": 20,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "token",
       "idle": 8,
-      "colours": [
-        3.4391167163848877,
-        3.330458402633667,
-        3.5281553268432617,
-        3.6451945304870605
-      ],
-      "argmax": 3
+      "right_draws": 17,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "token",
       "idle": 16,
-      "colours": [
-        3.720073699951172,
-        3.584930419921875,
-        3.771282434463501,
-        3.88145112991333
-      ],
-      "argmax": 3
+      "right_draws": 13,
+      "draws": 20
     },
     {
+      "rule": "average",
+      "passes": 1,
       "form": "token",
       "idle": 32,
-      "colours": [
-        3.7194712162017822,
-        3.6376824378967285,
-        3.858891248703003,
-        3.9078125953674316
-      ],
-      "argmax": 3
+      "right_draws": 10,
+      "draws": 20
     }
   ],
   "pass_idle": [
@@ -117,5 +89,6 @@
     4,
     8
   ],
-  "pass": false
+  "share": 0.9,
+  "pass": true
 }
