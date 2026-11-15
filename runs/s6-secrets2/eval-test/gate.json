@@ -1,0 +1,114 @@
+{
+ "experiment": "s6-secrets v2 (docs/s6-secrets2-prereg.md, section 8)",
+ "split": "test",
+ "model": "model",
+ "is_the_pre_registered_gate": true,
+ "universe_of_G1_G2_G3_G5": "gated",
+ "uuid_choice": "Gated universe: the rows whose CredData category is exactly `UUID` are removed, for every system (amendment 2). That choice was made after reading the training and validation rows and before any test file was read. Full universe: every meta row.",
+ "thresholds": {
+  "G1": 0.15,
+  "G2": 0.1,
+  "G2_goal": 0.05,
+  "G4": 0.08,
+  "G5": 0.05,
+  "G6_us": 3000.0,
+  "G7": 0.01
+ },
+ "gates": {
+  "G1": {
+   "holds": false,
+   "why": [
+    "every repository: 0.8561 < betterleaks 0.7332 + 0.15"
+   ],
+   "parts": {
+    "all": {
+     "model": 0.856055922773313,
+     "reference": "betterleaks",
+     "reference_f1": 0.7331706324994914,
+     "holds": false,
+     "model_full_universe": 0.8152969894222947,
+     "reference_full_universe": 0.6948352283677008
+    },
+    "without_largest": {
+     "model": 0.811441100259119,
+     "reference": "betterleaks",
+     "reference_f1": 0.5366782394445068,
+     "holds": true,
+     "model_full_universe": 0.7347892513705401,
+     "reference_full_universe": 0.478586403114705
+    }
+   }
+  },
+  "G2": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "model": 0.856055922773313,
+     "reference": "cbx-17m",
+     "reference_f1": 0.6830408023706406,
+     "holds": true,
+     "model_full_universe": 0.8152969894222947,
+     "reference_full_universe": 0.6433056077273946
+    },
+    "without_largest": {
+     "model": 0.811441100259119,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8492975734355045,
+     "holds": true,
+     "model_full_universe": 0.7347892513705401,
+     "reference_full_universe": 0.7614232567013259
+    }
+   }
+  },
+  "G3": {
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "model": 0.856055922773313,
+     "reference": "lr",
+     "reference_f1": 0.7945242129670917,
+     "holds": true,
+     "model_full_universe": 0.8152969894222947,
+     "reference_full_universe": 0.7579198026959221
+    },
+    "without_largest": {
+     "model": 0.811441100259119,
+     "reference": "lr",
+     "reference_f1": 0.7179389675824698,
+     "holds": true,
+     "model_full_universe": 0.7347892513705401,
+     "reference_full_universe": 0.65099052540913
+    }
+   }
+  },
+  "G4": {
+   "holds": true,
+   "why": [],
+   "model": 0.8161802355350741,
+   "gitleaks": 0.7103825136612022
+  },
+  "G5": {
+   "holds": true,
+   "why": [],
+   "ece": 0.007254120589195562,
+   "ece_full_universe": 0.007244945672683589
+  },
+  "G6": {
+   "holds": true,
+   "why": [],
+   "median_us": 1605.833
+  },
+  "G7": {
+   "holds": true,
+   "why": [],
+   "files": 31,
+   "of": 8825,
+   "share": 0.0035127478753541074
+  }
+ },
+ "announced_goal_met": true,
+ "all_hold": false,
+ "verdict": "FAIL: not published"
+}

@@ -2,8 +2,6 @@
 
 **Rehearsal.** These are the validation repositories, not the test: no number below is a result of the pre-registration, and the gate at the end is the test's computation run on validation.
 
-No system named `model` was scored: the baselines are reported, the gate has no model to judge.
-
 16 repositories, 452 files; T rows: 522 (gated universe), 659 (full). Largest repository: `7738e44d`, 217 gated T rows (the split's own largest, a stand-in for the test's).
 
 ## CredData, line level (7.1)
@@ -12,6 +10,7 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 
 | gated universe | precision | recall | F1 | false alarms | F1 without the largest | macro F1 (≥ 20 T rows) |
 |---|---:|---:|---:|---:|---:|---:|
+| model | 0.8790 | 0.8425 | 0.8603 | 0.0270 | 0.8000 | 0.8335 (6) |
 | generator | 0.2753 | 0.9540 | 0.4272 | 0.5848 | 0.3236 | 0.6393 (6) |
 | secretgate-default | 0.9270 | 0.3611 | 0.5197 | 0.0066 | 0.6136 | 0.5118 (6) |
 | gitleaks | 0.9850 | 0.2867 | 0.4441 | 0.0010 | 0.5114 | 0.3793 (6) |
@@ -25,6 +24,7 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 
 | full universe | precision | recall | F1 | false alarms | F1 without the largest | macro F1 (≥ 20 T rows) |
 |---|---:|---:|---:|---:|---:|---:|
+| model | 0.8995 | 0.6781 | 0.7733 | 0.0225 | 0.7500 | 0.7814 (6) |
 | generator | 0.2842 | 0.7762 | 0.4161 | 0.5820 | 0.3287 | 0.6187 (6) |
 | secretgate-default | 0.9270 | 0.2840 | 0.4348 | 0.0067 | 0.5378 | 0.4493 (6) |
 | gitleaks | 0.9850 | 0.2255 | 0.3669 | 0.0010 | 0.4420 | 0.3237 (6) |
@@ -38,6 +38,7 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 
 | | version | unit | unlabelled-line alarms | per 1,000 files (7.3) | CPU s |
 |---|---|---|---:|---:|---:|
+| model | full-depth.gguf sha256 01e6db3fa71cc2c5563dea222c68e040d3994ee2abbb02b25491a51b8cb54f27 | candidate | 53 | 117.3 | — |
 | generator | sg-cand-1 revision 1, secretgate 4e93cfa2ee6e216caca9bc8e6f74cb565a991350 | candidate | 2279 | 5042.0 | 17.2 |
 | secretgate-default | secretgate 4e93cfa2ee6e216caca9bc8e6f74cb565a991350 | span | 88 | 194.7 | 8.7 |
 | gitleaks | Gitleaks 8.30.1 | span | 1 | 2.2 | 20.6 |
@@ -57,12 +58,14 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 
 | gated universe | candidates | positives | threshold | precision | recall | F1 | PR-AUC | recall at 1% false alarms | ECE | ECE on P(real) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| model | 1779 | 448 | 0.2598 | 0.8725 | 0.8705 | 0.8715 | 0.9427 | 0.7143 | 0.0135 | 0.0338 |
 | generator | 1779 | 448 | — | 0.2518 | 1.0000 | 0.4023 | — | — | — | — |
 | lr | 1779 | 448 | 0.1550 | 0.8810 | 0.8594 | 0.8701 | 0.9145 | 0.6451 | 0.0678 | 0.1183 |
 | potion-lr | 1779 | 448 | 0.0786 | 0.5039 | 0.8638 | 0.6365 | 0.6340 | 0.1027 | 0.1081 | 0.1221 |
 
 | full universe | candidates | positives | threshold | precision | recall | F1 | PR-AUC | recall at 1% false alarms | ECE | ECE on P(real) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| model | 1779 | 459 | 0.2598 | 0.8926 | 0.8693 | 0.8808 | 0.9443 | 0.7495 | 0.0151 | 0.0400 |
 | generator | 1779 | 459 | — | 0.2580 | 1.0000 | 0.4102 | — | — | — | — |
 | lr | 1779 | 459 | 0.1550 | 0.8810 | 0.8388 | 0.8594 | 0.9036 | 0.6296 | 0.0671 | 0.1180 |
 | potion-lr | 1779 | 459 | 0.0786 | 0.5117 | 0.8562 | 0.6406 | 0.6327 | 0.1002 | 0.1143 | 0.1282 |
@@ -75,6 +78,7 @@ Gated universe: the rows whose CredData category is exactly `UUID` are removed, 
 
 | | gated recall | gated precision | gated F1 | full recall | full precision | full F1 | flags: T / X / F / no row / unlabelled |
 |---|---:|---:|---:|---:|---:|---:|---|
+| model | 0.7548 | 0.8442 | 0.7970 | 0.6115 | 0.8636 | 0.7160 | 459 / 117 / 1203 / 176 / 2279 |
 | generator | 0.8506 | 0.2295 | 0.3615 | 0.6904 | 0.2348 | 0.3504 | 459 / 117 / 1203 / 176 / 2279 |
 | secretgate-default | 0.3238 | 0.9270 | 0.4799 | 0.2564 | 0.9270 | 0.4018 | 165 / 2 / 10 / 1 / 88 |
 | gitleaks | 0.2586 | 0.9851 | 0.4097 | 0.2049 | 0.9851 | 0.3392 | 132 / 0 / 2 / 0 / 1 |
@@ -91,6 +95,7 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 
 | | Password | Token | Key | Secret | API | Auth | other | scope test | scope src | scope other |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| model | 0.868 (0.830) | 0.943 (0.952) | 0.586 (0.604) | 0.938 (0.938) | 0.737 (1.000) | 0.869 (0.915) | 0.845 (0.772) | 0.763 (0.736) | 0.889 (0.857) | 0.942 (0.936) |
 | generator | 0.575 (0.970) | 0.550 (1.000) | 0.140 (0.938) | 0.383 (1.000) | 0.136 (1.000) | 0.455 (0.979) | 0.814 (0.903) | 0.388 (0.909) | 0.452 (1.000) | 0.464 (0.991) |
 | secretgate-default | 0.444 (0.296) | 0.552 (0.381) | 0.737 (0.583) | 0.755 (0.625) | 0.750 (0.857) | 0.255 (0.149) | 0.574 (0.414) | 0.667 (0.519) | 0.600 (0.429) | 0.351 (0.217) |
 | gitleaks | 0.349 (0.215) | 0.500 (0.333) | 0.609 (0.438) | 0.609 (0.438) | 0.000 (0.000) | 0.082 (0.043) | 0.520 (0.352) | 0.586 (0.418) | 0.526 (0.357) | 0.285 (0.166) |
@@ -103,8 +108,24 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 | potion-lr | 0.597 (0.785) | 0.816 (0.867) | 0.400 (0.875) | 0.756 (0.969) | 0.177 (1.000) | 0.765 (0.936) | 0.787 (0.779) | 0.539 (0.712) | 0.788 (0.929) | 0.728 (0.923) |
 | positive / negative lines | 135 / 282 | 105 / 233 | 48 / 1028 | 32 / 163 | 7 / 149 | 47 / 181 | 145 / 80 | 208 / 811 | 14 / 395 | 235 / 757 |
 
+## Uncertainty (7.6): paired bootstrap over repositories, 1000 resamples, 95%
+
+| line F1 of model minus | gated | gated, without the largest | full | full, without the largest |
+|---|---|---|---|---|
+| generator | +0.4331 [0.2717, 0.6196] | +0.4764 [0.3024, 0.6905] | +0.3573 [0.2092, 0.5571] | +0.4213 [0.2582, 0.6692] |
+| secretgate-default | +0.3407 [-0.0126, 0.5790] | +0.1864 [-0.0729, 0.4647] | +0.3385 [0.0693, 0.5258] | +0.2122 [0.0277, 0.4431] |
+| gitleaks | +0.4163 [0.0365, 0.6512] | +0.2886 [-0.0428, 0.6462] | +0.4064 [0.1157, 0.5939] | +0.3080 [0.0579, 0.6114] |
+| betterleaks | +0.4166 [0.2244, 0.5643] | +0.2978 [0.1967, 0.3889] | +0.4007 [0.2267, 0.5116] | +0.3081 [0.1967, 0.3958] |
+| detect-secrets | +0.3891 [0.0606, 0.7095] | +0.1952 [0.0310, 0.4571] | +0.3692 [0.1039, 0.6311] | +0.2034 [0.0751, 0.4198] |
+| credsweeper-ml | -0.0910 [-0.1472, -0.0531] | -0.1253 [-0.1573, -0.0947] | -0.1971 [-0.2566, -0.1364] | -0.2019 [-0.2704, -0.1049] |
+| credsweeper-noml | +0.3734 [0.1111, 0.6142] | +0.4127 [0.1160, 0.7098] | +0.2241 [-0.0344, 0.5346] | +0.3139 [0.0024, 0.6647] |
+| cbx-17m | -0.0270 [-0.0728, 0.0443] | -0.0191 [-0.0927, 0.0681] | +0.0009 [-0.0631, 0.1109] | +0.0208 [-0.0905, 0.1455] |
+| lr | -0.0000 [-0.1043, 0.1174] | +0.0028 [-0.1296, 0.1798] | +0.0184 [-0.0278, 0.1093] | +0.0314 [-0.0376, 0.1770] |
+| potion-lr | +0.2186 [0.1254, 0.3722] | +0.2675 [0.1643, 0.4382] | +0.1834 [0.1010, 0.3343] | +0.2406 [0.1559, 0.4165] |
+
 | ECE | gated | full |
 |---|---|---|
+| model | 0.0135 [0.0094, 0.0507] | 0.0151 [0.0097, 0.0555] |
 | lr | 0.0678 [0.0289, 0.1369] | 0.0671 [0.0291, 0.1474] |
 | potion-lr | 0.1081 [0.0342, 0.2369] | 0.1143 [0.0354, 0.2481] |
 
@@ -114,6 +135,7 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 
 | | precision | recall | F1 | false alarms | ECE | end to end: flags | precision over all flags | F1 | precision over flags on a candidate | F1 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| model | 0.7423 | 0.9044 | 0.8154 | 0.0380 | 0.0226 | — | — | — | — | — |
 | generator | 0.2222 | 0.7884 | 0.3467 | 0.3337 | — | 16426 | 0.0289 | 0.0558 | 0.2134 | 0.3359 |
 | secretgate-default | 0.7379 | 0.6007 | 0.6623 | 0.0258 | — | 1467 | 0.2399 | 0.3429 | 0.7379 | 0.6623 |
 | gitleaks | 0.8635 | 0.5614 | 0.6805 | 0.0107 | — | 1055 | 0.3166 | 0.4049 | 0.8630 | 0.6803 |
@@ -124,10 +146,12 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 | lr | 0.4888 | 0.8908 | 0.6312 | 0.1127 | 0.0335 | — | — | — | — | — |
 | potion-lr | 0.2413 | 0.9096 | 0.3814 | 0.3459 | 0.0192 | — | — | — | — | — |
 | lr-e2e | 0.6971 | 0.7304 | 0.7133 | 0.0384 | — | 2218 | 0.1943 | 0.3070 | 0.6952 | 0.7123 |
+| model-e2e | 0.7325 | 0.7150 | 0.7237 | 0.0316 | — | 1969 | 0.2133 | 0.3286 | 0.7279 | 0.7214 |
 | potion-lr-e2e | 0.3738 | 0.7304 | 0.4945 | 0.1480 | — | 6613 | 0.0659 | 0.1209 | 0.3686 | 0.4899 |
 
 | obfuscation sensitivity (candidate F1) | values as published | through CredData's `get_obfuscated_value` | difference |
 |---|---:|---:|---:|
+| model | 0.8154 | 0.8525 | -0.0371 |
 | generator | 0.3467 | 0.2836 | +0.0631 |
 | secretgate-default | 0.6623 | 0.5990 | +0.0633 |
 | gitleaks | 0.6805 | 0.6205 | +0.0599 |
@@ -146,6 +170,7 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 
 | as the census: no source path, no pragma for the default engine (the gate's reading) | files with an accepted candidate | share | accepted |
 |---|---:|---:|---:|
+| model | 31 | 0.35% | 110 |
 | generator | 2161 | 24.49% | 14756 |
 | secretgate-default | 11 | 0.12% | 57 |
 | lr | 77 | 0.87% | 323 |
@@ -156,17 +181,34 @@ The generator's row is its recall (2.2): the share of T rows a candidate overlap
 | generator | 187 | 2.12% | 1186 |
 | secretgate-default | 7 | 0.08% | 47 |
 
+## Latency and size (7.5)
+
+full-depth.gguf: 249,984 bytes, 445,345 parameters, tau* 0.2598. Native, 4234 candidates: median 1866 µs at full depth, 432 µs at the first exit; early-exit rate at the stored thresholds 0.000.
+
+| exit | accuracy (real question) | ECE |
+|---:|---:|---:|
+| 1 | 0.9532 | 0.0134 |
+| 2 | 0.9653 | 0.0095 |
+| 3 | 0.9676 | 0.0102 |
+| 4 | 0.9676 | 0.0087 |
+
+WASM (200 candidates, thresholds at 1): median 3337 µs, max |p_wasm - p_native| 1.19e-07, argmax agree 200.
+
 ## Value-only probe (section 9)
 
 A logistic regression on the value's own features (len, entropy, chars_per_token, digits, upper, lower, other, word_run), trained on 19946 labelled CredData training candidates, scored on 1589 CredData validation candidates (384 positives): PR-AUC 0.8202 (the share of positives is 0.2417), ROC-AUC 0.9197, best F1 0.7200. A high score means the shape of a value alone separates T from F and X.
 
 ## Gate
 
-- G1: fails (no result of model)
-- G2: fails (no result of model)
-- G3: fails (no result of model)
-- G4: fails (no issue-report result of model)
-- G5: fails (no ECE of model)
-- G6: fails (no native latency)
-- G7: fails (no clean-text result of model)
+- G1, every repository: holds (model 0.8603, best rule scanner secretgate-default 0.5197 + 0.15 = 0.6697; full universe 0.7733 against 0.4348)
+- G1, without the largest repository: holds (model 0.8000, best rule scanner secretgate-default 0.6136 + 0.15 = 0.7636; full universe 0.7500 against 0.5378)
+- G2, every repository: holds (model 0.8603, cbx-17m 0.8873 - 0.1 = 0.7873; full universe 0.7733 against 0.7724)
+- G2, without the largest repository: holds (model 0.8000, cbx-17m 0.8191 - 0.1 = 0.7191; full universe 0.7500 against 0.7292)
+- G3, every repository: fails (model 0.8603, lr 0.8604; full universe 0.7733 against 0.7549)
+- G3, without the largest repository: holds (model 0.8000, lr 0.7972; full universe 0.7500 against 0.7186)
+- G4: holds (issue-report candidate F1 0.8154, Gitleaks 0.6805 + 0.08 = 0.7605)
+- G5: holds (ECE 0.0135 on the gated universe, at most 0.05; full universe 0.0151)
+- G6: holds (native median 1866 µs per candidate, at most 3000)
+- G7: holds (31 of 8825 clean files with an accepted candidate, 0.35%, at most 1.0%)
+- announced goal, G2 at -0.05: met
 - gate: REHEARSAL on validation: the gate would not hold on these numbers; nothing is decided before the test

@@ -16,52 +16,99 @@
  },
  "gates": {
   "G1": {
-   "holds": false,
-   "why": [
-    "no result of model"
-   ],
-   "parts": {}
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "model": 0.8603351955307262,
+     "reference": "secretgate-default",
+     "reference_f1": 0.5196850393700787,
+     "holds": true,
+     "model_full_universe": 0.7733071638861628,
+     "reference_full_universe": 0.4347826086956522
+    },
+    "without_largest": {
+     "model": 0.7999999999999999,
+     "reference": "secretgate-default",
+     "reference_f1": 0.6136363636363636,
+     "holds": true,
+     "model_full_universe": 0.75,
+     "reference_full_universe": 0.5378486055776892
+    }
+   }
   },
   "G2": {
-   "holds": false,
-   "why": [
-    "no result of model"
-   ],
-   "parts": {}
+   "holds": true,
+   "why": [],
+   "parts": {
+    "all": {
+     "model": 0.8603351955307262,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8872901678657074,
+     "holds": true,
+     "model_full_universe": 0.7733071638861628,
+     "reference_full_universe": 0.7724425887265136
+    },
+    "without_largest": {
+     "model": 0.7999999999999999,
+     "reference": "cbx-17m",
+     "reference_f1": 0.8190854870775348,
+     "holds": true,
+     "model_full_universe": 0.75,
+     "reference_full_universe": 0.7292035398230089
+    }
+   }
   },
   "G3": {
    "holds": false,
    "why": [
-    "no result of model"
+    "every repository: 0.8603 <= lr 0.8604"
    ],
-   "parts": {}
+   "parts": {
+    "all": {
+     "model": 0.8603351955307262,
+     "reference": "lr",
+     "reference_f1": 0.8603603603603605,
+     "holds": false,
+     "model_full_universe": 0.7733071638861628,
+     "reference_full_universe": 0.7549407114624506
+    },
+    "without_largest": {
+     "model": 0.7999999999999999,
+     "reference": "lr",
+     "reference_f1": 0.7971781305114638,
+     "holds": true,
+     "model_full_universe": 0.75,
+     "reference_full_universe": 0.7186009538950715
+    }
+   }
   },
   "G4": {
-   "holds": false,
-   "why": [
-    "no issue-report result of model"
-   ]
+   "holds": true,
+   "why": [],
+   "model": 0.8153846153846154,
+   "gitleaks": 0.6804550155118925
   },
   "G5": {
-   "holds": false,
-   "why": [
-    "no ECE of model"
-   ]
+   "holds": true,
+   "why": [],
+   "ece": 0.013461832490164563,
+   "ece_full_universe": 0.015148173130974007
   },
   "G6": {
-   "holds": false,
-   "why": [
-    "no native latency"
-   ]
+   "holds": true,
+   "why": [],
+   "median_us": 1866.375
   },
   "G7": {
-   "holds": false,
-   "why": [
-    "no clean-text result of model"
-   ]
+   "holds": true,
+   "why": [],
+   "files": 31,
+   "of": 8825,
+   "share": 0.0035127478753541074
   }
  },
- "announced_goal_met": null,
+ "announced_goal_met": true,
  "all_hold": false,
  "verdict": "REHEARSAL on validation: the gate would not hold on these numbers; nothing is decided before the test"
 }
