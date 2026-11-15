@@ -1,0 +1,17 @@
+# s6-route-nano (docs/s6-nano2-prereg.md, sections 4.2, 6 and 14.3): the pinned environment of
+# scripts/route-embed.py and scripts/route-baselines.py. The lock next to this file is the record
+# of what is installed; the environment itself is created outside the repository
+# (UV_PROJECT_ENVIRONMENT=<data>/envs/route, see scripts/route/common.py).
+[project]
+name = "route-baselines"
+version = "0"
+requires-python = "==3.12.*"
+dependencies = [
+  "model2vec[train]==0.10.0",
+  "sentence-transformers==6.3.0",
+  "bm25s==0.3.16",
+  "scikit-learn==1.9.1",
+]
+
+[tool.uv]
+package = false
