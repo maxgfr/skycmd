@@ -2,6 +2,7 @@
 // The /play/ page: four games, AI or human control, model selector and a live HUD.
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { GameRunner, newHud, type GameKind, type Hud, type Mode } from '../lib/runner'
+import { actionForKey, actionForSwipe, FirstPress } from '../lib/controls'
 import {
   engineLabel,
   FAMILY_LABEL,
@@ -119,6 +120,11 @@ const mode = ref<Mode>('ai')
 const veto = ref(true)
 const minimap = ref(true)
 const hitbox = ref(false)
+/** Shown for a moment when a control switched the page from AI to human mode. */
+const modeNote = ref(false)
+const root = ref<HTMLElement | null>(null)
+const first = new FirstPress()
+let noteTimer: ReturnType<typeof setTimeout> | undefined
 const models = ref<ModelEntry[]>([])
 const selected = ref<string>(ORACLE)
 const tau = ref('auto')
@@ -227,10 +233,21 @@ function setKind(k: GameKind) {
   window.history.replaceState(null, '', url)
 }
 
-function press(key: string) {
-  if (mode.value !== 'human') mode.value = 'human'
+/** Sends a press to the human runner. */
+function deliver(key: string) {
   if (kind.value === 'doom') runner?.hold(key, true)
   else runner?.input(key)
+}
+
+/** A control was used: in AI mode it switches to human mode and the same press then acts on the
+ * new runner (see the `mode` watcher), so the first press is never lost. */
+function act(key: string) {
+  if (first.press(mode.value, key)) mode.value = 'human'
+  else deliver(key)
+}
+
+function press(key: string) {
+  act(key)
 }
 
 function release(key: string) {
@@ -257,64 +274,36 @@ watch(hitbox, (v) => runner?.setHitbox(v))
 watch(mode, (m) => {
   // Each mode keeps its own high score.
   makeRunner()
-  if (m === 'human') stage.value?.focus()
+  if (m !== 'human') return
+  stage.value?.focus()
+  const k = first.take()
+  if (k) {
+    deliver(k)
+    modeNote.value = true
+    clearTimeout(noteTimer)
+    noteTimer = setTimeout(() => (modeNote.value = false), 1600)
+  }
 })
 watch(veto, (v) => runner?.setVeto(v))
 watch(selected, (f) => selectModel(f))
 watch(tau, () => applyEngine())
 
-const KEYMAP: Record<GameKind, Record<string, string>> = {
-  flappy: { ' ': 'thrust', ArrowUp: 'thrust', w: 'thrust' },
-  rescue: {
-    ArrowUp: 'north',
-    w: 'north',
-    ArrowDown: 'south',
-    s: 'south',
-    ArrowRight: 'east',
-    d: 'east',
-    ArrowLeft: 'west',
-    a: 'west',
-    h: 'hover',
-    r: 'return_home',
-  },
-  dodge: {
-    ArrowUp: 'over',
-    ArrowLeft: 'around',
-    ArrowRight: 'around',
-    ArrowDown: 'brake',
-    ' ': 'continue',
-    a: 'abort',
-  },
-  doom: {
-    w: 'forward',
-    ArrowUp: 'forward',
-    s: 'back',
-    ArrowDown: 'back',
-    a: 'strafe_left',
-    d: 'strafe_right',
-    ArrowLeft: 'turn_left',
-    ArrowRight: 'turn_right',
-    q: 'turn_left',
-    ' ': 'shoot',
-    Control: 'shoot',
-    e: 'use',
-  },
-}
-
 function keyOf(e: KeyboardEvent): string | undefined {
   const t = e.target as HTMLElement | null
   if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return undefined
-  return KEYMAP[kind.value][e.key.length === 1 ? e.key.toLowerCase() : e.key]
+  return actionForKey(kind.value, e.key)
 }
 
 function onKey(e: KeyboardEvent) {
-  if (mode.value !== 'human') return
   const key = keyOf(e)
   if (!key) return
+  // In AI mode the game takes its keys only when the focus is in the game area, so the arrow
+  // keys still scroll the page elsewhere; there the first key switches to human mode and acts.
+  if (mode.value !== 'human' && !root.value?.contains(document.activeElement)) return
   e.preventDefault()
   if (kind.value === 'doom') {
-    if (!e.repeat) runner?.hold(key, true)
-  } else if (!e.repeat || kind.value !== 'flappy') runner?.input(key)
+    if (!e.repeat) act(key)
+  } else if (!e.repeat || kind.value !== 'flappy') act(key)
 }
 
 function onKeyUp(e: KeyboardEvent) {
@@ -327,23 +316,17 @@ function onKeyUp(e: KeyboardEvent) {
 let touchStart: { x: number; y: number } | null = null
 function onPointerDown(e: PointerEvent) {
   touchStart = { x: e.clientX, y: e.clientY }
-  if (mode.value === 'human' && kind.value === 'flappy') runner?.input('thrust')
+  if (kind.value === 'flappy') act('thrust')
 }
 function onPointerUp(e: PointerEvent) {
   if (!touchStart) return
   const dx = e.clientX - touchStart.x
   const dy = e.clientY - touchStart.y
   touchStart = null
-  if (mode.value !== 'human' || kind.value === 'flappy' || kind.value === 'doom') return
-  if (Math.hypot(dx, dy) < 24) {
-    if (runner && hud.value.done) runner.input('hover')
-    return
-  }
-  if (kind.value === 'rescue') {
-    runner?.input(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'east' : 'west') : dy > 0 ? 'south' : 'north')
-  } else {
-    runner?.input(Math.abs(dx) > Math.abs(dy) ? 'around' : dy < 0 ? 'over' : 'brake')
-  }
+  if (kind.value === 'flappy' || kind.value === 'doom') return
+  const a = actionForSwipe(kind.value, dx, dy)
+  if (a) act(a)
+  else if (mode.value === 'human' && runner && hud.value.done) runner.input('hover') // a tap restarts
 }
 
 onMounted(async () => {
@@ -367,6 +350,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(noteTimer)
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('keyup', onKeyUp)
   runner?.destroy()
@@ -379,7 +363,7 @@ function pct(p: number) {
 </script>
 
 <template>
-  <div class="play">
+  <div ref="root" class="play">
     <div class="tabs" role="tablist" aria-label="Games">
       <button
         v-for="g in GAMES"
@@ -454,6 +438,7 @@ function pct(p: number) {
       >
         <canvas ref="canvas" class="canvas" :aria-label="`${game.title} game`" role="img" />
         <div v-if="vetoFlash" :key="hud.vetoAt" class="veto">VETO</div>
+        <div v-if="modeNote" class="modenote" role="status">Human mode: you are flying</div>
         <div v-if="mode === 'human' && hud.done" class="overlay">Tap or press a key to restart</div>
       </div>
 
@@ -769,6 +754,18 @@ function pct(p: number) {
   .veto {
     animation: none;
   }
+}
+.modenote {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--vp-c-brand-1);
+  pointer-events: none;
 }
 .overlay {
   position: absolute;

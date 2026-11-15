@@ -27,6 +27,7 @@ import {
   type DodgeView,
 } from '../.vitepress/theme/lib/render.ts'
 import { endedInCrash } from '../.vitepress/theme/lib/events.ts'
+import { FirstPress, actionForKey, actionForSwipe } from '../.vitepress/theme/lib/controls.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkg = join(here, '../public/pkg')
@@ -153,6 +154,43 @@ test('crash and death events count as crashes, nothing else does', () => {
   for (const e of ['completed', 'aborted', 'timeout', 'none', 'passed']) assert.equal(endedInCrash(e), false)
 })
 
+test('the first press made in AI mode switches to human mode and still acts', () => {
+  // The page: a press in AI mode sets mode = human; the mode watcher builds a new runner and
+  // replays the kept press on it. A press in human mode goes straight to the runner.
+  const first = new FirstPress()
+  let mode: 'ai' | 'human' = 'ai'
+  const received: string[][] = [[]] // presses seen by each runner
+  const act = (key: string) => {
+    if (first.press(mode, key)) {
+      mode = 'human'
+      received.push([]) // the watcher's new runner
+      const k = first.take()
+      if (k) received[received.length - 1].push(k)
+    } else received[received.length - 1].push(key)
+  }
+  act('east') // an on-screen arrow, an arrow key or a swipe, all go through act()
+  act('north')
+  assert.deepEqual(received, [[], ['east', 'north']])
+  assert.equal(first.take(), null, 'replayed once')
+})
+
+test('keys and swipes map to the moves they point to', () => {
+  assert.equal(actionForKey('rescue', 'ArrowUp'), 'north')
+  assert.equal(actionForKey('rescue', 'ArrowLeft'), 'west')
+  assert.equal(actionForKey('rescue', 'D'), 'east')
+  assert.equal(actionForKey('dodge', 'ArrowDown'), 'brake')
+  assert.equal(actionForKey('flappy', ' '), 'thrust')
+  assert.equal(actionForKey('doom', 'ArrowRight'), 'turn_right')
+  assert.equal(actionForKey('rescue', 'x'), undefined)
+  // Screen y grows downward: a swipe down is south.
+  assert.equal(actionForSwipe('rescue', 0, 60), 'south')
+  assert.equal(actionForSwipe('rescue', 0, -60), 'north')
+  assert.equal(actionForSwipe('rescue', -60, 10), 'west')
+  assert.equal(actionForSwipe('dodge', 0, -60), 'over')
+  assert.equal(actionForSwipe('rescue', 5, 5), undefined, 'a tap is not a swipe')
+  assert.equal(actionForSwipe('flappy', 0, 60), undefined)
+})
+
 // ------------------------------------------------------------------------------------------
 // Sessions of the browser module.
 
@@ -267,12 +305,12 @@ test('Dodge: a model with the reflex plays without a visible touch', { skip: !ha
 
 test('Rescue: arrow keys move the drone where they point, the drawn wind sets the cost', { skip: !hasPkg }, async () => {
   const mod = await wasm()
-  // The page's key map (PlayGame.vue) and the screen direction of each move.
+  // The page's key map (controls.ts) and the screen direction of each key.
   const KEYS: Record<string, [string, number, number]> = {
-    ArrowUp: ['north', -1, 0],
-    ArrowDown: ['south', 1, 0],
-    ArrowRight: ['east', 0, 1],
-    ArrowLeft: ['west', 0, -1],
+    ArrowUp: [actionForKey('rescue', 'ArrowUp')!, -1, 0],
+    ArrowDown: [actionForKey('rescue', 'ArrowDown')!, 1, 0],
+    ArrowRight: [actionForKey('rescue', 'ArrowRight')!, 0, 1],
+    ArrowLeft: [actionForKey('rescue', 'ArrowLeft')!, 0, -1],
   }
   const names = Object.keys(KEYS)
   let [moves, against, vetoed, reversed, crashes] = [0, 0, 0, 0, 0]
