@@ -64,13 +64,17 @@ class Rules(unittest.TestCase):
         self.assertTrue(gate.pilot_rule(None, None, 0.70)["abort"])
 
     def test_g1(self):
-        base = {"potion-cos": 0.70, "static-ft": 0.72, "pair-lr": 0.75}
+        base = {"potion-cos": 0.70, "static-ft": 0.72, "pair-lr": 0.75, "bm25": 0.74}
         self.assertTrue(gate.g1(0.76, base)["pass"])
-        self.assertTrue(gate.g1(0.73, {**base, "pair-lr": 0.6, "static-ft": 0.6})["pass"])
-        self.assertFalse(gate.g1(0.729, {**base, "pair-lr": 0.6, "static-ft": 0.6})["pass"])  # under +0.03
+        self.assertTrue(gate.g1(0.73, {**base, "pair-lr": 0.6, "static-ft": 0.6, "bm25": 0.6})["pass"])
+        self.assertFalse(gate.g1(0.729, {**base, "pair-lr": 0.6, "static-ft": 0.6, "bm25": 0.6})["pass"])  # under +0.03
         self.assertFalse(gate.g1(0.75, base)["pass"])  # ties pair-lr
         self.assertFalse(gate.g1(0.76, {**base, "static-ft": 0.77})["pass"])
         self.assertFalse(gate.g1(0.76, {**base, "pair-lr": None})["pass"])  # a missing baseline fails
+        # amendment 1: above bm25 too
+        self.assertFalse(gate.g1(0.76, {**base, "bm25": 0.76})["pass"])
+        self.assertFalse(gate.g1(0.76, {**base, "bm25": 0.80})["pass"])
+        self.assertFalse(gate.g1(0.76, {k: v for k, v in base.items() if k != "bm25"})["pass"])
 
     def test_g2(self):
         ch = {"share": 0.9}
@@ -94,7 +98,7 @@ class Rules(unittest.TestCase):
         self.assertFalse(gate.g4(None)["pass"])
 
     def test_verdict(self):
-        base = {"potion-cos": 0.70, "static-ft": 0.72, "pair-lr": 0.75}
+        base = {"potion-cos": 0.70, "static-ft": 0.72, "pair-lr": 0.75, "bm25": 0.74}
         self.assertTrue(gate.verdict(good_metrics(), base, {"share": 0.9}, WASM_OK)["pass"])
         self.assertFalse(gate.verdict(good_metrics(), base, {"share": 0.9}, None)["pass"])
 
@@ -200,7 +204,7 @@ class EndToEnd(unittest.TestCase):
                     for i, s in enumerate(self.slates)]
         self.dump("model", "v_tools", sys_rows(90, 0.9))
         self.dump("model", "v_tools_pairs", [answer(s, 2 if s["uid"].endswith("present") else 7, 0.9) for s in self.pairs])
-        for name, right in (("potion-cos", 60), ("static-ft", 65), ("pair-lr", 70)):
+        for name, right in (("potion-cos", 60), ("static-ft", 65), ("pair-lr", 70), ("bm25", 80)):
             self.dump(name, "v_tools", sys_rows(right, 0.6))
         code, out = self.run_gate(wasm=WASM_OK)
         self.assertEqual(code, 0, json.dumps(out["verdict"], indent=1))
@@ -213,6 +217,12 @@ class EndToEnd(unittest.TestCase):
         # a baseline in the model's seat ties itself: G1 fails
         code, out = self.run_gate(seat="pair-lr", wasm=WASM_OK)
         self.assertFalse(out["verdict"]["G1"]["pass"])
+        # amendment 1: a model at or below bm25 fails G1
+        self.dump("bm25", "v_tools", sys_rows(90, 0.6))
+        code, out = self.run_gate(wasm=WASM_OK)
+        self.assertEqual(code, 1)
+        self.assertFalse(out["verdict"]["G1"]["pass"])
+        self.assertIn("bm25", out["differences"])
 
     def test_the_test_split_is_closed(self):
         os.makedirs(os.path.join(self.tmp.name, "build", "test"))

@@ -9,7 +9,7 @@ A dump is `sky-eval --dump-probs` or a baseline's file (scripts/route-baselines.
 <eval>/<split>/<system>/<file>.jsonl; the model's are under `model`. The slates are read through
 scripts/route/common.py, which refuses the test until runs/s6-nano2/TEST-OPEN exists and the
 model holds tau_ask. `--seat` puts another system in the model's place (the validation
-rehearsal of section 6). A failed gate is a result: results.md and gate.json are written and the
+rehearsal of section 6). G1 (amendment 1) also asks for an accuracy above `bm25`'s. A failed gate is a result: results.md and gate.json are written and the
 exit status is 1; an input that is missing fails its condition.
 """
 
@@ -32,8 +32,8 @@ G4_MS = 2.0
 G4_PARITY = 1e-4
 PILOT_MICRO = 0.04
 PILOT_ABORT = 0.15
-GATED = ("potion-cos", "static-ft", "pair-lr")
-REPORTED = ("potion-cos-4bit", "bm25", "minilm-cos", "toolrouter", "name-prior", "s6-nano-v1")
+GATED = ("potion-cos", "static-ft", "pair-lr", "bm25")
+REPORTED = ("potion-cos-4bit", "minilm-cos", "toolrouter", "name-prior", "s6-nano-v1")
 SOURCES = {
     "val": ("v_tools",),
     "test": ("t_tools", "t_metatool", "t_clinc", "t_toolrouting", "t_bfcl", "t_when2call", "t_massive"),
@@ -58,7 +58,8 @@ def pilot_rule(nano, micro, potion):
 
 
 def g1(model_acc, base):
-    """G1: >= potion-cos + 0.03, > static-ft, > pair-lr (point estimates on T-tools)."""
+    """G1: >= potion-cos + 0.03, > static-ft, > pair-lr (section 8), and > bm25 (amendment 1):
+    point estimates on T-tools."""
     out = {"model": model_acc}
     ok = finite(model_acc)
     for name in GATED:
@@ -183,6 +184,7 @@ def report(o):
               f"| G1 accuracy vs potion-cos + 0.03 | {fmt(g['model'])} | {fmt((g['potion-cos'] or float('nan')) + G1_MARGIN)} | {'yes' if v['G1']['pass'] else 'no'} |",
               f"| G1 vs static-ft | {fmt(g['model'])} | > {fmt(g['static-ft'])} | |",
               f"| G1 vs pair-lr | {fmt(g['model'])} | > {fmt(g['pair-lr'])} | |",
+              f"| G1 vs bm25 (amendment 1) | {fmt(g['model'])} | > {fmt(g['bm25'])} | |",
               f"| G2 none answers | {fmt(v['G2']['none_answer_share'])} | 0.10–0.30 | {'yes' if v['G2']['none_in_range'] else 'no'} |",
               f"| G2 largest name excess | {fmt((v['G2']['largest_name_excess'] or {}).get('excess'))} | ≤ 0 | {'yes' if v['G2']['no_dominant_name'] else 'no'} |",
               f"| G2 answer changes, gold removed | {fmt((v['G2']['gold_removed_changed'] or {}).get('share'))} | ≥ 0.80 | {'yes' if v['G2']['answers_change'] else 'no'} |",
