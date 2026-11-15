@@ -11,6 +11,14 @@
 //
 // Prints one JSON line: {n, max_abs_diff, argmax_agree, median_wasm_us}. Exit status 1 when a
 // gap exceeds 1e-4 or an argmax differs.
+//
+// `--router` (s6-route-nano, docs/s6-nano2-prereg.md 7.4): each request is decided twice. The
+// first call meets its tool list for the first time (the static stream is encoded: the
+// "first request" latency) and is the one compared with the native probabilities; the second
+// asks the same tool list about another request text (the request with " please" appended, so
+// that the state is encoded again and only the tool list is cached: the "per request with the
+// tool list cached" latency). The line adds {median_first_us, median_cached_us, static_hits,
+// state_hits}; median_wasm_us is the cached median.
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,14 +29,16 @@ const pkg = join(here, '../../../site/public/pkg')
 const args = process.argv.slice(2)
 let n = 20
 let relaxed = false
+let router = false
 const files = []
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--n') n = Number(args[++i])
   else if (args[i] === '--relaxed') relaxed = true
+  else if (args[i] === '--router') router = true
   else files.push(args[i])
 }
 if (files.length !== 2) {
-  console.error('usage: parity-node.mjs model.gguf dump.jsonl [--n 20] [--relaxed]')
+  console.error('usage: parity-node.mjs model.gguf dump.jsonl [--n 20] [--relaxed] [--router]')
   process.exit(2)
 }
 const [modelPath, dumpPath] = files
@@ -68,14 +78,29 @@ function readWav(path) {
   throw new Error(`${path}: no data chunk`)
 }
 
+const first = []
+let staticHits = 0
+let stateHits = 0
 for (const r of rows) {
   const opts = JSON.stringify(r.opts)
   const a = JSON.parse(r.wav ? engine.decideAudio(r.t, r.ins, opts, readWav(r.wav)) : engine.decide(r.t, r.ins, opts, r.state))
-  us.push(a.micros)
   for (let i = 0; i < r.probs.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a.probs[i] - r.probs[i]))
   agree += argmax(a.probs) === argmax(r.probs) ? 1 : 0
+  if (router) {
+    first.push(a.micros)
+    const b = JSON.parse(engine.decide(r.t, r.ins, opts, `${r.state} please`))
+    us.push(b.micros)
+    staticHits += b.static_hit ? 1 : 0
+    stateHits += b.state_hit ? 1 : 0
+  } else {
+    us.push(a.micros)
+  }
 }
-us.sort((x, y) => x - y)
-const out = { n: rows.length, max_abs_diff: maxDiff, argmax_agree: agree, median_wasm_us: us[Math.floor(us.length / 2)] }
+const median = (v) => {
+  const s = [...v].sort((x, y) => x - y)
+  return s[Math.floor(s.length / 2)]
+}
+const out = { n: rows.length, max_abs_diff: maxDiff, argmax_agree: agree, median_wasm_us: median(us) }
+if (router) Object.assign(out, { median_first_us: median(first), median_cached_us: median(us), static_hits: staticHits, state_hits: stateHits })
 console.log(JSON.stringify(out))
 process.exit(maxDiff <= 1e-4 && agree === rows.length ? 0 : 1)
