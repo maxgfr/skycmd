@@ -72,7 +72,8 @@
   },
   {
     "model": "s6-secrets-verify-pico",
-    "space": false
+    "space": false,
+    "engine": true
   },
   {
     "model": "s5-lite",

@@ -12,7 +12,8 @@ Inputs: hf/cards/<model>.md (model cards, `{{USER}}` replaced by the namespace),
 modules, SIMD128 and relaxed SIMD), site/public/doom/ (Freedoom textures for the game Spaces),
 site/public/ear/ (the sample clips of the ear Spaces), site/public/forecast/ and
 site/public/models/forecast.json with TinyCast in models/ref/ (the forecast Spaces) and
-target/hf-space-app/ (the demo app). Everything is assembled under target/hf/<model>/{model,space}
+target/hf-space-app/ (the demo app), and target/verify-assets/ for an entry with `"engine": true`
+(scripts/build-verify-assets.sh: the engine/ folder of the model repo). Everything is assembled under target/hf/<model>/{model,space}
 before upload; with --dry-run nothing is uploaded.
 
 A model whose manifest entry has `"gate": "failed"` failed its pre-registered gate and is
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "target" / "hf"
 APP = ROOT / "target" / "hf-space-app"
 PUBLIC = ROOT / "site" / "public"
+ENGINE = ROOT / "target" / "verify-assets"
 
 
 def space_readme(user: str, s: dict, entry: dict) -> str:
@@ -77,6 +79,11 @@ def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path | None]:
         raise SystemExit(f"hf/cards/{m}.md: a failed model's card must open with its failure notice")
     (model_dir / "README.md").write_text(card)
     shutil.copy2(PUBLIC / "models" / f"{m}.gguf", model_dir / f"{m}.gguf")
+    if s.get("engine"):
+        # the engine assets of scripts/build-verify-assets.sh, under engine/
+        if not (ENGINE / "MANIFEST.json").exists():
+            raise SystemExit(f"missing {ENGINE / 'MANIFEST.json'}: run scripts/build-verify-assets.sh")
+        shutil.copytree(ENGINE, model_dir / "engine")
     if not s.get("space", True):
         return model_dir, None
 

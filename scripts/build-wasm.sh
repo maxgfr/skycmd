@@ -7,6 +7,7 @@
 # a relaxed instruction, else the baseline. Both share one JS glue (sky_web.js): the script fails
 # if the two builds produce different glue.
 # Usage: scripts/build-wasm.sh [--dev]   (--dev builds the baseline only)
+# SKY_WASM_OUT (an absolute path) writes the three files elsewhere (default site/public/pkg).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,7 +23,8 @@ rustup target list --installed 2>/dev/null | grep -q wasm32-unknown-unknown ||
 
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/sky-web-wasm}
 rustflags=${RUSTFLAGS:-}
-pkg=$PWD/site/public/pkg
+pkg=${SKY_WASM_OUT:-$PWD/site/public/pkg}
+mkdir -p "$pkg"
 
 RUSTFLAGS="$rustflags -C target-feature=+simd128" \
   wasm-pack build crates/sky-web --target web "$profile" --out-dir "$pkg" --no-typescript
@@ -47,4 +49,4 @@ else
   cp "$relaxed/sky_web_bg.wasm" "$pkg/sky_web_relaxed_bg.wasm"
 fi
 
-ls -l site/public/pkg
+ls -l "$pkg"

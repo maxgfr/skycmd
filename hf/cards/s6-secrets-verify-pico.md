@@ -159,6 +159,11 @@ training split are replaced; the issue reports' test values are real and already
 only scored. Licenses:
 [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
 
+## Running it outside the browser (`engine/`)
+
+`engine/` holds the engine that runs this file from JavaScript (Node 21+, Deno, browsers): `sky_web_bg.wasm` (SIMD128) and `sky_web_relaxed_bg.wasm` (relaxed SIMD), the glue `sky_web.js` or the glue-free host `verify-host.mjs`, the word list `dictionary.txt` and this model, with bytes, sha256 and source commit in `MANIFEST.json`; `loadVerifier(wasm, gguf, dictionary)` (or `new SecretVerifier(gguf, dictionary)` with the glue) gives `judge(candidate)` → `{p_real, state_tokens, truncated, micros}` at full depth, `judgeMany([...])`, `thresholds()` → `{tau_f1, tau_f05, tau_f2}` (real when `p_real >= tau`) and `state(candidate)`, the text the model reads.
+A candidate is a secretgate `sg-cand-1` record as JSON: `rule` and `value` required; `file` (a path relative to the repository root) or `scope` (CredData's path words) with `ext`; `name`, `lineText` with `start`, `end` and `lineFrom` in UTF-16 units, `line`, `endLine`, `prevLine`, `nextLine`, and the booleans `filters.entropy`, `placeholder`, `stopword`, `allowlist`; `null` is absent, other fields are ignored, a wrong type is refused (`crates/sky-web/src/verify.rs`).
+
 ## Files
 
 - `s6-secrets-verify-pico.gguf`: ternary weights, tokenizer, temperatures, exit thresholds set to
