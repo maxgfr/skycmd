@@ -693,3 +693,14 @@ In each memory run the `recall` score is the same at N = 1, 2 and 4, overall and
 | the drawn N is kept | P1 at N = 4 ≥ P2 at N = 4 − 0.01 | 0.2460 against 0.2565 − 0.01 | no |
 
 **Decision: no nano run.** The log ends with "the pilot says the memory does not work: no nano run (docs/s6-sleep-prereg.md, section 5)". As §5 says, no nano run takes place: H0 to H3 are not tested, the test seeds of the probes are not read, and no `s6-sleep-nano` model exists or is published. The warm start, the third departure from the paper, was not tested (§5).
+
+**The code, checked after the pilot (15/11/2026): the negative result stands.** The code and the saved runs were read to see whether a defect made the pilot uninformative ([`docs/s6-sleep-diagnosis.md`](docs/s6-sleep-diagnosis.md), with file-and-line references; nothing was built or rerun). None was found:
+
+- **The number of passes reaches the computation.** N goes from the command line to the sleep passes in training and in the probe, and the memory they write is read by every later frame; a unit test asserts that the logits differ between N = 1 and N = 4, and P1's `rule110` answers differ between N = 1 and N = 2 on 22 of 500 episodes. On `recall`, all 4,000 per-ask results are identical across N for P1, P2 and P3.
+- **The write, carry and read paths are correct**: the delta-rule step has the right shapes, nothing resets or masks the memory between the write and the read, and nothing is detached beyond the pre-registered truncation.
+- **Every memory weight moved** from its initial value (the zero-initialised read-out to a mean |w| of 0.078, 0.044 and 0.077 in P1, P2 and P3).
+- **The memory never lowered the training loss**: the sequence losses of the memory runs differ from the control's by −0.0007 (sd 0.0068) for P1, +0.0042 for P2 and +0.0015 for P3, where solving `recall` would be worth about 0.069.
+- **Each model answers a near-constant option on the ask frames**: P2 and P3 are both right on only 15 of 4,000 asks, where about 250 would be expected if they answered independently at chance.
+- **The probe is sound**: the fact is on screen for one frame, the ask frame shows only the door, and the answer key and the option order are checked by tests and on the training data.
+- **A fact, not an explanation:** at P1's last step the gradients reaching the memory projections (1.6e-5 to 3.2e-5) are 10 to 20 times smaller than those of the base blocks (about 3e-4).
+- **Not tested:** no unit test checks that a hand-written fact reads back as the right answer through the memory (a show frame, idle frames, then an ask giving the right colour). That test is still to add. There is no rerun.
