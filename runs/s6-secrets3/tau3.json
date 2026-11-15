@@ -1,0 +1,458 @@
+{
+ "experiment": "s6-secrets v3 (docs/s6-secrets3-prereg.md)",
+ "rule": "docs/s6-secrets3-prereg.md section 1: the threshold that maximises the union's line-level F1 on the gated universe of the 16 validation repositories, among the probabilities observed on the validation candidates (the verifier's scores on creddata:validation); of equal values the highest",
+ "written_at": "2026-11-15T09:05:11+01:00",
+ "thresholds": {
+  "union": {
+   "verifier": "model",
+   "threshold": 0.34933,
+   "observed_scores": 4234,
+   "distinct_scores": 3270,
+   "same_over_the_scores_on_labelled_lines_only": true,
+   "verifier_threshold_of_v2": 0.2598114609718323
+  },
+  "union-lr": {
+   "verifier": "lr",
+   "threshold": 0.155049,
+   "observed_scores": 4234,
+   "distinct_scores": 3352,
+   "same_over_the_scores_on_labelled_lines_only": true,
+   "verifier_threshold_of_v2": 0.15504926471874883
+  }
+ },
+ "validation": {
+  "union": {
+   "gated": {
+    "all": {
+     "tp": 402,
+     "fp": 38,
+     "fn": 55,
+     "precision": 0.9136363636363637,
+     "recall": 0.8796498905908097,
+     "f1": 0.8963210702341138,
+     "tn": 1925,
+     "false_alarm_rate": 0.01935812531839022
+    },
+    "without_largest": {
+     "tp": 247,
+     "fp": 37,
+     "fn": 45,
+     "precision": 0.8697183098591549,
+     "recall": 0.8458904109589042,
+     "f1": 0.857638888888889,
+     "tn": 1848,
+     "false_alarm_rate": 0.019628647214854113
+    }
+   },
+   "full": {
+    "all": {
+     "tp": 409,
+     "fp": 31,
+     "fn": 172,
+     "precision": 0.9295454545454546,
+     "recall": 0.7039586919104991,
+     "f1": 0.8011753183153771,
+     "tn": 1921,
+     "false_alarm_rate": 0.015881147540983607
+    },
+    "without_largest": {
+     "tp": 254,
+     "fp": 30,
+     "fn": 100,
+     "precision": 0.8943661971830986,
+     "recall": 0.7175141242937854,
+     "f1": 0.7962382445141066,
+     "tn": 1844,
+     "false_alarm_rate": 0.016008537886873
+    }
+   }
+  },
+  "union at the verifier's v2 threshold": {
+   "gated": {
+    "all": {
+     "tp": 409,
+     "fp": 60,
+     "fn": 48,
+     "precision": 0.8720682302771855,
+     "recall": 0.8949671772428884,
+     "f1": 0.8833693304535637,
+     "tn": 1903,
+     "false_alarm_rate": 0.030565461029037188
+    },
+    "without_largest": {
+     "tp": 252,
+     "fp": 57,
+     "fn": 40,
+     "precision": 0.8155339805825242,
+     "recall": 0.863013698630137,
+     "f1": 0.8386023294509152,
+     "tn": 1828,
+     "false_alarm_rate": 0.030238726790450927
+    }
+   },
+   "full": {
+    "all": {
+     "tp": 418,
+     "fp": 51,
+     "fn": 163,
+     "precision": 0.8912579957356077,
+     "recall": 0.7194492254733219,
+     "f1": 0.7961904761904762,
+     "tn": 1901,
+     "false_alarm_rate": 0.02612704918032787
+    },
+    "without_largest": {
+     "tp": 261,
+     "fp": 48,
+     "fn": 93,
+     "precision": 0.8446601941747572,
+     "recall": 0.7372881355932204,
+     "f1": 0.7873303167420815,
+     "tn": 1826,
+     "false_alarm_rate": 0.025613660618996798
+    }
+   }
+  },
+  "model alone at its v2 threshold": {
+   "gated": {
+    "all": {
+     "tp": 385,
+     "fp": 53,
+     "fn": 72,
+     "precision": 0.8789954337899544,
+     "recall": 0.8424507658643327,
+     "f1": 0.8603351955307262,
+     "tn": 1910,
+     "false_alarm_rate": 0.026999490575649515
+    },
+    "without_largest": {
+     "tp": 228,
+     "fp": 50,
+     "fn": 64,
+     "precision": 0.8201438848920863,
+     "recall": 0.7808219178082192,
+     "f1": 0.7999999999999999,
+     "tn": 1835,
+     "false_alarm_rate": 0.026525198938992044
+    }
+   },
+   "full": {
+    "all": {
+     "tp": 394,
+     "fp": 44,
+     "fn": 187,
+     "precision": 0.8995433789954338,
+     "recall": 0.6781411359724613,
+     "f1": 0.7733071638861628,
+     "tn": 1908,
+     "false_alarm_rate": 0.022540983606557378
+    },
+    "without_largest": {
+     "tp": 237,
+     "fp": 41,
+     "fn": 117,
+     "precision": 0.8525179856115108,
+     "recall": 0.6694915254237288,
+     "f1": 0.75,
+     "tn": 1833,
+     "false_alarm_rate": 0.021878335112059766
+    }
+   }
+  },
+  "union-lr": {
+   "gated": {
+    "all": {
+     "tp": 388,
+     "fp": 51,
+     "fn": 69,
+     "precision": 0.8838268792710706,
+     "recall": 0.849015317286652,
+     "f1": 0.8660714285714285,
+     "tn": 1912,
+     "false_alarm_rate": 0.02598064187468161
+    },
+    "without_largest": {
+     "tp": 231,
+     "fp": 51,
+     "fn": 61,
+     "precision": 0.8191489361702128,
+     "recall": 0.791095890410959,
+     "f1": 0.8048780487804879,
+     "tn": 1834,
+     "false_alarm_rate": 0.027055702917771884
+    }
+   },
+   "full": {
+    "all": {
+     "tp": 388,
+     "fp": 51,
+     "fn": 193,
+     "precision": 0.8838268792710706,
+     "recall": 0.6678141135972461,
+     "f1": 0.76078431372549,
+     "tn": 1901,
+     "false_alarm_rate": 0.02612704918032787
+    },
+    "without_largest": {
+     "tp": 231,
+     "fp": 51,
+     "fn": 123,
+     "precision": 0.8191489361702128,
+     "recall": 0.652542372881356,
+     "f1": 0.7264150943396228,
+     "tn": 1823,
+     "false_alarm_rate": 0.027214514407684097
+    }
+   }
+  },
+  "union-lr at the verifier's v2 threshold": {
+   "gated": {
+    "all": {
+     "tp": 387,
+     "fp": 51,
+     "fn": 70,
+     "precision": 0.8835616438356164,
+     "recall": 0.8468271334792122,
+     "f1": 0.8648044692737431,
+     "tn": 1912,
+     "false_alarm_rate": 0.02598064187468161
+    },
+    "without_largest": {
+     "tp": 231,
+     "fp": 51,
+     "fn": 61,
+     "precision": 0.8191489361702128,
+     "recall": 0.791095890410959,
+     "f1": 0.8048780487804879,
+     "tn": 1834,
+     "false_alarm_rate": 0.027055702917771884
+    }
+   },
+   "full": {
+    "all": {
+     "tp": 387,
+     "fp": 51,
+     "fn": 194,
+     "precision": 0.8835616438356164,
+     "recall": 0.6660929432013769,
+     "f1": 0.7595682041216879,
+     "tn": 1901,
+     "false_alarm_rate": 0.02612704918032787
+    },
+    "without_largest": {
+     "tp": 231,
+     "fp": 51,
+     "fn": 123,
+     "precision": 0.8191489361702128,
+     "recall": 0.652542372881356,
+     "f1": 0.7264150943396228,
+     "tn": 1823,
+     "false_alarm_rate": 0.027214514407684097
+    }
+   }
+  },
+  "lr alone at its v2 threshold": {
+   "gated": {
+    "all": {
+     "tp": 382,
+     "fp": 49,
+     "fn": 75,
+     "precision": 0.8863109048723898,
+     "recall": 0.8358862144420132,
+     "f1": 0.8603603603603605,
+     "tn": 1914,
+     "false_alarm_rate": 0.024961793173713703
+    },
+    "without_largest": {
+     "tp": 226,
+     "fp": 49,
+     "fn": 66,
+     "precision": 0.8218181818181818,
+     "recall": 0.773972602739726,
+     "f1": 0.7971781305114638,
+     "tn": 1836,
+     "false_alarm_rate": 0.0259946949602122
+    }
+   },
+   "full": {
+    "all": {
+     "tp": 382,
+     "fp": 49,
+     "fn": 199,
+     "precision": 0.8863109048723898,
+     "recall": 0.657487091222031,
+     "f1": 0.7549407114624506,
+     "tn": 1903,
+     "false_alarm_rate": 0.025102459016393443
+    },
+    "without_largest": {
+     "tp": 226,
+     "fp": 49,
+     "fn": 128,
+     "precision": 0.8218181818181818,
+     "recall": 0.6384180790960452,
+     "f1": 0.7186009538950715,
+     "tn": 1825,
+     "false_alarm_rate": 0.026147278548559232
+    }
+   }
+  }
+ },
+ "tau3": 0.34933,
+ "tau_union_lr": 0.155049,
+ "tau_v2": 0.2598114609718323,
+ "largest_validation_repository": "7738e44d",
+ "inputs": {
+  "versions": {
+   "secretgate-default": "secretgate 4e93cfa2ee6e216caca9bc8e6f74cb565a991350",
+   "model": "full-depth.gguf sha256 01e6db3fa71cc2c5563dea222c68e040d3994ee2abbb02b25491a51b8cb54f27",
+   "lr": "scikit-learn 1.9.1, SGDClassifier alpha 0.0001, 2^18 int8 weights"
+  },
+  "splits.json_sha256": "b81d50dd1bfc31a29cfe5250f05126702d7eaf9e9224c52f4cdde0245987555e",
+  "validation": {
+   "creddata/secretgate-default": {
+    "flags": "eval/validation/flags/secretgate-default.flags.jsonl",
+    "flags_sha256": "5c136864e108b9291a7384a7c3f310baf4ecf648ea182167b4bcb054a628c8f0",
+    "run_sha256": "61d20b809dd1260afc63586d750d043ccc01ca591131d5819cf7e90d22b65886"
+   },
+   "creddata/model": {
+    "flags": "eval/validation/flags/model.flags.jsonl",
+    "flags_sha256": "9d252866b1e4d7b8a273e15a5afe8cc1e89a297e67f116696d3de59dd68f81d3",
+    "run_sha256": "2861b52ebe5a44b048c137529d5fead8dd6abddacc390070359c0424f8c53429"
+   },
+   "creddata/lr": {
+    "flags": "eval/validation/flags/lr.flags.jsonl",
+    "flags_sha256": "8b90354fd01ffc7eab0d4e8f4919f77a56b3e642a56fe9906856d05686d52e95",
+    "run_sha256": "9d1c9a0ef39738d78cd37193d7dbf192e1ff330f008d62adc6a74eba1410b1ba"
+   },
+   "issues/secretgate-default": {
+    "flags": "eval/issues/validation/flags/secretgate-default.flags.jsonl",
+    "flags_sha256": "2a3857905de44427e4cbaa1e0f3cb9f240027bbd3b4ea4faa23fb2d2d5f3f21b",
+    "run_sha256": "145e0055274953aed48bae47d99e80fab81be17e692fee3c2c734ed827eeb90f"
+   },
+   "issues/model": {
+    "flags": "eval/issues/validation/flags/model.flags.jsonl",
+    "flags_sha256": "2db8bbe53bf6d9746d0b0f151c3cfedfefd51943755cfd95ec8c9cb0d7b58e1a",
+    "run_sha256": "8c1eea8774cc4113e4a12f29e75771ad22fa84db13ca66ee3060a947c06b15ad"
+   },
+   "issues/lr": {
+    "flags": "eval/issues/validation/flags/lr.flags.jsonl",
+    "flags_sha256": "571a0e82ad97c4c84593e2f5a4b6aed6e81e3a426d594a88ff0e346c586d778f",
+    "run_sha256": "8175e540a529cef19057b61563e3761dcd2d5eb22e364d35b0fe6bd1948de3e1"
+   },
+   "issues/model-e2e": {
+    "flags": "eval/issues/validation/flags/model-e2e.flags.jsonl",
+    "flags_sha256": "15c98df5b92136453c2f4c27e3c975e13cfc0a0f278a545da7091b3e648a2f82",
+    "run_sha256": "57d21f78281b3b4c47c84219d1612ee0ed082fa2fe36021db7f540bae965c5c6"
+   },
+   "issues/lr-e2e": {
+    "flags": "eval/issues/validation/flags/lr-e2e.flags.jsonl",
+    "flags_sha256": "5e24ff05c5f48c154701d30e5285a3b7f399a1484a7b7f6b2ad83b6982297603",
+    "run_sha256": "a30572e1e240531dbea37ac71ae6b01258e8c0ee639948f2de3337b516e0a68f"
+   },
+   "issues-obfuscated/secretgate-default": {
+    "flags": "eval/issues/validation/flags-obfuscated/secretgate-default.flags.jsonl",
+    "flags_sha256": "6f305478c521ac36dda5150b44ea61cac5511676bdb7ef70d9cbb3722b40f689",
+    "run_sha256": "54d202cbe768f429a9b7320e8e656f2f0b22bad208e7e1c635d7d5965430a72a"
+   },
+   "issues-obfuscated/model": {
+    "flags": "eval/issues/validation/flags-obfuscated/model.flags.jsonl",
+    "flags_sha256": "6d64bbd529f64193b19d38f5bc11c2b5803ab6970c40ea974c91050beb72cbd5",
+    "run_sha256": "5062eea83a3924d3525f9b32cb758d006744a03c2b493af74801ec199105e998"
+   },
+   "issues-obfuscated/lr": {
+    "flags": "eval/issues/validation/flags-obfuscated/lr.flags.jsonl",
+    "flags_sha256": "1e5756d31df9f89326d3c49bdf929614f6ec90e2d06986577f51ed1d36a5c869",
+    "run_sha256": "5c90e73405e8a6069dea1785e541f0525f7511dfa26db5517ba92e6fa55f21b8"
+   },
+   "clean/secretgate-default": {
+    "flags": "eval/clean/flags/secretgate-default.flags.jsonl",
+    "flags_sha256": "53c5368dbe7949bb2e3746e86e91bc3769d729e3e9d5a5fdb0e14cb29a22df94",
+    "run_sha256": "8ccafbfea74e5583399ff06ad5bbe140251f126d105c7c9e67642723f567d3d5"
+   },
+   "clean/model": {
+    "flags": "eval/clean/flags/model.flags.jsonl",
+    "flags_sha256": "daa4f7ade40c2e0f86f72b273c4f9367038350ea659b938c3b3879a679540ec0",
+    "run_sha256": "52a5031a2556f7082160630abc686441affaffa5a22c90f2bc15e53ef1eacdaa"
+   },
+   "clean/lr": {
+    "flags": "eval/clean/flags/lr.flags.jsonl",
+    "flags_sha256": "f603fe1d19aae7a650bcf60e077d5efecd0c26eb44d0cb1fd5f63a8782d5aea7",
+    "run_sha256": "f299f7ff1d9b6adf281ff07713508d494b2d2417daa4f328791e8a6d53a1c6fc"
+   }
+  },
+  "test": {
+   "creddata/secretgate-default": {
+    "flags": "eval/test/flags/secretgate-default.flags.jsonl",
+    "flags_sha256": "f940ea147a3ed265f20ffcfcded2745ae413f9629889abfe6ffbc78bbf897587",
+    "run_sha256": "cf361e4c4d62780e5b323b618b16d757638305bd52438b3e71258f048f2b0635"
+   },
+   "creddata/model": {
+    "flags": "eval/test/flags/model.flags.jsonl",
+    "flags_sha256": "a2389a0cbe33483638ced8f5cb0be08b45fb4c6f8f9292619e4e5642ce2c89df",
+    "run_sha256": "7ba05c09e79657f10957bb480b7fea0a7e035360f0c182a5c214d5ce83fbf6ac"
+   },
+   "creddata/lr": {
+    "flags": "eval/test/flags/lr.flags.jsonl",
+    "flags_sha256": "d6b9a96a9a32ea8b6ba2e9419ea721341e4e00e8a746f9a7fdc2247c0c643364",
+    "run_sha256": "a32adf46c4bd694d6b37fdd0672fc41cfb06e73275da7f37376972b0bd456cab"
+   },
+   "issues/secretgate-default": {
+    "flags": "eval/issues/test/flags/secretgate-default.flags.jsonl",
+    "flags_sha256": "920a7558a4cf39bc7091644081e14491f0682b1fb236f4bcd16e27cde269b40e",
+    "run_sha256": "397a24080875e2eb09214925c59c7b22287b1826aaa3e5ef84cab7cec2499e8f"
+   },
+   "issues/model": {
+    "flags": "eval/issues/test/flags/model.flags.jsonl",
+    "flags_sha256": "ec055695ea57a46c1f608ba2ba433c7736e39b276157ba037b4889e4ec65c23a",
+    "run_sha256": "59173d9421654a77af7b203cd998c3e990ad6c9289e125e8f5a1d3e4cd9302f0"
+   },
+   "issues/lr": {
+    "flags": "eval/issues/test/flags/lr.flags.jsonl",
+    "flags_sha256": "1b60ddfab9d23dfa9a0ea08c123f51c400f7936dcc48e3fa33dfa0f0031dff83",
+    "run_sha256": "05b88b47d8319bf89a196a39fd590588a91bbb451e2ad1ac95a1344e164289dc"
+   },
+   "issues/model-e2e": {
+    "flags": "eval/issues/test/flags/model-e2e.flags.jsonl",
+    "flags_sha256": "546085da268b897576344790c1f74409381f13abf8460cea170a5b2a0bfc65b3",
+    "run_sha256": "198087097d1b843809984188b054e569736c7242ae12ddac980ff39b84dab399"
+   },
+   "issues/lr-e2e": {
+    "flags": "eval/issues/test/flags/lr-e2e.flags.jsonl",
+    "flags_sha256": "3c1e31ce1030fc3dd4888896fc79a725bdb7395b1d2b807eb0d5dd4ad2e5ccf8",
+    "run_sha256": "494635c11cadf1413aa5332965f7b4074a52946874da639274ecbfe0f45ed097"
+   },
+   "issues-obfuscated/secretgate-default": {
+    "flags": "eval/issues/test/flags-obfuscated/secretgate-default.flags.jsonl",
+    "flags_sha256": "53e5dd69836fb078a1189033ed1aab90b0b3a6728819bd60801e94907cde5809",
+    "run_sha256": "6aa9a0cac8459f7bfefc2a6be8662d91afbb08b99c165c28c0fdfcbca2bc5b56"
+   },
+   "issues-obfuscated/model": {
+    "flags": "eval/issues/test/flags-obfuscated/model.flags.jsonl",
+    "flags_sha256": "e9bcdc19f309e11c2bd10f7d7b60f80adca97ec775d20af2e2f6e8438106f3d6",
+    "run_sha256": "f4695ede83c549bd4ede5267c27503e510dca97618417b0fd6b621cb35a41f01"
+   },
+   "issues-obfuscated/lr": {
+    "flags": "eval/issues/test/flags-obfuscated/lr.flags.jsonl",
+    "flags_sha256": "1e6f072c88d20506bfdb09c83cf2e0df64a34e48eb1477ef77b17da6621c4616",
+    "run_sha256": "933db64bbbb9f58c5b394cc5235ea0b1c02c5b01588e8635c1dfbf41e2dd2312"
+   },
+   "clean/secretgate-default": {
+    "flags": "eval/clean/flags/secretgate-default.flags.jsonl",
+    "flags_sha256": "53c5368dbe7949bb2e3746e86e91bc3769d729e3e9d5a5fdb0e14cb29a22df94",
+    "run_sha256": "8ccafbfea74e5583399ff06ad5bbe140251f126d105c7c9e67642723f567d3d5"
+   },
+   "clean/model": {
+    "flags": "eval/clean/flags/model.flags.jsonl",
+    "flags_sha256": "daa4f7ade40c2e0f86f72b273c4f9367038350ea659b938c3b3879a679540ec0",
+    "run_sha256": "52a5031a2556f7082160630abc686441affaffa5a22c90f2bc15e53ef1eacdaa"
+   },
+   "clean/lr": {
+    "flags": "eval/clean/flags/lr.flags.jsonl",
+    "flags_sha256": "f603fe1d19aae7a650bcf60e077d5efecd0c26eb44d0cb1fd5f63a8782d5aea7",
+    "run_sha256": "f299f7ff1d9b6adf281ff07713508d494b2d2417daa4f328791e8a6d53a1c6fc"
+   }
+  }
+ },
+ "note": "Chosen on validation only; the test files are hashed here (sha256 of the v2 evaluation's flag files), nothing is computed on them. v3 is a second look at test files read once for v2, with the system redefined after that reading."
+}
