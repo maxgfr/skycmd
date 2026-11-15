@@ -135,14 +135,25 @@ fn cmd_run(
     if m.levels() != DECILES {
         return Err("the GIFT-Eval harness scores the nine deciles".into());
     }
+    // the exits the last pass of each forecast ran, per configuration (docs/s6-cast2-prereg.md
+    // §9: the mean exits used), written to exits.json
+    let mut exits = serde_json::Map::new();
     for c in load_configs(windows, only)? {
         let t = std::time::Instant::now();
         // A window the model cannot read (no observation in the points it reads) gets the
         // seasonal-naive forecast on every level instead of stopping the run; they are counted.
         let fallbacks = std::sync::atomic::AtomicUsize::new(0);
+        let (used, n_exits) = (
+            std::sync::atomic::AtomicUsize::new(0),
+            std::sync::atomic::AtomicUsize::new(0),
+        );
         let rows = parallel(c.windows.len(), threads, |i| {
             match m.forecast(&c.windows[i], c.horizon, opts) {
-                Ok(f) => Ok(f.quantiles),
+                Ok(f) => {
+                    used.fetch_add(f.exits_used, std::sync::atomic::Ordering::Relaxed);
+                    n_exits.store(f.n_exits, std::sync::atomic::Ordering::Relaxed);
+                    Ok(f.quantiles)
+                }
                 Err(_) => {
                     fallbacks.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     let sn = prep::seasonal_naive(&c.windows[i], c.season, c.horizon);
@@ -154,6 +165,16 @@ fn cmd_run(
             }
         })?;
         let fallbacks = fallbacks.into_inner();
+        let forecast = c.windows.len() - fallbacks;
+        exits.insert(
+            c.stem.clone(),
+            serde_json::json!({
+                "mean_exits_used": used.into_inner() as f64 / forecast.max(1) as f64,
+                "n_exits": n_exits.into_inner(),
+                "windows": c.windows.len(),
+                "fallbacks": fallbacks,
+            }),
+        );
         if fallbacks > 0 {
             println!(
                 "{}: {fallbacks} window(s) forecast by the seasonal naive (unreadable context)",
@@ -171,6 +192,10 @@ fn cmd_run(
             t.elapsed().as_secs_f64()
         );
     }
+    std::fs::write(
+        out.join("exits.json"),
+        serde_json::to_string_pretty(&serde_json::Value::Object(exits))? + "\n",
+    )?;
     Ok(())
 }
 
