@@ -18,6 +18,21 @@ tags:
 
 # s6-nano
 
+> **It passed its gate, and the gate did not measure whether it reads the questions (study of
+> 15/11/2026, [docs/s6-nano2-study.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano2-study.md)).**
+> The gate asked for more than the majority class of `typed_decisions_bench` (0.398), and a
+> constant answer per task passes it: answering each question with its most common training
+> answer scores 0.4815, and s6-nano scores 0.4805. On 17 of the bench's 20 tasks it gives one
+> answer to at least 95% of the items. The bench's tasks were 0.4% of what it drew in decision
+> training. A linear model of at most 715,136 bytes (the size of this file) reaches 0.703 on the
+> validation split of the same 20 tasks, and 0.947 / 0.944 on MASSIVE English / French validation
+> once trained on MASSIVE (a validation rehearsal, not a test). Its French training data are two
+> yes/no tasks. On When2Call, `tool_call` is 13.9% of the training split and 35% of the test, and
+> the model predicts it 39 times in 2,000. NOTAM has no training data. The verdict stands (it
+> passed the gate as written); a narrower second version was studied and is not scheduled (the
+> study puts its chance of clearing all its gates, against size-matched baselines, at about 10 to
+> 20%).
+
 **One 715 KB ternary model for four games and for typed questions in free text.** 1,486,225
 parameters. It reads a state as text and answers typed questions (`choice`, `score`, `noul`) with
 calibrated probabilities, one forward pass per question. It plays the four skycmd games at the
@@ -36,7 +51,7 @@ Test sets, at most 2,000 questions per source, full depth:
 
 | set | s6-nano | reference |
 |---|---:|---|
-| `typed_decisions_bench` | **0.480** | majority class 0.398; on the same records s3-pico 0.382, s4-micro 0.352, s5-lite 0.696 |
+| `typed_decisions_bench` | **0.480** | majority class 0.398; the most common training answer of each question 0.4815; on the same records s3-pico 0.382, s4-micro 0.352, s5-lite 0.696 |
 | MASSIVE intents, English | 0.425 | s3-pico 0.187 (see the limitations) |
 | MASSIVE intents, French | 0.239 | s3-pico 0.117 |
 | When2Call (test split of a trained source) | 0.404 | s3-pico 0.368 |
@@ -81,7 +96,8 @@ adopted none of them, so this model uses softmax attention and AdamW.
 ## Limitations
 
 - A modest generalist: 0.480 on the bench clears the majority class, but 17M models reach about
-  0.69 (s5-lite 0.696, oscar-1-17m 0.6775).
+  0.69 (s5-lite 0.696, oscar-1-17m 0.6775). The bench score is that of a constant answer per task
+  (see the notice above).
 - It cannot read NOTAMs (0.055 on the subject question) and stays at 0.404 on When2Call.
 - The English MASSIVE score is not strictly zero-shot: 206 of the 2,000 test utterances also
   appear in the training split, 201 of them in a source derived from MASSIVE. None of the 1,000

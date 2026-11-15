@@ -152,7 +152,7 @@ Every entry of `runs/all/incidents.txt`, with what was done (as that file record
 | | zero-shot keywords fr ≥ 0.20 | 0.1330 | fail | same |
 | s6-secrets-pico | secret > 0.977 | 0.9990 | pass | `runs/s6-secrets-pico/report.md` (GGUF, exit 3) |
 | | service > 0.787 | 0.9795 | pass | same |
-| s6-nano | `typed_decisions_bench` > 0.398, ECE ≤ 0.08, no game more than 5% below s3-pico | 0.480, ECE 0.0479, games at s3-pico's scores | pass at τ = 1; fails at the CRC thresholds (not kept); published at full depth | `runs/s6-nano/eval/results.md` |
+| s6-nano | `typed_decisions_bench` > 0.398, ECE ≤ 0.08, no game more than 5% below s3-pico | 0.480, ECE 0.0479, games at s3-pico's scores | pass at τ = 1; fails at the CRC thresholds (not kept); published at full depth. A constant answer per task also passes the bench bar (the most common training answer of each question: 0.4815; `docs/s6-nano2-study.md`) | `runs/s6-nano/eval/results.md` |
 | s6-micro | `typed_decisions_bench` ≥ 0.45, ECE ≤ 0.08, games | 0.547, ECE 0.0821 (τ = 1) and 0.0804 (CRC), games at s3-pico's scores | fail (ECE), not published | `runs/s6-micro/eval/results.md` |
 | s6-cast-pico | nGMASE ≤ 0.838 and nWQL ≤ 0.587, without flip | nGMASE 0.9471, nWQL 0.6646 | fail, not published | `data/gift-eval-out/s6-cast-pico/summary.json` |
 

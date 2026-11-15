@@ -9,7 +9,8 @@
     "short_description": "715 KB model for four games and typed questions",
     "notes": [
       "Published at full depth: its conformal early-exit thresholds were rejected by the pre-registered arena check.",
-      "0.480 on the typed-decisions bench, where the majority class is 0.398 and s5-lite reaches 0.696: expect mistakes on questions in free text."
+      "0.480 on the typed-decisions bench, where the majority class is 0.398 and s5-lite reaches 0.696: expect mistakes on questions in free text.",
+      "It passed its gate, but a constant answer per task passes it too: answering each question with its most common training answer scores 0.4815 on the bench, and on 17 of the 20 bench tasks s6-nano gives one answer to at least 95% of the items (docs/s6-nano2-study.md)."
     ]
   },
   {

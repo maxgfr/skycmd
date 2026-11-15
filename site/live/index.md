@@ -72,6 +72,8 @@ The file is published at **full depth**: every answer uses all 4 block passes, b
 
 The model menu also lists **s6-micro-v1**, the larger sibling, which failed its gate (ECE 0.0821 against the guard of 0.08): its file is published as a result (owner's decision of 15/11/2026), not for use. It is never selected by default, and its failure is shown above the answers when you pick it.
 
+**What its gate did not measure.** s6-nano passed its gate, more than the majority class of `typed_decisions_bench` (0.398), but a constant answer per task passes that gate too: answering each question with its most common training answer scores 0.4815, and s6-nano scores 0.4805. On 17 of the bench's 20 tasks it gives one answer to at least 95% of the items, whatever the state: on questions of that kind, its answer says little about the text you give it ([study](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano2-study.md), [results](/results/#s6-nano-passed-published-at-full-depth)). In the games, which its gate also checked, it plays at the oracle's level.
+
 <ClientOnly>
   <LiveDecide mode="s6" prefer="s6-nano" />
 </ClientOnly>

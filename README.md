@@ -32,6 +32,7 @@ For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M
 **s6-nano: one 715 KB model for the games and for questions in free text.** 1,486,225 ternary parameters, pre-registered in [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), and it passes its gate:
 
 - **Above the majority class.** 0.480 on `typed_decisions_bench` (gate: > 0.398, the majority class), where s3-pico scores 0.382 and s4-micro 0.352 on the same records. s5-lite, with about 11 times as many parameters, scores 0.696.
+- **What the gate did not measure** ([`docs/s6-nano2-study.md`](docs/s6-nano2-study.md), after the gate). A constant answer per task passes it: answering each question with its most common training answer scores 0.4815, and s6-nano 0.4805. On 17 of the bench's 20 tasks it gives one answer to at least 95% of the items; the bench's tasks were 0.4% of what it drew in decision training; a linear model of at most 715,136 bytes reaches 0.703 on the validation split of the same tasks. A narrower second version was studied and is not scheduled.
 - **Calibrated.** ECE 0.0479 over all the test sources, under the 0.08 guard.
 - **Still plays.** Every game at s3-pico's score at full depth, at the oracle's level.
 - **Published at full depth.** Its conformal exit thresholds lost 6.7% on Rescue Run and raised the Dodge vetoes from 23 to 1,016, so the pre-registered rule rejected them.
@@ -101,7 +102,7 @@ Two results took more than one try, and the tutorial tells both stories:
   - **s6-micro** has 5,587,201 parameters: the s4-micro shape, 4,096 tokens and 384/128-token windows.
 
   Both pretrain for hours on 300 MB of text (s4-micro had 30 minutes on 150 MB) and train on the decision sets, the games and the numeric curriculum, plus soft labels on every training question of the Hugging Face decision sets (about 747,000). The teacher is GLM-5.3-flash, an open-weight model (MIT), called through the z.ai API: `caffeinate -i scripts/distill-glm.sh loop mix` labels everything remotely, resuming across the 5-hour usage windows of a z.ai plan, so the machine stays cool.
-  - **s6-nano gate:** beat the majority class of `typed_decisions_bench` (0.398). **Passed:** 0.480, ECE 0.0479, every game at s3-pico's score.
+  - **s6-nano gate:** beat the majority class of `typed_decisions_bench` (0.398). **Passed:** 0.480, ECE 0.0479, every game at s3-pico's score. A constant answer per task passes this bar too (the most common training answer of each question scores 0.4815; `docs/s6-nano2-study.md`).
   - **s6-micro gate:** at least 0.45, with 0.50 as the goal (the level of s4's Qwen3.5-4B teacher). **Failed on calibration only:** 0.547 (gate and goal met), but ECE 0.0821 at full depth and 0.0804 at its conformal thresholds, above the 0.08 guard. Its decision training was stopped once for a memory problem and resumed from its checkpoint (amendment 11).
 
   Each gate also requires no game more than 5% below s3-pico and an ECE of at most 0.08.
