@@ -350,6 +350,39 @@ decision: the text state, the model's probabilities, the oracle's soft target, t
 reward and the events until the next decision. 1,033,412 decisions and 2,100 episodes, Apache-2.0
 (our game cores and models). s4-micro and s5-lite are left out: they are not game models.
 
+## s6-route-nano: tool routing (`sky-data route`, `docs/s6-nano2-prereg.md` §4)
+
+Downloaded by `scripts/build-route-data.sh fetch` at the commits of `scripts/route/pins.json`,
+each file checked against the hash its host publishes; every file (URL, commit, bytes, sha256,
+licence) is listed in `<data>/MANIFEST.json` of the data folder (`../skycmd-data/s6-route`,
+outside the repository; 584,935,409 bytes in all, 15/11/2026). Nothing is redistributed. Requests
+are counted after the clusters' split, the cross-split deduplication and the caps of §4.2 (30 per
+cluster in training, 10 on the validation and test sides).
+
+| source | licence (checked on the card or the LICENSE file) | URL @ commit | role | requests used (train / val / test) |
+|---|---|---|---|---:|
+| glaiveai/glaive-function-calling-v2 | Apache-2.0 | https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2 @ `e7f4b645` | train / val / T-tools: the first user turn answered by a call | 1,881 / 80 / 161 |
+| NousResearch/hermes-function-calling-v1 (`func-calling-singleturn`, `func-calling`, `glaive-function-calling-5k`) | Apache-2.0 | https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1 @ `dae3e1d2` | same; a request whose normalised text is a glaive request's is dropped | 892 / 54 / 112 |
+| Team-ACE/ToolACE (`data.json`) | Apache-2.0 | https://huggingface.co/datasets/Team-ACE/ToolACE @ `6bda777c` | same; key-like strings masked (103 tools of all sources hold one in their schema or description) | 7,312 / 396 / 831 |
+| Seal-Tools (`Seal-Tools_Dataset/train.jsonl`, `tool.jsonl`) | Apache-2.0 (LICENSE of the GitHub repository) | https://github.com/fairyshine/Seal-Tools @ `ce753ecd` | same; its training file only | 10,381 / 510 / 1,007 |
+| liminghao1630/API-Bank (`training-data/lv1-api-train.json`, `lv2-api-train.json`) | MIT (dataset card) | https://huggingface.co/datasets/liminghao1630/API-Bank @ `12e8158b` | same; `ToolSearcher` calls dropped | 1,910 / 104 / 209 |
+| nvidia/When2Call (`train/*`, `test/when2call_test_mcq.jsonl`) | CC-BY-4.0 | https://huggingface.co/datasets/nvidia/When2Call @ `0582f774` | train / val (the partition of `data/decisions/when2call.jsonl`); the first 2,000 test records of that file reformatted, reported | 12,801 / 699 / 1,863 slates |
+| MASSIVE (`data/commands/massive.jsonl`, en and fr) | CC-BY-4.0 | see above | 14 scenarios trained (train partition) and validated; the test partition of the 4 held-out scenarios (datetime, email, play, recommendation) reported | 16,400 / 2,848 / 1,657 |
+| PolyAI/banking77 (`data/decisions/banking77.jsonl`) | CC-BY-4.0 | see above | train / val only | 12,359 / 663 / — |
+| clinc/clinc_oos (`plus`) | CC-BY-3.0 | https://huggingface.co/datasets/clinc/clinc_oos @ `155b9c71` | test only (T-clinc, 2,000 slates); its 150 intent names described by the teacher from the names alone | — / — / 2,000 slates |
+| HowieHwong/MetaTool (`all_clean_data.csv`, `plugin_des.json`, `Task2-Subtask1.json`) | MIT (LICENSE); its queries were written by ChatGPT / GPT-4 | https://github.com/HowieHwong/MetaTool @ `35e81bb7` | test only (T-metatool, 2,000 slates) | — / — / 2,000 slates |
+| gorilla-llm/Berkeley-Function-Calling-Leaderboard (`BFCL_v3_multiple`, `BFCL_v3_irrelevance`) | Apache-2.0 | https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard @ `61fc0608` | test only, reported | — / — / 440 slates |
+| stanley-nv/tool-routing-data (`tools/test.jsonl`) | CC-BY-4.0 tag; the card asks users to review the generating model's terms before training other models | https://huggingface.co/datasets/stanley-nv/tool-routing-data @ `249f72a6` | test only, reported (never trained) | — / — / 100 slates |
+| minishlab/potion-base-2M | MIT | https://huggingface.co/minishlab/potion-base-2M @ `389b9f64` | hard negatives of the training slates; baselines potion-cos, potion-cos-4bit, static-ft | — |
+| sentence-transformers/all-MiniLM-L6-v2 | Apache-2.0 | https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 @ `1110a243` | tool clustering (§4.2), the test distractor rule (§4.4); baseline minilm-cos | — |
+| stanley-nv/toolrouter | MIT | https://huggingface.co/stanley-nv/toolrouter @ `b2607a34` | baseline toolrouter (reported) | — |
+
+Teacher: GLM-5.3-flash (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) through the z.ai API
+(its terms apply to the calls), `sky-data teacher describe-intent | false-negatives |
+rewrite-description`: one description per intent from its name (287 intents), the
+false-negative filter of the hard training and validation slates, one rewrite per gold tool of
+the training and validation requests. It never receives a test request or slate.
+
 ## Rejected
 
 | dataset | reason |

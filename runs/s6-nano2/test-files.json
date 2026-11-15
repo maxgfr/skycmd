@@ -1,0 +1,16 @@
+{
+ "about": "s6-route-nano: the test files as the build wrote them (docs/s6-nano2-prereg.md 4.6, item 1); scripts/route/common.py refuses a test file whose sha256 differs",
+ "build": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build/BUILD.json",
+ "files": {
+  "t_bfcl.jsonl": "7d6a602b589945ce26535d2136242ede50104df697d6fa1b38ccefac7c69a9fa",
+  "t_clinc.jsonl": "d7698bb69e2b00d9a8f700187a584c09bc3873134d740ec53c5e12f2634dc3f0",
+  "t_massive.jsonl": "fc0a59f735566ac8d252bea8eeed2e3ca383304f12794f7521584ad5360885b6",
+  "t_metatool.jsonl": "7be3be4413ab6076c1acdc0ae8f274862ad9d35e3fbca4ac2b4e0b276e6d2b61",
+  "t_toolrouting.jsonl": "f184d794d0c6b32df620cb3e62b877f82324940cabc4e377d179737ec1c98ab2",
+  "t_tools.jsonl": "c5ee33325dde9e22c7b585e83197ee5db8d5534985b077876d22a9c40573b087",
+  "t_tools_masked.jsonl": "7f7f23f93971cdea552f72fbac299dfb44068062708f86dd0e3458784a0c9369",
+  "t_tools_pairs.jsonl": "4665ed59e7831d06fd795a874562a23518b53d29a24b8cda307704a4efb67ed8",
+  "t_tools_swapped.jsonl": "b9c5336eb2a5825b5622ac767fafc9b4121924d558a7791959869d4710ccdcf7",
+  "t_when2call.jsonl": "64e9b66ab848605e337c5653d6ad09c040859df1f445e4b66a40728d5ba297f0"
+ }
+}
