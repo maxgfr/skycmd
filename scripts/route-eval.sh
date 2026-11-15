@@ -9,7 +9,8 @@
 #     fit        (validation only) every baseline fitted on the training records and the
 #                validation slates (scripts/route-baselines.py fit), B = the model file's bytes
 #     baselines  every baseline scored on the split's slate files
-#     model      the model (MODEL=...) by sky-eval at full depth on a copy with exit thresholds 1:
+#     model      the model (MODEL=...) by sky-eval at full depth on a copy with exit thresholds 1,
+#                on the model's copy of the slates (each state with its BM25 line, amendment 1):
 #                one dump per slate file; exit 0 and the native latency on T-tools (or v_tools)
 #     v1         s6-nano v1 (V1=site/public/models/s6-nano.gguf), full depth, same slates
 #     wasm       the WASM latency and parity of the model on 200 requests of T-tools (v_tools on
@@ -74,6 +75,7 @@ except common.Refused as e:
 EOF
 }
 guard || exit 3
+nice -n 19 cargo build -q --release -p sky-data -p sky-infer -p sky-gguf
 
 budget=${BUDGET:-}
 if [ -z "$budget" ]; then
@@ -109,16 +111,27 @@ baselines() {
   done
 }
 
+# render: the model's copy of every slate file of the split, each state with the BM25 line of its
+# tool options (amendment 1); the baselines read the slate files themselves
+render() {
+  local f dir=val
+  [ "$split" = test ] && dir="test"
+  mkdir -p "$ev/$split/render"
+  for f in "${files[@]}"; do
+    nice -n 19 "$B/sky-data" route render --in "$BUILD/$dir/$f.jsonl" --out "$ev/$split/render/$f.jsonl" >/dev/null
+  done
+}
+
 # sky_eval <gguf> <system>: one --dump-probs file per slate file, at full depth
 sky_eval() {
-  local g=$1 name=$2 f dir=val
-  [ "$split" = test ] && dir="test"
+  local g=$1 name=$2 f
+  render
   mkdir -p "$ev/$split/$name"
   local full=$ev/$split/$name/full-depth.gguf
   nice -n 19 "$B/gguf-set" "$g" "$full" skycmd-s2.exit_threshold.choice=1 skycmd-s2.exit_threshold.score=1 \
     skycmd-s2.exit_threshold.noul=1 >/dev/null
   for f in "${files[@]}"; do
-    nice -n 19 "$B/sky-eval" "$full" --records "$BUILD/$dir/$f.jsonl" \
+    nice -n 19 "$B/sky-eval" "$full" --records "$ev/$split/render/$f.jsonl" \
       --split "$split" --max 100000 --exit-threshold 1.0 --dump-probs "$ev/$split/$name/$f.jsonl" \
       --json "$ev/$split/$name/$f.eval.json" >/dev/null
   done
@@ -131,8 +144,7 @@ model_() {
   fi
   sky_eval "$model" model
   # exit 0 (one block pass) and the native latency on the main file
-  local main=$BUILD/val/v_tools.jsonl
-  [ "$split" = test ] && main=$BUILD/test/t_tools.jsonl
+  local main=$ev/$split/render/${pre}_tools.jsonl
   nice -n 19 "$B/sky-eval" "$ev/$split/model/full-depth.gguf" --records "$main" --split "$split" --max 100000 \
     --exit-threshold 0 --dump-probs "$ev/$split/model/${pre}_tools.exit0.jsonl" --json "$ev/$split/model/exit0.json" >/dev/null
   nice -n 19 "$B/sky-eval" "$ev/$split/model/full-depth.gguf" --records "$main" --split "$split" --max 200 \

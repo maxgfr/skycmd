@@ -5,7 +5,11 @@
 # evaluation is scripts/route-eval.sh test, after training, once the owner creates
 # runs/s6-nano2/TEST-OPEN.
 #
-# Steps (default: pilot main export report, in order):
+# Steps (default: window pilot main export report, in order):
+#   window   the head window of each size (section 3): sky-train s2-truncation on the training
+#            and validation records at 160, 256, 320 tokens, then BUILD.json
+#            (scripts/build-route-data.sh truncation manifest); CPU only, the trainer reads
+#            records. It could not run before the trainer was there; it runs first here
 #   pilot    the two 20-minute pilots on the same data, nano from runs/s6-nano/pretrain/init and
 #            micro from runs/s6-micro/pretrain/init, the full schedule compressed (QAT after a
 #            10% float warm-up: minute 2); each calibrated on the validation slates and exported
@@ -72,6 +76,9 @@ model=$m/skycmd-$name-ternary.gguf
 records=$build/records/tools,$build/records/intents,$build/records/when2call
 weights=tools=0.60,intents=0.25,when2call=0.15
 val=$build/val/v_tools.jsonl
+# the model's copy of the validation slates: the same slates, each state with the BM25 line of
+# its tool options (amendment 1; sky-data route render, in the build's slates step)
+val_model=$build/val/v_tools.model.jsonl
 potion_dump=$data/eval/val/potion-cos/v_tools.jsonl
 if [ -n "$smoke" ]; then
   case "$run" in
@@ -165,7 +172,7 @@ build, smoke = sys.argv[1:]
 m = json.load(open(os.path.join(build, "BUILD.json")))
 if m["provisional"] and not smoke:
     sys.exit("BUILD.json is provisional (the teacher's answers are missing): not trained on outside a smoke run")
-for rel in [f"records/{g}/{s}.jsonl" for g in ("tools", "intents", "when2call") for s in ("train", "val")] + ["val/v_tools.jsonl"]:
+for rel in [f"records/{g}/{s}.jsonl" for g in ("tools", "intents", "when2call") for s in ("train", "val")] + ["val/v_tools.jsonl", "val/v_tools.model.jsonl"]:
     h = hashlib.sha256(open(os.path.join(build, rel), "rb").read()).hexdigest()
     if h != m["outputs"][rel]["sha256"]:
         sys.exit(f"{build}/{rel} is not the file of BUILD.json")
@@ -231,16 +238,21 @@ decide() {
 }
 
 # calibrated <dir> <gguf>: s2-calibrate on the validation slates, ternary export, and the copy
-# at full depth read on v_tools (<dir>/v_tools.dump.jsonl)
+# at full depth read on v_tools (<dir>/v_tools.dump.jsonl), all on the model's copy of them
 calibrated() {
   local dir=$1 g=$2
   x mkdir -p "$(dirname "$g")"
-  x "$T" s2-calibrate --run "$dir/decide/last" --records "$val"
+  x "$T" s2-calibrate --run "$dir/decide/last" --records "$val_model"
   x "$T" s2-export --run "$dir/decide/last" --format ternary --out "$g"
   x "$B/gguf-set" "$g" "$dir/full-depth.gguf" skycmd-s2.exit_threshold.choice=1 skycmd-s2.exit_threshold.score=1 \
     skycmd-s2.exit_threshold.noul=1
-  x "$E" "$dir/full-depth.gguf" --records "$val" --split val --max 100000 --exit-threshold 1.0 \
+  x "$E" "$dir/full-depth.gguf" --records "$val_model" --split val --max 100000 --exit-threshold 1.0 \
     --dump-probs "$dir/v_tools.dump.jsonl" --json "$dir/v_tools.eval.json"
+}
+
+window() {
+  note "the head window of each size: s2-truncation at 160, 256, 320, then BUILD.json"
+  x env SKY_TRAIN="$T" scripts/build-route-data.sh truncation manifest
 }
 
 pilot() {
@@ -344,16 +356,17 @@ EOF
 }
 
 steps=("$@")
-[ ${#steps[@]} -eq 0 ] && steps=(pilot main export report)
+[ ${#steps[@]} -eq 0 ] && steps=(window pilot main export report)
 for s in "${steps[@]}"; do
   case "$s" in
-    pilot | main | export | report) ;;
-    *) echo "unknown step $s (pilot, main, export, report)" >&2; exit 2 ;;
+    window | pilot | main | export | report) ;;
+    *) echo "unknown step $s (window, pilot, main, export, report)" >&2; exit 2 ;;
   esac
 done
 [ "$dry" = 1 ] || nice -n 19 cargo build -q --release -p sky-train -p sky-gguf -p sky-infer
 for s in "${steps[@]}"; do
   case "$s" in
+    window) window ;;
     pilot) pilot ;;
     main) main_ ;;
     export) export_ ;;

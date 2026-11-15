@@ -12,7 +12,9 @@
 #   embed      scripts/route-embed.py in the pinned environment (all-MiniLM-L6-v2, potion-base-2M)
 #   split      clusters, splits, caps; the test files (written once, never read again here);
 #              the validation slates; the plan; the items of the two other teacher jobs
-#   slates     the training and validation records (needs scripts/route-teacher.sh
+#   slates     the training and validation records, their states carrying the BM25 score and
+#              rank of each tool option (amendment 1), and the model's copy of the validation
+#              slates (<build>/val/*.model.jsonl, sky-data route render) (needs scripts/route-teacher.sh
 #              false-negatives and rewrite-description; PROVISIONAL=1 builds without them, for a
 #              smoke run and the rehearsal only: such a build is never trained on)
 #   truncation sky-train s2-truncation on the training and validation records, for each size and
@@ -112,6 +114,11 @@ slates() {
   local p=()
   [ "${PROVISIONAL:-0}" = 1 ] && p=(--provisional)
   step slates "$D" --seed "$seed" route slates --out "$build" ${p[@]+"${p[@]}"}
+  # the model's copy of the validation slates: each state with the BM25 line (amendment 1)
+  local f
+  for f in v_tools v_tools_masked v_tools_pairs v_tools_swapped; do
+    step "render-$f" "$D" route render --in "$build/val/$f.jsonl" --out "$build/val/$f.model.jsonl"
+  done
 }
 
 # The head window of section 3, for each size with its own config and tokenizer: the share of
