@@ -95,6 +95,12 @@ class Gate(unittest.TestCase):
             g = json.loads((run / "gate.json").read_text())
             self.assertFalse(g["G2"])
             self.assertEqual(g["verdict"], "FAIL")
+            # G3 reported (the default, amendment 2): the verdict carries the in-sample sentence
+            args.g3 = "reported"
+            write_results(gout / "s6-cast2-pico", {"short": 0.8, "medium": 0.8, "long": 0.8}, 0.5)
+            gate.cmd_gate(args)
+            self.assertEqual(json.loads((run / "gate.json").read_text())["verdict"], "PASS")
+            self.assertIn(gate.READ_IN_SAMPLE, (run / "GATE.md").read_text())
 
 
 if __name__ == "__main__":

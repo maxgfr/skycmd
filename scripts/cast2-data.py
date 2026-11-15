@@ -346,15 +346,39 @@ def cmd_fetch(a) -> None:
 # ----------------------------------------------------------------------------- leak check
 
 
-def run_hashes(x):
-    """64-bit hashes of every run of RUN consecutive finite, non-constant float32 values."""
+# Amendment 2: a run is compared only if it is informative: at least MIN_DISTINCT distinct
+# values, and its most frequent value on at most half of its points.
+MIN_DISTINCT = 8
+MAX_MODE = RUN // 2
+# A source is dropped whole when more than this share of its series is.
+MAX_DROPPED_SHARE = 0.05
+
+
+def informative(win):
+    """Per run (row of `win`): at least MIN_DISTINCT distinct values and no value on more than
+    MAX_MODE of its points (on the sorted run: no value equal to the one MAX_MODE places on)."""
+    import numpy as np
+
+    srt = np.sort(win, axis=1)
+    distinct = 1 + (np.diff(srt, axis=1) != 0).sum(axis=1)
+    mode_over_half = (srt[:, MAX_MODE:] == srt[:, :-MAX_MODE]).any(axis=1)
+    return (distinct >= MIN_DISTINCT) & ~mode_over_half
+
+
+def run_hashes(x, only_informative: bool = True):
+    """64-bit hashes of every run of RUN consecutive finite values: the informative ones
+    (amendment 2), or with `only_informative=False` every non-constant one (amendment 1)."""
     import numpy as np
 
     x = np.asarray(x, dtype=np.float32)
     if x.ndim != 1 or x.size < RUN:
         return np.empty(0, dtype=np.uint64)
     win = np.lib.stride_tricks.sliding_window_view(x, RUN)
-    keep = np.isfinite(win).all(axis=1) & (win.max(axis=1, initial=-np.inf) != win.min(axis=1, initial=np.inf))
+    keep = np.isfinite(win).all(axis=1)
+    if only_informative:
+        keep[keep] = informative(win[keep])
+    else:
+        keep &= win.max(axis=1, initial=-np.inf) != win.min(axis=1, initial=np.inf)
     if not keep.any():
         return np.empty(0, dtype=np.uint64)
     bits = np.ascontiguousarray(win[keep]).view(np.uint32).astype(np.uint64)
@@ -369,6 +393,56 @@ def run_hashes(x):
         h *= np.uint64(0xBF58476D1CE4E5B9)
         h ^= h >> np.uint64(29)
     return h
+
+
+def lookup(sorted_unique, h):
+    """Which of the hashes `h` are in the sorted, unique array (a binary search per hash)."""
+    import numpy as np
+
+    if not h.size or not sorted_unique.size:
+        return np.zeros(h.size, dtype=bool)
+    idx = np.minimum(np.searchsorted(sorted_unique, h), sorted_unique.size - 1)
+    return sorted_unique[idx] == h
+
+
+def check(sources: dict, bench) -> dict:
+    """The content check of §3.3 with amendment 2's rule. `sources`: name -> [(id, values)];
+    `bench`: an iterable of (benchmark, dataset, series). Every new series' informative runs are
+    hashed; the benchmark series stream past them. A series with a matching informative run is
+    dropped; a source whose dropped share exceeds MAX_DROPPED_SHARE is dropped whole."""
+    import numpy as np
+
+    hashed = {name: [(i, run_hashes(x)) for i, x in rows] for name, rows in sources.items()}
+    parts = [h for rows in hashed.values() for _, h in rows if h.size]
+    pool = np.unique(np.concatenate(parts)) if parts else np.empty(0, np.uint64)
+    matched, counts, where = [], {}, {}
+    for b, name, s in bench:
+        h = run_hashes(s)
+        c = counts.setdefault(b, [0, 0])
+        c[0] += 1
+        c[1] += int(h.size)
+        hit = h[lookup(pool, h)]
+        if hit.size:
+            matched.append(np.unique(hit))
+            where[f"{b}:{name}"] = where.get(f"{b}:{name}", 0) + int(hit.size)
+    matched_h = np.unique(np.concatenate(matched)) if matched else np.empty(0, np.uint64)
+    out = {"benchmarks": {b: {"series": c[0], "informative_runs": c[1]} for b, c in counts.items()},
+           "benchmark_datasets_with_a_match": where, "sources": {}}
+    for name, rows in hashed.items():
+        hits = [int(lookup(matched_h, h).sum()) for _, h in rows]
+        dropped = [i for (i, _), n in zip(rows, hits) if n]
+        share = len(dropped) / max(len(rows), 1)
+        out["sources"][name] = {
+            "series": len(rows),
+            "informative_runs": sum(int(h.size) for _, h in rows),
+            "matching_runs": sum(hits),
+            "series_dropped": len(dropped),
+            "dropped_share": share,
+            "dropped_series": dropped,
+            "series_kept": 0 if share > MAX_DROPPED_SHARE else len(rows) - len(dropped),
+            "kept": share <= MAX_DROPPED_SHARE,
+        }
+    return out
 
 
 def series_of(values) -> list:
@@ -411,75 +485,57 @@ def benchmark_series(gift_eval: Path):
 
 
 def cmd_leak_check(a) -> None:
-    """The new series' hashes are kept (they are few); every benchmark series is streamed past
-    them, so the benchmark is never held in memory."""
+    """Amendment 2's check on every source of `--series`; the kept series of the kept sources
+    go to `--kept-out` (what trains), and the report to `--out`, the run of amendment 1's rule
+    kept in it when the file holds one."""
     import numpy as np
 
-    sources = {}
+    sources, lines = {}, {}
     for f in sorted(Path(a.series).glob("*.jsonl")):
-        per_series, ids = [], []
+        rows, raw = [], {}
         for line in f.open():
             if line.strip():
                 r = json.loads(line)
-                x = np.array([np.nan if v is None else v for v in r["values"]], dtype=np.float32)
-                per_series.append(run_hashes(x))
-                ids.append(r["id"])
-        allh = np.concatenate(per_series) if per_series else np.empty(0, np.uint64)
-        sources[f.stem] = {"ids": ids, "per_series": per_series, "unique": np.unique(allh)}
-    pool = np.unique(np.concatenate([v["unique"] for v in sources.values()])) if sources else np.empty(0, np.uint64)
-    matched = []
-    counts = {"gift_eval": [0, 0], "chronos_zs": [0, 0]}
-    where: dict[str, int] = {}
-    for bench, name, s in benchmark_series(Path(a.gift_eval)):
-        h = run_hashes(s)
-        counts[bench][0] += 1
-        counts[bench][1] += int(h.size)
-        if h.size and pool.size:
-            # pool is sorted and unique: a binary search per run (np.isin would sort the
-            # 8-million-hash pool again for every benchmark series)
-            idx = np.minimum(np.searchsorted(pool, h), pool.size - 1)
-            hit = h[pool[idx] == h]
-            if hit.size:
-                matched.append(np.unique(hit))
-                where[f"{bench}:{name}"] = where.get(f"{bench}:{name}", 0) + int(hit.size)
-    matched_h = np.unique(np.concatenate(matched)) if matched else np.empty(0, np.uint64)
+                rows.append((r["id"], np.array([np.nan if v is None else v for v in r["values"]], dtype=np.float32)))
+                raw[r["id"]] = line.rstrip("\n")
+        sources[f.stem], lines[f.stem] = rows, raw
+    res = check(sources, benchmark_series(Path(a.gift_eval)))
+    out = Path(a.out)
     report = {
-        "rule": "docs/s6-cast2-prereg.md §3.3 and amendment 1",
-        "run": RUN,
-        "hash": "64-bit polynomial hash of the float32 bit patterns; runs with a gap or 32 equal values skipped",
-        "gift_eval_series": counts["gift_eval"][0],
-        "gift_eval_runs": counts["gift_eval"][1],
-        "chronos_zs_series": counts["chronos_zs"][0],
-        "chronos_zs_runs": counts["chronos_zs"][1],
-        "benchmark_datasets_with_a_match": where,
-        "sources": {},
+        "rule": "docs/s6-cast2-prereg.md §3.3, amendment 2: runs of 32 float32 values with at least "
+        f"{MIN_DISTINCT} distinct values and no value on more than {MAX_MODE} points; a series with a "
+        f"matching run is dropped, a source with more than {MAX_DROPPED_SHARE:.0%} of its series dropped "
+        "is dropped whole",
+        "hash": "64-bit polynomial hash of the float32 bit patterns",
+        **res,
     }
-    for stem, v in sources.items():
-        n_runs = sum(int(h.size) for h in v["per_series"])
-        def n_hits(h):
-            if not h.size or not matched_h.size:
-                return 0
-            idx = np.minimum(np.searchsorted(matched_h, h), matched_h.size - 1)
-            return int((matched_h[idx] == h).sum())
-
-        hits = [n_hits(h) for h in v["per_series"]]
-        report["sources"][stem] = {
-            "series": len(v["ids"]),
-            "runs": n_runs,
-            "distinct_runs": int(v["unique"].size),
-            "matching_runs": sum(hits),
-            "series_with_a_match": sum(1 for x in hits if x),
-            "first_matching_series": [i for i, x in zip(v["ids"], hits) if x][:20],
-            "kept": sum(hits) == 0,
-        }
-        r = report["sources"][stem]
-        print(f"{stem}: {r['series']} series, {r['runs']} runs, {r['matching_runs']} matching -> "
-              f"{'kept' if r['kept'] else 'DROPPED (§3.3)'}")
-    print(f"benchmarks: GIFT-Eval {counts['gift_eval'][0]} series / {counts['gift_eval'][1]} runs, "
-          f"Chronos-ZS {counts['chronos_zs'][0]} series / {counts['chronos_zs'][1]} runs")
-    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.out).write_text(json.dumps(report, indent=2) + "\n")
-    print(f"wrote {a.out}")
+    if out.exists():
+        prev = json.loads(out.read_text())
+        # the file holds amendment 1's run, or a report that already carries it
+        report["amendment_1_run"] = prev.get("amendment_1_run", prev)
+    kept_dir = Path(a.kept_out)
+    kept_dir.mkdir(parents=True, exist_ok=True)
+    for name, r in res["sources"].items():
+        dst = kept_dir / f"{name}.jsonl"
+        if not r["kept"]:
+            dst.unlink(missing_ok=True)
+            print(f"{name}: {r['series_dropped']} of {r['series']} series dropped ({r['dropped_share']:.2%}) "
+                  "-> DROPPED whole")
+            continue
+        drop = set(r["dropped_series"])
+        keep = [l for i, l in lines[name].items() if i not in drop]
+        dst.write_text("\n".join(keep) + "\n")
+        r["kept_file"] = str(dst)
+        r["kept_sha256"] = hashlib.sha256(dst.read_bytes()).hexdigest()
+        r["kept_points"] = sum(len(json.loads(l)["values"]) for l in keep)
+        print(f"{name}: {r['series']} series, {r['informative_runs']} informative runs, {r['matching_runs']} "
+              f"matching, {r['series_dropped']} series dropped ({r['dropped_share']:.2%}) -> "
+              f"{'kept' if r['kept'] else 'DROPPED whole'}, {r['series_kept']} series")
+    for b, c in res["benchmarks"].items():
+        print(f"{b}: {c['series']} series, {c['informative_runs']} informative runs")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"wrote {out}")
 
 
 def main() -> None:
@@ -496,6 +552,7 @@ def main() -> None:
     c.add_argument("--series", required=True)
     c.add_argument("--gift-eval", required=True)
     c.add_argument("--out", required=True)
+    c.add_argument("--kept-out", required=True, help="where the kept series of the kept sources go")
     a = p.parse_args()
     {"list": cmd_list, "fetch": cmd_fetch, "leak-check": cmd_leak_check}[a.cmd](a)
 

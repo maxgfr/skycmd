@@ -54,6 +54,13 @@ DISCLOSURE = (
 )
 
 
+# §8 and amendment 2: the sentence the verdict carries once G3 is dropped
+READ_IN_SAMPLE = (
+    "G3 was dropped before training (amendment 2: the Chronos-ZS harness was not validated): G1 and G2 "
+    "were read on the benchmark that shaped the design, and Chronos-ZS is reported, not gated."
+)
+
+
 def band(cfg: str) -> str:
     freq = cfg.split("/")[1]
     unit = re.sub(r"^\d+", "", freq).split("-")[0].upper()
@@ -241,6 +248,8 @@ def cmd_gate(a) -> None:
     else:
         verdict = "PASS" if all(gated) else "FAIL"
     out += [f"**Verdict: {verdict}.**", ""]
+    if a.g3 == "reported":
+        out += [READ_IN_SAMPLE, ""]
     rows = [
         ["G1", f"nGMASE {fmt(s2['nGMASE'])} <= {G1_MASE} and nWQL {fmt(s2['nWQL'])} <= {G1_WQL}", str(g1)],
         ["G2", "MASE ratio < 1.00 at each term: " + ", ".join(f"{t} {fmt(term_v2.get(t), 3)}" for t in TERMS), str(g2)],
@@ -254,8 +263,7 @@ def cmd_gate(a) -> None:
     out += ["## Gate (ternary GGUF, without flip, full harness)", ""]
     out += table(rows, ["item", "measured", "holds"])
     if a.g3 == "reported":
-        out += ["G3 was dropped by amendment before training: G1 and G2 were read on the benchmark that shaped "
-                "the design (§8).", ""]
+        out += [READ_IN_SAMPLE, ""]
 
     rows = []
     for label, base, d in (("v2, without flip", czv2, name), ("TinyCast port, without flip", cz, "tinycast-noflip"),
@@ -444,7 +452,8 @@ def main() -> None:
     g.add_argument("--chronos-v2-out", help="v2's Chronos-ZS scores (default: --chronos-out)")
     g.add_argument("--series2", default="data/series2", help="the new real series")
     g.add_argument("--models", required=True)
-    g.add_argument("--g3", choices=["gate", "reported"], required=True)
+    g.add_argument("--g3", choices=["gate", "reported"], default="reported",
+                   help="reported: G3 dropped by amendment 2 of the pre-registration")
     g.add_argument("--data", required=True)
     g.add_argument("--out", required=True)
     g.add_argument("--diagnostics")

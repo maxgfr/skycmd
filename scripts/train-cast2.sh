@@ -45,7 +45,8 @@
 #   BAND_PERIODS=second=360,weekly=52,monthly=12:4
 #                                   periods of the synthetic stand-ins of the bands without real
 #                                   series (§3.4; a reading to settle by amendment)
-#   G3=gate                         gate | reported: reported once an amendment has dropped G3 (§8)
+#   G3=reported                     reported (amendment 2 dropped G3: the Chronos-ZS harness was not
+#                                   validated) | gate
 #   SKY_DUTY=0.5  SKY_COOL=45:15  SKY_BRAKE_FILE=runs/brake   the brake (amendments 4-8 of
 #                                   docs/s6-cast-prereg.md; scripts/auto-brake.sh writes the file
 #                                   and stops a training over its memory cap)
@@ -85,7 +86,9 @@ pilot_dir=${sky_out}runs/s6-cast2-pilot
 # The new real series, the records of their checks and the Chronos-ZS data live outside the
 # repositories (amendment 1): CAST2_DATA, read by every step, written by data and chronos-check.
 cast2_data=${CAST2_DATA:-/Users/maxime/Documents/Code/skycmd-data/s6-cast2}
-series2=$cast2_data/series2
+# fetched (series2/) and, after the leakage check of amendment 2, what trains (series2-checked/)
+fetched2=$cast2_data/series2
+series2=$cast2_data/series2-checked
 data_dir=$cast2_data
 czs=$cast2_data/chronos-zs
 hf_home=$cast2_data/hf
@@ -101,7 +104,7 @@ v1=models/s6-cast/s6-cast-pico
 pilot_steps=${PILOT_STEPS:-3000}
 minutes=$(LC_ALL=C awk -v a="${MINUTES:-720}" -v b="${TIME_SCALE:-1}" 'BEGIN { printf "%g", a * b }')
 read -r -a sources <<<"${SOURCES:-uscrn_subhourly}"
-g3=${G3:-gate}
+g3=${G3:-reported}
 case "$g3" in gate | reported) ;; *) echo "G3=$g3: gate or reported" >&2; exit 2 ;; esac
 # a smoke run never writes where the real run does
 if [ -n "$smoke" ]; then
@@ -183,33 +186,35 @@ data() {
   x python3 -I scripts/cast2-data.py list --out "$data_dir/list.json"
   local s
   for s in ${sources[@]+"${sources[@]}"}; do
-    [ -f "$series2/$s.jsonl" ] || x python3 -I scripts/cast2-data.py fetch --source "$s" --out "$series2"
+    [ -f "$fetched2/$s.jsonl" ] || x python3 -I scripts/cast2-data.py fetch --source "$s" --out "$fetched2"
   done
   # §3.3: run once, its counts recorded before training
   [ -f "$data_dir/leak.json" ] || x env HF_HOME="$hf_home" uv run --python 3.12 scripts/cast2-data.py leak-check \
-    --series "$series2" --gift-eval "$gsrc" --out "$data_dir/leak.json"
+    --series "$fetched2" --gift-eval "$gsrc" --out "$data_dir/leak.json" --kept-out "$series2"
 }
 
 # No training before the leakage check: every file of $series2 was checked and kept.
 check_leak() {
   local leak=$data_dir/leak.json
-  note "check that $leak covers every file of $series2 and keeps each"
+  note "check that every file of $series2 is the kept file of $leak (amendment 2's rule)"
   [ "$dry" = 1 ] && return
   if ! compgen -G "$series2/*.jsonl" >/dev/null; then
     echo "== no new real series in $series2: C3 is not made (§3.2: only by amendment)"
     return
   fi
   python3 -I - "$leak" "$series2" <<'EOF'
-import json, pathlib, sys
+import hashlib, json, pathlib, sys
 leak, d = sys.argv[1], pathlib.Path(sys.argv[2])
 r = json.load(open(leak))["sources"]
 for f in sorted(d.glob("*.jsonl")):
     s = r.get(f.stem)
-    if s is None:
-        sys.exit(f"{f} is not in {leak}: run the data step")
+    if s is None or "kept_sha256" not in s:
+        sys.exit(f"{f} is not a kept file of {leak}: run the data step")
     if not s["kept"]:
-        sys.exit(f"{f}: {s['matching_runs']} runs match a benchmark series; §3.3 drops the source: remove it")
-print(f"leakage check: {len(r)} source(s), all kept")
+        sys.exit(f"{f}: its source is dropped by §3.3 (amendment 2): remove it")
+    if hashlib.sha256(f.read_bytes()).hexdigest() != s["kept_sha256"]:
+        sys.exit(f"{f} is not the file the leakage check kept")
+    print(f"{f.stem}: {s['series_kept']} series kept, {s['series_dropped']} dropped by the leakage check")
 EOF
 }
 
