@@ -9,7 +9,7 @@ Every model on this page was judged against criteria fixed before any test run, 
 
 ## s6 (November 2026)
 
-s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md), s6-secrets-pico in [`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) and s6-cast-pico in [`docs/s6-cast-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md), all frozen before their training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). The five models were trained in one run, from 12 to 14 November; its final report, with every phase, incident and gate, is [`docs/big-run-report.md`](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md).
+s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md), s6-secrets-pico in [`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) and s6-cast-pico in [`docs/s6-cast-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md), all frozen before their training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). The five models were trained in one run, from 12 to 14 November; its final report, with every phase, incident and gate, is [`docs/big-run-report.md`](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md). Two experiments followed on the evening of 14 November, each with its own pre-registration: s6-secrets-verify-pico, the second version of s6-secrets ([`docs/s6-secrets2-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets2-prereg.md)), and the pilot of s6-sleep ([`docs/s6-sleep-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep-prereg.md)).
 
 ### In short
 
@@ -18,6 +18,8 @@ s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://gi
 - **s6-micro fails on calibration only.** 0.547 on the bench (gate 0.45 and announced goal 0.50 both met), but ECE 0.0821 at full depth and 0.0804 at its conformal thresholds, above the 0.08 guard. It is not published.
 - **s6-ear-nano fails three of its four gates.** End of turn 0.5681 against 0.8518 for Smart Turn v3.2, and its own control without the Mimi pretraining does better on all four sets. It is not published.
 - **s6-cast-pico fails its gate on both metrics.** On GIFT-Eval it scores nGMASE 0.9471 and nWQL 0.6646, against bars of 0.838 and 0.587 (the training-free FLAIR) and TinyCast's 0.774 / 0.545. It is not published ([below](#s6-cast-pico-failed)).
+- **s6-secrets-verify-pico (s6-secrets v2) fails its gate on G1.** A rule proposes candidates and a 250 KB ternary model judges each one in its context, trained and tested on real repositories. On 221 test repositories of CredData its line F1 is 0.8561, against 0.7332 for the best rule scanner: +0.123 where +0.15 was asked. The six other gates hold, among them 0.35% of clean real files flagged where v1 flagged 59.8%. It is not published ([below](#s6-secrets-verify-pico-failed)).
+- **s6-sleep stops at its pilot.** With a fast-weight memory, s6-pico scores 0.2460 on the `recall` probe, against 0.2650 for the same model trained without memory; the rule asked for +0.10. So no nano run took place ([below](#s6-sleep-stopped-by-its-pilot)).
 - **The s6 additions were not adopted.** The pre-registered pico ablation kept none of them: no Muon, no Parallax, no XSA, no SODA, no exit distillation, no EMA, no StableQAT, no curriculum. s6-nano is the s3 architecture at language scale, as in s4, trained with AdamW. What changed from s3-pico and s4-micro is the pretraining (0.87B tokens, 588 per parameter), the GLM-5.3-flash teacher, a larger tokenizer and wider windows. No ablation separates these causes, so none of them is claimed on its own.
 
 ### s6-nano: passed, published at full depth
@@ -72,6 +74,7 @@ After the gate was read and the model published, the published file was run on r
 - **The gate stays passed**: it is on `secret_bench`, and nothing in it is reread or changed. But the model cannot be used to scan real files. It stays published as the result of its pre-registration, not as a tool.
 - **Not measured:** recall on real secrets (no real secret is in that corpus).
 - **Next.** A second version would be a different task (a rule finds the candidate, the model judges it in its context), with its own pre-registration. Nothing is promised.
+- **Outcome (15/11).** That second version was pre-registered and trained once, and it failed its gate on G1 ([below](#s6-secrets-verify-pico-failed)).
 
 ### s6-micro: failed on calibration only
 
@@ -108,6 +111,42 @@ A probabilistic forecaster: the s6 encoder on patches of 32 points, 2,048 points
 - **The gate fails on both metrics** (result), and so does the goal of beating TinyCast. With flip the model still misses both bars. It is not published, and the [Forecast](/forecast/) page runs TinyCast, Timestral-5M and the seasonal naive only.
 - **Where it fails** (result). It beats the seasonal naive on average, but its point forecasts are worse than the seasonal naive at the medium and long horizons (MASE ratio 1.046 and 1.105) and in the Energy and Econ/Fin domains; our TinyCast port has a lower MASE in 86 of the 97 configurations. The worst are the 10-minute solar series at medium and long horizons, with MASE ratios of 2.282 and 2.729 to the seasonal naive.
 - **Not measured** by the run: the latency, the mean number of exits used on GIFT-Eval, and the gap to Timestral-5M, whose GIFT-Eval scores are not in the repository. The picture by domain and term is in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md) and [`docs/big-run-report.md`](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md).
+
+### s6-secrets-verify-pico (s6-secrets v2): failed on G1 {#s6-secrets-verify-pico-failed}
+
+The second version of s6-secrets judges a candidate instead of a whole text. A rule (secretgate's engine in a candidate mode, with its filters off and a keyword rule added) proposes a value, and the model answers "is this value a real credential that should be revoked?" from the value, its name, its line and the lines around it. It has the s6-secrets-pico graph, 445,345 ternary parameters in 249,984 bytes, and was trained once (seed 0, 12 working minutes of pretraining and 30 of decision training) on real repositories of Samsung CredData, on issue reports and on synthetic candidates. The test is 221 other CredData repositories and the issue reports' test split, whose values are real, opened once (`runs/s6-secrets2/eval-test/results.md`).
+
+| CredData test, line F1 | every repository | without the largest |
+|---|---:|---:|
+| **s6-secrets-verify-pico** | **0.8561** | **0.8114** |
+| best rule scanner (Betterleaks 1.10.1) | 0.7332 | 0.5367 |
+| Gitleaks 8.30.1 | 0.7037 | 0.4080 |
+| secretgate's default engine | 0.7279 | 0.5072 |
+| cbx-secrets-detector-17M (67 MB), rerun out of sample | 0.6830 | 0.8493 |
+| logistic regression of the same size | 0.7945 | 0.7179 |
+
+These numbers are on the gated universe: the rows whose CredData category is exactly `UUID` (in the training repositories, mostly identifiers of exported Postman collections) are removed for every system, by a choice made after reading training and validation rows and before any test file. On the full universe the model is at 0.8153 and Betterleaks at 0.6948.
+
+- **The gate** (result). G1 asks for the best rule scanner + 0.15 on every repository and without the largest one, which holds 5,165 of the 10,463 positive rows. On every repository the model is at 0.8561 against a bar of 0.8832: **G1 fails**. Without the largest repository it holds (0.8114 against 0.6867). G2 (within 0.10 of cbx-17M) holds twice, G3 (above the logistic regression) holds twice, G4 holds on real values (issue-report F1 0.8162 against Gitleaks 0.7104 + 0.08), G5 holds (ECE 0.0073), G6 holds (1,606 µs per candidate natively), G7 holds (31 of 8,825 clean real files flagged, 0.35%, bar 1.0%; v1 flagged 59.8%). Six gates of seven hold, and the gate needs all seven: **not published**, not rerun, not continued in this form, and it does not enter secretgate.
+- **Reported with it** (result). The paired bootstrap over repositories gives +0.1229 [0.0413, 0.3613] over Betterleaks on every repository. The bar of +0.15 was set with Gitleaks' published 0.442 in mind; on this test Gitleaks is at 0.7037. Neither changes the reading. CredSweeper's ML (line F1 0.9935) was trained on 85% of all CredData lines, so its CredData numbers are in sample and enter no gate; on the issue reports it scores 0.4919. One test meta file (header and two rows) was seen before training, and the pre-registration says so (amendment 4). By category, the model is weakest on API values (0.541, where cbx-17M is at 0.898), and cbx-17M on Key values (0.266, where the model is at 0.864).
+- **In the browser** (result): 2,666 µs per candidate in WASM, within 4.2e-7 of the native probabilities on 200 candidates. It is not on the site, since it is not published.
+- **Still to do, from the result block of the pre-registration.** The hand reading of the 110 candidates the model accepts on the clean text (§7.7): **done on 15/11: none of the 110 looks like a real credential.** 34 are test fixtures shaped like secrets, 16 provider-format keys on a rule's allowlist in secretgate's rule file, 10 example credentials of library documentation, 2 masked placeholders, 5 public hashes, fingerprints or public keys, 28 pieces of code, 6 prose or package metadata, 9 other test values ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md)). The whole-scan latency of §9 was not built and is not measured.
+
+Every table, the full universe, the candidate level and the per-category picture are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s6-secrets-verify-pico".
+
+### s6-sleep: stopped by its pilot {#s6-sleep-stopped-by-its-pilot}
+
+s6-sleep adds a fast-weight memory to a decision model and lets it rerun its last frames while no decision is asked ("sleep", arXiv 2605.26099). The pre-registration first runs a pilot on s6-pico, four runs of 3,684 steps each: the memory with N drawn in training, N = 4 with truncated backpropagation, N = 4 through every pass, and a control without memory. On the 500 dev episodes of the `recall` probe, where a model without memory is at 0.25 (`runs/s6-sleep/pilot.json`):
+
+| run | `recall`, N = 1 | N = 2 | N = 4 |
+|---|---:|---:|---:|
+| memory, N drawn | 0.2460 | 0.2460 | 0.2460 |
+| memory, N = 4, truncated | 0.2565 | 0.2565 | 0.2565 |
+| memory, N = 4, through every pass | 0.2430 | 0.2430 | 0.2430 |
+| control, no memory | 0.2650 | | |
+
+- **The rule** (result): the memory works if the first run at N = 1 beats the control by at least 0.10. It is 0.019 below it. **The pilot says the memory does not work, so no nano run took place**, no hypothesis was tested on the test seeds, and nothing is published.
+- **What the readings show** (result): in each memory run, `recall` does not change between N = 1, 2 and 4. The secondary probe, `rule110`, is reported and decides nothing: 0.4674 to 0.4700 for the first run, 0.5423 for the three others at every N.
 
 ## s5 (October 2026)
 
