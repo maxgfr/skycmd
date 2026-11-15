@@ -16,6 +16,7 @@ pub mod model;
 pub mod num;
 pub mod prompt;
 pub mod quant;
+pub mod route;
 pub mod s2;
 pub mod safetensors;
 pub mod secret_cand;

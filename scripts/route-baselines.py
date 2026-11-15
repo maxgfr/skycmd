@@ -384,10 +384,15 @@ def bm25_scores(recs, theta):
         if not docs:
             out.append(np.array([theta]))
             continue
-        ret = bm25s.BM25(method="lucene")
-        ret.index(bm25s.tokenize(docs, show_progress=False), show_progress=False)
+        toks = bm25s.tokenize(docs, show_progress=False)
         q = bm25s.tokenize([request_of(r)], return_ids=False, show_progress=False)[0]
-        s = ret.get_scores(q) if q else np.zeros(len(docs))
+        if not toks.vocab or not q:
+            # no token in the documents or in the request: every score is 0
+            s = np.zeros(len(docs))
+        else:
+            ret = bm25s.BM25(method="lucene")
+            ret.index(toks, show_progress=False)
+            s = ret.get_scores(q)
         out.append(np.concatenate([np.asarray(s, np.float64), [theta]]))
     return out
 

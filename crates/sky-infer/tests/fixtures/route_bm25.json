@@ -1,0 +1,154 @@
+{
+ "about": "s6-route-nano: BM25 (bm25s 0.3.16, Lucene, k1 1.5, b 0.75, English stopwords) of each tool option against the request, over the slate's own options; written by scripts/route/make_bm25_fixture.py",
+ "cases": [
+  {
+   "request": "turn on the lights in the hall",
+   "options": [
+    "lights_on: Turns the lights on in a room.",
+    "weather: Gives the weather of a city.",
+    "play_music: Plays a song."
+   ],
+   "scores": [
+    0.37691253423690796,
+    0.0,
+    0.0
+   ],
+   "ranks": [
+    1,
+    2,
+    3
+   ],
+   "state": "User: turn on the lights in the hall\nBM25: lights_on score 0.38 rank 1; weather score 0.00 rank 2; play_music score 0.00 rank 3"
+  },
+  {
+   "request": "What's the weather like in Paris tomorrow? weather please",
+   "options": [
+    "get_forecast: Weather forecast for a city and a day.",
+    "weather: Current weather.",
+    "news: The latest headlines."
+   ],
+   "scores": [
+    0.32312750816345215,
+    0.5704871416091919,
+    0.0
+   ],
+   "ranks": [
+    2,
+    1,
+    3
+   ],
+   "state": "User: What's the weather like in Paris tomorrow? weather please\nBM25: get_forecast score 0.32 rank 2; weather score 0.57 rank 1; news score 0.00 rank 3"
+  },
+  {
+   "request": "convert 5 miles to kilometers",
+   "options": [
+    "Unit Converter: Convert units of measurement from one unit to another",
+    "convert_currency: Convert an amount between currencies.",
+    "tool_17: Converts length units."
+   ],
+   "scores": [
+    0.15347057580947876,
+    0.20324482023715973,
+    0.0
+   ],
+   "ranks": [
+    2,
+    1,
+    3
+   ],
+   "state": "User: convert 5 miles to kilometers\nBM25: Unit Converter score 0.15 rank 2; convert_currency score 0.20 rank 1; tool_17 score 0.00 rank 3"
+  },
+  {
+   "request": "is it of the and to",
+   "options": [
+    "ab: the and of",
+    "cd: it is to"
+   ],
+   "scores": [
+    0.0,
+    0.0
+   ],
+   "ranks": [
+    1,
+    2
+   ],
+   "state": "User: is it of the and to\nBM25: ab score 0.00 rank 1; cd score 0.00 rank 2"
+  },
+  {
+   "request": "Réveille-moi à 7h",
+   "options": [
+    "alarm_set: Set an alarm for a given time.",
+    "calendar_set: Create an event."
+   ],
+   "scores": [
+    0.0,
+    0.0
+   ],
+   "ranks": [
+    1,
+    2
+   ],
+   "state": "User: Réveille-moi à 7h\nBM25: alarm_set score 0.00 rank 1; calendar_set score 0.00 rank 2"
+  },
+  {
+   "request": "book a flight",
+   "options": [
+    "flight_book: Book a flight.",
+    "flight_book: Book a flight."
+   ],
+   "scores": [
+    0.14585724472999573,
+    0.14585724472999573
+   ],
+   "ranks": [
+    1,
+    2
+   ],
+   "state": "User: book a flight\nBM25: flight_book score 0.15 rank 1; flight_book score 0.15 rank 2"
+  },
+  {
+   "request": "hello",
+   "options": [
+    "only_tool: Says nothing relevant."
+   ],
+   "scores": [
+    0.0
+   ],
+   "ranks": [
+    1
+   ],
+   "state": "User: hello\nBM25: only_tool score 0.00 rank 1"
+  },
+  {
+   "request": "get the stock price of AAPL and the stock news",
+   "options": [
+    "getStockPrice: Get the stock price of a company by its ticker.",
+    "stock_news: News about a stock.",
+    "crypto_price: Price of a cryptocurrency.",
+    "weather: Weather.",
+    "send_email: Send an email.",
+    "translate: Translate text.",
+    "calculator: Compute an expression."
+   ],
+   "scores": [
+    1.442298412322998,
+    1.5181320905685425,
+    0.5013580918312073,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ranks": [
+    2,
+    1,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "state": "User: get the stock price of AAPL and the stock news\nBM25: getStockPrice score 1.44 rank 2; stock_news score 1.52 rank 1; crypto_price score 0.50 rank 3; weather score 0.00 rank 4; send_email score 0.00 rank 5; translate score 0.00 rank 6; calculator score 0.00 rank 7"
+  }
+ ]
+}

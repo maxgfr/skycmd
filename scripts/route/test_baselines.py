@@ -85,6 +85,17 @@ class Baselines(unittest.TestCase):
         y, _ = f.matrix(recs)
         self.assertEqual((x != y).nnz, 0)
 
+    def test_bm25_fixture(self):
+        # the bm25 baseline gives the numbers the shared Rust function is checked against
+        import json
+        path = os.path.join(os.path.dirname(os.path.dirname(HERE)), "crates", "sky-infer", "tests", "fixtures", "route_bm25.json")
+        with open(path) as f:
+            cases = json.load(f)["cases"]
+        for c in cases:
+            rec = {"state": f"User: {c['request']}", "opts": c["options"] + [rb.common.NONE_OPTION]}
+            got = rb.bm25_scores([rec], theta=0.0)[0][:-1]
+            np.testing.assert_allclose(got, c["scores"], atol=1e-5)
+
     def test_name_prior(self):
         r = {"opts": ["a: x", "b: y", rb.common.NONE_OPTION]}
         self.assertEqual(list(rb.name_prior_probs([r], {"b": 3, "a": 1})[0]), [0, 1, 0])
