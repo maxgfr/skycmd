@@ -432,11 +432,12 @@ enum Cmd {
         /// every 50 sequence steps.
         #[arg(long)]
         seq_log: bool,
-        /// With --seq-log: the memory trace of every sequence step (per mem.* tensor the norm
-        /// of its gradient and of its weights, the gates, the state and the reading;
-        /// docs/s6-sleep3-diagnosis.md).
-        #[arg(long, requires = "seq_log")]
-        memory_trace: bool,
+        /// With --seq-log: the memory trace of one sequence step in N, from the first (per mem.*
+        /// tensor the norm of its gradient and of its weights, the gates, the state and the
+        /// reading; docs/s6-sleep3-diagnosis.md). --memory-trace alone traces every step.
+        #[arg(long, requires = "seq_log", value_name = "N", num_args = 0..=1,
+            default_value_t = 0, default_missing_value = "1")]
+        memory_trace: u64,
         /// AdamW rate multiplier of the memory weights mem.* (docs/s6-sleep2-prereg.md §2, M3).
         #[arg(long, default_value_t = 1.0)]
         mem_lr_mult: f32,
@@ -455,6 +456,11 @@ enum Cmd {
         /// place of zero (0: the zero start; a fresh run only).
         #[arg(long, default_value_t = 0.0)]
         memory_out_init: f32,
+        /// The memory starts as a copy path: its value projection at the identity and its
+        /// read-out at this gain times the identity (0: the usual start; a fresh run only, with
+        /// --memory-float).
+        #[arg(long, default_value_t = 0.0)]
+        memory_copy_init: f32,
         /// Weight of the auxiliary loss of a memory_aux config: the colour asked, decoded from
         /// what the memory retrieves at the ask frames of recall (0: none; needs --seq-log).
         #[arg(long, default_value_t = 0.0)]
@@ -939,6 +945,7 @@ fn main() -> Result<()> {
             memory_float,
             memory_out_float,
             memory_out_init,
+            memory_copy_init,
             memory_aux_weight,
             memory_aux_probe,
             mem_in_lr_mult,
@@ -997,6 +1004,7 @@ fn main() -> Result<()> {
                 aux_probe: memory_aux_probe,
             },
             memory_out_init,
+            memory_copy_init,
             dis,
             exit_kd: exit_kd.map(|weight| ExitKd {
                 weight,

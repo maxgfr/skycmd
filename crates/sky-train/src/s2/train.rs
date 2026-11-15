@@ -1708,14 +1708,21 @@ pub struct S2DecideArgs {
     /// for `recall`, the cross-entropy of its ask frames), and the gradient norm of every
     /// parameter group every 50 sequence steps.
     pub seq_log: bool,
-    /// With `seq_log`: the memory trace of every sequence step ([`memory_trace`]).
-    pub memory_trace: bool,
+    /// With `seq_log`: the memory trace ([`memory_trace`]) of one sequence step in that many
+    /// (1: every step; 0: none).
+    pub memory_trace: u64,
     /// Runtime switches of the memory (C4's control and retry: the read held at zero, float
     /// memory projections under QAT).
     pub memory_run: crate::s2::config::MemoryRun,
     /// Standard deviation of a truncated-normal start of the read-out of the memory
     /// (`mem.*.out.weight`) in place of zero; 0 keeps the zero start. A fresh run only.
     pub memory_out_init: f32,
+    /// The memory starts as a copy path: the value projection (`mem.*.v.weight`) at the
+    /// identity and the read-out (`mem.*.out.weight`) at this gain times the identity, so that
+    /// the read adds that share of the hidden states it retrieves, in the model's own space.
+    /// 0 keeps the usual start. A fresh run only; meant for float memory projections (the
+    /// ternary form of a diagonal matrix has a scale 1/d of its diagonal).
+    pub memory_copy_init: f32,
     /// s4 deep improvement supervision: sharpening exponent of the first exit's target
     /// (rising linearly to 1 at the last exit); `None` disables it.
     pub dis: Option<f32>,
@@ -1867,6 +1874,24 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             println!(
                 "memory: read-out started at a truncated normal of deviation {}",
                 a.memory_out_init
+            );
+        }
+        if a.memory_copy_init > 0.0 {
+            if !cfg.memory {
+                bail!("--memory-copy-init needs a memory config");
+            }
+            let d = cfg.hidden_size as i32;
+            let eye = mlx_rs::ops::eye::<f32>(d, None, None)?;
+            for l in 0..cfg.state_layers {
+                p.insert(format!("mem.{l}.v.weight").into(), eye.clone());
+                p.insert(
+                    format!("mem.{l}.out.weight").into(),
+                    eye.multiply(Array::from_f32(a.memory_copy_init))?,
+                );
+            }
+            println!(
+                "memory: started as a copy path (values at the identity, read-out at {} times it)",
+                a.memory_copy_init
             );
         }
         let mut s = S2Session::new(
@@ -2126,7 +2151,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                         qat,
                         how,
                         seq_steps.is_multiple_of(50),
-                        a.memory_trace,
+                        a.memory_trace > 0 && (seq_steps - 1).is_multiple_of(a.memory_trace),
                     )?;
                     let mut rec = json!({"step": s.state.step, "seq_game": sl.games[g].0,
                         "passes": passes, "seq_step_loss": st.loss, "grad_norm": st.grad_norm});
