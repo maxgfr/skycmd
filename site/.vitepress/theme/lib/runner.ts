@@ -109,6 +109,8 @@ export interface RunnerOptions {
   bestKey?: string
   /** Doom: draw the minimap. */
   minimap?: boolean
+  /** Flappy, dodge: outline the drone's collision box. */
+  hitbox?: boolean
   onHud?: (hud: Hud) => void
 }
 
@@ -150,6 +152,11 @@ export class GameRunner {
       doomAssets ??= loadDoomAssets()
       doomAssets.then((a) => (this.doomTex = a)).catch(() => {})
     }
+  }
+
+  /** Flappy, dodge: show or hide the drone's collision box. */
+  setHitbox(on: boolean) {
+    this.opts.hitbox = on
   }
 
   /** Doom: show or hide the minimap. */
@@ -264,12 +271,12 @@ export class GameRunner {
     const { ctx, w, h } = fitCanvas(this.canvas)
     const snap = JSON.parse(this.session.snapshot())
     const theme = currentTheme()
-    if (this.kind === 'flappy') drawFlappy(ctx, w, h, snap.view as FlappyView, this.fx, theme, { showScore: this.opts.showScore })
+    if (this.kind === 'flappy') drawFlappy(ctx, w, h, snap.view as FlappyView, this.fx, theme, { showScore: this.opts.showScore, hitbox: this.opts.hitbox })
     else if (this.kind === 'rescue') drawRescue(ctx, w, h, snap.view as RescueView, this.fx, theme)
     else if (this.kind === 'doom') {
       this.doomFx.t = this.fx.t
       drawDoom(ctx, w, h, snap.view as DoomView, this.doomTex, this.doomFx, { minimap: this.opts.minimap ?? true })
-    } else drawDodge(ctx, w, h, snap.view as DodgeView, this.fx, theme, { done: snap.done })
+    } else drawDodge(ctx, w, h, snap.view as DodgeView, this.fx, theme, { done: snap.done, hitbox: this.opts.hitbox })
   }
 
   private stepAi(now: number) {

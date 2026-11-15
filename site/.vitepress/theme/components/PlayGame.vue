@@ -118,6 +118,7 @@ const kind = ref<GameKind>('flappy')
 const mode = ref<Mode>('ai')
 const veto = ref(true)
 const minimap = ref(true)
+const hitbox = ref(false)
 const models = ref<ModelEntry[]>([])
 const selected = ref<string>(ORACLE)
 const tau = ref('auto')
@@ -170,6 +171,7 @@ function makeRunner() {
     bestKey: bestKey(kind.value, mode.value),
     autoResetMs: 1000,
     minimap: minimap.value,
+    hitbox: hitbox.value,
     onHud: (h) => {
       now.value = performance.now()
       hud.value = { ...h, probs: h.probs.slice() }
@@ -251,6 +253,7 @@ watch(kind, (k) => {
   preferModelFor(k)
 })
 watch(minimap, (v) => runner?.setMinimap(v))
+watch(hitbox, (v) => runner?.setHitbox(v))
 watch(mode, (m) => {
   // Each mode keeps its own high score.
   makeRunner()
@@ -419,6 +422,10 @@ function pct(p: number) {
       <label v-if="kind !== 'flappy'" class="check">
         <input v-model="veto" type="checkbox" />
         <span>Safety reflex</span>
+      </label>
+      <label v-if="kind === 'flappy' || kind === 'dodge'" class="check" title="Outline the box the game core tests for collisions">
+        <input v-model="hitbox" type="checkbox" />
+        <span>Show hitbox</span>
       </label>
       <label v-if="kind === 'doom'" class="check">
         <input v-model="minimap" type="checkbox" />

@@ -324,6 +324,16 @@ function drawSkyline(ctx: CanvasRenderingContext2D, w: number, base: number, uni
   }
 }
 
+/** A faint outline of the box a game core tests for collisions ("show hitbox"). */
+function strokeHitbox(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save()
+  ctx.strokeStyle = 'rgba(239,68,68,0.75)'
+  ctx.lineWidth = 1
+  ctx.setLineDash([3, 2])
+  ctx.strokeRect(x, y, w, h)
+  ctx.restore()
+}
+
 // ---------------------------------------------------------------------------------------------
 // Flappy Drone
 
@@ -344,7 +354,7 @@ export function drawFlappy(
   v: FlappyView,
   fx: FxState,
   theme: Theme,
-  opts: { showScore?: boolean } = {},
+  opts: { showScore?: boolean; hitbox?: boolean } = {},
 ) {
   const p = PALETTE[theme]
   const s = Math.min(h / v.height, w / 400)
@@ -418,6 +428,8 @@ export function drawFlappy(
   const dx = sx(v.drone.x)
   const dy = sy(v.drone.y)
   drawDroneSide(ctx, dx, dy, v.drone.w * s * 1.15, tilt, fx.t, theme, fx.thrustGlow)
+  // The box the core tests (the sprite's rotors reach past it).
+  if (opts.hitbox) strokeHitbox(ctx, sx(v.drone.x - v.drone.w / 2), sy(v.drone.y + v.drone.h / 2), v.drone.w * s, v.drone.h * s)
 
   // Crash burst.
   const since = fx.t - fx.crashAt
@@ -807,7 +819,7 @@ export function drawDodge(
   v: DodgeView,
   fx: FxState,
   theme: Theme,
-  opts: { done?: boolean } = {},
+  opts: { done?: boolean; hitbox?: boolean } = {},
 ) {
   const p = PALETTE[theme]
   // Zoom on what matters: the drone and the obstacles ahead, with at least 40 m of lookahead.
@@ -914,6 +926,7 @@ export function drawDodge(
 
   // The sprite spans the hitbox length (2 hl), so what touches on screen is what collides.
   drawDroneSide(ctx, X(d.x), Z(d.z), droneSize, dodgeTilt(v), fx.t, theme, 0.4)
+  if (opts.hitbox && !v.crashed) strokeHitbox(ctx, X(d.x - d.hl), Z(d.z + d.hh), 2 * d.hl * k, 2 * d.hh * k)
   const outcome = dodgeOutcome(v, opts.done ?? (v.crashed || v.finished || v.aborted))
   if (!outcome && v.vetoed && v.vetoed_request) {
     // The reflex replaced the request: say so next to the drone (it can hold the drone in front
