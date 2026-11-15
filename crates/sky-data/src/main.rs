@@ -202,6 +202,14 @@ enum RouteStep {
         #[arg(long)]
         provisional: bool,
     },
+    /// The model's copy of a slate file: each state gets the BM25 line of its tool options
+    /// (amendment 1). The evaluation renders the validation and test slates this way.
+    Render {
+        #[arg(long = "in")]
+        input: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// <out>/BUILD.json: inputs, counts, hashes, the test files' hashes, the head window.
     Manifest {
         #[arg(long)]
@@ -951,6 +959,7 @@ fn main() -> Result<()> {
                     seed: cli.seed,
                     provisional,
                 })?,
+                RouteStep::Render { input, out } => rb::render(&input, &out)?,
                 RouteStep::Manifest {
                     data,
                     out,

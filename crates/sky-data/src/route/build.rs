@@ -1256,8 +1256,9 @@ pub fn build_slates(o: &SlatesOptions) -> Result<Value> {
             src: format!("{}:{}", p.group, p.source),
             t: "choice".into(),
             ins: INSTRUCTION.into(),
+            // amendment 1: the request, then the BM25 score and rank of each tool option
+            state: sky_infer::route::state_for_options(&p.user, &opts),
             opts,
-            state: state_of(&p.user),
             target,
             split: p.split.clone(),
             uid: format!("{}/{kind}", p.id),
@@ -1362,19 +1363,27 @@ pub fn build_slates(o: &SlatesOptions) -> Result<Value> {
                         b.removed.push(r)
                     }
                 }
-                // renamed: slate 1, the gold's name `tool_<k>`, its description the rewrite
+                // renamed (amendment 1): slate 1 with every tool named `tool_<k>`, distinct
+                // random k; the gold's description is the teacher's rewrite (4.4), the others
+                // are untouched
                 let mut rng = Rng::derived(o.seed, &format!("route/renamed/{}", p.id));
-                let mut s = natural.clone();
-                let gi = s.gold.unwrap();
-                let desc = rewrite
+                let gi = natural.gold.unwrap();
+                let rewritten = rewrite
                     .get(&tools[g].id)
                     .cloned()
                     .map(|d| super::cut_description(&d))
                     .unwrap_or_else(|| tools[g].desc.clone());
-                s.texts[gi] = Some(super::option_text(
-                    &format!("tool_{}", 1 + rng.below(99)),
-                    &desc,
-                ));
+                let s = slates::masked(
+                    &natural,
+                    |t| {
+                        if t == natural.tools[gi] {
+                            rewritten.clone()
+                        } else {
+                            tools[t].desc.clone()
+                        }
+                    },
+                    &mut rng,
+                );
                 b.fixed.push(rec(p, &s, "renamed"));
             }
             None => {
@@ -1457,6 +1466,30 @@ pub fn build_slates(o: &SlatesOptions) -> Result<Value> {
     });
     write_json(&o.out.join("counts/slates.json"), &report)?;
     Ok(report)
+}
+
+// ------------------------------------------------------------------------------------ render
+
+/// The model's copy of a slate file (amendment 1): each record's state becomes the request and
+/// the BM25 line of its tool options (`sky_infer::route::state_for_options`); nothing else
+/// changes. The slate files themselves keep the request alone, as the baselines read it.
+pub fn render(input: &Path, output: &Path) -> Result<Value> {
+    let recs: Vec<Value> = read_lines(input)?;
+    let mut out = Vec::with_capacity(recs.len());
+    for mut r in recs {
+        let state = r["state"].as_str().unwrap_or("");
+        let Some(user) = state.strip_prefix("User: ") else {
+            bail!("{}: a state that is not `User: <request>`", input.display());
+        };
+        if user.contains(&format!("\n{}", sky_infer::route::LINE_PREFIX)) {
+            bail!("{}: already rendered", input.display());
+        }
+        let opts: Vec<String> = serde_json::from_value(r["opts"].clone())?;
+        r["state"] = json!(sky_infer::route::state_for_options(user, &opts));
+        out.push(r);
+    }
+    let n = write_jsonl(output, &out)?;
+    Ok(json!({"rendered": n, "out": output.file_name().map(|f| f.to_string_lossy().to_string())}))
 }
 
 // ---------------------------------------------------------------------------------- manifest
@@ -1854,10 +1887,48 @@ mod tests {
             assert_eq!(r.ins, INSTRUCTION);
             assert!(r.state.starts_with("User: "));
         }
-        assert!(train
-            .iter()
-            .filter(|r| r.kind == "renamed")
-            .all(|r| r.opts.iter().any(|o| o.starts_with("tool_"))));
+        // amendment 1: a renamed slate renames every tool, with distinct numbers; the
+        // distractors keep their descriptions
+        let by_id: BTreeMap<&str, &Tool> = tools.iter().map(|t| (t.id.as_str(), t)).collect();
+        for r in train.iter().filter(|r| r.kind == "renamed") {
+            let names: BTreeSet<&str> = r.opts[..r.opts.len() - 1]
+                .iter()
+                .map(|o| sky_infer::route::option_name(o))
+                .collect();
+            assert_eq!(names.len(), r.opts.len() - 1, "{r:?}");
+            assert!(names.iter().all(|n| n.starts_with("tool_")));
+            let g = r.target.iter().position(|&x| x == 1.0).unwrap();
+            for (i, (o, id)) in r.opts.iter().zip(&r.tools).enumerate() {
+                if i != g {
+                    assert!(
+                        o.ends_with(&format!(": {}", by_id[id.as_str()].desc)),
+                        "{o}"
+                    );
+                }
+            }
+        }
+        // amendment 1: the training states carry the BM25 line of their tool options; the
+        // test and validation slates do not (the model's copy is rendered at evaluation)
+        for r in &train {
+            assert_eq!(
+                r.state,
+                sky_infer::route::state_for_options(&r.state.lines().next().unwrap()[6..], &r.opts)
+            );
+            assert_eq!(r.state.contains("\nBM25: "), r.opts.len() > 1);
+        }
+        assert!(test.iter().all(|r| !r.state.contains('\n')));
+        let rendered = root.join("rendered.jsonl");
+        render(&a.join("val/v_tools.jsonl"), &rendered).unwrap();
+        let rv: Vec<RouteRecord> = read_lines(&rendered).unwrap();
+        assert_eq!(rv.len(), val.len());
+        for (x, y) in rv.iter().zip(&val) {
+            assert_eq!(x.opts, y.opts);
+            assert_eq!(
+                x.state,
+                sky_infer::route::state_for_options(&y.state[6..], &y.opts)
+            );
+        }
+        assert!(render(&rendered, &root.join("twice.jsonl")).is_err());
         // the none share of every group and split
         let report = super::super::read_json(&a.join("counts/slates.json")).unwrap();
         for (k, v) in report["none share"].as_object().unwrap() {
