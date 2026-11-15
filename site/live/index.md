@@ -70,6 +70,8 @@ The four games and the numeric curriculum, as typed questions you can edit: the 
 
 The file is published at **full depth**: every answer uses all 4 block passes, because the early-exit thresholds were rejected by the pre-registered arena check ([results](/results/)). The time shown is measured in your browser for each decision, with the first call (module start-up and first encodings) apart from the median of the warm calls. On the build machine, under Node, with the SIMD128 build, a Flappy frame (two questions and the physics step) takes 436 µs; the long JSON states of `typed_decisions_bench` take about 15 ms per decision ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md)). This page loads the relaxed-SIMD build where the browser supports it (the timing line says which): in one session with a GPU training running, it took a median of 358 µs per Flappy frame and 12.5 ms per bench question, against 445 µs and 15.8 ms for SIMD128 in the same session.
 
+The model menu also lists **s6-micro-v1**, the larger sibling, which failed its gate (ECE 0.0821 against the guard of 0.08): its file is published as a result (owner's decision of 15/11/2026), not for use. It is never selected by default, and its failure is shown above the answers when you pick it.
+
 <ClientOnly>
   <LiveDecide mode="s6" prefer="s6-nano" />
 </ClientOnly>

@@ -91,7 +91,7 @@ A teacher gave soft labels on every training question of the Hugging Face decisi
 No external dataset. `sky-data secret-jev` generates every text locally: each key follows its provider's public format with a random body, so none is a real key ([`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) §1). The bar is a rule scanner written in Rust in the style of gitleaks (see [s6](#s6) below). It pretrains on the same text as s6-nano.
 
 ### s6-ear-nano: audio data and baseline
-Only derived features are kept on disk (log-mel frames, and WAV for the test clips); the audio is not redistributed ([`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)). The model failed its gates and is not published.
+Only derived features are kept on disk (log-mel frames, and WAV for the test clips); the audio is not redistributed ([`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)). The model failed its gates; its file is published as a result (owner's decision of 15/11/2026).
 
 | Dataset or model | Licence | Used as |
 |---|---|---|
