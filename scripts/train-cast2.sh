@@ -35,8 +35,13 @@
 # Environment:
 #   MINUTES=720  TIME_SCALE=1       working minutes of training (TIME_SCALE multiplies them)
 #   PILOT_STEPS=3000                steps of each pilot
-#   SOURCES=uscrn_subhourly         the new sources the data step fetches (the list of §3.2, as
-#                                   the amendment that freezes it gives it)
+#   SOURCES=uscrn_subhourly         the new sources the data step fetches (amendment 1)
+#   CAST2_DATA=/Users/maxime/Documents/Code/skycmd-data/s6-cast2
+#                                   outside the repository: series2/ (the new series), list.json
+#                                   and leak.json (§3.2, §3.3), chronos-zs/ and chronos-zs-out/
+#                                   (the Chronos-ZS windows and the references' scores), hf/
+#                                   (HF_HOME of the Chronos-ZS datasets)
+#   GIFT_EVAL_SRC=data/gift-eval-src  GIFT-Eval's datasets (scoring, leakage check)
 #   BAND_PERIODS=second=360,weekly=52,monthly=12:4
 #                                   periods of the synthetic stand-ins of the bands without real
 #                                   series (§3.4; a reading to settle by amendment)
@@ -77,10 +82,20 @@ name=s6-cast2-pico
 cfg=configs/$name.json
 run=${sky_out}runs/$name
 pilot_dir=${sky_out}runs/s6-cast2-pilot
-data_dir=${sky_out}runs/s6-cast2-data
+# The new real series, the records of their checks and the Chronos-ZS data live outside the
+# repositories (amendment 1): CAST2_DATA, read by every step, written by data and chronos-check.
+cast2_data=${CAST2_DATA:-/Users/maxime/Documents/Code/skycmd-data/s6-cast2}
+series2=$cast2_data/series2
+data_dir=$cast2_data
+czs=$cast2_data/chronos-zs
+hf_home=$cast2_data/hf
+gsrc=${GIFT_EVAL_SRC:-data/gift-eval-src}
 m=${sky_out}models/s6-cast2
 gout=${sky_out}data/gift-eval-out
-cout=${sky_out}data/chronos-zs-out
+cout=$cast2_data/chronos-zs-out
+# v2's own Chronos-ZS scores go under the run's prefix (a smoke run has none)
+cout_v2=${sky_out:+${sky_out}data/chronos-zs-out}
+cout_v2=${cout_v2:-$cout}
 golden=crates/sky-infer/tests/golden/tinycast.gguf
 v1=models/s6-cast/s6-cast-pico
 pilot_steps=${PILOT_STEPS:-3000}
@@ -115,7 +130,7 @@ v2_data=(--real-frac 0.6 --synth-periods v2 --flip-prob 0.5 --band-weights "$ban
 # the real series: v1's, and the new ones of §3.2 once fetched and checked (without them C3 is
 # not made, which only the amendment of §3.2 allows)
 series=data/series
-[ -d data/series2 ] && series=data/series,data/series2
+[ -d "$series2" ] && series=data/series,$series2
 
 # x <command...>: runs it, or prints it under DRY_RUN=1.
 x() {
@@ -161,32 +176,30 @@ data() {
   [ -f data/series/games.jsonl ] || x "$T" cast-synth --games flappy,rescue,dodge,doom \
     --episodes 60 --out data/series/games.jsonl
   if [ ! -f data/gift-eval/m4_hourly__H__short.json ]; then
-    [ -d data/gift-eval-src ] || x uv run --python 3.12 scripts/gift-eval.py download --data data/gift-eval-src
-    x uv run --python 3.12 scripts/gift-eval.py export --data data/gift-eval-src --out data/gift-eval
+    [ -d "$gsrc" ] || x uv run --python 3.12 scripts/gift-eval.py download --data "$gsrc"
+    x uv run --python 3.12 scripts/gift-eval.py export --data "$gsrc" --out data/gift-eval
   fi
   x mkdir -p "$data_dir"
   x python3 -I scripts/cast2-data.py list --out "$data_dir/list.json"
   local s
   for s in ${sources[@]+"${sources[@]}"}; do
-    [ -f "data/series2/$s.jsonl" ] || x python3 -I scripts/cast2-data.py fetch --source "$s" --out data/series2
+    [ -f "$series2/$s.jsonl" ] || x python3 -I scripts/cast2-data.py fetch --source "$s" --out "$series2"
   done
   # §3.3: run once, its counts recorded before training
-  [ -f "$data_dir/leak.json" ] || x uv run --python 3.12 scripts/cast2-data.py leak-check --series data/series2 \
-    --gift-eval data/gift-eval-src --chronos-cache data/chronos-zs-src --out "$data_dir/leak.json"
+  [ -f "$data_dir/leak.json" ] || x env HF_HOME="$hf_home" uv run --python 3.12 scripts/cast2-data.py leak-check \
+    --series "$series2" --gift-eval "$gsrc" --out "$data_dir/leak.json"
 }
 
-# No training before the leakage check: every file of data/series2 was checked and kept.
+# No training before the leakage check: every file of $series2 was checked and kept.
 check_leak() {
-  # a smoke run reads the real run's check (the data is shared; the smoke writes none)
   local leak=$data_dir/leak.json
-  [ -n "$smoke" ] && [ ! -f "$leak" ] && leak=runs/s6-cast2-data/leak.json
-  note "check that $leak covers every file of data/series2 and keeps each"
+  note "check that $leak covers every file of $series2 and keeps each"
   [ "$dry" = 1 ] && return
-  if ! compgen -G "data/series2/*.jsonl" >/dev/null; then
-    echo "== no new real series in data/series2: C3 is not made (§3.2: only by amendment)"
+  if ! compgen -G "$series2/*.jsonl" >/dev/null; then
+    echo "== no new real series in $series2: C3 is not made (§3.2: only by amendment)"
     return
   fi
-  python3 -I - "$leak" data/series2 <<'EOF'
+  python3 -I - "$leak" "$series2" <<'EOF'
 import json, pathlib, sys
 leak, d = sys.argv[1], pathlib.Path(sys.argv[2])
 r = json.load(open(leak))["sources"]
@@ -335,7 +348,7 @@ EOF
 }
 
 score() {
-  x uv run --python 3.12 scripts/gift-eval.py score --data data/gift-eval-src --forecasts "$1" --name "$2" \
+  x uv run --python 3.12 scripts/gift-eval.py score --data "$gsrc" --forecasts "$1" --name "$2" \
     ${gcfg[@]+"${gcfg[@]}"}
 }
 
@@ -360,41 +373,50 @@ eval_all() {
   score "$gout/$name-flip" "$name-flip"
 }
 
-# §7.3: the harness check, the TinyCast port with flip as published. G3 stays a gate only when it
-# passes before training starts (§8): run this step first.
+# §7.3: the harness check (amendment 1: the TinyCast port and the seasonal naive through export,
+# scoring and the reference check), and the port without flip, G3's reference. G3 stays a gate
+# only when the check passes before training starts (§8): run this step first.
+czs_py() { x env HF_HOME="$hf_home" uv run --python 3.12 scripts/chronos-zs.py "$@"; }
 chronos_check() {
   if [ -n "$smoke" ]; then
     echo "== SMOKE: no Chronos-ZS"
     return
   fi
-  [ -f data/chronos-zs/monash_traffic__w0.json ] || x uv run --python 3.12 scripts/chronos-zs.py export \
-    --cache data/chronos-zs-src --out data/chronos-zs
+  [ -f "$czs/monash_traffic__w0.json" ] || czs_py export --out "$czs"
+  if [ ! -f "$cout/seasonal-naive/summary.json" ]; then
+    x "$B/sky-cast-eval" naive --windows "$czs" --out "$cout/seasonal-naive"
+    czs_py score --forecasts "$cout/seasonal-naive" --name Seasonal_Naive-ours
+  fi
   if [ ! -f "$cout/tinycast/check.json" ]; then
-    x "$B/sky-cast-eval" run --model "$golden" --windows data/chronos-zs --out "$cout/tinycast" --flip
-    x uv run --python 3.12 scripts/chronos-zs.py score --cache data/chronos-zs-src --forecasts "$cout/tinycast" --name TinyCast-ours
-    x uv run --python 3.12 scripts/chronos-zs.py check --forecasts "$cout/tinycast" || true
+    x "$B/sky-cast-eval" run --model "$golden" --windows "$czs" --out "$cout/tinycast" --flip
+    czs_py score --forecasts "$cout/tinycast" --name TinyCast-ours
+    czs_py check --forecasts "$cout/tinycast" --naive "$cout/seasonal-naive" || true
+  fi
+  if [ ! -f "$cout/tinycast-noflip/summary.json" ]; then
+    x "$B/sky-cast-eval" run --model "$golden" --windows "$czs" --out "$cout/tinycast-noflip"
+    czs_py score --forecasts "$cout/tinycast-noflip" --name TinyCast-ours-noflip
   fi
 }
 
 chronos() {
   [ -n "$smoke" ] && { echo "== SMOKE: no Chronos-ZS"; return; }
   chronos_check
-  x "$B/sky-cast-eval" run --model "$m/$name.gguf" --windows data/chronos-zs --out "$cout/$name"
-  x uv run --python 3.12 scripts/chronos-zs.py score --cache data/chronos-zs-src --forecasts "$cout/$name" --name "$name"
+  x "$B/sky-cast-eval" run --model "$m/$name.gguf" --windows "$czs" --out "$cout_v2/$name"
+  czs_py score --forecasts "$cout_v2/$name" --name "$name"
 }
 
 gate() {
   local diag=()
   # §9's per-window items (coverage, horizon tenths, window-level splits), by the study's method
   if [ -z "$smoke" ]; then
-    x uv run --python 3.12 scripts/s6-cast2-diagnostics.py --data data/gift-eval-src --windows data/gift-eval \
+    x uv run --python 3.12 scripts/s6-cast2-diagnostics.py --data "$gsrc" --windows data/gift-eval \
       --model v1=data/gift-eval-out/s6-cast-pico --model "v2=$gout/$name" --model port=data/gift-eval-out/tinycast \
       --model sn=data/gift-eval-out/seasonal-naive --out "$run/diagnostics.json"
     diag=(--diagnostics "$run/diagnostics.json")
   fi
   x python3 -I scripts/s6-cast2-gate.py gate --run "$run" --gift-eval-out "$gout" \
-    --reference-out data/gift-eval-out --chronos-out "$cout" --models "$m" --g3 "$g3" \
-    --data "$data_dir" --out "$run/GATE.md" ${diag[@]+"${diag[@]}"} ${smoke:+--smoke}
+    --reference-out data/gift-eval-out --chronos-out "$cout" --chronos-v2-out "$cout_v2" --models "$m" --g3 "$g3" \
+    --data "$data_dir" --series2 "$series2" --out "$run/GATE.md" ${diag[@]+"${diag[@]}"} ${smoke:+--smoke}
 }
 
 steps=("$@")
@@ -407,7 +429,10 @@ for s in "${steps[@]}"; do
     *) echo "unknown step $s (data, chronos-check, pilot, train, export, latency, eval, chronos, gate)" >&2; exit 2 ;;
   esac
 done
-[ "$dry" = 1 ] || cargo build -q --release -p sky-train -p sky-infer -p sky-data
+# build what the steps run: sky-infer's tools always, sky-train and sky-data for data and training
+pkgs=(-p sky-infer)
+case " ${steps[*]} " in *" data "* | *" pilot "* | *" train "* | *" export "*) pkgs+=(-p sky-train -p sky-data) ;; esac
+[ "$dry" = 1 ] || nice -n 19 cargo build -q --release "${pkgs[@]}"
 for s in "${steps[@]}"; do
   case "$s" in
     data) data ;;

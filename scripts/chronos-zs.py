@@ -181,13 +181,22 @@ def summarize(results_csv: Path) -> dict:
 def cmd_check(a) -> None:
     s = json.loads((Path(a.forecasts) / "summary.json").read_text())
     ok = s.get("complete", False)
-    lines = []
+    lines = [f"tasks scored: {s.get('tasks')}{'' if ok else ' (not all 27)'}"]
     for m, want in PUBLISHED.items():
         got = s.get(f"relative_{m}")
         good = got is not None and abs(got - want) <= CHECK_TOL
         ok &= good
         lines.append(f"relative {m}: {got} (published {want}, tolerance {CHECK_TOL}): {'ok' if good else 'FAIL'}")
-    verdict = {"validated": bool(ok), "lines": lines, "summary": s}
+    naive = None
+    if a.naive and (Path(a.naive) / "summary.json").exists():
+        # reported, not the criterion: our seasonal naive copies its point forecast on every
+        # level, so its relative WQL is not 1 (as on GIFT-Eval, 0.888)
+        naive = json.loads((Path(a.naive) / "summary.json").read_text())
+        lines.append(f"our seasonal naive: relative MASE {naive.get('relative_MASE')}, "
+                     f"relative WQL {naive.get('relative_WQL')} (reported)")
+    verdict = {"validated": bool(ok), "criterion": "docs/s6-cast2-prereg.md §7.3: the TinyCast port with flip "
+               "within 0.02 of 0.880 / 0.722", "lines": lines, "summary": s, "seasonal_naive": naive,
+               "checked": __import__("time").strftime("%Y-%m-%dT%H:%M:%S%z")}
     (Path(a.forecasts) / "check.json").write_text(json.dumps(verdict, indent=2) + "\n")
     print("\n".join(lines))
     print("harness validated" if ok else "harness NOT validated")
@@ -207,6 +216,7 @@ def main() -> None:
     s.add_argument("--name", required=True)
     c = sub.add_parser("check")
     c.add_argument("--forecasts", required=True)
+    c.add_argument("--naive", help="our seasonal naive's forecasts, reported next to the check")
     a = p.parse_args()
     {"tasks": cmd_tasks, "export": cmd_export, "score": cmd_score, "check": cmd_check}[a.cmd](a)
 

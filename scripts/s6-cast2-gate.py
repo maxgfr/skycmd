@@ -167,6 +167,29 @@ def last_record(log: Path, pred) -> dict | None:
     return rec
 
 
+def load_json(path: Path) -> dict | None:
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def g3_holds(v2: dict | None, port_noflip: dict | None) -> bool | None:
+    """G3 (§8, amendment 1): v2's relative MASE and WQL on Chronos-ZS, without flip, each at most
+    1.083 times the TinyCast port's without flip. None when a score is missing."""
+    if not v2 or not port_noflip:
+        return None
+    keys = ("relative_MASE", "relative_WQL")
+    if any(v2.get(k) is None or port_noflip.get(k) is None for k in keys):
+        return None
+    return all(v2[k] <= G3_FACTOR * port_noflip[k] for k in keys)
+
+
+def harness_validated_before(check: Path, started: Path) -> bool:
+    """§8, amendment 1: G3 stands only if the Chronos-ZS harness check passed before training
+    started (check.json written before the run's started.json)."""
+    if not check.exists() or not started.exists():
+        return False
+    return bool(json.loads(check.read_text()).get("validated")) and os.path.getmtime(check) < os.path.getmtime(started)
+
+
 def cmd_gate(a) -> None:
     run, gout, rout = Path(a.run), Path(a.gift_eval_out), Path(a.reference_out)
     name = run.name
@@ -199,25 +222,14 @@ def cmd_gate(a) -> None:
     g2 = None if any(term_v2.get(t) is None for t in TERMS) else all(term_v2[t] < 1.0 for t in TERMS)
 
     # G3: Chronos-ZS, the TinyCast port with flip on the same harness (§7.3)
+    # G3: Chronos-ZS, v2 without flip against the TinyCast port without flip on the same harness
+    # (§7.3, amendment 1); the harness is the one the port with flip validated (check.json)
     cz = Path(a.chronos_out)
-    cz_v2 = cz / name / "summary.json"
-    cz_port = cz / "tinycast" / "summary.json"
-    cz_check = cz / "tinycast" / "check.json"
-    g3_state, g3 = a.g3, None
-    validated_before = False
-    if cz_check.exists():
-        chk = json.loads(cz_check.read_text())
-        started = run / "started.json"
-        validated_before = chk.get("validated", False) and started.exists() and (
-            os.path.getmtime(cz_check) < os.path.getmtime(started)
-        )
-    if cz_v2.exists() and cz_port.exists():
-        a2, ap = json.loads(cz_v2.read_text()), json.loads(cz_port.read_text())
-        if a2.get("relative_MASE") and ap.get("relative_MASE"):
-            g3 = (a2["relative_MASE"] <= G3_FACTOR * ap["relative_MASE"]
-                  and a2["relative_WQL"] <= G3_FACTOR * ap["relative_WQL"])
-    else:
-        a2 = ap = None
+    g3_state = a.g3
+    validated_before = harness_validated_before(cz / "tinycast" / "check.json", run / "started.json")
+    czv2 = Path(a.chronos_v2_out) if a.chronos_v2_out else cz
+    a2, ap = load_json(czv2 / name / "summary.json"), load_json(cz / "tinycast-noflip" / "summary.json")
+    g3 = g3_holds(a2, ap)
     if a.g3 == "gate" and not validated_before:
         problems.append("G3 is gated but the Chronos-ZS harness was not validated before training started: "
                         "§8 has an amendment drop G3 (G3=reported)")
@@ -233,8 +245,8 @@ def cmd_gate(a) -> None:
         ["G1", f"nGMASE {fmt(s2['nGMASE'])} <= {G1_MASE} and nWQL {fmt(s2['nWQL'])} <= {G1_WQL}", str(g1)],
         ["G2", "MASE ratio < 1.00 at each term: " + ", ".join(f"{t} {fmt(term_v2.get(t), 3)}" for t in TERMS), str(g2)],
     ]
-    if a2 and ap:
-        g3_text = (f"relative MASE {fmt(a2['relative_MASE'])} <= {G3_FACTOR} x {fmt(ap['relative_MASE'])} and "
+    if g3 is not None:
+        g3_text = (f"v2 relative MASE {fmt(a2['relative_MASE'])} <= {G3_FACTOR} x {fmt(ap['relative_MASE'])} (the port without flip) and "
                    f"relative WQL {fmt(a2['relative_WQL'])} <= {G3_FACTOR} x {fmt(ap['relative_WQL'])}")
     else:
         g3_text = "no Chronos-ZS score on file"
@@ -244,6 +256,20 @@ def cmd_gate(a) -> None:
     if a.g3 == "reported":
         out += ["G3 was dropped by amendment before training: G1 and G2 were read on the benchmark that shaped "
                 "the design (§8).", ""]
+
+    rows = []
+    for label, base, d in (("v2, without flip", czv2, name), ("TinyCast port, without flip", cz, "tinycast-noflip"),
+                           ("TinyCast port, with flip (harness check)", cz, "tinycast"),
+                           ("seasonal naive", cz, "seasonal-naive")):
+        sm = load_json(base / d / "summary.json")
+        rows.append([label, fmt(sm and sm.get("relative_MASE")), fmt(sm and sm.get("relative_WQL")),
+                     str(sm["tasks"]["MASE"]) if sm else "0"])
+    chk = load_json(cz / "tinycast" / "check.json")
+    out += ["## Chronos-ZS (27 tasks, relative to fev's seasonal naive)", "",
+            f"Harness check (the port with flip within 0.02 of 0.880 / 0.722): "
+            f"{'validated' if chk and chk.get('validated') else 'not validated'}"
+            f"{', before training started' if validated_before else ''}.", ""]
+    out += table(rows, ["model", "relative MASE", "relative WQL", "tasks"])
 
     # §9, GIFT-Eval detail
     models = [("v1", v1), ("v1 flip", v1f), ("v2", v2), ("v2 flip", v2f), ("TinyCast port (flip)", port),
@@ -362,7 +388,7 @@ def cmd_gate(a) -> None:
     out += table(brake or [["no change of mode logged", ""]], ["line", "times"])
     ddir = Path(a.data)
     rows = []
-    for f in sorted([*Path("data/series").glob("*.jsonl"), *Path("data/series2").glob("*.jsonl")]):
+    for f in sorted([*Path("data/series").glob("*.jsonl"), *Path(a.series2).glob("*.jsonl")]):
         n = pts = 0
         for line in f.open():
             if line.strip():
@@ -414,7 +440,9 @@ def main() -> None:
     g.add_argument("--run", required=True)
     g.add_argument("--gift-eval-out", required=True)
     g.add_argument("--reference-out", required=True)
-    g.add_argument("--chronos-out", required=True)
+    g.add_argument("--chronos-out", required=True, help="the references' Chronos-ZS scores and the check")
+    g.add_argument("--chronos-v2-out", help="v2's Chronos-ZS scores (default: --chronos-out)")
+    g.add_argument("--series2", default="data/series2", help="the new real series")
     g.add_argument("--models", required=True)
     g.add_argument("--g3", choices=["gate", "reported"], required=True)
     g.add_argument("--data", required=True)

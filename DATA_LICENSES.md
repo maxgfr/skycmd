@@ -220,20 +220,20 @@ Not used: GIFT-Eval-Pretrain (no declared license) and every `chronos_datasets` 
 
 ## s6-cast v2: new real series (`scripts/cast2-data.py`, `docs/s6-cast2-prereg.md` §3.2, C3)
 
-The candidates of §3.2's selection rule, checked on 15/11/2026 from metadata only (`scripts/cast2-data.py list`: listings, object listings, HTTP headers, licence files); nothing of them is downloaded yet. Rule 1 is the licence as its publisher states it, rule 2 the exclusion list (GIFT-Eval's datasets, the 27 Chronos-ZS tasks of `eval/chronos-zs/tasks.yaml`, the v1 list below, the datasets the benchmarks draw from), rule 3 the content check of §3.3 (`scripts/cast2-data.py leak-check`), pending until the data is fetched. The list that trains is frozen by an amendment of the pre-registration before training.
+The candidates of §3.2's selection rule, checked on 15/11/2026 from metadata only (`scripts/cast2-data.py list`: listings, object listings, HTTP headers, licence files); nothing of them is downloaded yet. Rule 1 is the licence as its publisher states it, rule 2 the exclusion list (GIFT-Eval's datasets, the 27 Chronos-ZS tasks of `eval/chronos-zs/tasks.yaml`, the v1 list below, the datasets the benchmarks draw from), rule 3 the content check of §3.3 (`scripts/cast2-data.py leak-check`), pending until the data is fetched. The list that trains is frozen by amendment 1 of the pre-registration (15/11/2026): USCRN sub-hourly only.
 
 | source | publisher | licence (stated by) | rule 1 | rule 2 | size (metadata) | training | publication of the series |
 |---|---|---|---|---|---|---|---|
 | `uscrn_subhourly` (5-minute sensors: air, surface and soil temperature, precipitation, solar radiation, humidity, soil moisture, wetness, wind) | NOAA NCEI, U.S. Climate Reference Network (`ncei.noaa.gov/pub/data/uscrn/products/subhourly01`) | public domain (a U.S. Government work, as v1's USHCN; the product README states no other terms) | yes | yes | 2025: 159 station files, 2,256,400,800 bytes; at most 1,431 series, 11,722,752 points (last 8,192 points per station and column) | allowed | allowed |
-| `azure_vm_traces_2017` (5-minute VM CPU readings) | Microsoft, Azure Public Dataset V1 | CC-BY-4.0 (`LICENSE` of github.com/Azure/AzurePublicDataset) | yes | yes | 125 files, 84,202,453,652 bytes; 1,246,539,221 readings (the dataset page) | allowed, with attribution | allowed, with attribution |
-| `borg_cluster_data_2011` (5-minute task usage windows) | Google, cluster-data `ClusterData2011_2` | CC-BY-4.0 (`ClusterData2011_2.md`) | yes | yes | `task_usage`: 500 files, 42,120,256,604 bytes | allowed, with attribution | allowed, with attribution |
 
-Only `uscrn_subhourly` has a fetch (`scripts/cast2-data.py fetch`); the pre-registration fixes no rule to build or cap series from the per-VM and per-task records of the other two, so they wait for that rule. No second-level source passed; the band's weight goes to synthetic stand-ins (§3.4).
+The series are fetched outside the repository (`$CAST2_DATA/series2`, by default `/Users/maxime/Documents/Code/skycmd-data/s6-cast2/series2`) and never committed or redistributed by this repository. No second-level source passed; that band's weight goes to synthetic stand-ins (§3.4, amendment 1).
 
 Not kept:
 
 | source | why |
 |---|---|
+| Azure VM traces 2017 (Microsoft, Azure Public Dataset V1; CC-BY-4.0, `LICENSE` of github.com/Azure/AzurePublicDataset; 125 files, 84,202,453,652 bytes) | passes rules 1 and 2; not used by amendment 1: per-VM records for which §3.2 gives no rule to build series |
+| Borg cluster data 2011 (Google, cluster-data `ClusterData2011_2`; CC-BY-4.0, `ClusterData2011_2.md`; `task_usage`: 500 files, 42,120,256,604 bytes) | passes rules 1 and 2; not used by amendment 1: per-task records for which §3.2 gives no rule to build series |
 | Alibaba cluster-trace-v2018 (github.com/alibaba/clusterdata) | rule 1: no licence file; the README allows use "as long as it is for research or study purpose" |
 | Salesforce/lotsa_data and Salesforce/GiftEvalPretrain copies (Alibaba, Azure and Borg traces, PEMS, LargeST, BuildingsBench, IDEAL, ...) | open choice O3 of the pre-registration (not used; "for research purposes only"); a constituent is taken from its own publisher instead |
 | LargeST (PEMS 5-minute traffic) | rule 1: CC-BY-NC-4.0 |

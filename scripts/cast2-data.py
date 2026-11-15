@@ -9,9 +9,9 @@
 """The new real series of s6-cast v2 (docs/s6-cast2-prereg.md §3.2, §3.3, C3).
 
     python3 -I scripts/cast2-data.py list  [--out runs/s6-cast2-data/list.json]
-    python3 -I scripts/cast2-data.py fetch --source uscrn_subhourly --out data/series2
-    uv run --python 3.12 scripts/cast2-data.py leak-check --series data/series2 \
-        --gift-eval data/gift-eval-src --chronos-cache data/chronos-zs-src --out runs/s6-cast2-data/leak.json
+    python3 -I scripts/cast2-data.py fetch --source uscrn_subhourly --out $CAST2_DATA/series2
+    HF_HOME=$CAST2_DATA/hf uv run --python 3.12 scripts/cast2-data.py leak-check \
+        --series $CAST2_DATA/series2 --gift-eval data/gift-eval-src --out $CAST2_DATA/leak.json
 
 `list` is the dry run: it reads only metadata (directory listings, object listings, HTTP
 headers, licence files) and applies the selection rule of §3.2 to every candidate source:
@@ -32,7 +32,8 @@ series and points the fetch would write. Nothing is downloaded but listings and 
 `leak-check` is the content check of §3.3: every run of 32 consecutive finite values of every
 new series, as float32, is hashed (64-bit) and compared with the same hashes over every series
 of GIFT-Eval (`data/gift-eval-src`, all 97 configurations' datasets) and of Chronos-ZS (the 27
-datasets of eval/chronos-zs/tasks.yaml). Runs whose 32 values are all equal are skipped. A
+datasets of eval/chronos-zs/tasks.yaml, downloaded into `$HF_HOME`). The new series' hashes
+are held, the benchmark series streamed past them. Runs whose 32 values are all equal are skipped. A
 source with any matching run is dropped whole. The benchmark series are read only to be hashed.
 It writes the counts per source; the pre-registration has them recorded before training.
 """
@@ -180,69 +181,22 @@ def list_uscrn() -> dict:
     }
 
 
-AZURE = "https://raw.githubusercontent.com/Azure/AzurePublicDataset/master"
-
-
-def list_azure() -> dict:
-    links = [l.strip() for l in get(f"{AZURE}/AzurePublicDatasetV1Links.txt").decode().splitlines()]
-    cpu = [l for l in links if "cpu_readings" in l]
-    lic = get(f"{AZURE}/LICENSE").decode("utf-8-sig", "replace").splitlines()[0].strip()
-    sizes = [head_size(u) for u in cpu]
-    return {
-        "source": "azure_vm_traces_2017",
-        "band": "subhourly (5 minutes)",
-        "publisher": "Microsoft Azure (Azure Public Dataset V1)",
-        "url": "https://github.com/Azure/AzurePublicDataset/blob/master/AzurePublicDatasetV1.md",
-        "licence": "CC-BY-4.0",
-        "licence_stated_by": f"{AZURE}/LICENSE: {lic!r}",
-        "names": ["azure", "Azure Public Dataset", "azure_vm_traces_2017"],
-        "fetch": "not written: a VM's readings are spread over all 125 files and the "
-        "pre-registration fixes no rule to build or cap the series (to settle by amendment)",
-        "files": len(cpu),
-        "bytes": sum(s for s in sizes if s) if all(sizes) else None,
-        "bytes_unknown": sum(1 for s in sizes if not s),
-        "readings": 1_246_539_221,
-        "readings_stated_by": "AzurePublicDatasetV1.md",
-        "fetchable": False,
-    }
-
-
-BORG = "https://storage.googleapis.com/storage/v1/b/clusterdata-2011-2/o"
-
-
-def list_borg() -> dict:
-    total, n, token = 0, 0, None
-    while True:
-        q = f"{BORG}?prefix=task_usage/&fields=items(name,size),nextPageToken&maxResults=1000"
-        if token:
-            q += f"&pageToken={token}"
-        d = json.loads(get(q))
-        for it in d.get("items", []):
-            total += int(it["size"])
-            n += 1
-        token = d.get("nextPageToken")
-        if not token:
-            break
-    readme = get("https://raw.githubusercontent.com/google/cluster-data/master/ClusterData2011_2.md").decode()
-    stated = [l.strip() for l in readme.splitlines() if "CC-BY" in l or "license" in l.lower()]
-    return {
-        "source": "borg_cluster_data_2011",
-        "band": "subhourly (5-minute usage windows)",
-        "publisher": "Google (cluster-data, ClusterData2011_2)",
-        "url": "https://github.com/google/cluster-data/blob/master/ClusterData2011_2.md",
-        "licence": "CC-BY-4.0",
-        "licence_stated_by": "ClusterData2011_2.md: " + " ".join(stated[:2]),
-        "names": ["borg", "Google cluster data 2011", "clusterdata-2011-2"],
-        "fetch": "not written: task_usage holds 5-minute windows per task, and the "
-        "pre-registration fixes no rule to aggregate them into series (to settle by amendment)",
-        "files": n,
-        "bytes": total,
-        "fetchable": False,
-    }
-
-
 # Considered and not kept, with the rule that fails (no network needed to say so).
 REJECTED = [
+    {
+        "source": "azure_vm_traces_2017",
+        "publisher": "Microsoft, Azure Public Dataset V1",
+        "licence": "CC-BY-4.0",
+        "why": "passes rules 1 and 2; not used by amendment 1 of the pre-registration: 84 GB of "
+        "per-VM records for which §3.2 gives no rule to build series",
+    },
+    {
+        "source": "borg_cluster_data_2011",
+        "publisher": "Google, cluster-data ClusterData2011_2",
+        "licence": "CC-BY-4.0",
+        "why": "passes rules 1 and 2; not used by amendment 1 of the pre-registration: 42 GB of "
+        "per-task records for which §3.2 gives no rule to build series",
+    },
     {
         "source": "alibaba_cluster_trace_2018",
         "publisher": "Alibaba (github.com/alibaba/clusterdata, cluster-trace-v2018)",
@@ -282,7 +236,8 @@ REJECTED = [
 
 def cmd_list(a) -> None:
     out = {"rule": "docs/s6-cast2-prereg.md §3.2", "excluded_names": excluded_names(), "candidates": []}
-    for fn in (list_uscrn, list_azure, list_borg):
+    # amendment 1: USCRN is the one new source (the others considered are in REJECTED)
+    for fn in (list_uscrn,):
         try:
             c = fn()
         except Exception as e:  # a listing that fails is reported, not guessed
@@ -414,64 +369,89 @@ def series_of(values) -> list:
     return []
 
 
-def benchmark_hashes(gift_eval: Path, chronos_cache: Path | None) -> tuple:
+def benchmark_series(gift_eval: Path):
+    """(benchmark, name, 1-D series) of every GIFT-Eval and Chronos-ZS series."""
     import datasets
-    import numpy as np
 
-    parts, counts = [], {"gift_eval_series": 0, "chronos_zs_series": 0}
     # GIFT-Eval: every dataset directory under data/gift-eval-src (arrow, `target` column)
-    for d in sorted(p for p in gift_eval.rglob("dataset_info.json")):
+    for d in sorted(gift_eval.rglob("dataset_info.json")):
         ds = datasets.load_from_disk(str(d.parent))
-        for row in ds.with_format("numpy"):
+        for row in ds.select_columns(["target"]).with_format("numpy"):
             for s in series_of(row["target"]):
-                parts.append(run_hashes(s))
-                counts["gift_eval_series"] += 1
+                yield "gift_eval", str(d.parent.relative_to(gift_eval)), s
     # Chronos-ZS: the 27 datasets, every numeric sequence column but the timestamps
     tasks = REPO / "eval/chronos-zs/tasks.yaml"
     pairs = re.findall(r"dataset_path:\s*(\S+)\s*\n\s*dataset_config:\s*(\S+)", tasks.read_text())
     for path, config in pairs:
-        ds = datasets.load_dataset(path, config, split="train", cache_dir=str(chronos_cache) if chronos_cache else None)
+        ds = datasets.load_dataset(path, config, split="train")
         seq_cols = [
             c for c, f in ds.features.items()
-            if isinstance(f, datasets.Sequence) and c != "timestamp" and f.feature.dtype.startswith(("float", "int"))
+            if isinstance(f, datasets.Sequence) and c != "timestamp"
+            and str(getattr(f.feature, "dtype", "")).startswith(("float", "int"))
         ]
         for row in ds.select_columns(seq_cols).with_format("numpy"):
             for c in seq_cols:
-                parts.append(run_hashes(row[c]))
-                counts["chronos_zs_series"] += 1
-    allh = np.unique(np.concatenate(parts)) if parts else np.empty(0, dtype=np.uint64)
-    counts["benchmark_runs"] = int(allh.size)
-    return allh, counts
+                yield "chronos_zs", f"{path}/{config}", row[c]
 
 
 def cmd_leak_check(a) -> None:
+    """The new series' hashes are kept (they are few); every benchmark series is streamed past
+    them, so the benchmark is never held in memory."""
     import numpy as np
 
-    bench, counts = benchmark_hashes(Path(a.gift_eval), Path(a.chronos_cache) if a.chronos_cache else None)
-    report = {"rule": "docs/s6-cast2-prereg.md §3.3", "run": RUN, **counts, "sources": {}}
+    sources = {}
     for f in sorted(Path(a.series).glob("*.jsonl")):
-        n_series = n_runs = n_hit = 0
-        hit_ids = []
+        per_series, ids = [], []
         for line in f.open():
-            if not line.strip():
-                continue
-            r = json.loads(line)
-            x = np.array([np.nan if v is None else v for v in r["values"]], dtype=np.float32)
-            h = run_hashes(x)
-            hits = int(np.isin(h, bench, assume_unique=False).sum()) if h.size and bench.size else 0
-            n_series += 1
-            n_runs += int(h.size)
-            n_hit += hits
-            if hits and len(hit_ids) < 20:
-                hit_ids.append(r["id"])
-        report["sources"][f.stem] = {
-            "series": n_series,
+            if line.strip():
+                r = json.loads(line)
+                x = np.array([np.nan if v is None else v for v in r["values"]], dtype=np.float32)
+                per_series.append(run_hashes(x))
+                ids.append(r["id"])
+        allh = np.concatenate(per_series) if per_series else np.empty(0, np.uint64)
+        sources[f.stem] = {"ids": ids, "per_series": per_series, "unique": np.unique(allh)}
+    pool = np.unique(np.concatenate([v["unique"] for v in sources.values()])) if sources else np.empty(0, np.uint64)
+    matched = []
+    counts = {"gift_eval": [0, 0], "chronos_zs": [0, 0]}
+    where: dict[str, int] = {}
+    for bench, name, s in benchmark_series(Path(a.gift_eval)):
+        h = run_hashes(s)
+        counts[bench][0] += 1
+        counts[bench][1] += int(h.size)
+        if h.size and pool.size:
+            hit = h[np.isin(h, pool)]
+            if hit.size:
+                matched.append(np.unique(hit))
+                where[f"{bench}:{name}"] = where.get(f"{bench}:{name}", 0) + int(hit.size)
+    matched_h = np.unique(np.concatenate(matched)) if matched else np.empty(0, np.uint64)
+    report = {
+        "rule": "docs/s6-cast2-prereg.md §3.3 and amendment 1",
+        "run": RUN,
+        "hash": "64-bit polynomial hash of the float32 bit patterns; runs with a gap or 32 equal values skipped",
+        "gift_eval_series": counts["gift_eval"][0],
+        "gift_eval_runs": counts["gift_eval"][1],
+        "chronos_zs_series": counts["chronos_zs"][0],
+        "chronos_zs_runs": counts["chronos_zs"][1],
+        "benchmark_datasets_with_a_match": where,
+        "sources": {},
+    }
+    for stem, v in sources.items():
+        n_runs = sum(int(h.size) for h in v["per_series"])
+        hits = [int(np.isin(h, matched_h).sum()) if h.size and matched_h.size else 0 for h in v["per_series"]]
+        report["sources"][stem] = {
+            "series": len(v["ids"]),
             "runs": n_runs,
-            "matching_runs": n_hit,
-            "first_matching_series": hit_ids,
-            "kept": n_hit == 0,
+            "distinct_runs": int(v["unique"].size),
+            "matching_runs": sum(hits),
+            "series_with_a_match": sum(1 for x in hits if x),
+            "first_matching_series": [i for i, x in zip(v["ids"], hits) if x][:20],
+            "kept": sum(hits) == 0,
         }
-        print(f"{f.stem}: {n_series} series, {n_runs} runs, {n_hit} matching -> {'kept' if n_hit == 0 else 'DROPPED'}")
+        r = report["sources"][stem]
+        print(f"{stem}: {r['series']} series, {r['runs']} runs, {r['matching_runs']} matching -> "
+              f"{'kept' if r['kept'] else 'DROPPED (§3.3)'}")
+    print(f"benchmarks: GIFT-Eval {counts['gift_eval'][0]} series / {counts['gift_eval'][1]} runs, "
+          f"Chronos-ZS {counts['chronos_zs'][0]} series / {counts['chronos_zs'][1]} runs")
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(report, indent=2) + "\n")
     print(f"wrote {a.out}")
@@ -489,7 +469,6 @@ def main() -> None:
     c = sub.add_parser("leak-check")
     c.add_argument("--series", required=True)
     c.add_argument("--gift-eval", required=True)
-    c.add_argument("--chronos-cache")
     c.add_argument("--out", required=True)
     a = p.parse_args()
     {"list": cmd_list, "fetch": cmd_fetch, "leak-check": cmd_leak_check}[a.cmd](a)
