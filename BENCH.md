@@ -614,3 +614,39 @@ The announced goal (G2 at −0.05) is met; it is not a gate and changes nothing.
 - **The value-only probe** (§9; trained on CredData training, scored on validation): ROC-AUC 0.9197, PR-AUC 0.8202. The shape of a value alone separates T from F and X on CredData, the artefact §10 warns about; G4, on real values, holds.
 - **Unlabelled-line alarms** (accepted flags on lines with no meta row, per 1,000 test files; CredData never judged those lines): model 99.7, Gitleaks 27.0, secretgate default 30.5, Betterleaks 39.1, cbx-17M 486.6, generator 4,469.8.
 - **Not measured:** the whole-scan latency of §9 (not built); the accuracy of the kind question on the test and the `test_wild.csv` file of the issue-report archive are not in the results files.
+
+## s6-sleep: the pico pilot, memory not shown, no nano run
+
+Pre-registration: [`docs/s6-sleep-prereg.md`](docs/s6-sleep-prereg.md), the pilot's rules in §5, amendments 1 to 5 (all before any run). Run: `scripts/train-sleep.sh`; log `runs/s6-sleep.log`; the probe readings `runs/s6-sleep/pilot/p{1,2,3,4}/dev/{recall,rule110}.json`; the three rules applied by `scripts/s6-sleep-report.py pilot`, written to `runs/s6-sleep/pilot.json` (run again on a copy of the probe files on 15/11, it writes the same file). The report of §10 (`REPORT.md`) needs the nano runs, so it does not exist.
+
+**What was tested.** Whether a fast-weight memory with "sleep" passes (the model reruns the last frames N − 1 more times while no decision is asked; arXiv 2605.26099) helps a small ternary decision model on a stream of frames. Before any nano run, a pilot on s6-pico (`runs/s6lr/softmax-adamw-x2/decide/last`) checks that the memory is used at all. Four runs, seed 0, warm-started from that base, each step a batch of sequences with probability 0.5 (`recall` 40%, `rule110` 12%, each game 12%), else a stateless batch of the base's decision training, QAT from the first step:
+
+| run | memory | sleep passes N in training | backpropagation | parameters | steps | working minutes |
+|---|---|---|---|---:|---:|---:|
+| P1, the fast path | yes | drawn in {1, 2, 3, 4} | truncated | 482,497 | 3,684 (its budget: 20 working minutes) | 20.01 |
+| P2 | yes | 4 | truncated | 482,497 | 3,684 | 22.45 |
+| P3, the paper's way | yes | 4 | through every pass | 482,497 | 3,684 | 30.99 |
+| P4, the control | no | | | 445,345 | 3,684 | 14.51 |
+
+The other three runs train for P1's number of steps. The pilot ended on 14/11 at 23:58 (the time of `pilot.json`); every run logged the brake mode duty 0.85 with 50 minutes of work and 10 of rest.
+
+**Readings** (`sky-train s2-probe`, ternary weights, last exit, the 500 dev episodes of each probe from seed 1,000,000,000; `recall` is the accuracy on the ask frames, where a model without memory is at 0.25; `rule110` is the accuracy on the question frames):
+
+| run | `recall` N = 1 | N = 2 | N = 4 | `recall` N = 1 by delay (1–4, 5–8, 9–16, 17–32 frames) | `rule110` N = 1 | N = 2 | N = 4 |
+|---|---:|---:|---:|---|---:|---:|---:|
+| P1 | 0.2460 | 0.2460 | 0.2460 | 0.234, 0.252, 0.269, 0.229 | 0.4674 | 0.4700 | 0.4691 |
+| P2 | 0.2565 | 0.2565 | 0.2565 | 0.251, 0.272, 0.248, 0.255 | 0.5423 | 0.5423 | 0.5423 |
+| P3 | 0.2430 | 0.2430 | 0.2430 | 0.231, 0.244, 0.252, 0.245 | 0.5423 | 0.5423 | 0.5423 |
+| P4 (no memory, one reading) | 0.2650 | | | 0.262, 0.264, 0.287, 0.247 | 0.5423 | | |
+
+In each memory run the `recall` score is the same at N = 1, 2 and 4, overall and in every delay bucket. The `rule110` scores are reported and decide nothing (§5). For the record, the final validation accuracy of the four runs on the stateless mix (ternary, last exit) is 0.5555, 0.5537, 0.5560 and 0.5535 (`runs/s6-sleep.log`).
+
+**The three rules of §5, as the script read them** (`{"memory_works": false, "truncation_kept": true, "drawn_n_kept": false}`):
+
+| rule | condition | measured | result |
+|---|---|---|---|
+| the memory works | P1 at N = 1 ≥ P4 + 0.10 | 0.2460 against 0.2650 + 0.10 (P1 − P4 = −0.019) | **no** |
+| truncation is kept | P2 at N = 4 ≥ P3 at N = 4 − 0.01 | 0.2565 against 0.2430 − 0.01 | yes |
+| the drawn N is kept | P1 at N = 4 ≥ P2 at N = 4 − 0.01 | 0.2460 against 0.2565 − 0.01 | no |
+
+**Decision: no nano run.** The log ends with "the pilot says the memory does not work: no nano run (docs/s6-sleep-prereg.md, section 5)". As §5 says, no nano run takes place: H0 to H3 are not tested, the test seeds of the probes are not read, and no `s6-sleep-nano` model exists or is published. The warm start, the third departure from the paper, was not tested (§5).
