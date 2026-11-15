@@ -1,6 +1,21 @@
 {
-  "about": "Forecasters of the /forecast/ page. s6-cast-pico failed its gate (docs/s6-cast-prereg.md, BENCH.md) and is not listed; an s6-cast appears here only once one passes its gate.",
+  "about": "Forecasters of the /forecast/ page. s6-cast-pico failed its gate (docs/s6-cast-prereg.md, BENCH.md): its file is published as a result (owner's decision of 15/11/2026), listed with gate \"failed\", and starts unticked.",
   "models": [
+    {
+      "name": "s6-cast-pico",
+      "kind": "gguf",
+      "file": "s6-cast-pico.gguf",
+      "params": 369792,
+      "bytes": 142912,
+      "license": "Apache-2.0",
+      "notice": "",
+      "url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast-pico-probabilistic-forecasting-pre-registered-gate-failed",
+      "credit": "skycmd (trained from scratch in Rust)",
+      "gift_eval": { "nGMASE": 0.9471, "nWQL": 0.6646, "source": "measured, data/gift-eval-out/s6-cast-pico/summary.json" },
+      "gate": "failed",
+      "gate_note": "On GIFT-Eval it scored nGMASE 0.9471 and nWQL 0.6646, where the gate asked for 0.838 and 0.587",
+      "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast-pico-probabilistic-forecasting-pre-registered-gate-failed"
+    },
     {
       "name": "TinyCast",
       "kind": "gguf",

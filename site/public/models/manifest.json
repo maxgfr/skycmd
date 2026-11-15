@@ -37,6 +37,7 @@
     "weight_format": "ternary",
     "task": "general",
     "full_depth": true,
+    "gate": "passed",
     "params": 1486225,
     "bytes": 715136,
     "file": "s6-nano.gguf"
@@ -47,9 +48,60 @@
     "weight_format": "ternary",
     "task": "secrets",
     "full_depth": true,
+    "gate": "passed",
     "params": 445345,
     "bytes": 250272,
     "file": "s6-secrets-pico.gguf"
+  },
+  {
+    "name": "s6-micro-v1",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "general",
+    "full_depth": true,
+    "gate": "failed",
+    "gate_note": "It missed its calibration guard: ECE 0.0821 against 0.08 at full depth (0.547 on the typed-decisions bench, where the gate asked for at least 0.45)",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s6-s6-nano-s6-micro-general-purpose-decisions-and-games-pre-registered",
+    "params": 5587201,
+    "bytes": 2420032,
+    "file": "s6-micro-v1.gguf"
+  },
+  {
+    "name": "s6-ear-nano",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "ear",
+    "gate": "failed",
+    "gate_note": "It missed three of its four gates: end of turn 0.5681 against 0.8518 for Smart Turn v3.2, keywords 0.8885 against 0.90, French zero-shot keywords 0.1330 against 0.20; its control model, trained without the Mimi pretraining, did better on all four sets",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear-nano-first-run-gates-failed",
+    "params": 1532449,
+    "bytes": 899200,
+    "file": "s6-ear-nano.gguf"
+  },
+  {
+    "name": "s6-cast-pico",
+    "arch": "skycmd-cast",
+    "weight_format": "ternary",
+    "task": "forecast",
+    "gate": "failed",
+    "gate_note": "On GIFT-Eval it scored nGMASE 0.9471 and nWQL 0.6646, where the gate asked for 0.838 and 0.587",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast-pico-probabilistic-forecasting-pre-registered-gate-failed",
+    "params": 369792,
+    "bytes": 142912,
+    "file": "s6-cast-pico.gguf"
+  },
+  {
+    "name": "s6-secrets-verify-pico",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "secrets-verify",
+    "full_depth": true,
+    "gate": "failed",
+    "gate_note": "It missed G1 on its every-repository reading: line F1 0.8561 against 0.7332 + 0.15 for the best rule scanner (Betterleaks); the six other gates held",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-secrets-verify-pico-s6-secrets-v2-a-verifier-of-rule-candidates-pre-registered-gate-failed",
+    "params": 445345,
+    "bytes": 249984,
+    "file": "s6-secrets-verify-pico.gguf"
   },
   {
     "name": "s1-pico",
