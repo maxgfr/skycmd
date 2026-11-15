@@ -62,6 +62,18 @@ def task_name(task) -> str:
     return task.dataset_config
 
 
+# autogluon/chronos_datasets_extra (ETTh, ETTm) is built by a loading script of its own
+# (chronos_datasets_extra.py, Apache-2.0: it reads the ETT CSV files of github.com/zhouhaoyi/
+# ETDataset); fev passes `trust_remote_code` through. The other 25 tasks are parquet files.
+SCRIPTED = {"autogluon/chronos_datasets_extra"}
+
+
+def load(task):
+    """The task's dataset, loaded once (fev keeps it for iter_windows and evaluation_summary)."""
+    task.load_full_dataset(trust_remote_code=task.dataset_path in SCRIPTED)
+    return task
+
+
 def univariate_targets(past) -> tuple[str, list[np.ndarray]]:
     """The target column of a window's past data and its series (fev turns multivariate tasks
     into univariate ones through `generate_univariate_targets_from`)."""
@@ -85,6 +97,7 @@ def cmd_export(a) -> None:
     out.mkdir(parents=True, exist_ok=True)
     total = 0
     for task in benchmark().tasks:
+        load(task)
         for k, window in enumerate(task.iter_windows()):
             past, _ = window.get_input_data()
             _, series = univariate_targets(past)
@@ -121,6 +134,7 @@ def cmd_score(a) -> None:
     fdir = Path(a.forecasts)
     rows = []
     for task in benchmark().tasks:
+        load(task)
         preds = []
         missing = False
         for k, window in enumerate(task.iter_windows()):

@@ -307,9 +307,23 @@ def cmd_fetch(a) -> None:
     if a.dry_run:
         print(f"would fetch {len(files)} files ({sum(b for _, b in files)} bytes) to {out}/uscrn_subhourly.jsonl")
         return
-    for k, (f, _) in enumerate(files):
+    # NCEI serves one file at about 0.2 MB/s: a few downloads at a time, parsed in memory and
+    # dropped (nothing but the JSONL is written), in the listing's order
+    from concurrent.futures import ThreadPoolExecutor
+
+    def fetch_one(f: str) -> str:
+        for attempt in range(4):
+            try:
+                return get(f"{USCRN}/{USCRN_YEAR}/{f}", timeout=600).decode("utf-8", "replace")
+            except Exception:
+                if attempt == 3:
+                    raise
+        raise AssertionError
+
+    pool = ThreadPoolExecutor(max_workers=a.jobs)
+    texts = pool.map(fetch_one, [f for f, _ in files])
+    for k, ((f, _), text) in enumerate(zip(files, texts)):
         station = re.sub(r"^CRNS0101-05-\d{4}-|\.txt$", "", f)
-        text = get(f"{USCRN}/{USCRN_YEAR}/{f}").decode("utf-8", "replace")
         for id_, vals in uscrn_series(text, station):
             line = series_line(id_, vals)
             if line:
@@ -383,7 +397,9 @@ def benchmark_series(gift_eval: Path):
     tasks = REPO / "eval/chronos-zs/tasks.yaml"
     pairs = re.findall(r"dataset_path:\s*(\S+)\s*\n\s*dataset_config:\s*(\S+)", tasks.read_text())
     for path, config in pairs:
-        ds = datasets.load_dataset(path, config, split="train")
+        # chronos_datasets_extra (ETTh, ETTm) is built by its loading script (see chronos-zs.py)
+        ds = datasets.load_dataset(path, config, split="train",
+                                   trust_remote_code=path == "autogluon/chronos_datasets_extra")
         seq_cols = [
             c for c, f in ds.features.items()
             if isinstance(f, datasets.Sequence) and c != "timestamp"
@@ -466,6 +482,7 @@ def main() -> None:
     f.add_argument("--source", required=True)
     f.add_argument("--out", required=True)
     f.add_argument("--dry-run", action="store_true")
+    f.add_argument("--jobs", type=int, default=8, help="downloads at a time")
     c = sub.add_parser("leak-check")
     c.add_argument("--series", required=True)
     c.add_argument("--gift-eval", required=True)
