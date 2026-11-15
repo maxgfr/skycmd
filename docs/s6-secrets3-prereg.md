@@ -35,3 +35,10 @@ Everything v2 reported, for the union and for the model alone side by side; the 
 ## 5. Forbidden
 
 Choosing tau3 or anything else on a test file; retraining; changing the generator; a third reading.
+
+**Result (15/11/2026). Read once: failed on G1 again. The work on this model ends.**
+
+- **Order.** `tau3` (0.34933) and the regression's union threshold (0.155049) were chosen on validation and committed at 09:05 (`370f60f`), the gate script at 09:07, and the test was read once at 09:07:55 (`runs/s6-secrets3/TEST-READ`). Before any v3 computation the unchanged scorer was rerun and gave the files of v2 again, byte for byte. Results: `runs/s6-secrets3/eval-test/results.md` and `gate.json`.
+- **The gates (test, gated universe).** G1 fails on every repository: the union is at 0.8477 against 0.7332 + 0.15 for Betterleaks; it holds without the largest repository (0.8062 against 0.6867). G2 holds twice (cbx-17M 0.6830 and 0.8493). G3 holds twice (the same union with the logistic regression: 0.7882 and 0.7171). G4 holds (0.8073 against 0.7904). G5 and G6 are the model's (0.0073; 1,606 µs). G7 holds (30 of 8,825 files, 0.34%).
+- **The union did not help on the test.** The model alone is at 0.8561; the union at the threshold of v2 is at 0.8415, and at `tau3` at 0.8477: the difference with the model alone is -0.0084 [-0.0181, +0.0072] (paired bootstrap over repositories). On the test the default engine's precision is 0.82, so the lines it adds cost more in false alarms (135 X and 649 F lines) than they bring (305 positive lines). On validation every one of the seven gates held; the 16 validation repositories did not predict the 221 of the test.
+- **What it means.** As section 3 wrote: no third reading. On these test files, neither the verifier alone (v2) nor the system made of the rules and the verifier (v3) reaches a line F1 0.15 above the best rule scanner over all repositories; both do on 220 repositories of 221, and both hold every other gate.
