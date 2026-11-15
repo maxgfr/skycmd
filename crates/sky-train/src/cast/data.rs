@@ -512,9 +512,22 @@ pub fn parse_band_periods(s: &str) -> Result<[Vec<usize>; 6]> {
     Ok(out)
 }
 
+/// The sources added by s6-cast v2 (docs/s6-cast2-prereg.md, amendment 1); every other source
+/// of the real series is one of v1's.
+pub const V2_SOURCES: [&str; 1] = ["uscrn_subhourly"];
+/// v1's share of real windows (`docs/s6-cast-prereg.md` §1), drawn uniformly over its series.
+pub const V1_REAL_FRAC: f64 = 0.3;
+
+fn is_v1_source(id: &str) -> bool {
+    !V2_SOURCES.contains(&id.split(':').next().unwrap_or_default())
+}
+
 /// The band sampling of real windows (§3.4): a band is drawn with its weight, then a training
 /// series of that band, uniformly. A band without real series is stood in for by a synthetic
-/// series whose periods are that band's (`synth`).
+/// series whose periods are that band's (`synth`). The series without a band (the game
+/// trajectories) keep the share of windows they had in v1, outside the bands (amendment 1): v1
+/// drew `V1_REAL_FRAC` of its windows uniformly over its real series, so they get
+/// `V1_REAL_FRAC · n_unbanded / n_v1` of all windows, taken from the real share.
 #[derive(Clone, Debug)]
 pub struct Bands {
     pub weights: [f64; 6],
@@ -522,16 +535,37 @@ pub struct Bands {
     pub members: [Vec<usize>; 6],
     /// Periods of the synthetic stand-in, per band.
     pub synth: [Vec<usize>; 6],
+    /// Training series without a band, and their share of all windows.
+    pub unbanded: Vec<usize>,
+    pub unbanded_share: f64,
+    /// The real share of windows the draws are made under (`--real-frac`).
+    pub real_frac: f64,
 }
 
 impl Bands {
     /// Every band of positive weight must have real series or stand-in periods.
-    pub fn new(real: &[Series], weights: [f64; 6], synth: [Vec<usize>; 6]) -> Result<Self> {
+    pub fn new(
+        real: &[Series],
+        weights: [f64; 6],
+        synth: [Vec<usize>; 6],
+        real_frac: f64,
+    ) -> Result<Self> {
         let mut members: [Vec<usize>; 6] = Default::default();
+        let mut unbanded = Vec::new();
         for (i, s) in real.iter().enumerate() {
-            if let Some(b) = band_of(&s.id) {
-                members[b.index()].push(i);
+            match band_of(&s.id) {
+                Some(b) => members[b.index()].push(i),
+                None => unbanded.push(i),
             }
+        }
+        let n_v1 = real.iter().filter(|s| is_v1_source(&s.id)).count();
+        let unbanded_share = if n_v1 == 0 {
+            0.0
+        } else {
+            V1_REAL_FRAC * unbanded.len() as f64 / n_v1 as f64
+        };
+        if unbanded_share > real_frac {
+            bail!("the series without a band take {unbanded_share} of the windows, more than --real-frac {real_frac}");
         }
         for b in Band::ALL {
             let i = b.index();
@@ -547,7 +581,24 @@ impl Bands {
             weights,
             members,
             synth,
+            unbanded,
+            unbanded_share,
+            real_frac,
         })
+    }
+
+    /// The series of a real window, once the real share's coin has passed: a series without a
+    /// band with probability `unbanded_share / real_frac` (band `None`), else a band by weight
+    /// and a series of it (`None` when the band has no real series: a synthetic stand-in).
+    pub fn draw_real(&self, rng: &mut Rng) -> (Option<Band>, Option<usize>) {
+        if !self.unbanded.is_empty()
+            && self.real_frac > 0.0
+            && rng.f64() < self.unbanded_share / self.real_frac
+        {
+            return (None, Some(self.unbanded[rng.below(self.unbanded.len())]));
+        }
+        let (b, i) = self.draw(rng);
+        (Some(b), i)
     }
 
     /// A band by weight, and a series of it (`None`: the band has no real series).
@@ -580,13 +631,17 @@ impl Bands {
                 }
             ));
         }
-        let unbanded: std::collections::BTreeSet<&str> = real
+        let unbanded: std::collections::BTreeSet<&str> = self
+            .unbanded
             .iter()
-            .filter(|s| band_of(&s.id).is_none())
-            .map(|s| s.id.split(':').next().unwrap_or_default())
+            .map(|&i| real[i].id.split(':').next().unwrap_or_default())
             .collect();
         if !unbanded.is_empty() {
-            out.push(format!("  not drawn (no band): {unbanded:?}"));
+            out.push(format!(
+                "  without a band, v1's share: {:.4} of all windows, {} series of {unbanded:?}",
+                self.unbanded_share,
+                self.unbanded.len()
+            ));
         }
         out.join("\n")
     }
@@ -840,7 +895,7 @@ pub fn sample_step(
                     .then(|| rng.below(cache.real.len())),
                 Some(b) => {
                     if !cache.real.is_empty() && rng.f64() < o.real_frac {
-                        b.draw(&mut rng).1
+                        b.draw_real(&mut rng).1
                     } else {
                         None
                     }
@@ -884,13 +939,16 @@ pub fn sample(
         if let Some(b) = bands {
             // v2 (§3.4): a real window with probability real_frac, its band drawn by weight
             if rng.f64() < o.real_frac {
-                let (band, idx) = b.draw(rng);
-                let w = match idx {
-                    Some(i) => cut(cfg, &real[i].values, ctx, &mut srng, o, None).map(|mut w| {
-                        (w.origin, w.band) = (Origin::Real, Some(band));
-                        w
-                    }),
-                    None => {
+                let (band, idx) = b.draw_real(rng);
+                let w = match (band, idx) {
+                    (_, Some(i)) => {
+                        cut(cfg, &real[i].values, ctx, &mut srng, o, None).map(|mut w| {
+                            (w.origin, w.band) = (Origin::Real, band);
+                            w
+                        })
+                    }
+                    (None, None) => None,
+                    (Some(band), None) => {
                         let (_, y) =
                             synth::mixed_in(rng.seed(), stand_in_len, &b.synth[band.index()]);
                         cut(cfg, &y, ctx, &mut srng, o, None).map(|mut w| {
@@ -1209,9 +1267,9 @@ mod tests {
             .collect();
         assert_eq!(band_of("flappy:0:vy"), None);
         // a band of positive weight with neither real series nor stand-in periods is an error
-        assert!(Bands::new(&real, w, Default::default()).is_err());
+        assert!(Bands::new(&real, w, Default::default(), 0.6).is_err());
         let synth_p = parse_band_periods("second=360,hourly=24,weekly=52,monthly=12:4").unwrap();
-        let b = Bands::new(&real, w, synth_p).unwrap();
+        let b = Bands::new(&real, w, synth_p.clone(), 0.6).unwrap();
         assert_eq!(b.members[Band::SubHourly as usize], vec![0]);
         assert_eq!(b.members[Band::Daily as usize], vec![1]);
         let mut rng = Rng::new(1);
@@ -1249,10 +1307,66 @@ mod tests {
         assert!(ws
             .iter()
             .filter(|w| w.origin == Origin::Real)
-            .all(|w| matches!(w.band, Some(Band::SubHourly | Band::Daily))));
+            .all(|w| matches!(w.band, Some(Band::SubHourly | Band::Daily) | None)));
         assert!(ws
             .iter()
             .all(|w| w.phase.len() == 40 * 8 && w.draft.len() == 2 * 24));
+    }
+
+    /// Amendment 1: the game series keep their v1 share of the windows, outside the bands: v1
+    /// drew 0.3 of its windows uniformly over its real series, so 3 game series among 12 of v1
+    /// get 0.3 · 3 / 12 = 0.075 of all windows; a v2 source does not count among v1's.
+    #[test]
+    fn game_series_keep_their_v1_share() {
+        let mut ids: Vec<String> = (0..5).map(|i| format!("wiki_daily:T{i}")).collect();
+        ids.extend((0..4).map(|i| format!("wind_farms_hourly:T{i}")));
+        ids.extend((0..3).map(|i| format!("flappy:{i}:vy")));
+        ids.extend((0..6).map(|i| format!("uscrn_subhourly:S{i}:AIR_TEMPERATURE")));
+        let real: Vec<Series> = ids
+            .iter()
+            .map(|id| Series {
+                id: id.clone(),
+                values: (0..600).map(|t| (t % 17) as f32).collect(),
+            })
+            .collect();
+        let w = parse_band_weights("hourly=31,subhourly=30,daily=15,weekly=8,monthly=7,second=6")
+            .unwrap();
+        let p = parse_band_periods("second=360,weekly=52,monthly=12:4").unwrap();
+        let b = Bands::new(&real, w, p.clone(), 0.6).unwrap();
+        assert_eq!(b.unbanded, vec![9, 10, 11]);
+        assert!(
+            (b.unbanded_share - 0.075).abs() < 1e-12,
+            "{}",
+            b.unbanded_share
+        );
+        // the draws: a game series with probability 0.075 / 0.6 once the real coin passed
+        let mut rng = Rng::new(9);
+        let n = 20_000;
+        let games = (0..n)
+            .filter(|_| matches!(b.draw_real(&mut rng), (None, Some(i)) if (9..12).contains(&i)))
+            .count();
+        let want = n as f64 * 0.075 / 0.6;
+        assert!(
+            (games as f64 - want).abs() < 4.0 * want.sqrt(),
+            "{games} vs {want}"
+        );
+        // through the window sampler: about 0.075 of all windows are game windows
+        let c = cfg2();
+        let pool = Pool::new_in(4, 8, 6048, 2, 50, &synth::PERIODS_V2);
+        let o = SampleOptions {
+            real_frac: 0.6,
+            flip: 0.5,
+            set: &synth::PERIODS_V2,
+            ..SampleOptions::default()
+        };
+        let ws = sample(&c, &pool, &real, &o, &mut Rng::new(3), 2000, Some(&b));
+        let g = ws
+            .iter()
+            .filter(|w| w.origin == Origin::Real && w.band.is_none())
+            .count();
+        assert!((90..220).contains(&g), "{g} game windows of 2000");
+        // more series without a band than the real share allows is refused
+        assert!(Bands::new(&real, w, p, 0.05).is_err());
     }
 
     #[test]

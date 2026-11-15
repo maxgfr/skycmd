@@ -425,6 +425,7 @@ pub fn train(a: &TrainArgs) -> Result<()> {
                 &real,
                 data::parse_band_weights(w)?,
                 data::parse_band_periods(&a.band_periods)?,
+                a.real_frac,
             )?;
             println!(
                 "real windows by band (share of real windows):\n{}",
