@@ -444,13 +444,13 @@ function latency(us: number): string {
           <td><span class="key" :class="`s${SLOT[r.key]}`" />{{ r.key }}<span v-if="r.result?.exits" class="muted"> · {{ r.result.exits }}</span></td>
           <td class="num">{{ r.params == null ? '—' : r.params === 0 ? '0' : formatInt(r.params) }}</td>
           <td class="num">{{ r.bytes == null ? '—' : r.bytes === 0 ? '—' : formatKB(r.bytes) }}</td>
-          <td class="num">{{ r.result ? latency(r.result.micros) : r.available ? '—' : 'not published' }}</td>
+          <td class="num">{{ r.result ? latency(r.result.micros) : r.available ? '—' : r.key === 's6-cast' ? 'not published' : 'not in this demo' }}</td>
           <td v-if="backtest" class="num">{{ r.mase == null ? '—' : r.mase.toFixed(3) }}</td>
           <td v-if="backtest" class="num">{{ r.cov == null ? '—' : `${Math.round(r.cov * 100)} %` }}</td>
           <td>
             <a v-if="r.entry" :href="r.entry.url" target="_blank" rel="noopener">{{ r.entry.license }}</a>
             <span v-else-if="r.key === 'Seasonal naive'" class="muted">no model</span>
-            <span v-else class="muted">Apache-2.0</span>
+            <span v-else class="muted">{{ r.key === 's6-cast' ? 'Apache-2.0' : '—' }}</span>
           </td>
         </tr>
       </tbody>
