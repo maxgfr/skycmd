@@ -1,0 +1,13 @@
+{
+  "diagnostic": {
+    "draws": 20,
+    "max_abs_diff": 0.003057122230529785,
+    "max_abs_value": 3.566873073577881,
+    "d1_right": 47,
+    "d1_cases": 80,
+    "d2_right": 20
+  },
+  "share": 0.9,
+  "criterion_sound": false,
+  "adopted": null
+}
