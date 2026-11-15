@@ -9,6 +9,7 @@
 // Slower models are throttled with `set_decide_every` instead.
 import type { DecisionInfo, Question, StepReport, SkyWeb, WasmEngine, WasmSession } from './wasm'
 import { RateMeter, readNumber, writeNumber } from './wasm'
+import { endedInCrash } from './events'
 import {
   currentTheme,
   drawDodge,
@@ -40,6 +41,8 @@ export interface Hud {
   others: NonNullable<StepReport['others']>
   vetoCount: number
   vetoAt: number
+  /** Episodes that ended in a crash (doom: a death), since the runner started. */
+  crashes: number
   score: number
   best: number
   episodes: number
@@ -67,6 +70,7 @@ export function newHud(): Hud {
     others: [],
     vetoCount: 0,
     vetoAt: 0,
+    crashes: 0,
     score: 0,
     best: 0,
     episodes: 0,
@@ -265,7 +269,7 @@ export class GameRunner {
     else if (this.kind === 'doom') {
       this.doomFx.t = this.fx.t
       drawDoom(ctx, w, h, snap.view as DoomView, this.doomTex, this.doomFx, { minimap: this.opts.minimap ?? true })
-    } else drawDodge(ctx, w, h, snap.view as DodgeView, this.fx, theme)
+    } else drawDodge(ctx, w, h, snap.view as DodgeView, this.fx, theme, { done: snap.done })
   }
 
   private stepAi(now: number) {
@@ -302,6 +306,7 @@ export class GameRunner {
       this.doneAt = now
       this.fx.crashAt = this.fx.t
       this.hud.episodes++
+      if (endedInCrash(r.event)) this.hud.crashes++
       this.hud.done = true
       const score = this.session.score()
       if (score > this.hud.best) {

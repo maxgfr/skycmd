@@ -7,7 +7,8 @@
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
     "docs:preview": "vitepress preview",
-    "space:build": "vite build --config space/vite.config.ts"
+    "space:build": "vite build --config space/vite.config.ts",
+    "test": "node --test tests/*.test.ts"
   },
   "devDependencies": {
     "vitepress": "^1.6.4",

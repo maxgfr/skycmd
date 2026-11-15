@@ -110,8 +110,21 @@ const PALETTE = {
 }
 
 /**
+ * Extent of the side-view quadcopter of [`drawDroneSide`] around its anchor, in units of its
+ * `size` (y down): the rotor discs reach ±0.92 sideways and 0.36 up, the skids 0.24 down. The
+ * air-flow streaks under the rotors are not counted.
+ */
+export const DRONE_SIDE_EXTENT = { left: -0.92, right: 0.92, top: -0.36, bottom: 0.24 } as const
+
+/** The `size` that makes the side-view quadcopter, rotor tip to rotor tip, `span` pixels long. */
+export function droneSizeForSpan(span: number): number {
+  return span / (DRONE_SIDE_EXTENT.right - DRONE_SIDE_EXTENT.left)
+}
+
+/**
  * A quadcopter seen from the side: body, two visible arms with spinning rotors, status LEDs.
- * `size` is the body length in pixels; `tilt` in radians (positive = nose down).
+ * `size` is the body length in pixels (the rotors make it 1.84 `size` long, see
+ * [`DRONE_SIDE_EXTENT`]); `tilt` in radians (positive = nose down).
  */
 export function drawDroneSide(
   ctx: CanvasRenderingContext2D,
@@ -450,11 +463,24 @@ export interface RescueView {
   completed: boolean
 }
 
-const WIND_DIRS: Record<number, [number, number]> = {
+/** Wind cell code -> arrow direction on the canvas `[dx, dy]` (x = column, y = row, down). */
+export const WIND_DIRS: Record<number, [number, number]> = {
   2: [0, -1], // toward north (up)
   3: [0, 1], // south
   4: [1, 0], // east
   5: [-1, 0], // west
+}
+
+/**
+ * True when the last step entered the drone's cell against its wind arrow: the core charged 3
+ * battery instead of 1 (`rescue::enter_cost`). The wind never moves the drone.
+ */
+export function rescueHeadwind(v: RescueView): boolean {
+  const dr = v.drone[0] - v.prev[0]
+  const dc = v.drone[1] - v.prev[1]
+  if (!dr && !dc) return false
+  const arrow = WIND_DIRS[v.cells[v.drone[0] * v.n + v.drone[1]]]
+  return !!arrow && arrow[0] === -dc && arrow[1] === -dr
 }
 
 export function drawRescue(
@@ -638,6 +664,25 @@ export function drawRescue(
   ctx.fill()
   drawDroneTop(ctx, x, y - cs * 0.04 * Math.sin(fx.t * 3), cs * 0.9, fx.t, theme)
 
+  // Cues for what the arrows and the reflex did on the last step.
+  const cue = v.vetoed
+    ? `reflex: ${v.last_action.replace('_', ' ')}`
+    : rescueHeadwind(v)
+      ? 'headwind: -3 battery'
+      : ''
+  if (cue && !v.crashed && !v.completed) {
+    ctx.font = '700 11px ui-sans-serif, system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    const tw = ctx.measureText(cue).width + 10
+    const ly = Math.max(oy + 10, y - cs * 0.62)
+    ctx.fillStyle = v.vetoed ? 'rgba(220,38,38,0.92)' : 'rgba(2,132,199,0.92)'
+    roundRect(ctx, x - tw / 2, ly - 9, tw, 16, 5)
+    ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.fillText(cue, x, ly + 3)
+    ctx.textAlign = 'left'
+  }
+
   if (v.crashed || v.completed) {
     ctx.fillStyle = v.completed ? 'rgba(34,197,94,0.92)' : 'rgba(239,68,68,0.92)'
     roundRect(ctx, w / 2 - 110, oy + size / 2 - 24, 220, 48, 12)
@@ -676,6 +721,85 @@ export interface DodgeView {
   aborted: boolean
 }
 
+export type DodgeObstacle = DodgeView['obstacles'][number]
+
+/** Seconds before a Dodge episode times out (`dodge::MAX_FRAMES` = 7,200 frames at 60 Hz). */
+export const DODGE_MAX_S = 120
+
+/** Altitude the side view zooms to: the drone and the obstacles ahead, at least 8 m. */
+export function dodgeZoomTarget(v: DodgeView): number {
+  const ahead = v.obstacles.filter((o) => o.x1 > v.drone.x - 6 && o.x0 < v.drone.x + 50)
+  const zTop = Math.max(v.drone.z + 2, ...ahead.map((o) => (o.deck ? o.deck[2] + 1.5 : o.top + 2)))
+  return clamp(zTop + 1, 8, v.z_max + 2)
+}
+
+/** World-to-canvas mapping of the Dodge views, for a side view `zView` meters tall. */
+export interface DodgeLayout {
+  sideH: number
+  topH: number
+  /** Pixels per meter of the side view (both axes) and of the top view's x axis. */
+  k: number
+  camX: number
+  X: (x: number) => number
+  Z: (z: number) => number
+  /** `size` of the side-view drone: rotor tip to rotor tip it spans the hitbox length. */
+  droneSize: number
+}
+
+export function dodgeLayout(w: number, h: number, v: DodgeView, zView: number): DodgeLayout {
+  const sideH = Math.round(h * 0.7)
+  let k = sideH / zView // px per meter
+  if (w / k < 44) k = w / 44 // at least 44 m of course in view
+  const camX = v.drone.x - 5
+  return {
+    sideH,
+    topH: h - sideH,
+    k,
+    camX,
+    X: (x: number) => (x - camX) * k,
+    Z: (z: number) => sideH - 6 - z * k,
+    droneSize: droneSizeForSpan(2 * v.drone.hl * k),
+  }
+}
+
+/**
+ * True when the drone is laterally inside the side gap of `o` (as the core tests it): it flies
+ * beside the obstacle's body, so the side view, which cannot show depth, draws it crossing the
+ * body. The renderer ghosts such an obstacle.
+ */
+export function dodgeInGapLane(o: DodgeObstacle, d: DodgeView['drone']): boolean {
+  return !!o.gap && d.y - d.hw >= o.gap[0] && d.y + d.hw <= o.gap[1]
+}
+
+/** Drawn thickness of a deck, in px, above its underside (the surface the core tests). */
+export function dodgeDeckThickness(k: number): number {
+  return Math.max(5, 0.8 * k)
+}
+
+/** Drawn width of a deck's supports, in px. */
+export function dodgeSupportWidth(k: number): number {
+  return Math.max(3, 0.3 * k)
+}
+
+/** Pitch of the side-view drone, in radians: nose up when braking, slightly down at speed. */
+export function dodgeTilt(v: DodgeView): number {
+  return v.action === 'brake' || v.action === 'abort' ? -0.2 : clamp(v.drone.v / 60, 0, 0.18)
+}
+
+/** How an episode ended, for the banner (`done` is the session's `done`). */
+export function dodgeOutcome(v: DodgeView, done: boolean): { text: string; ok: boolean } | null {
+  if (v.crashed) return { text: 'Crashed', ok: false }
+  if (v.finished) return { text: 'Finish line reached', ok: true }
+  if (v.aborted) {
+    const at = v.obstacles.find((o) => !o.passed)
+    return at?.impassable
+      ? { text: 'Aborted in front of an impassable obstacle', ok: true }
+      : { text: 'Aborted, but a way past existed', ok: false }
+  }
+  if (done) return { text: `Timed out after ${DODGE_MAX_S} s`, ok: false }
+  return null
+}
+
 export function drawDodge(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -683,21 +807,13 @@ export function drawDodge(
   v: DodgeView,
   fx: FxState,
   theme: Theme,
+  opts: { done?: boolean } = {},
 ) {
   const p = PALETTE[theme]
-  const sideH = Math.round(h * 0.7)
-  const topH = h - sideH
   // Zoom on what matters: the drone and the obstacles ahead, with at least 40 m of lookahead.
-  const ahead = v.obstacles.filter((o) => o.x1 > v.drone.x - 6 && o.x0 < v.drone.x + 50)
-  const zTop = Math.max(v.drone.z + 2, ...ahead.map((o) => (o.deck ? o.deck[2] + 1.5 : o.top + 2)))
-  const target = clamp(zTop + 1, 8, v.z_max + 2)
+  const target = dodgeZoomTarget(v)
   fx.dodgeZ = fx.dodgeZ ? fx.dodgeZ + (target - fx.dodgeZ) * 0.04 : target
-  const zView = fx.dodgeZ
-  let k = sideH / zView // px per meter
-  if (w / k < 44) k = w / 44
-  const camX = v.drone.x - 5
-  const X = (x: number) => (x - camX) * k
-  const Z = (z: number) => sideH - 6 - z * k
+  const { sideH, topH, k, camX, X, Z, droneSize } = dodgeLayout(w, h, v, fx.dodgeZ)
 
   // Side view.
   ctx.save()
@@ -722,12 +838,16 @@ export function drawDodge(
     }
   }
 
+  const d = v.drone
   for (const o of v.obstacles) {
     const x0 = X(o.x0)
     const x1 = X(o.x1)
     if (x1 < -40 || x0 > w + 40) continue
-    const alpha = o.gap ? 0.75 : 1
-    ctx.globalAlpha = o.passed ? 0.55 : alpha
+    // The drone beside the body, in the side gap: the body is drawn as a ghost so the side view
+    // does not show the drone inside it.
+    const beside = dodgeInGapLane(o, d)
+    const alpha = beside ? 0.28 : o.gap ? 0.75 : 1
+    ctx.globalAlpha = o.passed ? Math.min(0.55, alpha) : alpha
     const g = ctx.createLinearGradient(x0, 0, x1, 0)
     g.addColorStop(0, o.impassable ? '#7f1d1d' : p.pipe[2])
     g.addColorStop(1, o.impassable ? '#b91c1c' : p.pipe[1])
@@ -758,7 +878,7 @@ export function drawDodge(
     }
     if (o.deck) {
       const [d0, d1, ceil] = o.deck
-      const th = Math.max(5, 0.8 * k)
+      const th = dodgeDeckThickness(k)
       ctx.fillStyle = theme === 'dark' ? '#475569' : '#334155'
       ctx.fillRect(X(d0), Z(ceil) - th, X(d1) - X(d0), th)
       ctx.strokeStyle = theme === 'dark' ? '#94a3b8' : '#64748b'
@@ -770,19 +890,47 @@ export function drawDodge(
         ctx.lineTo(X(xx + 1), Z(ceil) - th)
       }
       ctx.stroke()
-      // Supports up to the top of the view.
+      // Supports up to the top of the view: the core's deck is solid from its underside up to
+      // the airspace ceiling, so a drone above the deck level hits the front support.
+      const sw = dodgeSupportWidth(k)
       ctx.fillStyle = theme === 'dark' ? 'rgba(71,85,105,0.7)' : 'rgba(51,65,85,0.6)'
-      ctx.fillRect(X(d0), 0, Math.max(3, 0.3 * k), Z(ceil) - th)
-      ctx.fillRect(X(d1) - Math.max(3, 0.3 * k), 0, Math.max(3, 0.3 * k), Z(ceil) - th)
+      ctx.fillRect(X(d0), 0, sw, Z(ceil) - th)
+      ctx.fillRect(X(d1) - sw, 0, sw, Z(ceil) - th)
     }
     ctx.globalAlpha = 1
+    if (beside && !o.passed) {
+      ctx.strokeStyle = 'rgba(34,197,94,0.9)'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([5, 4])
+      ctx.strokeRect(x0, Z(o.top), x1 - x0, Z(0) - Z(o.top))
+      ctx.setLineDash([])
+      ctx.fillStyle = theme === 'dark' ? '#86efac' : '#15803d'
+      ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(`side gap (${o.gap![0] > 0 ? 'left' : 'right'}): passing beside`, (x0 + x1) / 2, Math.max(14, Z(o.top) - 6))
+      ctx.textAlign = 'left'
+    }
   }
 
-  const d = v.drone
-  const tilt = v.action === 'brake' || v.action === 'abort' ? -0.2 : clamp(d.v / 60, 0, 0.18)
-  drawDroneSide(ctx, X(d.x), Z(d.z), Math.max(18, d.hl * 2 * k * 1.3), tilt, fx.t, theme, 0.4)
+  // The sprite spans the hitbox length (2 hl), so what touches on screen is what collides.
+  drawDroneSide(ctx, X(d.x), Z(d.z), droneSize, dodgeTilt(v), fx.t, theme, 0.4)
+  const outcome = dodgeOutcome(v, opts.done ?? (v.crashed || v.finished || v.aborted))
+  if (!outcome && v.vetoed && v.vetoed_request) {
+    // The reflex replaced the request: say so next to the drone (it can hold the drone in front
+    // of an obstacle until the model aborts or the episode times out).
+    ctx.fillStyle = '#ef4444'
+    ctx.font = '700 11px ui-sans-serif, system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    const held = d.v < 0.5 ? ' · holding' : ''
+    ctx.fillText(`reflex: ${v.vetoed_request} → ${v.action}${held}`, X(d.x), Math.max(14, Z(d.z) - Math.max(12, 0.6 * k)))
+    ctx.textAlign = 'left'
+  }
 
   if (v.crashed) {
+    // The box the core tested, where it touched.
+    ctx.strokeStyle = '#ef4444'
+    ctx.lineWidth = 2
+    ctx.strokeRect(X(d.x - d.hl), Z(d.z + d.hh), 2 * d.hl * k, 2 * d.hh * k)
     const since = fx.t - fx.crashAt
     for (let i = 0; i < 16 && since < 1.2; i++) {
       const a = (i / 16) * Math.PI * 2
@@ -797,7 +945,23 @@ export function drawDodge(
   ctx.fillStyle = p.text
   ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText(`${d.v.toFixed(1)} m/s · alt ${d.z.toFixed(1)} m · ${Math.max(0, v.finish_x - d.x).toFixed(0)} m to go`, 10, 18)
+  const secs = Math.floor(v.frame / 60)
+  ctx.fillText(
+    `${d.v.toFixed(1)} m/s · alt ${d.z.toFixed(1)} m · ${Math.max(0, v.finish_x - d.x).toFixed(0)} m to go · ${secs} / ${DODGE_MAX_S} s`,
+    10,
+    18,
+  )
+  if (outcome) {
+    ctx.font = '700 16px ui-sans-serif, system-ui, sans-serif'
+    const tw = ctx.measureText(outcome.text).width + 32
+    ctx.fillStyle = outcome.ok ? 'rgba(34,197,94,0.92)' : 'rgba(239,68,68,0.92)'
+    roundRect(ctx, (w - tw) / 2, sideH / 2 - 20, tw, 40, 10)
+    ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.textAlign = 'center'
+    ctx.fillText(outcome.text, w / 2, sideH / 2 + 6)
+    ctx.textAlign = 'left'
+  }
   ctx.restore()
 
   // Top view strip (lateral position y).
@@ -833,9 +997,10 @@ export function drawDodge(
     }
     ctx.globalAlpha = 1
   }
+  // The drone's hitbox: hl along x (side-view scale k), hw across (scale ky).
   ctx.fillStyle = '#0ea5e9'
   ctx.beginPath()
-  ctx.arc(X(d.x), Y(d.y), Math.max(4, d.hw * ky), 0, Math.PI * 2)
+  ctx.ellipse(X(d.x), Y(d.y), Math.max(2, d.hl * k), Math.max(2, d.hw * ky), 0, 0, Math.PI * 2)
   ctx.fill()
   ctx.fillStyle = p.text
   ctx.globalAlpha = 0.7

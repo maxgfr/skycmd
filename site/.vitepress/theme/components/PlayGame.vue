@@ -45,6 +45,16 @@ const GAMES: { kind: GameKind; title: string; blurb: string }[] = [
   },
 ]
 
+/** What touching things does, in each game (the rules of the core, not a new rule). */
+const RULES: Record<GameKind, string> = {
+  flappy: 'Touching a pylon, the ground or the top of the sky ends the run as a crash.',
+  rescue:
+    'The arrows are wind: they never push the drone. Entering a cell against its arrow costs 3 battery, any other move 1. With the reflex on, a move into a rock or off the board becomes hover, and a move that would leave too little battery to get home becomes return home, which can fly the opposite way.',
+  dodge:
+    'A crash is the drone touching an obstacle, a deck, the ground, the ceiling or the corridor sides. Around flies beside an obstacle through its side gap (green in the top view): the side view has no depth, so it shows that obstacle as a ghost. With the reflex on, a drone that does not abort stops in front of an impassable obstacle and waits there until it aborts or the episode times out at 120 s.',
+  doom: 'Walls stop the player and slide it along, they never hurt. The run ends at the exit switch, or as a death when health reaches 0.',
+}
+
 const SECONDARY_LABEL: Record<GameKind, string> = {
   flappy: 'Danger: crash within 0.5 s if gliding',
   rescue: 'Battery risk (0 negligible … 4 critical)',
@@ -382,6 +392,7 @@ function pct(p: number) {
       </button>
     </div>
     <p class="blurb">{{ game.blurb }}</p>
+    <p class="rules"><strong>Rules.</strong> {{ RULES[kind] }}</p>
 
     <div class="toolbar">
       <div class="seg" role="group" aria-label="Control">
@@ -531,6 +542,9 @@ function pct(p: number) {
 
         <div v-if="mode === 'human'" class="controls">
           <p class="help">{{ HELP[kind] }}</p>
+          <div v-if="hud.executed && hud.action && hud.executed !== hud.action" class="exec">
+            you pressed <strong>{{ hud.action }}</strong>, executed: <strong>{{ hud.executed }}</strong> (reflex override)
+          </div>
           <div class="buttons" :class="kind">
             <button
               v-for="b in HUMAN_BUTTONS[kind]"
@@ -549,6 +563,7 @@ function pct(p: number) {
 
         <div class="foot">
           <span>vetoes: {{ hud.vetoCount }}</span>
+          <span>crashes: {{ hud.crashes }}</span>
           <span>episodes: {{ hud.episodes }}</span>
         </div>
         <code v-if="mode === 'ai' && hud.stateText" class="state" title="State text sent to the model">{{ hud.stateText }}</code>
@@ -589,6 +604,12 @@ function pct(p: number) {
   margin: 12px 0 !important;
   color: var(--vp-c-text-2);
   font-size: 14px;
+}
+.rules {
+  margin: -4px 0 12px !important;
+  color: var(--vp-c-text-3);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .toolbar {
   display: flex;
@@ -901,7 +922,7 @@ function pct(p: number) {
   font-size: 12px;
 }
 .exec {
-  margin-top: 4px;
+  margin: 4px 0 8px;
   font-size: 12px;
   color: var(--vp-c-danger-1);
 }
