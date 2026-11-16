@@ -117,6 +117,19 @@
     "file": "s6-secrets-verify-pico.gguf"
   },
   {
+    "name": "s6-route-nano",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "route",
+    "full_depth": true,
+    "gate": "failed",
+    "gate_note": "It missed G1 against BM25, the lexical score it reads in its input: 0.8395 against 0.8500 on 2,000 slates of tools never seen in training (above potion-base-2M + 0.03 and both size-matched baselines), and G4: 38.9 ms per request in WASM against 2 ms",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-route-nano-s6-nano-v2-a-tool-router-pre-registered-gate-failed",
+    "params": 5587201,
+    "bytes": 2418912,
+    "file": "s6-route-nano.gguf"
+  },
+  {
     "name": "s1-pico",
     "arch": "modern-bert",
     "weight_format": "f16",

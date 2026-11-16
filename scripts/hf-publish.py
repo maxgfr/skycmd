@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Publish every skycmd model to Hugging Face: one model repo (card + GGUF) and one static Space
 (demo running in the browser) per model. An entry of hf/spaces.json with `"space": false` publishes
-the model repo only, for a model with no faithful demo (s6-secrets-verify-pico).
+the model repo only, for a model with no faithful demo (s6-secrets-verify-pico) or none published
+(s6-route-nano, whose playground waited on a gate it failed).
 
     pip install -U huggingface_hub && hf auth login        # a token with write access
     scripts/build-wasm.sh && (cd site && npm run space:build)

@@ -90,6 +90,10 @@
     "engine": true
   },
   {
+    "model": "s6-route-nano",
+    "space": false
+  },
+  {
     "model": "s5-lite",
     "kind": "decision",
     "proofs": true,

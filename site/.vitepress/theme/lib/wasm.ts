@@ -62,7 +62,8 @@ export interface ModelEntry {
   /** `generic`: a decision model for free-text questions (s4, s5: the Live page), not for the games.
    * `general`: both, the games and free-text questions (s6-nano, s6-micro, s6-micro-v1). `secrets`: the four
    * questions of the API-key jev only (s6-secrets-pico, its own demo). `secrets-verify`: one rule
-   * candidate judged in its context (s6-secrets-verify-pico; no demo). `ear`: an audio state
+   * candidate judged in its context (s6-secrets-verify-pico; no demo). `route`: a tool picked
+   * from a run-time list, with a BM25 line in the state (s6-route-nano; no demo). `ear`: an audio state
    * (s6-ear, the Listen page). `forecast`: a forecaster, not a decision engine (s6-cast, the
    * Forecast page; `forecast.json` lists it there). Absent: the games only. */
   task?: string
