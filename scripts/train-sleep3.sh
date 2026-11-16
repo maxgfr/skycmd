@@ -45,6 +45,14 @@
 #   LR_X           the nano rate scale (default: runs/s6-nano-lr/summary.json)
 #   OPT LR_SCALE   the recipe, as scripts/train-sleep2.sh (default --no-muon, scale 2)
 #   STEP_MEM_GB=3  GPU memory of one stateless step
+#   SLEEP_CHUNK    the nano runs only, both arms, phases A and B: --sleep-chunk, the sequences of one
+#                  part of a sequence batch (empty: the batch of 16 at once, as before). The same
+#                  batches, loss and update (the gradients of the parts are summed before the one
+#                  update; equal up to the order of floating-point sums), with the memory of one
+#                  part: a part holds only the static streams its sequences use, where the whole
+#                  batch pads every frame to 32 of them. SLEEP_CHUNK=2 for the nano runs (an
+#                  unchunked nano sequence step peaked at 13.3 GB of MLX memory and the run was
+#                  stopped by the memory brake; in parts of 2 the CPU probe peaks at 1.7 to 2.1 GB)
 #   SKY_DUTY SKY_COOL SKY_BRAKE_FILE   the thermal brake (scripts/auto-brake.sh)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -108,6 +116,9 @@ resume=()
 [ -n "${RESUME:-}" ] && resume=(--resume)
 cpu=()
 [ "${CPU:-0}" = 1 ] && cpu=(--cpu)
+# SLEEP_CHUNK: the sequence batches of the nano runs in parts (both arms; empty: unchanged).
+nano_chunk=()
+[ -n "${SLEEP_CHUNK:-}" ] && nano_chunk=(--sleep-chunk "$SLEEP_CHUNK")
 # T1 and T2 (v3 §2), with v2's M3 (mem.* at x10): the flags of every training with a memory.
 t12=(--mem-lr-mult 10 --mem-gate-lr-mult 0 --memory-aux-weight 1)
 
@@ -346,19 +357,21 @@ nano() {
   config "$nano_base" "$n/sleep3.json" frame s6-sleep3-nano
   config "$nano_base" "$n/control.json" none s6-nano-control3
   # The sleep arm at seed 0: 12 + 18 working minutes (v2 §6).
-  decide "$n/sleep-s0/a" "$n/sleep3.json" "$nano_base" "$tok" "$nano_records" "$nano_weights" "$lr" 0 --minutes "$nano_a_min" "${phase_a[@]}" "${t12[@]}"
-  decide "$n/sleep-s0/b" "$n/sleep3.json" "$n/sleep-s0/a/last" "$tok" "$nano_records" "$nano_weights" "$lr" 0 --minutes "$nano_b_min" "${phase_b[@]}" "${t12[@]}"
+  decide "$n/sleep-s0/a" "$n/sleep3.json" "$nano_base" "$tok" "$nano_records" "$nano_weights" "$lr" 0 --minutes "$nano_a_min" "${phase_a[@]}" "${t12[@]}" ${nano_chunk[@]+"${nano_chunk[@]}"}
+  decide "$n/sleep-s0/b" "$n/sleep3.json" "$n/sleep-s0/a/last" "$tok" "$nano_records" "$nano_weights" "$lr" 0 --minutes "$nano_b_min" "${phase_b[@]}" "${t12[@]}" ${nano_chunk[@]+"${nano_chunk[@]}"}
   a_steps=$(steps_of "$n/sleep-s0/a") b_steps=$(steps_of "$n/sleep-s0/b")
   [ "$dry" = 1 ] && a_steps=STEPS_A b_steps=STEPS_B
   [ -n "$a_steps" ] && [ -n "$b_steps" ] || { echo "the first nano run did not end" >&2; exit 1; }
   # The five others: its steps, phase by phase.
   for seed in 1 2; do
-    decide "$n/sleep-s$seed/a" "$n/sleep3.json" "$nano_base" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$a_steps" "${phase_a[@]}" "${t12[@]}"
-    decide "$n/sleep-s$seed/b" "$n/sleep3.json" "$n/sleep-s$seed/a/last" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$b_steps" "${phase_b[@]}" "${t12[@]}"
+    decide "$n/sleep-s$seed/a" "$n/sleep3.json" "$nano_base" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$a_steps" "${phase_a[@]}" "${t12[@]}" ${nano_chunk[@]+"${nano_chunk[@]}"}
+    decide "$n/sleep-s$seed/b" "$n/sleep3.json" "$n/sleep-s$seed/a/last" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$b_steps" "${phase_b[@]}" "${t12[@]}" ${nano_chunk[@]+"${nano_chunk[@]}"}
   done
+  # The control answers each frame alone but takes the same sequence steps (64 frames in one
+  # graph): it gets the same parts.
   for seed in 0 1 2; do
-    decide "$n/control-s$seed/a" "$n/control.json" "$nano_base" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$a_steps" "${phase_a[@]}"
-    decide "$n/control-s$seed/b" "$n/control.json" "$n/control-s$seed/a/last" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$b_steps" "${phase_b[@]}"
+    decide "$n/control-s$seed/a" "$n/control.json" "$nano_base" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$a_steps" "${phase_a[@]}" ${nano_chunk[@]+"${nano_chunk[@]}"}
+    decide "$n/control-s$seed/b" "$n/control.json" "$n/control-s$seed/a/last" "$tok" "$nano_records" "$nano_weights" "$lr" "$seed" --steps "$b_steps" "${phase_b[@]}" ${nano_chunk[@]+"${nano_chunk[@]}"}
   done
   # dev2 readings (v2 §5.2's reader), then the choice of N (v1 §6, on dev2).
   for seed in 0 1 2; do
