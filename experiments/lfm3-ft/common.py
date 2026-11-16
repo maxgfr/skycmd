@@ -36,6 +36,8 @@ N_MMLU = 500
 N_SAMPLES = 4  # self-distillation samples per train question
 SAMPLE_STRIDE = 1_000_003  # seed offset between the samples of one question
 HF_FALLBACK_PER_TASK = 1000  # gen: train questions per task when the engine is the transformers fallback
+SFT_CAP_PER_TASK = 3000  # amendment 5: part (a) only, at most 3,000 train questions per task
+SFT_EPOCHS = 1  # amendment 5 (make_trainer keeps the 2 epochs of §4 as its default: the hf mode uses them)
 MAX_LEN = 2048  # SFT: longer examples are dropped (counted), never truncated
 PROMPT = "{q}\n\nSolve the problem. Put the final answer in \\boxed{{}}."
 MC_PROMPT = "{q}\n\nOptions:\n{options}\n\nChoose the correct option. Put the letter of the final answer in \\boxed{{}}."
@@ -265,6 +267,17 @@ def mmlu_items():
 
 def hf_fallback_subset(rows, per_task=HF_FALLBACK_PER_TASK):
     """The seeded subset of train questions sampled when the transformers fallback is the engine."""
+    out = []
+    for task in ("gsm8k", "math"):
+        sel = [r for r in rows if r["task"] == task]
+        random.Random(SEED).shuffle(sel)
+        out += sel[:per_task]
+    return out
+
+
+def cap_per_task(rows, per_task=SFT_CAP_PER_TASK):
+    """Amendment 5's SFT questions: at most `per_task` per task, drawn with the seed 1234 among the
+    rows given (those §3 keeps, after its exclusions). Same deterministic draw as hf_fallback_subset."""
     out = []
     for task in ("gsm8k", "math"):
         sel = [r for r in rows if r["task"] == task]
@@ -667,10 +680,11 @@ def tokenize_mix(tok, mix, max_len=MAX_LEN):
 
 def make_trainer(model_id, revision, rows, out_dir, max_steps=-1, epochs=2, per_device=8, grad_accum=4, save_steps=0,
                  callbacks=None):
-    """TRL SFTTrainer with the pre-registered LoRA (r 32, alpha 64, dropout 0.05, LORA_TARGETS), 2 epochs,
-    lr 1e-4 cosine, warmup 3 % of the steps, bf16, seed 1234, completion-only loss, no intermediate
-    checkpoint to choose from (the last one is the model). save_steps > 0 keeps one technical checkpoint
-    to resume after a shutdown, on the M5 (docs/lfm3-ft-prereg.md, amendment 1)."""
+    """TRL SFTTrainer with the pre-registered LoRA (r 32, alpha 64, dropout 0.05, LORA_TARGETS), `epochs`
+    epochs (§4: 2, the default; amendment 5's local run passes SFT_EPOCHS), lr 1e-4 cosine, warmup 3 % of
+    the steps, bf16, seed 1234, completion-only loss, no intermediate checkpoint to choose from (the last
+    one is the model). save_steps > 0 keeps one technical checkpoint to resume after a shutdown, on the
+    M5 (docs/lfm3-ft-prereg.md, amendment 1)."""
     import torch
     from datasets import Dataset
     from peft import LoraConfig
@@ -738,9 +752,9 @@ rights: this checkpoint is not "LFM3", it is a model fine-tuned from it.
 
 - **Licence**: LFM Open License v1.0 (`LICENSE`, unmodified copy). Commercial use only within its terms
   (organisations under the licence's revenue threshold). See `NOTICE`.
-- **Training**: LoRA r 32 on every linear projection, 2 epochs, merged into the weights (`adapter/` holds
-  the adapter). Data: GSM8K train and MATH train worked solutions (MIT) and the base model's own correct
-  answers on those train questions (self-distillation). No test question, no calibration question.
+- **Training**: LoRA r 32 on every linear projection, {epochs}, merged into the weights (`adapter/` holds
+  the adapter). Data: GSM8K train and MATH train worked solutions (MIT){data}. No test question, no
+  calibration question.
 - **Modified files**: `model.safetensors` (weights changed by the fine-tuning), `config.json` and
   `generation_config.json` (re-saved by transformers), `README.md` and `NOTICE` (new), `adapter/` (new).
   Unmodified copies of the base repository: `modeling_lfm3.py`, `configuration_lfm3.py`, `lfm3_conv.py`,
@@ -756,9 +770,10 @@ Liquid AI; no trademark right is granted or claimed.
 """
 
 
-def merge_and_save(model_id, revision, adapter_dir, out_dir):
+def merge_and_save(model_id, revision, adapter_dir, out_dir, epochs="2 epochs", distillation=True):
     """Merge the adapter into bf16 base weights and write a loadable repository: weights, tokenizer,
-    the base repo's custom code, chat template and LICENSE (unmodified copies), README and NOTICE."""
+    the base repo's custom code, chat template and LICENSE (unmodified copies), README and NOTICE.
+    `epochs` and `distillation` fill the model card (amendment 5's local run: one epoch, part (a) only)."""
     import shutil
     import time as _time
 
@@ -783,7 +798,10 @@ def merge_and_save(model_id, revision, adapter_dir, out_dir):
     cfg["auto_map"] = auto_map  # the local copies, never a pointer back to the base repo
     with open(os.path.join(out_dir, "config.json"), "w") as f:
         json.dump(cfg, f, indent=2)
-    fill = {"base": model_id, "base_rev": revision, "date": _time.strftime("%Y-%m-%d", _time.gmtime())}
+    fill = {"base": model_id, "base_rev": revision, "date": _time.strftime("%Y-%m-%d", _time.gmtime()),
+            "epochs": epochs,
+            "data": (" and the base model's own correct answers on those train questions (self-distillation)"
+                     if distillation else " only, part (a) of §3 (amendment 5: no self-distillation)")}
     with open(os.path.join(out_dir, "README.md"), "w") as f:
         f.write(MODEL_CARD.format(**fill))
     with open(os.path.join(out_dir, "NOTICE"), "w") as f:

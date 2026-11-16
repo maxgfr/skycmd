@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # LFM3-1.7B fine-tuned so that answering without thinking (System 1) works better
-# (docs/lfm3-ft-prereg.md). Every GPU step is a Hugging Face Job; artifacts go through the PRIVATE
-# dataset repo $WORK, the model to the PRIVATE model repo $FT_REPO. Nothing is public.
+# (docs/lfm3-ft-prereg.md). In MODE=hf every GPU step is a Hugging Face Job; artifacts go through the
+# PRIVATE dataset repo $WORK, the model to the PRIVATE model repo $FT_REPO. Nothing is public.
 #
 # Usage: scripts/lfm3-ft.sh <step>...      (run from the main checkout: data/lfm3 must exist)
-#   smoke   ~20 calibration questions on an L4: base revision, vLLM or transformers, LoRA module
-#           names, TRL/peft on the custom code. Its revision and engine are then pinned below by a
-#           dated amendment of the pre-registration, before any other job.
+#   smoke   ~20 calibration questions: base revision, LoRA module names, TRL/peft on the custom code,
+#           the MLX conversions. Its revision is then pinned below by a dated amendment of the
+#           pre-registration, before any other job.
 #   gen     self-distillation samples (base model, s2-1024, 4 per train question) -> $WORK gen/
 #   sft     LoRA training, merge, push to $FT_REPO (private)                     -> $WORK sft/
 #   eval    s1, s2-256, s2-1024 on calib + test, s1 on MMLU-Pro-500, for each of $EVAL_MODELS
@@ -16,8 +16,12 @@
 #   gate    G1-G3 -> runs/lfm3-ft/gate.json and report.md                       (local CPU, free)
 #
 # MODE=local (the default since docs/lfm3-ft-prereg.md, amendment 1) runs everything on the M5, for
-# nothing, with SKY_DUTY=0.5 and SKY_COOL=45:15 unless set: smoke, gen, sft (then the MLX conversion),
-# eval, route, gate; `pull` has nothing to do. MODE=hf keeps the Hugging Face Jobs below.
+# nothing, with SKY_DUTY=0.5 and SKY_COOL=45:15 unless set. Amendment 5 (a shorter plan: the adapter
+# is System 1, the base stays System 2) changes the local steps only: `gen` is not run (it writes its
+# marker), `sft` trains on part (a) only (3,000 questions per task, seed 1234, one epoch), `eval` runs
+# the fine-tuned model in s1 only and copies the base's generations of runs/lfm3-s1s2, then assembles
+# the pair (eval/pair: the fine-tuned s1, the base's s2), `route` reads the pair only, and `gate` does
+# not read G2. MODE=hf keeps the Hugging Face Jobs above, unchanged (§3-§6 as first written).
 #
 # DRY_RUN=1 prints the commands and launches nothing. With MODE=hf and without DRY_RUN, each paid job
 # prints its flavor, estimated and maximum cost, and waits for "y" (YES=1 answers for you: only once the
@@ -148,7 +152,7 @@ ft_rev() { # the model repo commit written by sft.py (pulled), or $FT_REV
   fi
 }
 
-[ $# -eq 0 ] && { sed -n '2,27p' "$0"; exit 2; }
+[ $# -eq 0 ] && { sed -n '2,28p' "$0"; exit 2; }
 
 # ----------------------------------------------------------------------------- the M5 (amendment 1)
 # Two environments: mlx-vlm generates (as scripts/lfm3-s1s2.sh), the torch stack trains the LoRA.
@@ -165,6 +169,9 @@ py_lora() {
   run_local uv run -q --python 3.12 --with torch==2.14.0 --with transformers==5.12.1 --with trl==1.17.1 \
     --with peft==0.21.2 --with accelerate==1.15.0 --with datasets==5.1.0 --with "huggingface_hub>=1.31,<2" \
     python "$EXP/local.py" "$@"
+}
+py_cpu() {  # no model, no environment: the amendment-5 marker and the pair (standard library only)
+  run_local python3 "$EXP/local.py" "$@"
 }
 # The bf16 revision the smoke returned, pinned by a dated amendment before `gen` (BASE_REV_PINNED above).
 need_rev() {
@@ -184,9 +191,8 @@ local_step() {
       py_mlx smoke-mlx
       ;;
     gen)
-      need_data
-      need_rev
-      py_mlx gen
+      # Amendment 5: part (b) of §3 is not run; the step only writes its marker and needs nothing.
+      py_cpu gen
       ;;
     sft)
       need_data
@@ -198,6 +204,7 @@ local_step() {
       need_data
       need_rev
       for tag in $EVAL_MODELS; do py_mlx eval --tag "$tag"; done
+      py_cpu pair # amendment 5: eval/pair, the ft s1 files + the base s2 files, copied
       ;;
     pull) echo "== pull: nothing to do on the M5, everything is already in $RUNS" ;;
   esac
@@ -260,10 +267,13 @@ for s in "$@"; do
       [ "$DRY_RUN" = 1 ] || "${cmd[@]}"
       ;;
     route)
-      for tag in base ft; do
-        if [ -s "$RUNS/eval/$tag/meta.json" ]; then
+      # Local: amendment 5 routes the pair only (the base's reading stays the one of runs/lfm3-s1s2,
+      # reported as it is). hf: base and ft, as §5 wrote it.
+      case "$MODE" in local) tags=pair ;; *) tags="base ft" ;; esac
+      for tag in $tags; do
+        if [ "$DRY_RUN" = 1 ] || [ -s "$RUNS/eval/$tag/meta.json" ]; then
           echo "== router on $tag"
-          [ "$DRY_RUN" = 1 ] || python3 "$EXP/route.py" --tag "$tag" --runs "$RUNS"
+          run_local python3 "$EXP/route.py" --tag "$tag" --runs "$RUNS"
         else
           echo "== router on $tag: $RUNS/eval/$tag/meta.json missing (eval, then pull), skipped"
         fi
@@ -271,7 +281,7 @@ for s in "$@"; do
       ;;
     gate)
       echo "== gates G1-G3 -> $RUNS/gate.json, $RUNS/report.md"
-      [ "$DRY_RUN" = 1 ] || python3 "$EXP/gate.py" --runs "$RUNS"
+      run_local python3 "$EXP/gate.py" --runs "$RUNS"
       ;;
     *) echo "unknown step $s (smoke, gen, sft, eval, pull, route, gate)" >&2; exit 2 ;;
   esac

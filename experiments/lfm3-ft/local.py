@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The LFM3-1.7B fine-tuning experiment on the M5 (docs/lfm3-ft-prereg.md, amendment 1).
+"""The LFM3-1.7B fine-tuning experiment on the M5 (docs/lfm3-ft-prereg.md, amendments 1 and 5).
 
 scripts/lfm3-ft.sh runs each sub-command in its own uv environment: mlx-vlm for generation, the torch
 stack for the LoRA (they cannot share one). Generation reuses experiments/lfm3-s1s2/s1s2.py (Model,
@@ -8,10 +8,12 @@ the mix and the trainer come from common.py. Everything stays under runs/lfm3-ft
 
   smoke-lora   revision, template, LoRA names, 2 steps at maximal length, merge and reload  (torch)
   smoke-mlx    throughput, the local MLX conversion against the published base; report.json (mlx)
-  gen          4 samples of s2-1024 on 1,000 train questions per task                       (mlx)
-  sft          the LoRA, merged into bf16 weights                                           (torch)
+  gen          not run: amendment 5 drops part (b) of §3, the marker gen/not-run.json is written
+  sft          the LoRA on part (a) only (3,000 questions per task, seed 1234, one epoch), merged (torch)
   convert      the merged model to MLX 4 bits                                               (mlx)
-  eval         s1, s2-256, s2-1024 on calib and test, s1 on MMLU-Pro-500, for --tag base|ft (mlx)
+  eval         base: the runs/lfm3-s1s2 generations copied, s1 on MMLU-Pro-500; ft: s1 only on calib,
+               test and MMLU-Pro-500 (amendment 5)                                          (mlx)
+  pair         eval/pair: the ft s1 files and the base s2 files, copied, for `route`     (nothing)
 
 SKY_DUTY and SKY_COOL are honoured after every sample and every LoRA step (s1s2.py's rest). Generation
 appends and skips what is there; the LoRA resumes from its last technical checkpoint, never read to
@@ -101,42 +103,19 @@ def train_rows():
     return C.select_train(C.load_train_rows(), calib, [r["question"] for r in test + C.mmlu_items()])
 
 
-def cmd_gen(a):
-    rows, stats = train_rows()
-    rows = C.hf_fallback_subset(rows)
-    if a.limit:
-        rows = rows[: a.limit]
-    path = f"{RUNS}/gen/samples" + ("-limit" if a.limit else "") + ".jsonl"
-    done = {(r["id"], r["k"]) for r in C.read_jsonl(path)}
-    todo = [(r, k) for r in rows for k in range(C.N_SAMPLES) if (r["id"], k) not in done]
-    print(f"{len(todo)} samples to generate ({len(done)} done) -> {path}", flush=True)
-    if todo:
-        m = LocalModel()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        t_all, n_tok = time.time(), 0
-        with open(path, "a") as f:
-            for i, (it, k) in enumerate(todo):
-                seed = C.qseed(it["id"]) + C.SAMPLE_STRIDE * k
-                t0 = time.time()
-                r = S.gen_s2(m, user_item(it), seed, a.budget)
-                r = sample_record(r, it, k, seed, time.time() - t0)
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
-                f.flush()
-                S.rest(r["seconds"])
-                n_tok += r["tokens"]
-                if (i + 1) % 10 == 0 or i + 1 == len(todo):
-                    el = time.time() - t_all
-                    print(f"  {i + 1}/{len(todo)}  {n_tok / el:.0f} tok/s  {el / (i + 1):.1f} s/sample", flush=True)
-    samples = C.read_jsonl(path)
-    targets = C.distill_targets(samples)
-    stats.update(sampled_questions=len(rows), samples=len(samples), correct=sum(s["correct"] for s in samples),
-                 forced=sum(s["forced"] for s in samples), budget=a.budget, samples_per_question=C.N_SAMPLES,
-                 questions_with_nothink=sum(1 for t in targets.values() if t["nothink"]),
-                 questions_with_think=sum(1 for t in targets.values() if t["think"]), engine="mlx-vlm",
-                 weights=f"{S.MODEL}@{S.MODEL_REV}", versions=C.versions())
-    with open(f"{RUNS}/gen/stats" + ("-limit" if a.limit else "") + ".json", "w") as f:
-        json.dump(stats, f, indent=2)
-    print(json.dumps(stats, indent=2))
+def cmd_gen(_):
+    """Amendment 5: part (b) of §3, the self-distillation, is NOT RUN — the adapter is trained on the
+    written solutions only (it is System 1) and the base stays System 2, so no THINK target exists.
+    The step prints one line, writes its marker and exits 0."""
+    reason = ("part (b) of §3 (self-distillation) is not run by docs/lfm3-ft-prereg.md, amendment 5: "
+              "part (a) only, the adapter is System 1 and the base stays System 2, no THINK target")
+    marker = {"not_run": True, "amendment": 5, "reason": reason,
+              "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    os.makedirs(f"{RUNS}/gen", exist_ok=True)
+    with open(f"{RUNS}/gen/not-run.json", "w") as f:
+        json.dump(marker, f, indent=2)
+    print(f"gen: not run by amendment 5 -> {RUNS}/gen/not-run.json")
+    print(json.dumps(marker, indent=2))
 
 
 def brake_callback():
@@ -170,20 +149,24 @@ def cmd_sft(a):
 
     per_device, grad_accum = lora_settings()
     rows, excl = train_rows()
-    samples = C.read_jsonl(f"{RUNS}/gen/samples.jsonl")
-    if not samples:
-        raise SystemExit(f"no {RUNS}/gen/samples.jsonl: run `scripts/lfm3-ft.sh gen` first")
-    mix = C.build_mix(rows, samples)
+    kept_per_task = {t: sum(r["task"] == t for r in rows) for t in ("gsm8k", "math")}
+    if os.path.exists(f"{RUNS}/gen/samples.jsonl"):
+        print(f"{RUNS}/gen/samples.jsonl exists and is ignored (amendment 5: part (b) is not run)", flush=True)
+    mix = C.build_mix(C.cap_per_task(rows), [])  # amendment 5: part (a) only, no THINK target
     tok = C.load_tokenizer(C.BASE, a.revision)
     tok_rows, dropped = C.tokenize_mix(tok, mix)
     kinds = {}
     for r in tok_rows:
         kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
-    stats = {"exclusions": excl, "samples": len(samples), "examples": kinds, "dropped_over_max_len": dropped,
+    stats = {"exclusions": excl, "kept_per_task": kept_per_task, "cap_per_task": C.SFT_CAP_PER_TASK,
+             "seed": C.SEED, "epochs": C.SFT_EPOCHS, "part_b": "absent (gen not run, amendment 5)",
+             "examples_per_task": {t: sum(m["task"] == t for m in mix) for t in ("gsm8k", "math")},
+             "examples": kinds, "dropped_over_max_len": dropped,
              "tokens": sum(len(r["input_ids"]) for r in tok_rows), "per_device": per_device, "grad_accum": grad_accum}
     print(json.dumps(stats, indent=2), flush=True)
     out_dir = f"{RUNS}/sft/checkpoints"
-    trainer, tok, total = C.make_trainer(C.BASE, a.revision, tok_rows, out_dir, per_device=per_device, grad_accum=grad_accum,
+    trainer, tok, total = C.make_trainer(C.BASE, a.revision, tok_rows, out_dir, epochs=C.SFT_EPOCHS,
+                                         per_device=per_device, grad_accum=grad_accum,
                                          save_steps=SAVE_EVERY, callbacks=[brake_callback()])
     if not C.check_completion_mask(trainer, tok_rows[0]):
         raise SystemExit("the collator does not mask the prompt as expected: stop (completion-only loss)")
@@ -193,7 +176,7 @@ def cmd_sft(a):
     out = trainer.train(resume_from_checkpoint=last)
     adapter = f"{RUNS}/sft/adapter"
     trainer.save_model(adapter)
-    C.merge_and_save(C.BASE, a.revision, adapter, MERGED)
+    C.merge_and_save(C.BASE, a.revision, adapter, MERGED, epochs="1 epoch (amendment 5)", distillation=False)
     result = {"base": C.BASE, "base_revision": a.revision, "steps": total, "train_seconds_with_rests": time.time() - t0,
               "resumed_from": last, "train_metrics": out.metrics, "log_history": trainer.state.log_history, "mix": stats,
               "merged": MERGED, "versions": C.versions()}
@@ -247,6 +230,7 @@ def cmd_eval(a):
     source, path, label = None, None, S.MODEL
     if a.tag == "ft":
         path, label = FT_MLX, f"{C.FT_REPO} (local)"
+        jobs = [(s, "s1") for s in ("calib", "test", "mmlu")]  # amendment 5: the adapter answers in s1 only
     else:
         source = base_source()
         if source == "published" and not a.limit:
@@ -283,6 +267,42 @@ def cmd_eval(a):
     with open(f"{d}/meta.json", "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta, indent=2))
+
+
+PAIR_FILES = (  # (split, mode, tag): the pair's s1 comes from the fine-tuned model, its s2 from the base
+    ("calib", "s1", "ft"), ("test", "s1", "ft"),
+    ("calib", "s2-256", "base"), ("calib", "s2-1024", "base"),
+    ("test", "s2-256", "base"), ("test", "s2-1024", "base"),
+)
+
+
+def build_pair(runs=RUNS):
+    """The pair of amendment 5: the fine-tuned model answers in s1 (System 1) and the base model in
+    s2-256 and s2-1024 (System 2, untouched). eval/pair holds the fine-tuned s1 files and the base's s2
+    files, copied, never generated; meta.json says where each file came from, and `route --tag pair`
+    reads the folder like any model directory (s1s2.py's cmd_route, unchanged)."""
+    d = os.path.join(runs, "eval", "pair")
+    meta = {"pair": True, "amendment": 5, "model": "pair: ft in s1, base in s2", "weights": "MLX 4-bit",
+            "engine": "mlx-vlm", "revision": "local", "s1": "ft (the adapter is System 1)",
+            "s2": "base (System 2, untouched)", "sources": {}}
+    files = []
+    for split, mode, tag in PAIR_FILES:
+        name = f"{split}.{mode}.jsonl"
+        src = os.path.join(runs, "eval", tag, name)
+        if not os.path.exists(src):
+            raise SystemExit(f"{src} missing: run `scripts/lfm3-ft.sh eval` first")
+        files.append((name, src, tag))
+    os.makedirs(d, exist_ok=True)
+    for name, src, tag in files:
+        shutil.copy(src, os.path.join(d, name))
+        meta["sources"][name] = f"eval/{tag}"
+    with open(os.path.join(d, "meta.json"), "w") as f:
+        json.dump(meta, f, indent=2)
+    return meta
+
+
+def cmd_pair(_):
+    print(json.dumps(build_pair(), indent=2))
 
 
 def smoke_items():
@@ -407,18 +427,17 @@ def main():
     p = sub.add_parser("smoke-lora")
     p.add_argument("--revision")
     sub.add_parser("smoke-mlx")
-    p = sub.add_parser("gen")
-    p.add_argument("--budget", type=int, default=1024)
-    p.add_argument("--limit", type=int, default=0, help="first N questions (never for the run)")
+    sub.add_parser("gen")  # amendment 5: writes the not-run marker, nothing is generated
     p = sub.add_parser("sft")
     p.add_argument("--revision", required=True)
     sub.add_parser("convert")
     p = sub.add_parser("eval")
     p.add_argument("--tag", choices=("base", "ft"), required=True)
     p.add_argument("--limit", type=int, default=0, help="first N questions per split (never for the run)")
+    sub.add_parser("pair")
     a = ap.parse_args()
     {"smoke-lora": cmd_smoke_lora, "smoke-mlx": cmd_smoke_mlx, "gen": cmd_gen, "sft": cmd_sft, "convert": cmd_convert,
-     "eval": cmd_eval}[a.cmd](a)
+     "eval": cmd_eval, "pair": cmd_pair}[a.cmd](a)
 
 
 if __name__ == "__main__":

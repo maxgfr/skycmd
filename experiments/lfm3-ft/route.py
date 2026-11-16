@@ -3,11 +3,13 @@
 that pre-registration): experiments/lfm3-s1s2/s1s2.py's `route`, unchanged, pointed at
 runs/lfm3-ft/eval/<tag> instead of runs/lfm3-s1s2. Local, CPU, standard library only.
 
-  route.py --tag base|ft [--runs runs/lfm3-ft]
+  route.py --tag base|ft|pair [--runs runs/lfm3-ft]
 
 Runs `route --split calib` (probe and tau on the calibration split) then `route --split test` (the
 single read of the test split for this model). Writes report-calib.md, report.md and summary.json in
-the eval directory.
+the eval directory. --tag pair is amendment 5 (local mode): eval/pair holds the fine-tuned model's s1
+files and the base model's s2 files; the base itself is not read again, its reading stays the one of
+runs/lfm3-s1s2.
 """
 import argparse
 import importlib.util
@@ -28,7 +30,7 @@ def load_s1s2():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tag", choices=("base", "ft"), required=True)
+    ap.add_argument("--tag", choices=("base", "ft", "pair"), required=True)
     ap.add_argument("--runs", default="runs/lfm3-ft")
     a = ap.parse_args()
     d = os.path.join(a.runs, "eval", a.tag)

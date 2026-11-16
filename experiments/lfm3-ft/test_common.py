@@ -4,9 +4,12 @@
   python3 experiments/lfm3-ft/test_common.py
 """
 import importlib.util
+import json
 import math
 import os
+import random
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -314,6 +317,117 @@ class LocalMode(unittest.TestCase):
         self.assertEqual(L.user_item(math_item)["question"], S.PROMPT.format(q="2+2?"))
         mc = {"task": "mmlu_pro", "question": "Q?", "options": "(A) x"}
         self.assertIn("(A) x", L.user_item(mc)["question"])
+
+
+class Amendment5(unittest.TestCase):
+    """Amendment 5 (local mode): part (a) only under the cap, the pair folder, the gates without G2 and
+    the two terms of the cascade cost."""
+
+    def test_cap_per_task(self):
+        self.assertEqual((C.SFT_CAP_PER_TASK, C.SFT_EPOCHS, C.SEED), (3000, 1, 1234))
+        rows = [{"id": f"g{i}", "task": "gsm8k"} for i in range(3010)]
+        rows += [{"id": f"m{i}", "task": "math"} for i in range(3002)]
+        cap = C.cap_per_task(rows)
+        self.assertEqual(len(cap), 6000)
+        self.assertEqual(sorted(r["task"] for r in cap), ["gsm8k"] * 3000 + ["math"] * 3000)
+        self.assertEqual(cap, C.cap_per_task(rows))  # deterministic
+        g = [r for r in rows if r["task"] == "gsm8k"]
+        random.Random(C.SEED).shuffle(g)  # the draw is the seeded shuffle, among the rows given
+        self.assertEqual([r["id"] for r in cap if r["task"] == "gsm8k"], [r["id"] for r in g[:3000]])
+        self.assertEqual([r["id"] for r in C.cap_per_task(rows, per_task=10) if r["task"] == "gsm8k"],
+                         [r["id"] for r in g[:10]])
+
+    def test_cap_after_the_exclusions(self):
+        rows = [
+            {"id": "gsm8k-train-0", "task": "gsm8k", "question": "Calib by id"},
+            {"id": "gsm8k-train-1", "task": "gsm8k", "question": "same as TEST text!"},
+            {"id": "gsm8k-train-2", "task": "gsm8k", "question": "kept"},
+            {"id": "math-train-3", "task": "math", "question": "kept too"},
+            {"id": "math-train-4", "task": "math", "question": "an mmlu pro question"},
+        ]
+        calib = [{"id": "gsm8k-train-0", "question": "x"}]
+        kept, st = C.select_train(rows, calib, ["same as test text", "an mmlu pro question"])
+        self.assertEqual([r["id"] for r in kept], ["gsm8k-train-2", "math-train-3"])
+        cap = C.cap_per_task(kept, per_task=1)
+        self.assertEqual([r["id"] for r in cap], ["gsm8k-train-2", "math-train-3"])  # nothing excluded returns
+        self.assertEqual(st, {"rows": 5, "calib_id": 1, "same_text": 2, "kept": 2})
+
+    def test_mix_part_a_only(self):
+        rows = [{"id": "a", "task": "gsm8k", "question": "A?", "solution": "x\n\\boxed{1}"},
+                {"id": "b", "task": "math", "question": "B?", "solution": "\\boxed{2}"}]
+        cap = C.cap_per_task(rows, per_task=1)  # one question per task: both are kept here
+        mix = C.build_mix(cap, [])  # amendment 5: no self-distillation samples, no THINK target
+        self.assertEqual([(m["id"], m["kind"], m["thinking"], m["completion"]) for m in mix],
+                         [("a", "gold_nothink", False, "x\n\\boxed{1}"), ("b", "gold_nothink", False, "\\boxed{2}")])
+        self.assertNotIn("distill_think", {m["kind"] for m in C.build_mix(rows, [])})
+
+    def test_build_pair(self):
+        import local as L
+
+        def row(qid):
+            return {"id": qid, "task": "gsm8k", "correct": True, "finish": "stop", "think_tokens": 0, "tokens": 10}
+
+        with tempfile.TemporaryDirectory() as runs:
+            for tag, names in (("ft", ["calib.s1.jsonl", "test.s1.jsonl", "mmlu.s1.jsonl"]),
+                               ("base", ["calib.s1.jsonl", "calib.s2-256.jsonl", "calib.s2-1024.jsonl",
+                                         "test.s1.jsonl", "test.s2-256.jsonl", "test.s2-1024.jsonl", "mmlu.s1.jsonl"])):
+                d = os.path.join(runs, "eval", tag)
+                os.makedirs(d)
+                for n in names:
+                    C.write_jsonl(os.path.join(d, n), [row(f"{tag}:{n}")])
+            meta = L.build_pair(runs)
+            self.assertEqual(meta["sources"], {"calib.s1.jsonl": "eval/ft", "test.s1.jsonl": "eval/ft",
+                                               "calib.s2-256.jsonl": "eval/base", "calib.s2-1024.jsonl": "eval/base",
+                                               "test.s2-256.jsonl": "eval/base", "test.s2-1024.jsonl": "eval/base"})
+            d = os.path.join(runs, "eval", "pair")
+            self.assertEqual(json.load(open(os.path.join(d, "meta.json")))["sources"], meta["sources"])
+            self.assertEqual(C.read_jsonl(os.path.join(d, "calib.s1.jsonl"))[0]["id"], "ft:calib.s1.jsonl")
+            self.assertEqual(C.read_jsonl(os.path.join(d, "test.s2-1024.jsonl"))[0]["id"], "base:test.s2-1024.jsonl")
+            self.assertEqual(sorted(os.listdir(d)),  # no mmlu in the pair: the router reads calib and test only
+                             ["calib.s1.jsonl", "calib.s2-1024.jsonl", "calib.s2-256.jsonl", "meta.json",
+                              "test.s1.jsonl", "test.s2-1024.jsonl", "test.s2-256.jsonl"])
+            os.remove(os.path.join(runs, "eval", "base", "test.s2-256.jsonl"))
+            with self.assertRaises(SystemExit):
+                L.build_pair(runs)
+
+    def test_gates_g2_not_read(self):
+        base, ft = model(0.60, 0.10, 0.70, 500, 0.40), model(0.70, 0.0, 0.70, 300, 0.40)
+        ft["s2"] = []  # amendment 5: the fine-tuned model is never run in s2
+        g = G.gates(base, ft, read_g2=False)
+        self.assertEqual(g["G2"], "not read (System 2 is the base)")
+        self.assertEqual(g["problems"], [])  # no s2 comparison: the base's s2 rows are not held against ft
+        self.assertTrue(g["G1"]["pass"] and g["G3"]["pass"] and g["improved"])
+        self.assertEqual(g["verdict"], "LFM3 improved")
+        md = G.report_md(dict(g, router={}))
+        self.assertIn("- G2: not read (System 2 is the base)", md)
+        g = G.gates(base, ft)  # the default (hf mode) still reads G2 and now misses ft's s2 rows
+        self.assertIsNone(g["G2"])
+        self.assertEqual(g["verdict"], "incomplete")
+        ft["s1"] = ft["s1"][:-1]  # an incomplete evaluation still gives no verdict
+        g = G.gates(base, ft, read_g2=False)
+        self.assertEqual(g["verdict"], "incomplete")
+        self.assertTrue(g["problems"])
+        self.assertEqual(g["G2"], "not read (System 2 is the base)")
+
+    def test_pair_mode_flag(self):
+        with tempfile.TemporaryDirectory() as runs:
+            self.assertFalse(G.pair_mode(runs))  # no pair: G2 read as §6 wrote it (hf mode)
+            os.makedirs(os.path.join(runs, "eval", "pair"))
+            self.assertFalse(G.pair_mode(runs))
+            C.write_jsonl(os.path.join(runs, "eval", "pair", "meta.json"), [{"pair": True}])
+            self.assertTrue(G.pair_mode(runs))  # the pair exists: amendment 5, G2 not read
+
+    def test_cascade_cost(self):
+        c = G.cascade(300, 900, 0.25)  # ft s1 300 tokens against base s2-1024 900 tokens
+        self.assertAlmostEqual(c["one_over_rho"], 1 / 3)
+        self.assertAlmostEqual(c["w"], 0.25)
+        self.assertAlmostEqual(c["one_over_rho"] + c["w"], 7 / 12)
+        self.assertIsNone(G.cascade(0, 900, 0.1))
+        self.assertIsNone(G.cascade(300, None, 0.1))
+        summ = {"chosen_budget": 256, "budgets": {"256": {"test": {"all": {"s1_share": 0.7}}}}}
+        self.assertAlmostEqual(G.w_share(summ), 0.3)
+        self.assertIsNone(G.w_share(None))
+        self.assertIsNone(G.w_share({"chosen_budget": 1024, "budgets": {}}))
 
 
 if __name__ == "__main__":
