@@ -241,10 +241,10 @@ eotbench_data() {
   for ((k = 0; k < files; k++)); do
     x nice -n 19 "$D" turn-eotbench --out "$data" --files "$k" --threads "$threads" --min-free-gb "$min_free" \
       || stop_on_disk $?
+    # Smart Turn on the file's cuts (8 s, left-padded), then the file removed; no label is read
+    x nice -n 19 uv run --python 3.12 scripts/ear-baseline.py --eotbench "$data/eotbench" --tag all
+    x "$D" turn-eotbench --out "$data" --files "$k" --drop
   done
-  # Smart Turn on every cut (8 s, left-padded), then the files removed; no label is read
-  x nice -n 19 uv run --python 3.12 scripts/ear-baseline.py --eotbench "$data/eotbench" --tag all
-  x "$D" turn-eotbench --out "$data" --drop
 }
 
 # A run of the pre-registration is made once: an existing one is continued only with RESUME=1.
