@@ -106,7 +106,7 @@
       "Disclosure: v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps. Its parameters come from validation. Its gate is read on requests no system had scored; on T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30 times v2's and was set after v2 was measured. The system needs distinctive tool names.",
       "Every gate held: on 945 fresh requests, 0.8868 against 0.8169 for BM25 (+0.0698 [0.0455, 0.0952]) and 0.9048 for MiniLM (the bar was MiniLM − 0.03); ECE 0.0162; 30.9 ms per request in WASM with the tool list cached (bar 60 ms), 3,692,224 bytes for the two files.",
       "The advantage over BM25 leans on the three largest clusters of the test: without them +0.0202 [−0.0062, +0.0481], and a bootstrap over clusters gives +0.0698 [−0.0079, +0.1404]; both intervals hold zero.",
-      "With every tool renamed tool_<k> it falls to 0.2497, where BM25 keeps 0.8138. MiniLM is more accurate on every test file, and outside the tool lists of its training families the router is close to its embedding part."
+      "With every tool renamed tool_<k> it falls to 0.2497, where BM25 keeps 0.8138. MiniLM is more accurate on every test file, and outside the tool lists of its training families the router stays near its embedding part (below it on MetaTool, above it on CLINC150 and MASSIVE)."
     ]
   },
   {

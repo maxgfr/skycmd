@@ -32,6 +32,6 @@ On 945 fresh requests about tools never seen in training, **s6-route** picks the
 - **The tools of the test are v2's held-out tools.** Its requests are fresh, but the project had already read how every system does on these tools. A confirmation on tools of other families has not been run.
 - **The advantage over BM25 is fragile.** It holds on the slate bootstrap that the gate asked for (+0.0698 [0.0455, 0.0952]), but not when the three largest clusters are left out (+0.0202 [−0.0062, +0.0481]) nor on a bootstrap over clusters (+0.0698 [−0.0079, +0.1404]).
 - **MiniLM is more accurate on every test file.** With 91.6 MB to spend, all-MiniLM-L6-v2 with cosine is the better router on these tests.
-- **Outside the tool lists of its training families** (MetaTool, CLINC150 intents, MASSIVE held-out scenarios) it is close to its embedding part: 0.5175, 0.8040 and 0.5340.
+- **Outside the tool lists of its training families** (MetaTool, CLINC150 intents, MASSIVE held-out scenarios) it stays near its embedding part: 0.5175 against 0.5340, 0.8040 against 0.7855 and 0.5340 against 0.4755.
 
 The pre-registration, with the system, the gate and the reading: [`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md). The engine: `ToolRouter` in `crates/sky-web/src/router.rs`, and natively `sky-route fuse` ([install](/install/)).

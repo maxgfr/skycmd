@@ -119,7 +119,7 @@ Paired bootstrap (slates): +0.0942 [0.0720, 0.1185] over the model alone, +0.148
   generic or numbered names.
 - **MiniLM is more accurate on every file.** If 91.6 MB and about 12 ms of CPU per request are
   affordable, all-MiniLM-L6-v2 with cosine is the better router on these tests.
-- **Outside the tool lists of its training families it is close to its embedding part:** MetaTool
+- **Outside the tool lists of its training families it stays near its embedding part, below it on MetaTool and above it on CLINC150 and MASSIVE:** MetaTool
   0.5175 (the embedding alone 0.5340, toolrouter 0.5910), CLINC150 0.8040 (0.7855), MASSIVE
   0.5340 (0.4755; toolrouter 0.5900).
 - **The tools of T2-tools are v2's held-out test tools**, whose results this project had already
