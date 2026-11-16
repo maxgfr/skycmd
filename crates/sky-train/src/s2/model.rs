@@ -667,7 +667,7 @@ fn embed_audio(p: &ParamMap, frames: &Array) -> R<Array> {
 }
 
 /// Key-padding mask `[B, 1, T, T]` (a query always sees itself).
-fn padding_mask(valid: &Array) -> R<Array> {
+pub(crate) fn padding_mask(valid: &Array) -> R<Array> {
     let (b, t) = (valid.dim(0), valid.dim(1));
     let pos = Array::from_iter(0..t, &[t]);
     let eye = pos.reshape(&[t, 1])?.eq(pos.reshape(&[1, t])?)?;

@@ -26,6 +26,7 @@ pub mod s5;
 pub mod sequence;
 pub mod session;
 pub mod train;
+pub mod turn;
 
 #[cfg(test)]
 pub(crate) mod test_util {

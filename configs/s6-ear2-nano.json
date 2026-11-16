@@ -1,0 +1,40 @@
+{
+  "name": "s6-ear2-nano",
+  "about": "docs/s6-ear2-prereg.md §4.2-4.3: the four rungs; the latency probe of §4.4 picks one before training (sky-train turn-train --rung)",
+  "window_hops": 400,
+  "channels": 43,
+  "pool_hidden": 64,
+  "head_hidden": 64,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "rungs": {
+    "R1": {
+      "hidden_size": 192,
+      "intermediate_size": 768,
+      "head_count": 3,
+      "blocks": 6,
+      "hops_per_position": 4
+    },
+    "R2": {
+      "hidden_size": 192,
+      "intermediate_size": 768,
+      "head_count": 3,
+      "blocks": 4,
+      "hops_per_position": 4
+    },
+    "R3": {
+      "hidden_size": 160,
+      "intermediate_size": 640,
+      "head_count": 2,
+      "blocks": 4,
+      "hops_per_position": 4
+    },
+    "R4": {
+      "hidden_size": 160,
+      "intermediate_size": 640,
+      "head_count": 2,
+      "blocks": 4,
+      "hops_per_position": 8
+    }
+  }
+}

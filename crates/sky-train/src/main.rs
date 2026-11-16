@@ -611,6 +611,14 @@ enum Cmd {
     CastGolden(sky_train::cast::GoldenArgs),
     /// s6-cast: synthetic series as JSONL.
     CastSynth(sky_train::cast::SynthArgs),
+    /// s6-ear v2: train the end-of-turn detector on a feature store (docs/s6-ear2-prereg.md §6).
+    TurnTrain(sky_train::turn::train::TrainArgs),
+    /// s6-ear v2: a run checkpoint as an `skycmd-turn` GGUF file, with its calibration (§7).
+    TurnExport(sky_train::turn::ExportArgs),
+    /// s6-ear v2: one random-weight ternary GGUF per rung, for the latency probe (§4.4).
+    TurnProbe(sky_train::turn::ProbeArgs),
+    /// s6-ear v2: reference outputs of a small random model for the sky-infer tests.
+    TurnGolden(sky_train::turn::GoldenArgs),
 }
 
 fn main() -> Result<()> {
@@ -1071,6 +1079,10 @@ fn main() -> Result<()> {
         Cmd::CastExport(a) => sky_train::cast::export(&a)?,
         Cmd::CastGolden(a) => sky_train::cast::golden(&a)?,
         Cmd::CastSynth(a) => sky_train::cast::synth(&a)?,
+        Cmd::TurnTrain(a) => sky_train::turn::train::train(&a)?,
+        Cmd::TurnExport(a) => sky_train::turn::export(&a)?,
+        Cmd::TurnProbe(a) => sky_train::turn::probe(&a)?,
+        Cmd::TurnGolden(a) => sky_train::turn::golden(&a)?,
     }
     Ok(())
 }
