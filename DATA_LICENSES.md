@@ -327,6 +327,20 @@ Questions written by `sky-data audio-jev`: `turn_end` 215,655 / 11,370 / 31,527,
 | pipecat-ai/smart-turn-v3 (`smart-turn-v3.2-cpu.onnx`, revision `f766f81d`) | BSD-2-Clause | the baseline of the turn-end gate, run on our test clips (`scripts/ear-baseline.py`); not redistributed |
 | GLM-5.3-flash labels of the LibriSpeech transcripts (v2, `teacher label-transcripts`) | the transcripts' license (CC-BY-4.0); the model is MIT | the `about` questions, soft targets on the audio |
 
+## s6-ear v2 audio (`sky-data turn-test`, `fetch-turn`, `turn-eotbench`, `docs/s6-ear2-prereg.md`)
+
+Only derived features are written, outside the repository (`skycmd-data/s6-ear2/`): float16 hops
+of the v2 front end (the last 4 s of each clip), the teacher's targets (u8), and the 16-bit PCM
+hashes of the test clips for the leakage filter. Each parquet shard is deleted once its features
+and targets are written; no audio is redistributed.
+
+| dataset / model | license | how it is used |
+|---|---|---|
+| pipecat-ai/smart-turn-data-v3.2-train (revision `f8c95d28`, 83 shards) | CC-BY-4.0 | training, 5% validation by a hash of the id (seed 1234); a clip is dropped when its id is a test id or its 16-bit PCM hashes to a test clip's (§3.2); the counts are in `train/LEAK.json` |
+| pipecat-ai/smart-turn-data-v3.2-test | CC-BY-4.0 | test (gated), the WAVs v1's fetch wrote; never trained on, never used for a threshold |
+| livekit/eot-bench-data (config `all`, revision `main`, its commit recorded) | CC-BY-4.0 (card; the code repository is Apache-2.0) | second test, reported only (§8.4): one decision per `eot` / `hold` span, the audio cut at its start; never trained on |
+| pipecat-ai/smart-turn-v3 (`smart-turn-v3.2-cpu.onnx`, revision `f766f81d`) | BSD-2-Clause | the teacher (logit, pooled embedding and encoder states on the training and validation clips only, `scripts/turn-teacher.py`) and the baseline (`scripts/ear-baseline.py`); not redistributed |
+
 ## Published on Hugging Face (`scripts/hf-publish-data.py`)
 
 One dataset repository per set, one parquet config per source, each config under its source's
