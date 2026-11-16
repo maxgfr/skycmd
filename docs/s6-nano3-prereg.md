@@ -86,3 +86,29 @@ v3 was designed after v2's test was read, from an exploratory reading of v2's te
 ## 11. Amendments
 
 **Erratum (16/11/2026, before any fresh slate is built or scored).** §1 says "on the six other sources the pair was at or above the better of its two parts". The exploratory script read **five** other sources (T-metatool, T-clinc, BFCL, When2Call, MASSIVE held-out), and the sentence holds on those five; the tool-routing-data test (100 queries) was not in it. Nothing else changes.
+
+**Amendment 1 (16/11/2026, after the fresh files were built, hashed and counted and the scoring chain was rehearsed on validation; before any system has read a fresh file).**
+
+- **The fresh files** (`runs/s6-nano3/counts.json`, hashes in `runs/s6-nano3/test-files.json`; two builds give the same bytes; the builder first recomputes v2's split and refuses to go on unless it reproduces v2's ten test files byte for byte, which it does):
+
+  | file | slates | *none* gold |
+  |---|---:|---:|
+  | T2-tools (`f_tools`, and its names-masked copy) | **945** | 189 |
+  | T2-metatool (`f_metatool`) | 2,000 | 400 |
+  | T2-clinc (`f_clinc`: 1,600 in scope, 400 out of scope) | 2,000 | 400 |
+  | T2-massive (`f_massive`: 1,000 en, 1,000 fr) | 2,000 | 400 |
+
+  T2-tools: 2,541 requests over v2's cluster cap and 320 left out of v2's 2,000 were candidates; 13 were excluded as already in a v2 slate file and 1,903 by the cap of 100 per cluster (the three largest clusters held 1,135, 559 and 509 fresh requests). The 945 slates come from **273 clusters**; 629 from over-cap requests and 316 from left-out ones; the three largest clusters hold **31.7%** of them (100 each); by source: glaive 484, seal-tools 175, toolace 138, api-bank 129, hermes 19. 107 slates repeat the normalised request of an earlier slate (kept, as v2 kept them). With 945 slates instead of v2's 2,000 the interval of G1 is wider: this makes G1 harder to pass, and nothing is changed for it.
+- **Readings the code had to take, accepted as built:**
+  1. A request is excluded when its identifier, its exact text or its normalised text (v2's normalisation) is in a v2 slate file: the training and validation records, the validation slates and the ten test files. The normalised-text rule alone removed 1 tools, 1 CLINC, 5 MetaTool and 5 MASSIVE requests.
+  2. The cap of 100 per cluster is applied after the exclusion, in v2's cap order; every request kept is used, 20% *removed*, seed 1235; the distractors come from v2's 3,317 test-side tools with v2's filter.
+  3. T2-metatool and T2-clinc use v2's draw rules with seed 1235; CLINC queries come from its test split, as v2's.
+  4. **T2-massive is drawn from the train and validation partitions of the four held-out scenarios** (7,303 utterances that v2 never used for anything), because v2's test took their whole test partition; at most 1,000 per language.
+  5. Only the names-masked copy of T2-tools is built; no gold-removed pairs and no swapped descriptions (v3 gates neither).
+  6. G1's bootstrap is v2's (1,000 resamples of the slates, seed 0, percentile interval), and its lower bound must be strictly above 0. G3 uses v2's scorer. In G2 a missing dump fails its file. The fast-mode goal is one-sided (full depth minus fast mode ≤ 0.015).
+  7. G4 holds when the bench ran on at least 200 slates with the same answer on all but at most one, max |Δp| ≤ 1e-3, a cached median ≤ 60,000 µs, and the two files together ≤ 4,000,000 bytes. While the bench's output is absent G4 is "not measured" and the gate is not passed.
+  8. The reported cluster readings count clusters by fresh slates; the cluster bootstrap resamples clusters with replacement, seed 0. BM25 fused with the embedding uses β = 0.5. The masked reading fuses the masked dumps of the two parts.
+  9. The gate script checks the frozen values (β 0.81, τ_ask3 0.671047, θ 0.396120, T 0.0671021) and the model file's size; the file's sha256 (`a124dfe8…6c82`, the published one) is written into the gate's output.
+- **The order of the reading.** The routing conditions (G1, G2, G3) are read first, once, from the dumps of the Python reference and of `sky-eval`. G4 is measured when the engine's embedding and fusion are written and checked on validation; nothing in the engine reads a fresh score, and its parity check on fresh slates compares it with dumps that already exist. Until then the gate reads "not passed (G4 not measured)", whatever the routing conditions say.
+- **`runs/s6-nano3/FRESH-OPEN`** is created by the run's operator under the owner's standing instruction to run every step without asking, as v2's `TEST-OPEN` was.
+- **What does not change:** the system, its four frozen values, the gate, §9.
