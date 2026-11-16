@@ -1,0 +1,20 @@
+{
+  "about": "s6-nano v3: the fresh test files as the build wrote them (docs/s6-nano3-prereg.md, section 4); scripts/route/common.py refuses a fresh file whose sha256 differs",
+  "build": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build/fresh/FRESH.json",
+  "files": {
+    "f_clinc.jsonl": "6e526a951fac788877ad601a581dd72268cfb2a45ea77d6808798984b750781d",
+    "f_massive.jsonl": "e66aa1b41b193e73ea841bdd01d135ed11cb802157946d92a0147400c9af0b51",
+    "f_metatool.jsonl": "40173a8598d51f24dafa900164ac611c59881369ad86fbf4b0c3a59cb746332a",
+    "f_tools.clusters.jsonl": "fe458c4c6cdd9647b4c4d7d1821228b71c25eea2dcff6f3d74055cd83023d965",
+    "f_tools.jsonl": "9c0b86195769788287ade98ac423bf1c43edea178f9a64f4a8355ec2c040cebf",
+    "f_tools_masked.jsonl": "b7359b5a8bd80a79b9ac9ad3e59fa122ab677ea6949b29deada55d1bc28f4861"
+  },
+  "records": {
+    "f_clinc.jsonl": 2000,
+    "f_massive.jsonl": 2000,
+    "f_metatool.jsonl": 2000,
+    "f_tools.clusters.jsonl": 945,
+    "f_tools.jsonl": 945,
+    "f_tools_masked.jsonl": 945
+  }
+}

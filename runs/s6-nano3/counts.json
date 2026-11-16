@@ -1,0 +1,188 @@
+{
+  "about": "s6-nano v3 (docs/s6-nano3-prereg.md, section 4): the fresh files, counted before any system reads them",
+  "seed": 1235,
+  "v2 seed": 1234,
+  "cap per cluster": 100,
+  "files": {
+    "f_clinc.jsonl": {
+      "slates": 2000,
+      "none gold": 400,
+      "none share": 0.2,
+      "kinds": {
+        "test": 2000
+      },
+      "src": {
+        "f-clinc": 2000
+      },
+      "slates whose normalised request repeats an earlier slate of the file (kept, as v2)": 1
+    },
+    "f_massive.jsonl": {
+      "slates": 2000,
+      "none gold": 400,
+      "none share": 0.2,
+      "kinds": {
+        "removed": 400,
+        "test": 1600
+      },
+      "src": {
+        "f-massive-en": 1000,
+        "f-massive-fr": 1000
+      },
+      "slates whose normalised request repeats an earlier slate of the file (kept, as v2)": 2
+    },
+    "f_metatool.jsonl": {
+      "slates": 2000,
+      "none gold": 400,
+      "none share": 0.2,
+      "kinds": {
+        "removed": 400,
+        "test": 1600
+      },
+      "src": {
+        "f-metatool": 2000
+      },
+      "slates whose normalised request repeats an earlier slate of the file (kept, as v2)": 0
+    },
+    "f_tools.jsonl": {
+      "slates": 945,
+      "none gold": 189,
+      "none share": 0.2,
+      "kinds": {
+        "removed": 189,
+        "test": 756
+      },
+      "src": {
+        "f-tools": 945
+      },
+      "slates whose normalised request repeats an earlier slate of the file (kept, as v2)": 107
+    },
+    "f_tools_masked.jsonl": {
+      "slates": 945,
+      "none gold": 189,
+      "none share": 0.2,
+      "kinds": {
+        "masked": 945
+      },
+      "src": {
+        "f-tools-masked": 945
+      },
+      "slates whose normalised request repeats an earlier slate of the file (kept, as v2)": 107
+    }
+  },
+  "f_tools": {
+    "clusters": 273,
+    "requests per source": {
+      "api-bank": 129,
+      "glaive": 484,
+      "hermes": 19,
+      "seal-tools": 175,
+      "toolace": 138
+    },
+    "slates by origin": {
+      "left out of the 2,000": 316,
+      "over the cluster cap": 629
+    },
+    "share of the slates in the three largest clusters": 0.31746031746031744,
+    "slates of the ten largest clusters": [
+      100,
+      100,
+      100,
+      96,
+      70,
+      47,
+      34,
+      20,
+      17,
+      12
+    ],
+    "candidates by origin (before the exclusion)": {
+      "left out of the 2,000": 320,
+      "over the cluster cap": 2541
+    },
+    "fresh requests of the ten largest clusters before the fresh cap": [
+      1135,
+      559,
+      509,
+      96,
+      70,
+      47,
+      34,
+      20,
+      17,
+      12
+    ],
+    "test-side tools (distractor pool)": 3317
+  },
+  "f_massive": {
+    "fresh candidates, train partition, en": 3144,
+    "fresh candidates, train partition, fr": 3063,
+    "fresh candidates, val partition, en": 554,
+    "fresh candidates, val partition, fr": 533,
+    "held-out scenarios": 4,
+    "held-out utterances, test partition, en": 848,
+    "held-out utterances, test partition, fr": 809,
+    "held-out utterances, train partition, en": 3149,
+    "held-out utterances, train partition, fr": 3064,
+    "held-out utterances, val partition, en": 556,
+    "held-out utterances, val partition, fr": 534,
+    "rows equal to v2's staged requests": 1657
+  },
+  "excluded": {
+    "f_clinc: in a v2 slate file (exact text)": 3,
+    "f_clinc: in a v2 slate file (identifier)": 2000,
+    "f_clinc: in a v2 slate file (normalised text)": 1,
+    "f_massive (test partition): in a v2 slate file (identifier)": 1657,
+    "f_massive (train partition): in a v2 slate file (exact text)": 2,
+    "f_massive (train partition): in a v2 slate file (normalised text)": 4,
+    "f_massive (val partition): in a v2 slate file (exact text)": 2,
+    "f_massive (val partition): in a v2 slate file (normalised text)": 1,
+    "f_metatool: in a v2 slate file (exact text)": 25,
+    "f_metatool: in a v2 slate file (identifier)": 2000,
+    "f_metatool: in a v2 slate file (normalised text)": 5,
+    "f_tools (left out of the 2,000): in a v2 slate file (exact text)": 4,
+    "f_tools (over the cluster cap): in a v2 slate file (exact text)": 8,
+    "f_tools (over the cluster cap): in a v2 slate file (normalised text)": 1,
+    "f_tools (over the cluster cap): over the fresh cap of 100": 1903
+  },
+  "v2 slate files read for the exclusion": {
+    "files": {
+      "records/intents/train.jsonl": 95411,
+      "records/intents/val.jsonl": 11543,
+      "records/tools/train.jsonl": 81596,
+      "records/tools/val.jsonl": 4185,
+      "records/when2call/train.jsonl": 14621,
+      "records/when2call/val.jsonl": 896,
+      "test/t_bfcl.jsonl": 440,
+      "test/t_clinc.jsonl": 2000,
+      "test/t_massive.jsonl": 1657,
+      "test/t_metatool.jsonl": 2000,
+      "test/t_toolrouting.jsonl": 100,
+      "test/t_tools.jsonl": 2000,
+      "test/t_tools_masked.jsonl": 2000,
+      "test/t_tools_pairs.jsonl": 1000,
+      "test/t_tools_swapped.jsonl": 500,
+      "test/t_when2call.jsonl": 1863,
+      "val/v_tools.jsonl": 1144,
+      "val/v_tools.model.jsonl": 1144,
+      "val/v_tools_masked.jsonl": 1144,
+      "val/v_tools_masked.model.jsonl": 1144,
+      "val/v_tools_pairs.jsonl": 1000,
+      "val/v_tools_pairs.model.jsonl": 1000,
+      "val/v_tools_swapped.jsonl": 500,
+      "val/v_tools_swapped.model.jsonl": 500
+    },
+    "request identifiers": 68450
+  },
+  "v2 test files reproduced by the recomputed split": {
+    "t_bfcl.jsonl": "7d6a602b589945ce26535d2136242ede50104df697d6fa1b38ccefac7c69a9fa",
+    "t_clinc.jsonl": "d7698bb69e2b00d9a8f700187a584c09bc3873134d740ec53c5e12f2634dc3f0",
+    "t_massive.jsonl": "fc0a59f735566ac8d252bea8eeed2e3ca383304f12794f7521584ad5360885b6",
+    "t_metatool.jsonl": "7be3be4413ab6076c1acdc0ae8f274862ad9d35e3fbca4ac2b4e0b276e6d2b61",
+    "t_toolrouting.jsonl": "f184d794d0c6b32df620cb3e62b877f82324940cabc4e377d179737ec1c98ab2",
+    "t_tools.jsonl": "c5ee33325dde9e22c7b585e83197ee5db8d5534985b077876d22a9c40573b087",
+    "t_tools_masked.jsonl": "7f7f23f93971cdea552f72fbac299dfb44068062708f86dd0e3458784a0c9369",
+    "t_tools_pairs.jsonl": "4665ed59e7831d06fd795a874562a23518b53d29a24b8cda307704a4efb67ed8",
+    "t_tools_swapped.jsonl": "b9c5336eb2a5825b5622ac767fafc9b4121924d558a7791959869d4710ccdcf7",
+    "t_when2call.jsonl": "64e9b66ab848605e337c5653d6ad09c040859df1f445e4b66a40728d5ba297f0"
+  }
+}
