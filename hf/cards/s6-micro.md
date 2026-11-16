@@ -54,7 +54,7 @@ Test sets, at most 2,000 questions per source, ternary GGUF of the last DAgger r
 | MASSIVE intents, English | 0.531 | 0.518 | 0.425 | s3-pico 0.187 (see the limitations) |
 | MASSIVE intents, French | 0.314 | 0.275 | 0.239 | s3-pico 0.117 |
 | When2Call (test split of a trained source) | 0.401 | 0.430 | 0.404 | s3-pico 0.368; its most common training answer 0.359 |
-| NOTAM subject / NOTAM multi (never trained on) | 0.093 / 0.353 | 0.052 / 0.394 | 0.055 / 0.493 | s3-pico 0.163 / 0.319 |
+| NOTAM subject / NOTAM multi (never trained on) | 0.092 / 0.353 | 0.052 / 0.394 | 0.055 / 0.493 | s3-pico 0.163 / 0.319 |
 | all sources | 0.380 | 0.378 | 0.360 | |
 | **ECE over all these sources** | **0.0588** | 0.0821 | 0.0479 | **the gate allows 0.08** |
 
@@ -106,7 +106,7 @@ softmax attention and AdamW.
 - A modest generalist: 0.553 on the bench, against about 0.69 for 17M models (s5-lite 0.696,
   oscar-1-17m 0.6775). On 11 of the 20 bench tasks it answers one constant to at least 95% of the
   items.
-- It cannot read NOTAMs (0.093 on the subject question), and on When2Call it stays at 0.401 and
+- It cannot read NOTAMs (0.092 on the subject question), and on When2Call it stays at 0.401 and
   rarely chooses to call a tool.
 - The English MASSIVE score is not strictly zero-shot: 206 of the 2,000 test utterances also
   appear in the training split, 201 of them in a source derived from MASSIVE. None of the 1,000

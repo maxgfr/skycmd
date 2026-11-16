@@ -24,7 +24,7 @@
     "notes": [
       "A second look: the first version (s6-micro-v1) failed the ECE guard at 0.0821 against 0.08. This version was designed after that reading (twice the decision-training minutes) and judged on the same test records: 0.553 on the bench (gate 0.45), ECE 0.0588, every game at s3-pico's score (docs/s6-gen-prereg.md, amendment 17).",
       "Published at full depth: its conformal early-exit thresholds were rejected by the pre-registered arena check (one extra Dodge veto).",
-      "Expect mistakes on questions in free text: 0.401 on When2Call, where it rarely chooses to call a tool, and 0.093 on NOTAM subjects. On 11 of the 20 bench tasks it gives one answer to at least 95% of the items."
+      "Expect mistakes on questions in free text: 0.401 on When2Call, where it rarely chooses to call a tool, and 0.092 on NOTAM subjects. On 11 of the 20 bench tasks it gives one answer to at least 95% of the items."
     ]
   },
   {
