@@ -7,6 +7,27 @@ outline: [2, 3]
 
 Every model on this page was judged against criteria fixed before any test run, and failures are published like successes. The s6 family (November 2026) comes first, then the System 1 / System 2 router of LFM3-1.7B (November 2026), then s5 (October 2026).
 
+## Status at a glance {#status}
+
+One row per experiment: its verdict and the gated number against its bar. Each name links to its section, which gives every number. What each model is for and where to try it: [Models](/models/).
+
+| model | verdict | gated number against its bar |
+|---|---|---|
+| [s6-route](#s6-route-passed) | passed, on fresh slates; system defined after v2's test was read | 0.8868 on unseen tools, above BM25 (0.8169, lower bound of the gain above 0) and at least MiniLM − 0.03 (0.8748) |
+| [s6-nano](#s6-nano-passed-published-at-full-depth) | passed | `typed_decisions_bench` 0.480 against 0.398; ECE 0.0479 against at most 0.08 |
+| [s6-micro v2](#s6-micro-v2-passed-on-a-second-look) | passed, on a second look | 0.553 against 0.45; ECE 0.0588 against at most 0.08 |
+| [s6-micro v1](#s6-micro-v1-failed-on-calibration-only) | failed (calibration guard) | ECE 0.0821 against at most 0.08 (bench 0.547 against 0.45) |
+| [s6-secrets-pico](#s6-secrets-pico-passed-published-at-full-depth) | passed on its synthetic bench; fails on real text | secret 0.9990 against 0.977, service 0.9795 against 0.787 |
+| [s6-secrets-verify-pico](#s6-secrets-verify-pico-failed) | failed (G1; six gates of seven hold) | line F1 0.8561 against 0.8832 (0.7332 + 0.15) |
+| [s6-route-nano](#s6-route-nano-failed) | failed (G1, G4) | 0.8395 against BM25 0.8500; 38.9 ms per request against 2 ms |
+| [s6-ear-nano](#s6-ear-nano-failed) | failed (three gates of four) | end of turn 0.5681 against 0.9263 |
+| [s6-cast-pico](#s6-cast-pico-failed) | failed | nGMASE 0.9471 against 0.838; nWQL 0.6646 against 0.587 |
+| [s6-sleep](#s6-sleep-stopped-by-its-pilot) | stopped by its pilot | `recall` 0.2460 against the control's 0.2650 + 0.10 |
+| [s6-cast v2](#in-short) | pre-registered, not run yet | no result yet |
+| [LFM3-1.7B System 1 / System 2](#lfm3-s1s2) | failed | H3: 1,032 tokens against at most 0.5 × 958 |
+| [s5 (three bets)](#s5-october-2026) | failed | bet 1: ECE 0.088 against 0.057 + 0.01 |
+
+
 ## s6 (November 2026)
 
 s6-nano and s6-micro were pre-registered in [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md), s6-ear-nano in [`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md), s6-secrets-pico in [`docs/s6-secrets-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md) and s6-cast-pico in [`docs/s6-cast-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md), all frozen before their training. Every amendment is dated, committed before the runs it concerns, and says what had been seen when it was written; none changes a gate. The runs were made in a throttled mode (a duty cycle and cooling pauses), so their budgets count working minutes; the steps actually done are in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md). The five models were trained in one run, from 12 to 14 November; its final report, with every phase, incident and gate, is [`docs/big-run-report.md`](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md). Two experiments followed on the evening of 14 November, each with its own pre-registration: s6-secrets-verify-pico, the second version of s6-secrets ([`docs/s6-secrets2-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets2-prereg.md)), and the pilot of s6-sleep ([`docs/s6-sleep-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep-prereg.md)). On 16 November came s6-route-nano, the second version of s6-nano as a decision model, narrowed to tool routing ([`docs/s6-nano2-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano2-prereg.md)), and then s6-route, its file fused with a static embedding, defined after its test was read and judged on fresh slates ([`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md)).
