@@ -28,6 +28,8 @@ Each line gives a claim, the measurement behind it, where the evidence is, and w
 
 **In short:** a System One decision model, the kind of model Jev, Laya and Julia-1 introduced in September 2026, fits in **251 KB**. It was trained **from scratch in under an hour** on a laptop and plays four control games **at the level of an exact oracle**, in about **50 µs per frame in a web browser**. Around it, skycmd brings a decision format that is invariant to the order and names of the options by construction, a calibration lesson for early exits, experiments whose criteria were fixed before any test, and a whole chain in Rust that runs in the browser. As far as we could find, nothing this small exists in this format. Training and inference are Rust; a few gate scripts, the s4 teacher and some baselines are Python.
 
+**Told as stories.** Two of these lines are also written up for a wider audience in [Articles](/articles/): [the tool router](/articles/a-3-7-mb-tool-router) (two failures, then a pass and its limits) and [the secrets verifier](/articles/a-250-kb-secrets-verifier) (rules propose, the model judges). This page stays the reference: one claim, its measurement, its evidence.
+
 ## 1. A decision model 40× to 300× smaller
 
 Every open decision model we found starts from a pretrained backbone of at least 17M parameters. [s3-pico](/tutorial/21-s3-recursive-tiny) was trained from zero, and it still answers typed questions (choice / score / noul) with calibrated probabilities in one forward pass.

@@ -13,6 +13,10 @@
 
 ## Articles
 
+- `site/novelty/index.md` ("What we bring") is the reference: every claim of the project in one
+  table, with its measurement, its evidence and where to try it. **Update it with every result.**
+  `site/results/index.md` holds the numbers. An article does not replace either and does not
+  restate them: it tells the story of one line of experiments and links to both.
 - One Markdown file per article in `site/articles/`, in English like the rest of the site,
   listed on `site/articles/index.md`, newest first.
 - An article is written for a wide technical audience: every term is explained the first time,
