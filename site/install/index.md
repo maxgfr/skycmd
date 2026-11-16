@@ -41,7 +41,7 @@ and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/d
 | s6-secrets-pico (secret detection on its synthetic bench, its four questions only; not a scanner: it flags 59.8% of clean real files at p ≥ 0.9, see [results](/results/#s6-secrets-real-text)) | s6, ternary, full depth | 445K | [s6-secrets-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-pico.gguf) (250 KB) | skycmd engine only |
 
 Every model is also on Hugging Face with its model card and a demo Space that runs in the browser:
-[s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-micro](https://huggingface.co/maxgfr/s6-micro) (once uploaded), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
+[s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-micro](https://huggingface.co/maxgfr/s6-micro), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
