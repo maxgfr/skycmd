@@ -1531,12 +1531,15 @@ fn hash_tree(root: &Path, rel: &str, out: &mut BTreeMap<String, Value>) -> Resul
 
 /// The head window of section 3: the smallest of 160, 256, 320 at which at most 5% of the
 /// records have an option shrunk (the `head` share of `s2-truncation` over the training and
-/// validation records); `None` when no candidate meets the rule.
+/// validation records). When no candidate meets the rule, the largest candidate (amendment 2:
+/// the engine's 48-token option cap cuts an option whatever the window, so past that point a
+/// larger window buys nothing); `None` only when there is no report.
 pub fn head_window(reports: &[(usize, Value)]) -> Option<usize> {
     let mut v: Vec<&(usize, Value)> = reports.iter().collect();
     v.sort_by_key(|(w, _)| *w);
-    v.into_iter()
+    v.iter()
         .find(|(_, r)| r["all"]["head"].as_f64().is_some_and(|h| h <= 0.05))
+        .or(v.last())
         .map(|(w, _)| *w)
 }
 
@@ -1617,7 +1620,7 @@ pub fn manifest(o: &ManifestOptions) -> Result<Value> {
         "inputs": inputs,
         "test files (hashed for the amendment of 4.6, item 1; never read before section 7)": test,
         "truncation": {
-            "rule": "the smallest of 160, 256, 320 at which at most 5% of the training and validation records have an option shrunk (s2-truncation `head`)",
+            "rule": "the smallest of 160, 256, 320 at which at most 5% of the training and validation records have an option shrunk (s2-truncation `head`); when none does, the largest (amendment 2)",
             "reports": reports,
             "window": window,
         },
@@ -1978,9 +1981,11 @@ mod tests {
             Some(256)
         );
         assert_eq!(head_window(&[(160, r(0.01)), (256, r(0.0))]), Some(160));
+        // no candidate meets the rule: the largest one (amendment 2)
         assert_eq!(
             head_window(&[(160, r(0.3)), (256, r(0.2)), (320, r(0.06))]),
-            None
+            Some(320)
         );
+        assert_eq!(head_window(&[]), None);
     }
 }
