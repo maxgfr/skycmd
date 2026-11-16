@@ -85,4 +85,4 @@ v3 was designed after v2's test was read, from an exploratory reading of v2's te
 
 ## 11. Amendments
 
-(none)
+**Erratum (16/11/2026, before any fresh slate is built or scored).** §1 says "on the six other sources the pair was at or above the better of its two parts". The exploratory script read **five** other sources (T-metatool, T-clinc, BFCL, When2Call, MASSIVE held-out), and the sentence holds on those five; the tool-routing-data test (100 queries) was not in it. Nothing else changes.
