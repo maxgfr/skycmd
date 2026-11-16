@@ -816,6 +816,80 @@ At exit 0 (2 of 6 block passes) the model is at 0.8340 on the 2,000 T-tools slat
 
 **Exploratory, after the gate, nothing fitted, on the already-read test.** Not a result: `scripts/s6-route-explore.py` takes the equal-weight geometric mean of two systems' probabilities over the options of each slate (`runs/s6-nano2/explore/test.txt`). On T-tools: model + potion-cos-4bit 0.8885 (above BM25 0.8500 and MiniLM 0.8840; BM25 + potion-cos-4bit gives 0.8475), model + BM25 0.8780, model + MiniLM 0.9295, BM25 + MiniLM 0.9165. Model + potion-cos-4bit elsewhere: T-metatool 0.5290, T-clinc 0.7935, When2Call 0.6280, MASSIVE held-out 0.5570, BFCL 0.7659. Where the model and BM25 agree (0.8275 of the T-tools slates), the shared answer is right on 0.9384. These are hypotheses, not results. The fusion of the v2 file with potion-cos-4bit is pre-registered as s6-nano v3 in [`docs/s6-nano3-prereg.md`](docs/s6-nano3-prereg.md), to be read on fresh slates; it has not been read yet.
 
+**The follow-up.** That fusion, pre-registered as s6-nano v3 and read once on fresh slates, passed its own gate and is published as s6-route (next section: "passed on fresh slates; system defined after v2's test was read"). v2's verdict does not change: s6-route-nano alone failed its gate.
+
+## s6-route (s6-nano v3): the v2 router fused with a static embedding, pre-registered, gate passed
+
+Pre-registration: [`docs/s6-nano3-prereg.md`](docs/s6-nano3-prereg.md), the system in §2, the gate in §5, the disclosure in §7, the erratum and amendments 1 and 2 (all before any system read a fresh file), and its result block of 16/11. Results: [`runs/s6-nano3/eval-fresh/results.md`](runs/s6-nano3/eval-fresh/results.md) and `gate.json` next to it (the fresh files, read once), the latency files in `runs/s6-nano3/eval-fresh/latency/`, the counts and hashes of the fresh files `runs/s6-nano3/counts.json` and `test-files.json`, the validation fit `runs/s6-nano3/fit.json`.
+
+**Disclosure** (§7). v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps. Its parameters come from validation. Its gate is read on requests no system had scored; on T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30 times v2's and was set after v2 was measured. The system needs distinctive tool names.
+
+**Passed, every condition, on fresh slates; system defined after v2's test was read.** On T2-tools, 945 fresh requests about tools never seen in training (273 clusters), the system is at 0.8868, against BM25 0.8169 (+0.0698 [0.0455, 0.0952]) and all-MiniLM-L6-v2 0.9048 (−0.0180 [−0.0381, +0.0032]; the bar was MiniLM − 0.03 = 0.8748), above the model alone (0.7926) and the embedding alone (0.7386). G2, G3 and G4 hold. Published as `s6-route`: two files, `site/public/models/s6-route-nano.gguf` (v2's file, unchanged, 2,418,912 bytes) and `site/public/models/s6-route-embed.gguf` (1,273,312 bytes, sha256 `c53fb76dc8a56a696d859e80b7383d7e9db168e54c024525f220851fbacda67a`), 3,692,224 bytes together, with a card and a playground (the site's [Router](https://maxgfr.github.io/skycmd/router/) page and a Space). **The readings below are part of the result**: the advantage over BM25 does not survive the cluster bootstrap nor the removal of the three largest clusters, and the system fails when tool names are masked.
+
+**The system** (§2, fixed before the fresh files were built). The model part is v2's published file at full depth, asked as in v2 (the request, the BM25 line, the options and *none*). The embedding part is `potion-cos-4bit`: `minishlab/potion-base-2M` (MIT) packed to 4 bits, cosine between the request and each `name: description`, *none* at θ = 0.396120, softmax at temperature 0.0671021, both fitted for v2 on validation. The fusion: `p(i) ∝ (p_model(i) · p_embedding(i))^β`, β = 0.81 (the NLL minimum on the 1,144 validation slates); "ask the user" below τ_ask3 = 0.671047 (v2's rule on the fused validation probabilities). No training, no GPU. The fast mode stops the model at its first exit (2 of 6 block passes). Validation (not a test): 0.9135, ECE 0.0254; BM25 fused with the same embedding 0.8698.
+
+**The fresh files** (§4, amendment 1; built once with seed 1235 from requests in no v2 slate file, hashed and counted before any scoring): T2-tools 945 slates (189 with *none* right) from 273 clusters, the three largest holding 31.7% of them, with a names-masked copy; T2-metatool, T2-clinc (1,600 in scope, 400 out of scope) and T2-massive (the train and validation partitions of the four held-out scenarios, 1,000 en and 1,000 fr), 2,000 slates each. The reading: `scripts/route3-read.sh` (committed in `5457c34`), one pass in the order of amendment 2: the baselines, the model, the fused reference, the WASM bench, the gate. `runs/s6-nano3/FRESH-OPEN` was created at 11:26:44 on 16/11 by the run's operator under the owner's standing instruction (amendment 1).
+
+**The gate, as read** (`gate.json`):
+
+| gate | condition | measured | verdict |
+|---|---|---|---|
+| G1 | T2-tools: system − BM25 > 0, lower bound of the 95% paired bootstrap > 0 | +0.0698 [0.0455, 0.0952] | holds |
+| G1 | system ≥ MiniLM − 0.03 | 0.8868 against 0.8748 | holds |
+| G1 | system > the model alone; > `potion-cos-4bit` alone | 0.8868 against 0.7926; against 0.7386 | holds |
+| G2 | T2-metatool, T2-clinc, T2-massive: system ≥ max(model, `potion-cos-4bit`) − 0.02 | 0.5175 against 0.5140; 0.8040 against 0.7655; 0.5340 against 0.4555 | holds |
+| G3 | ECE ≤ 0.05 on T2-tools | 0.0162 | holds |
+| G4 | WASM against the Python reference, 200 T2-tools slates: max \|Δp\| ≤ 1e-3, same answer on ≥ 199 | 1.6e-6, 200 / 200 | holds |
+| G4 | WASM SIMD128 median ≤ 60 ms per request, tool list cached | 30,879 µs | holds |
+| G4 | the two files ≤ 4,000,000 bytes | 3,692,224 | holds |
+
+On T2-metatool the system is below the embedding alone (0.5175 against 0.5340), within the 0.02 that G2 allows. G4's 60 ms bar replaces v2's 2 ms and was set after v2 measured 38.9 ms. The header line of the generated `results.md` prints 3,422,864 bytes, §2's count of the table alone; the files are 3,692,224 bytes (amendment 2), which is what G4 read.
+
+**Every system on every fresh file** (accuracy; every metric is in `results.md`):
+
+| system | size | T2-tools | names masked | T2-metatool | T2-clinc | T2-massive |
+|---|---:|---:|---:|---:|---:|---:|
+| **s6-route** | 3,692,224 bytes | **0.8868** | 0.2497 | 0.5175 | 0.8040 | 0.5340 |
+| s6-route, fast mode | same | 0.8836 | 0.2899 | 0.5130 | 0.8020 | 0.5300 |
+| the model alone (s6-route-nano, full depth) | 2,418,912 bytes | 0.7926 | 0.0720 | 0.3190 | 0.4240 | 0.3680 |
+| the model alone, first exit | same | 0.8000 | 0.0762 | 0.3140 | 0.4135 | 0.3690 |
+| `potion-cos-4bit` (the embedding part) | 1,273,312 bytes as shipped | 0.7386 | 0.7280 | 0.5340 | 0.7855 | 0.4755 |
+| potion-cos | 7,559,256 bytes | 0.7386 | 0.7249 | 0.5350 | 0.7800 | 0.4730 |
+| static-ft | ≤ 2,418,912 bytes | 0.7450 | 0.7365 | 0.5265 | 0.7870 | 0.4795 |
+| pair-lr | ≤ 2,418,912 bytes | 0.3153 | 0.4106 | 0.1605 | 0.1550 | 0.0975 |
+| BM25 | no parameters | 0.8169 | 0.8138 | 0.4330 | 0.4990 | 0.3205 |
+| BM25 fused with `potion-cos-4bit` (β = 0.5) | as the embedding | 0.8624 | 0.8423 | 0.5420 | 0.7750 | 0.4515 |
+| all-MiniLM-L6-v2, cosine | 91.6 MB | 0.9048 | 0.9005 | 0.6570 | 0.8790 | 0.5730 |
+| toolrouter (stanley-nv) | 7.66 MB | 0.7735 | 0.7513 | 0.5910 | 0.7470 | 0.5900 |
+| name-prior | | 0.2000 | 0.1238 | 0.2000 | 0.1565 | 0.0000 |
+
+On T2-tools the system's ECE is 0.0162 (MiniLM 0.0254, BM25 0.0779), its *none* F1 0.7732 (MiniLM 0.8010, BM25 0.6368), its NLL 0.3767 (MiniLM 0.3253); accuracy among the most confident 50% / 70% / 90% of the slates 0.996 / 0.977 / 0.929.
+
+**Paired bootstrap on T2-tools** (1,000 resamples of the slates, seed 0, 95%): system minus BM25 +0.0698 [0.0455, 0.0952], minus MiniLM −0.0180 [−0.0381, +0.0032], minus the model +0.0942 [0.0720, 0.1185], minus `potion-cos-4bit` +0.1481 [0.1228, 0.1714], minus BM25 fused with the embedding +0.0243 [0.0085, 0.0413], minus the fast mode +0.0032 [−0.0063, +0.0127].
+
+**Announced goals** (not gates): T2-tools ≥ 0.87, met (0.8868); ≥ 0.95 among answered requests at τ_ask3 with coverage ≥ 0.80, **not met** (0.9433 at coverage 0.8593); the fast mode within 0.015 of full depth, met (0.8836).
+
+**Reported with the result (§6), as plainly as the pass.**
+
+- **The three largest clusters** hold 300 of the 945 T2-tools slates. Without them (645 slates) the system is at 0.8806 against BM25 0.8605: **+0.0202 [−0.0062, +0.0481], an interval that holds zero**. The bootstrap that resamples the 273 clusters instead of the slates gives, on all slates, **+0.0698 [−0.0079, +0.1404] against BM25, also holding zero**. The gated advantage over BM25 leans on the three largest clusters. Under both readings the system stays above the model alone (+0.0791 [0.0527, 0.1054] without the three; +0.0942 [0.0543, 0.1325] by clusters) and the embedding alone (+0.1783 [0.1442, 0.2109]; +0.1481 [0.1168, 0.2016]), and below MiniLM within the interval (−0.0264 [−0.0543, +0.0016]; −0.0180 [−0.0661, +0.0194]).
+- **Names masked** (every tool renamed `tool_<k>`): the system falls to **0.2497**, where BM25 keeps 0.8138, the embedding 0.7280, BM25 with the embedding 0.8423 and MiniLM 0.9005; the model alone is at 0.0720. As §6 announced, the system needs distinctive tool names.
+- **MiniLM remains above** the system on every fresh file.
+- **Outside the tool lists of its training families** the system is close to its embedding part: T2-metatool 0.5175 against 0.5340 for the embedding alone (toolrouter 0.5910); T2-clinc 0.8040 against 0.7855; T2-massive 0.5340 against 0.4755 (toolrouter 0.5900, MiniLM 0.5730).
+- **What the model adds over BM25:** BM25 fused with the same embedding is at 0.8624; the system is +0.0243 [0.0085, 0.0413] above it.
+
+**Latency and size** (`runs/s6-nano3/eval-fresh/latency/`; Apple M5, Node, the first 200 T2-tools slates, `crates/sky-web/bench/route3-node.mjs`; the machine was in use by its owner, with a GPU run of another model active):
+
+| | SIMD128 | relaxed SIMD | fast mode (SIMD128) |
+|---|---:|---:|---:|
+| median per request, tool list cached | **30,879 µs** | 23,536 µs | 10,547 µs |
+| first request (tool list encoded) | 45,279 µs | 34,316 µs | 25,023 µs |
+| of which the embedding part, cached | 21 µs | 20 µs | 16 µs |
+| max \|p_wasm − p_python\|, same answer | 1.6e-6, 200 / 200 | 1.0e-6, 200 / 200 | 9.0e-7, 200 / 200 |
+
+The model part natively (`sky-eval`, the same 200 slates): median 24,648 µs, p95 45,598 µs. The Python baselines in process CPU time per slate: BM25 0.16 ms, `potion-cos-4bit` 0.75 ms, MiniLM 12.25 ms.
+
+**Verdict: passed, every condition; published as s6-route**, "passed on fresh slates; system defined after v2's test was read" (§8). Open: a confirmation on tools of other families than v2's held-out tools, and the names-masked weakness.
+
 ## LFM3-1.7B: System 1 first, System 2 when needed, pre-registered, failed
 
 Pre-registration: [`docs/lfm3-s1s2-prereg.md`](docs/lfm3-s1s2-prereg.md), its criteria in §6 and its amendments 1 to 5 (all before any run; amendment 2 cancels amendment 1, so the run is the original local protocol). No weight of LFM3 is trained: `LiquidAI/LFM3-1.7B-MLX-4bit` at revision `deb2986b`, 4-bit, mlx-vlm 0.7.11, on the Apple M5. Run: `scripts/lfm3-s1s2.sh` (`experiments/lfm3-s1s2/s1s2.py`); log `runs/lfm3-s1s2.log`; tables `runs/lfm3-s1s2/report-calib.md` (calibration) and `runs/lfm3-s1s2/report.md` (test), numbers `runs/lfm3-s1s2/summary.json`.

@@ -32,6 +32,10 @@ tags:
 > this run is not repeated. Numbers:
 > [BENCH.md, section s6-route-nano](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-route-nano-s6-nano-v2-a-tool-router-pre-registered-gate-failed)
 > and [`runs/s6-nano2/eval-test/results.md`](https://github.com/maxgfr/skycmd/blob/main/runs/s6-nano2/eval-test/results.md).
+>
+> **The follow-up:** this file, unchanged, fused with a 4-bit static embedding, passed its own
+> gate on fresh slates as [s6-route](https://huggingface.co/{{USER}}/s6-route) (a system defined
+> after this model's test was read); this model's verdict does not change.
 
 **A 2.4 MB ternary tool router.** 5,587,201 parameters. Given a request and a list of up to 7
 tools, each a name and one sentence, plus the option "none of these tools fits the request", it
@@ -216,7 +220,8 @@ equal-weight geometric mean of this model's probabilities and potion-base-2M's (
 0.8885 on T-tools, and 0.5290 on MetaTool and 0.7935 on CLINC150. These are hypotheses, not
 results. That fusion is pre-registered as s6-nano v3
 ([`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md)),
-to be read on fresh slates; it has not been read yet.
+to be read on fresh slates. It was read once on 16/11/2026 and passed: see
+[s6-route](https://huggingface.co/{{USER}}/s6-route).
 
 ## Files
 
