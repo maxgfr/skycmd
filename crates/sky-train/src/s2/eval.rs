@@ -269,10 +269,17 @@ pub fn export(run: &Path, out: &Path, format: WeightFormat) -> Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(out, &bytes)?;
+    // The auxiliary head of a memory (training only) is not in the file.
+    let aux: usize = m
+        .params
+        .iter()
+        .filter(|(k, _)| k.starts_with("mem.") && k.ends_with(".aux.weight"))
+        .map(|(_, a)| a.size())
+        .sum();
     println!(
         "exported {} ({} parameters, {}) to {} ({:.1} KiB)",
         name,
-        params::count(&m.params),
+        params::count(&m.params) - aux,
         format.name(),
         out.display(),
         bytes.len() as f64 / 1024.0

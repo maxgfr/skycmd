@@ -90,6 +90,9 @@ if [ "$smoke" = 1 ]; then
   nano_a_min=${NANO_A_MIN:-0.3} nano_b_min=${NANO_B_MIN:-0.3}
   c5_steps=12 c5_lo=1 c5_hi=12 c5_val=16
   dev_eps=3 test_eps=3 arena_eps=1
+  # A smoke reads no dev2 seed, no test seed and no arena seed of the experiment: episodes far
+  # from all of them (v2 §5.2, v1 §3).
+  dev_seed=1000 test_seed=3000 arena_seed=9000
   records=$data/numeric weights=numeric=1
   nano_records=$data/numeric nano_weights=numeric=1
 fi
@@ -275,9 +278,8 @@ c5() {
 pilot() {
   local p=$root/pilot a_steps b_steps
   no_other_training
-  if [ "$dry" != 1 ]; then
-    rep ready "$root" "$v2c" ${smoke_arg[@]+"${smoke_arg[@]}"}
-  fi
+  # Refused unless C1 to C3 of v2 (as read) and C5 are on file as passed (v3 §3).
+  rep ready "$root" "$v2c" ${smoke_arg[@]+"${smoke_arg[@]}"}
   x mkdir -p "$p"
   config "$pico_base" "$p/sleep3.json" frame s6-sleep3-pico
   config "$pico_base" "$p/control.json" none s6-pico-control3
@@ -430,9 +432,13 @@ gate() {
   x mkdir -p "$g"
   x nice -n 19 "$B/sky-eval" "$model" --records "$data/decisions/typed_decisions_bench.jsonl,$data/s4/heldout/zs_massive_en.jsonl,$data/s4/heldout/zs_massive_fr.jsonl,$data/decisions/when2call.jsonl,$data/decisions/notam.jsonl" \
     --max 2000 --exit-threshold 1.0 --json "$g/eval-full.json"
-  x nice -n 19 "$B/sky-arena" "$model" --episodes "$arena_eps" --seed "$arena_seed" --game all --exit-threshold 1.0 \
+  # The s6-nano gate's arena (docs/s6-gen-prereg.md §6): 4 games x 30 episodes, the same seeds
+  # (sky-arena's) for the model and s3-pico, tau = 1.
+  local gate_eps=30
+  [ "$smoke" = 1 ] && gate_eps=1
+  x nice -n 19 "$B/sky-arena" "$model" --episodes "$gate_eps" --game all --exit-threshold 1.0 \
     --memory-passes "$chosen" --json "$g/arena-model.json"
-  x nice -n 19 "$B/sky-arena" "$baseline" --episodes "$arena_eps" --seed "$arena_seed" --game all --exit-threshold 1.0 \
+  x nice -n 19 "$B/sky-arena" "$baseline" --episodes "$gate_eps" --game all --exit-threshold 1.0 \
     --json "$g/arena-baseline.json"
   if [ "$dry" != 1 ]; then
     python3 -I - "$g/arena-model.json" "$g/arena-baseline.json" "$g/arena.json" <<'EOF'
@@ -446,10 +452,10 @@ EOF
   local native=false wasm=false
   if [ "$dry" = 1 ]; then
     x nice -n 19 cargo test -q --release -p sky-infer --test golden_s6m
-    x nice -n 19 wasm-pack test --node crates/sky-web --test memory
+    x nice -n 19 wasm-pack test --release --node crates/sky-web --test memory
   else
     nice -n 19 cargo test -q --release -p sky-infer --test golden_s6m && native=true
-    nice -n 19 wasm-pack test --node crates/sky-web --test memory && wasm=true
+    nice -n 19 wasm-pack test --release --node crates/sky-web --test memory && wasm=true
     printf '{"native": %s, "wasm": %s}\n' "$native" "$wasm" >"$g/parity.json"
   fi
   rep gate "$root"
