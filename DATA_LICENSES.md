@@ -148,12 +148,11 @@ Not used from these corpora: the `common_crawl-*` parts of Dolma 3 (overlap with
 
 ## Teacher-generated data (`data/teacher/`, `data/decisions/glm_orders.jsonl`, `data/decisions/paraphrased.jsonl`)
 
-Paraphrases and drone orders were generated for s1 to s3 by a GLM model through a hosted endpoint
-(`sky-data teacher ...`). The Sources page records it as "GLM 5.3"; the exact variant was not
-logged with the files. On the Hub (checked 16/11/2026) `zai-org/GLM-5.3-Flash` and
-`zai-org/GLM-4.6` are MIT and `zai-org/GLM-5.3` carries the licence tag `other`: which of them
-wrote these two files is not established, so they are not claimed as the output of an MIT model.
-No s6 model trains on them: both were absent from `data/decisions` when the s6 data was prepared
+Paraphrases and drone orders were generated for s1 to s3 by GLM-5.3-Flash, the open-weight MIT
+model that is also the teacher of s6, through a hosted endpoint used as a proxy (`sky-data teacher
+...`). The model's name was not logged with the files at the time: it is the owner's statement
+(16/11/2026), with his decision that this data is free to use and to publish. No s6 model trains on
+these two files: both were absent from `data/decisions` when the s6 data was prepared
 (`docs/big-run-report.md` §7, item 9).
 
 | file | how it is used | rows |

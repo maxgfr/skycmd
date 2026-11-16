@@ -76,10 +76,12 @@ Times: "working minutes" are GPU minutes as the pre-registrations count them. Wa
    - **Data:** `data/ear` (31 GB, v1's audio) is still read by s6-ear v2: only after item 1; `runs/s6-ear-nano-swap/` and `runs/s6-nano-lr-swap/` (runs set aside, 88 MB); the tokenized caches (`find runs -type d -name cache -prune`, §0); `target/s3-train/debug`; the throwaway smoke prefixes (`runs/turn-smoke/`, `runs/smoke-sleep3/`).
    - **GPU:** none. **Done means:** `git worktree list` shows only live work, and nothing was deleted without the owner's yes.
 
-**Licences, two decisions waiting for the owner** (audit of 16/11/2026, read-only, by GLM-5.3-Flash; verified on the Hub):
+**Licences, decided by the owner on 16/11/2026** (after a read-only audit by GLM-5.3-Flash, checked on the Hub):
 
-- [ ] `maxgfr/skycmd-text` republishes `data/dolma3_science_pdfs.parquet` (1,517 olmOCR transcriptions of science PDFs, 8 MB). Dolma 3 is ODC-BY, but the PDFs keep their authors' rights (`DATA_LICENSES.md`). Next action, on the owner's yes: remove that file from the Hugging Face dataset and from `scripts/hf-publish-data.py`'s published list (the recipe that rebuilds it from upstream stays), and say so in the card.
-- [ ] The files `glm_orders` and `paraphrased` (s1 to s3 only) were written by a GLM model whose exact variant was not logged (the Sources page says "GLM 5.3"; on the Hub `zai-org/GLM-5.3` is tagged `other`, GLM-5.3-Flash and GLM-4.6 are MIT). Next action if the owner wants every published model to rest on MIT-teacher data only: write both files again with GLM-5.3-Flash through `sky-data teacher`, retrain s3-pico (about 47 minutes) and say on the cards of s1 and s2 that they are kept as history.
+- [x] Every data set stays published, `data/dolma3_science_pdfs.parquet` of `maxgfr/skycmd-text` included. **Done:** the owner's decision; nothing is removed.
+- [x] The files `glm_orders` and `paraphrased` (s1 to s3) were written by GLM-5.3-Flash (open weights, MIT). **Done:** the owner's statement, recorded in `DATA_LICENSES.md` with the fact that the name was not logged with the files; no retraining.
+- [x] Generated data and labels are free to use and to publish, marked as AI-generated. **Done:** `DATA_LICENSES.md`, `AGENTS.md`.
+- [ ] Publish the training records of s6-route-nano as a data set (`skycmd-route`: the slates built from the public tool-calling sets under their own licences, and the teacher's descriptions), which `scripts/hf-publish-data.py` does not cover yet. The real-credential sets of s6-secrets are never published: only their obfuscated or replaced forms could be, and they are not ours to redistribute.
 
 **Open, not scheduled** (no pre-registration, no date): the three limits of s6-route in the notes of 15/11 below (other tool families, names masked, the weight of the three largest clusters), each a new pre-registration if wanted; §10.5; French intent data and the truncation of states (notes of 14/11).
 

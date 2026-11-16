@@ -62,7 +62,7 @@ soft targets, Muon for the encoder matrices and AdamW for the rest with a WSD sc
 temperature calibration and DAgger rounds on the games. Data: typed-decision sets, BoolQ, MNLI,
 ARC, CommonsenseQA and Banking77 converted into typed questions, SimpleStories, TinyStories and
 FineWeb for pretraining, and game states labelled by exact oracles. Part of the training data was
-generated with GLM. Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
+generated with GLM-5.3-Flash (open weights, MIT). Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
 
 ## Files
 

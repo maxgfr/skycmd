@@ -55,7 +55,7 @@ From scratch in Rust (mlx-rs) on Apple Silicon (`scripts/train-doom.sh`): numeri
 pretraining, decision training with deep supervision over the exits, ternary QAT and DAgger rounds
 in the Doom-like game, on top of the s2 decision data (typed-decision sets, classic datasets
 converted into typed questions, game states labelled by exact oracles). Part of the training data
-was generated with GLM. Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
+was generated with GLM-5.3-Flash (open weights, MIT). Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
 
 ## Files
 

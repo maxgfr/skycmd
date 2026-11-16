@@ -62,7 +62,7 @@ From scratch in Rust (mlx-rs) on Apple Silicon: numeric masked-language pretrain
 training with deep supervision over the exits, ternary QAT, Muon and AdamW with a WSD schedule,
 DAgger rounds on the games. Data: typed-decision sets, BoolQ, MNLI, ARC, CommonsenseQA and Banking77
 converted into typed questions, SimpleStories, TinyStories and FineWeb for pretraining, and game
-states labelled by exact oracles. Part of the training data was generated with GLM. Licenses:
+states labelled by exact oracles. Part of the training data was generated with GLM-5.3-Flash (open weights, MIT). Licenses:
 [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
 
 ## Files

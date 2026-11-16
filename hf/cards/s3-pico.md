@@ -66,7 +66,7 @@ training on soft targets with deep supervision over the exits, ternary QAT, loop
 rounds on the games and closed-loop exit calibration. Data: typed-decision sets, BoolQ, MNLI, ARC,
 CommonsenseQA and Banking77 converted into typed questions, SimpleStories, TinyStories and FineWeb
 for pretraining, and game states labelled by exact oracles. Part of the training data was
-generated with GLM. Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
+generated with GLM-5.3-Flash (open weights, MIT). Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
 
 ## Files
 

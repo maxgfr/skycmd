@@ -59,7 +59,7 @@ Not used, despite open models: the Lucie Training Dataset (CC-BY-NC-SA-4.0, non-
 ### Generated data
 - **Game oracles**, written in Rust (`crates/sky-games`). They give exact labels for Flappy Drone, Rescue Run, Obstacle Dodge and the Doom-like game, plus the DAgger rounds, in which the model plays and the oracle labels the states it reaches.
 - **Numeric curriculum** (`sky-train s2-numeric`): comparisons, ordering and closest values, with exact answers, in English and French.
-- **GLM 5.3**: 3,000 civil drone orders and about 2,000 paraphrases of question instructions (used by s1–s3 only). The exact variant was not logged; it is a different job from the open-weight GLM-5.3-Flash (MIT) that s6 uses as a teacher ([`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)).
+- **GLM-5.3-Flash** (open weights, MIT): 3,000 civil drone orders and about 2,000 paraphrases of question instructions (used by s1–s3 only; [`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)).
 
 ### Evaluation only (never trained on)
 - [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (Apache-2.0)
