@@ -397,6 +397,63 @@ enum Cmd {
         #[arg(long, value_delimiter = ',', default_value = "en,fr")]
         mswc_langs: Vec<String>,
     },
+    /// s6-ear v2: the training feature store, one shard of smart-turn-data-v3.2-train at a time,
+    /// with the leakage filter of docs/s6-ear2-prereg.md §3.2 (needs turn-test's hashes). A shard
+    /// stays until scripts/turn-teacher.py has written its targets. Exit status 3: stopped by the
+    /// disk rule (resumable).
+    FetchTurn {
+        /// The data folder (outside the repository).
+        #[arg(long)]
+        out: PathBuf,
+        /// Shards to process (`0,1,2` or `0-82`; default: all).
+        #[arg(long, default_value = "")]
+        shards: String,
+        /// Clips read per shard (0: all; a dry run).
+        #[arg(long, default_value_t = 0)]
+        max_clips: usize,
+        #[arg(long, default_value_t = 4)]
+        threads: usize,
+        /// Free space the build always leaves on the data folder's disk (GB).
+        #[arg(long, default_value_t = 8.0)]
+        min_free_gb: f64,
+        /// Only remove the shards whose teacher targets are written.
+        #[arg(long)]
+        drop: bool,
+    },
+    /// s6-ear v2: features and 16-bit PCM hashes of v1's test WAVs (no label is read or written).
+    TurnTest {
+        /// v1's clip manifest (its test lines name the WAVs).
+        #[arg(long, default_value = "data/ear/clips/smart-turn.jsonl")]
+        clips: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 4)]
+        threads: usize,
+        /// Test clips read (0: all; a dry run).
+        #[arg(long, default_value_t = 0)]
+        max: usize,
+        #[arg(long, default_value_t = 8.0)]
+        min_free_gb: f64,
+    },
+    /// s6-ear v2: the eot-bench cuts of §8.4 (every eot / hold span, the audio cut at its start),
+    /// one parquet file at a time. Exit status 3: stopped by the disk rule.
+    TurnEotbench {
+        #[arg(long)]
+        out: PathBuf,
+        /// Files of the listing to process (`0,3` or `0-14`; default: all).
+        #[arg(long, default_value = "")]
+        files: String,
+        /// Turns read per file (0: all; a dry run).
+        #[arg(long, default_value_t = 0)]
+        max_turns: usize,
+        #[arg(long, default_value_t = 4)]
+        threads: usize,
+        #[arg(long, default_value_t = 8.0)]
+        min_free_gb: f64,
+        /// Only remove the files whose Smart Turn pass is written.
+        #[arg(long)]
+        drop: bool,
+    },
     /// s6-ear: the audio jev from the clip manifests of fetch-audio, one record per question
     /// (<dir>/jev/{turn_end,keyword,keyword_zs[,about]}.jsonl and REPORT.json).
     AudioJev {
@@ -675,6 +732,29 @@ struct RouteJobArgs {
     jobs: usize,
     #[arg(long, default_value_t = 0.2)]
     temperature: f64,
+}
+
+/// `0,3,5-7` → `[0, 3, 5, 6, 7]` (empty: none).
+fn parse_ranges(s: &str) -> Result<Vec<usize>> {
+    let mut out = Vec::new();
+    for part in s.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        match part.split_once('-') {
+            Some((a, b)) => out.extend(a.parse::<usize>()?..=b.parse::<usize>()?),
+            None => out.push(part.parse()?),
+        }
+    }
+    Ok(out)
+}
+
+/// A step stopped by the disk rule exits with status 3 (the scripts stop there and resume later).
+fn disk_rule<T>(r: Result<T>) -> Result<T> {
+    match r {
+        Err(e) if e.downcast_ref::<sky_data::turn::DiskLow>().is_some() => {
+            eprintln!("{e}");
+            std::process::exit(3);
+        }
+        r => r,
+    }
 }
 
 fn main() -> Result<()> {
@@ -1035,6 +1115,66 @@ fn main() -> Result<()> {
                     r.set, r.train, r.val, r.test, r.skipped
                 );
             }
+        }
+        Cmd::FetchTurn {
+            out,
+            shards,
+            max_clips,
+            threads,
+            min_free_gb,
+            drop,
+        } => {
+            use sky_data::turn;
+            let hf = Hf::new(out.join("hf"))?;
+            let o = turn::FetchOptions {
+                guard: turn::Guard::new(&out, min_free_gb),
+                out,
+                shards: parse_ranges(&shards)?,
+                max_clips,
+                threads,
+                drop_only: drop,
+            };
+            let v = disk_rule(turn::fetch_turn(&hf, &o))?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::TurnTest {
+            clips,
+            out,
+            threads,
+            max,
+            min_free_gb,
+        } => {
+            use sky_data::turn;
+            let o = turn::TestOptions {
+                guard: turn::Guard::new(&out, min_free_gb),
+                clips,
+                out,
+                threads,
+                max,
+            };
+            let v = disk_rule(turn::turn_test(&o))?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::TurnEotbench {
+            out,
+            files,
+            max_turns,
+            threads,
+            min_free_gb,
+            drop,
+        } => {
+            use sky_data::turn;
+            let hf = Hf::new(out.join("hf"))?;
+            let o = turn::EotOptions {
+                guard: turn::Guard::new(&out, min_free_gb),
+                out,
+                files: parse_ranges(&files)?,
+                max_turns,
+                threads,
+                drop_only: drop,
+            };
+            let v = disk_rule(turn::turn_eotbench(&hf, &o))?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
         }
         Cmd::AudioJev { dir, about } => {
             let r = sky_data::audio::write_jev(&dir, cli.seed, about.as_deref())?;

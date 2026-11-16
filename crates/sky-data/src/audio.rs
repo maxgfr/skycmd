@@ -191,7 +191,7 @@ pub fn write_clip(
 // ----------------------------------------------------------------------------- parquet audio
 
 /// The `bytes` of an HF `Audio` struct column, or a plain binary column.
-fn audio_bytes(row: &Row, col: &str) -> Option<Vec<u8>> {
+pub(crate) fn audio_bytes(row: &Row, col: &str) -> Option<Vec<u8>> {
     for (name, f) in row.get_column_iter() {
         if name != col {
             continue;
@@ -210,7 +210,7 @@ fn audio_bytes(row: &Row, col: &str) -> Option<Vec<u8>> {
     None
 }
 
-fn field_str(row: &Row, col: &str) -> Option<String> {
+pub(crate) fn field_str(row: &Row, col: &str) -> Option<String> {
     row.get_column_iter()
         .find_map(|(n, f)| match (n.as_str() == col, f) {
             (true, Field::Str(s)) => Some(s.clone()),
@@ -218,7 +218,7 @@ fn field_str(row: &Row, col: &str) -> Option<String> {
         })
 }
 
-fn field_bool(row: &Row, col: &str) -> Option<bool> {
+pub(crate) fn field_bool(row: &Row, col: &str) -> Option<bool> {
     row.get_column_iter()
         .find_map(|(n, f)| match (n.as_str() == col, f) {
             (true, Field::Bool(b)) => Some(*b),

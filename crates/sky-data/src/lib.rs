@@ -27,6 +27,7 @@ pub mod stats;
 pub mod teacher;
 pub mod text;
 pub mod tok;
+pub mod turn;
 pub mod typed;
 
 pub use record::{DecisionRecord, MlmRecord, QType, Question};
