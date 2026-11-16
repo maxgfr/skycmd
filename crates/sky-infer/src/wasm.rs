@@ -169,6 +169,105 @@ impl SkyEngine {
     }
 }
 
+/// s6-ear v2 (docs/s6-ear2-prereg.md §4.5): an end-of-turn detector over a stream of 16 kHz
+/// samples. `push` computes each 10 ms hop once as audio arrives (the last 4 s are kept), so a
+/// decision (`probEnd`, run when the VAD reports a pause) costs the model's forward pass only.
+///
+/// ```js
+/// const det = new TurnDetector(new Uint8Array(ggufBytes));
+/// det.push(chunk);                 // Float32Array, any length, 16 kHz mono in [-1, 1]
+/// const p = det.probEnd();         // calibrated probability that the turn is finished
+/// const end = p >= det.tau50();    // or det.tau85() for 85% END recall on validation
+/// const q = det.probEndPcm(clip);  // one decision on a whole clip (its last 4 s), stream untouched
+/// ```
+#[wasm_bindgen]
+pub struct TurnDetector {
+    model: crate::turn::TurnModel,
+    stream: crate::audio::FeatureStream,
+    fe: crate::audio::TurnFrontEnd,
+    params: usize,
+    bytes: usize,
+}
+
+#[wasm_bindgen]
+impl TurnDetector {
+    /// Load an `skycmd-turn` GGUF file (ternary matrices computed in f32 panels).
+    #[wasm_bindgen(constructor)]
+    pub fn new(gguf_bytes: &[u8]) -> Result<TurnDetector, JsError> {
+        let mut model = crate::turn::TurnModel::from_bytes(gguf_bytes).map_err(js_err)?;
+        model.prepare_compute(crate::TernaryCompute::Auto);
+        let params = model.n_params();
+        let stream = crate::audio::FeatureStream::new(model.cfg.window_hops);
+        Ok(TurnDetector {
+            model,
+            stream,
+            fe: crate::audio::TurnFrontEnd::new(),
+            params,
+            bytes: gguf_bytes.len(),
+        })
+    }
+
+    /// Appends 16 kHz samples to the stream.
+    pub fn push(&mut self, pcm: &[f32]) {
+        self.stream.push(pcm);
+    }
+
+    /// Forgets the stream (a new turn).
+    pub fn reset(&mut self) {
+        self.stream.reset();
+    }
+
+    /// Hops kept by the stream (at most the window's 400).
+    #[wasm_bindgen(js_name = hopCount)]
+    pub fn hop_count(&self) -> usize {
+        self.stream.len()
+    }
+
+    /// The calibrated probability that the turn is finished, from the stream's last 4 s.
+    #[wasm_bindgen(js_name = probEnd)]
+    pub fn prob_end(&self) -> Result<f32, JsError> {
+        let hops = self.stream.hops();
+        let out = self
+            .model
+            .decide_hops(&hops, self.stream.len())
+            .map_err(js_err)?;
+        Ok(out.prob)
+    }
+
+    /// The same decision on a whole clip (its last 4 s), without touching the stream.
+    #[wasm_bindgen(js_name = probEndPcm)]
+    pub fn prob_end_pcm(&mut self, pcm: &[f32]) -> Result<f32, JsError> {
+        let out = self.model.decide_pcm(&mut self.fe, pcm).map_err(js_err)?;
+        Ok(out.prob)
+    }
+
+    /// τ₀.₅ (0.5 on the calibrated probability).
+    pub fn tau50(&self) -> f32 {
+        self.model.cfg.tau50
+    }
+
+    /// τ₈₅: the highest validation threshold with an END recall of at least 0.85.
+    pub fn tau85(&self) -> f32 {
+        self.model.cfg.tau85
+    }
+
+    /// `{name, params, file_bytes, window_hops, hops_per_position, temperature, tau50, tau85}`.
+    pub fn info(&self) -> String {
+        let c = &self.model.cfg;
+        serde_json::json!({
+            "name": c.name,
+            "params": self.params,
+            "file_bytes": self.bytes,
+            "window_hops": c.window_hops,
+            "hops_per_position": c.hops_per_position,
+            "temperature": c.temperature,
+            "tau50": c.tau50,
+            "tau85": c.tau85,
+        })
+        .to_string()
+    }
+}
+
 /// Product kernels on one matrix shape, for `bench/kernels-node.mjs` (feature `wasm-bench`):
 /// runs `iters` products of `rows` x `k` activations by an `n` x `k` ternary matrix with the
 /// kernel `kind` (`f32` panels, `int8` dot products, `lut1` / `lut2` lookup tables with one / two

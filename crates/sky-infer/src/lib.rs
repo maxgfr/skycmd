@@ -22,6 +22,7 @@ pub mod safetensors;
 pub mod secret_cand;
 pub mod ternary;
 pub mod tokenizer;
+pub mod turn;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 

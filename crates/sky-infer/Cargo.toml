@@ -58,5 +58,10 @@ path = "src/bin/sky-cast.rs"
 name = "sky-cast-eval"
 path = "src/bin/sky-cast-eval.rs"
 
+[[bin]]
+name = "sky-turn"
+path = "src/bin/sky-turn.rs"
+required-features = ["json"]
+
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O3", "--enable-simd", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals"]
