@@ -42,6 +42,12 @@ pub const STOPWORDS: [&str; 33] = [
 /// The prefix of the line that carries the scores.
 pub const LINE_PREFIX: &str = "BM25: ";
 
+/// The question of every routing slate (`sky_data::route::INSTRUCTION`).
+pub const INSTRUCTION: &str = "Which tool should handle the user's request?";
+
+/// *None*, the last option of every routing slate (`sky_data::route::NONE_OPTION`).
+pub const NONE_OPTION: &str = "none of these tools fits the request";
+
 fn word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }

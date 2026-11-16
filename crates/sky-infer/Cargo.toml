@@ -59,6 +59,11 @@ name = "sky-cast-eval"
 path = "src/bin/sky-cast-eval.rs"
 
 [[bin]]
+name = "sky-route"
+path = "src/bin/sky-route.rs"
+required-features = ["json"]
+
+[[bin]]
 name = "sky-turn"
 path = "src/bin/sky-turn.rs"
 required-features = ["json"]

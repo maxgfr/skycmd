@@ -7,6 +7,7 @@ pub mod api;
 pub mod audio;
 pub mod cast;
 pub mod convert;
+pub mod embed;
 pub mod engine;
 pub mod iso;
 pub mod json;
