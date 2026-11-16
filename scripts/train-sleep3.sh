@@ -458,7 +458,11 @@ EOF
     nice -n 19 wasm-pack test --release --node crates/sky-web --test memory && wasm=true
     printf '{"native": %s, "wasm": %s}\n' "$native" "$wasm" >"$g/parity.json"
   fi
-  rep gate "$root"
+  if [ "$smoke" = 1 ]; then
+    rep gate "$root" || echo "== SMOKE: the gate does not hold at these sizes, as expected"
+  else
+    rep gate "$root"
+  fi
 }
 
 [ "$dry" = 1 ] || [ -n "${SKY_TRAIN:-}" ] || nice -n 19 cargo build -q --release -p sky-train
