@@ -17,6 +17,11 @@ target/hf-space-app/ (the demo app), and target/verify-assets/ for an entry with
 (scripts/build-verify-assets.sh: the engine/ folder of the model repo). Everything is assembled under target/hf/<model>/{model,space}
 before upload; with --dry-run nothing is uploaded.
 
+A manifest entry with `files` instead of `file` (s6-route: the s6-route-nano file and the
+embedding file, fused by `ToolRouter`) puts every one of its files in the model repo and in the
+Space; its Space is of kind `router`. An entry of hf/spaces.json may carry `readme_notice`, a
+paragraph the Space's README prints first (s6-route: its disclosure).
+
 A model whose manifest entry has `"gate": "failed"` failed its pre-registered gate and is
 published as a result (owner's decision of 15/11/2026): its card says so in its first lines, and
 its Space opens with the same notice (space.json `gate`, `gate_note`, `gate_url`).
@@ -35,7 +40,7 @@ ENGINE = ROOT / "target" / "verify-assets"
 
 def space_readme(user: str, s: dict, entry: dict) -> str:
     m = s["model"]
-    failed = ""
+    failed = f"{s['readme_notice']}\n\n" if s.get("readme_notice") else ""
     if entry.get("gate") == "failed":
         failed = (f"**Failed its pre-registered gate: published as a result, not for use.** "
                   f"{entry.get('gate_note', '')}. [The result]({entry.get('gate_url', '')}).\n\n")
@@ -58,12 +63,17 @@ models:
 {failed}{s["tagline"]}
 
 Everything runs in your browser: a Rust inference engine compiled to WebAssembly (relaxed SIMD
-where the browser supports it, else SIMD128) reads the GGUF file shipped with this Space. Nothing
+where the browser supports it, else SIMD128) reads the GGUF {"files" if len(model_files(entry)) > 1 else "file"} shipped with this Space. Nothing
 is sent to a server.
 
 - Model card: [{user}/{m}](https://huggingface.co/{user}/{m})
 - Code: [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd)
 """
+
+
+def model_files(entry: dict) -> list[str]:
+    """The GGUF files of a manifest entry: `file`, or every file of `files` (a two-file router)."""
+    return [f["file"] for f in entry["files"]] if entry.get("files") else [entry["file"]]
 
 
 def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path | None]:
@@ -79,7 +89,11 @@ def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path | None]:
     if entry.get("gate") == "failed" and "Failed its pre-registered gate" not in card.split(f"\n# {m}\n", 1)[-1][:300]:
         raise SystemExit(f"hf/cards/{m}.md: a failed model's card must open with its failure notice")
     (model_dir / "README.md").write_text(card)
-    shutil.copy2(PUBLIC / "models" / f"{m}.gguf", model_dir / f"{m}.gguf")
+    if entry.get("files"):
+        for f in model_files(entry):
+            shutil.copy2(PUBLIC / "models" / f, model_dir / f)
+    else:
+        shutil.copy2(PUBLIC / "models" / f"{m}.gguf", model_dir / f"{m}.gguf")
     if s.get("engine"):
         # the engine assets of scripts/build-verify-assets.sh, under engine/
         if not (ENGINE / "MANIFEST.json").exists():
@@ -94,7 +108,8 @@ def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path | None]:
     names = [m] + s.get("extra_models", [])
     entries = [e for e in manifest if e["name"] in names]
     for e in entries:
-        shutil.copy2(PUBLIC / "models" / e["file"], space_dir / "models" / e["file"])
+        for f in model_files(e):
+            shutil.copy2(PUBLIC / "models" / f, space_dir / "models" / f)
     (space_dir / "models" / "manifest.json").write_text(json.dumps(entries, indent=2) + "\n")
     if s["kind"] == "game":
         shutil.copytree(PUBLIC / "doom", space_dir / "doom")

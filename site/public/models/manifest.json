@@ -130,6 +130,36 @@
     "file": "s6-route-nano.gguf"
   },
   {
+    "name": "s6-route",
+    "task": "router",
+    "full_depth": true,
+    "gate": "passed",
+    "gate_note": "Passed on fresh slates; the system was defined after v2's test was read, from an exploratory reading of v2's test dumps, with its parameters from validation. 0.8868 on 945 fresh requests about tools never seen in training, against 0.8169 for BM25 (+0.0698 [0.0455, 0.0952]) and 0.9048 for all-MiniLM-L6-v2 (91.6 MB); 30.9 ms per request in WASM (bar 60 ms, set after v2 was measured at 38.9 ms). These requests are about v2's held-out test tools. Without the three largest clusters the advantage over BM25 is +0.0202 [-0.0062, +0.0481], and with every tool renamed it falls to 0.2497: it needs distinctive tool names",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-route-s6-nano-v3-the-v2-router-fused-with-a-static-embedding-pre-registered-gate-passed",
+    "bytes": 3692224,
+    "files": [
+      {
+        "role": "model",
+        "file": "s6-route-nano.gguf",
+        "arch": "skycmd-s2",
+        "weight_format": "ternary",
+        "params": 5587201,
+        "bytes": 2418912,
+        "sha256": "a124dfe86f76e9547db98edc03351f66908617ae2be3f5a4f423a876b7956c82"
+      },
+      {
+        "role": "embedding",
+        "file": "s6-route-embed.gguf",
+        "arch": "skycmd-embed",
+        "weight_format": "4-bit",
+        "bytes": 1273312,
+        "sha256": "c53fb76dc8a56a696d859e80b7383d7e9db168e54c024525f220851fbacda67a",
+        "license": "MIT",
+        "source": "minishlab/potion-base-2M@389b9f64"
+      }
+    ]
+  },
+  {
     "name": "s1-pico",
     "arch": "modern-bert",
     "weight_format": "f16",

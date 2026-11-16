@@ -63,7 +63,10 @@ export interface ModelEntry {
    * `general`: both, the games and free-text questions (s6-nano, s6-micro, s6-micro-v1). `secrets`: the four
    * questions of the API-key jev only (s6-secrets-pico, its own demo). `secrets-verify`: one rule
    * candidate judged in its context (s6-secrets-verify-pico; no demo). `route`: a tool picked
-   * from a run-time list, with a BM25 line in the state (s6-route-nano; no demo). `ear`: an audio state
+   * from a run-time list, with a BM25 line in the state (s6-route-nano; no demo). `router`: two
+   * files fused by `ToolRouter` (s6-route: the s6-route-nano file and a static embedding, the
+   * Router page); such an entry has `files` and no `file`, so `loadManifest` leaves it out and only
+   * `loadRouters` lists it. `ear`: an audio state
    * (s6-ear, the Listen page). `forecast`: a forecaster, not a decision engine (s6-cast, the
    * Forecast page; `forecast.json` lists it there). Absent: the games only. */
   task?: string
@@ -254,7 +257,8 @@ export function loadWasm(): Promise<SkyWeb> {
 
 let manifestPromise: Promise<ModelEntry[]> | null = null
 
-/** The models listed in public/models/manifest.json (empty when absent). */
+/** The single-file models listed in public/models/manifest.json (empty when absent). A two-file
+ * router entry (`files`, no `file`) is left out: see `loadRouters`. */
 export function loadManifest(): Promise<ModelEntry[]> {
   if (!manifestPromise) {
     manifestPromise = fetch(withBase('/models/manifest.json'))
@@ -263,6 +267,90 @@ export function loadManifest(): Promise<ModelEntry[]> {
       .catch(() => [])
   }
   return manifestPromise
+}
+
+/** One file of a two-file entry (`task: router`). */
+export interface RouterFile {
+  /** `model` (the s2 router file) or `embedding` (the `skycmd-embed` file). */
+  role: 'model' | 'embedding'
+  file: string
+  bytes: number
+  sha256?: string
+}
+
+/** A manifest entry run by `ToolRouter` (s6-route): no `file`, two `files`. */
+export interface RouterEntry {
+  name: string
+  task: 'router'
+  bytes: number
+  files: RouterFile[]
+  full_depth?: boolean
+  gate?: 'passed' | 'failed'
+  gate_note?: string
+  gate_url?: string
+}
+
+/** The fused tool router of sky-web (`crates/sky-web/src/router.rs`). */
+export interface WasmToolRouter {
+  /** `tools_json`: rendered `name: description` options, without *none*. Returns the JSON answer
+   * `{probs, index, answer, none, ask, decision, top, tau_ask3, model, embedding, fast, exit,
+   * layers_used, static_hit, tools_hit, micros, micros_model, micros_embedding}`. */
+  route(request: string, toolsJson: string, fast: boolean): string
+  tauAsk(): number
+  info(): string
+  free(): void
+}
+
+let routersPromise: Promise<RouterEntry[]> | null = null
+
+/** The two-file router entries of public/models/manifest.json (`task: router`, a `model` and an
+ * `embedding` file). The pickers of the other pages read `loadManifest`, which skips them. */
+export function loadRouters(): Promise<RouterEntry[]> {
+  if (!routersPromise) {
+    routersPromise = fetch(withBase('/models/manifest.json'))
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) =>
+        Array.isArray(list)
+          ? (list as RouterEntry[]).filter(
+              (m) =>
+                m &&
+                m.name &&
+                m.task === 'router' &&
+                Array.isArray(m.files) &&
+                m.files.some((f) => f.role === 'model') &&
+                m.files.some((f) => f.role === 'embedding'),
+            )
+          : [],
+      )
+      .catch(() => [])
+  }
+  return routersPromise
+}
+
+async function fetchBytes(file: string): Promise<Uint8Array> {
+  const res = await fetch(withBase(`/models/${file}`))
+  if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`)
+  return new Uint8Array(await res.arrayBuffer())
+}
+
+const routers = new Map<string, Promise<WasmToolRouter>>()
+
+/** Downloads the two files of a router entry and loads them in one `ToolRouter` (cached). */
+export function loadRouter(entry: RouterEntry): Promise<WasmToolRouter> {
+  let p = routers.get(entry.name)
+  if (!p) {
+    p = (async () => {
+      const mod = (await loadWasm()) as unknown as {
+        ToolRouter: new (model: Uint8Array, embedding: Uint8Array) => WasmToolRouter
+      }
+      const of = (role: RouterFile['role']) => entry.files.find((f) => f.role === role)!.file
+      const [model, embedding] = await Promise.all([fetchBytes(of('model')), fetchBytes(of('embedding'))])
+      return new mod.ToolRouter(model, embedding)
+    })()
+    p.catch(() => routers.delete(entry.name))
+    routers.set(entry.name, p)
+  }
+  return p
 }
 
 const engines = new Map<string, Promise<WasmEngine>>()
