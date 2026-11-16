@@ -1,0 +1,27 @@
+{
+  "choice": {
+    "n": 654359,
+    "tau": 0.5099999904632568,
+    "risk": 0.004207170681537199,
+    "bound": 0.0042086924628644785,
+    "mean_layers": 2.365139013905211
+  },
+  "score": {
+    "n": 0,
+    "tau": 1.0,
+    "risk": 0.0,
+    "bound": 1.0,
+    "mean_layers": 0.0
+  },
+  "noul": {
+    "n": 10249,
+    "tau": 0.5,
+    "risk": 0.0,
+    "bound": 0.0000975609756097561,
+    "mean_layers": 2.0
+  },
+  "alpha": 0.02,
+  "episodes": 30,
+  "seed": 7,
+  "games": "flappy,rescue,dodge,doom"
+}

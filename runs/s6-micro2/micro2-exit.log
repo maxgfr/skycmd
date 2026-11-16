@@ -1,0 +1,13 @@
+== exit thresholds (CRC, alpha 0.02) for runs/s6-micro2/models/s6-micro/skycmd-s6-micro-g3-ternary.gguf
+choice n 654359  tau 0.51  disagreement 0.0042  bound 0.0042 (alpha 0.02)  mean layers 2.37 of 6
+score  n      0  tau 1.00  disagreement 0.0000  bound 1.0000 (alpha 0.02)  mean layers 0.00 of 6
+noul   n  10249  tau 0.50  disagreement 0.0000  bound 0.0001 (alpha 0.02)  mean layers 2.00 of 6
+write them: gguf-set runs/s6-micro2/models/s6-micro/skycmd-s6-micro-g3-ternary.gguf runs/s6-micro2/models/s6-micro/skycmd-s6-micro-g3-ternary-crc.gguf skycmd-s2.exit_threshold.choice=0.51 skycmd-s2.exit_threshold.noul=0.5
+then check the play at these thresholds: the guarantee holds for full-depth play, and early exits change the states visited
+runs/s6-micro2/models/s6-micro/skycmd-s6-micro-g3-ternary.gguf -> runs/s6-micro2/models/s6-micro/skycmd-s6-micro-g3-ternary-crc.gguf: 2 keys updated
+flappy  model: score  200.00 rescue 0.00 completion 0.00 crashes    0 vetoes    0 | oracle score  200.00 | 639000 decisions, p50 622 µs, p95 1878 µs, mean layers 2.39, exits [572829, 7209, 58962]
+rescue  model: score    3.00 rescue 1.00 completion 1.00 crashes    0 vetoes    0 | oracle score    3.00 | 1141 decisions, p50 1806 µs, p95 5658 µs, mean layers 2.67, exits [949, 2, 190]
+dodge   model: score    9.47 rescue 0.00 completion 0.87 crashes    0 vetoes   21 | oracle score    9.47 | 20476 decisions, p50 129 µs, p95 1389 µs, mean layers 2.02, exits [20357, 41, 78]
+doom    model: score    3.27 rescue 0.00 completion 1.00 crashes    0 vetoes    2 | oracle score    3.27 | 3969 decisions, p50 1259 µs, p95 1898 µs, mean layers 2.06, exits [3907, 13, 49] kills 0.77 (oracle 0.77) completion oracle 1.00 mean ticks 526 (oracle 523)
+CRC thresholds rejected: dodge crashes 0 vetoes 21 (full depth 0 / 20)
+keep full depth, or run scripts/calibrate-exit.sh (closed loop)

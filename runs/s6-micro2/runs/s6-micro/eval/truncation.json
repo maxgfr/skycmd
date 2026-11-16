@@ -1,0 +1,5750 @@
+{
+  "allocine": {
+    "n": 500,
+    "state": 0.158,
+    "head": 0.0,
+    "any": 0.158
+  },
+  "arc": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.004,
+    "any": 0.004
+  },
+  "assistant_decisions": {
+    "n": 500,
+    "state": 0.014,
+    "head": 0.0,
+    "any": 0.014
+  },
+  "banking77": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "boolq": {
+    "n": 500,
+    "state": 0.052,
+    "head": 0.0,
+    "any": 0.052
+  },
+  "calibrated:allenai/scicite": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "calibrated:clinc/clinc_oos": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "calibrated:google-research-datasets/go_emotions": {
+    "n": 500,
+    "state": 0.002,
+    "head": 0.0,
+    "any": 0.002
+  },
+  "calibrated:mteb/amazon_massive_intent": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "calibrated:mteb/amazon_polarity": {
+    "n": 500,
+    "state": 0.004,
+    "head": 0.0,
+    "any": 0.004
+  },
+  "calibrated:mteb/banking77": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "commonsense_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "game:dodge": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "game:doom": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "game:flappy": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "game:rescue": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:allocine": {
+    "n": 500,
+    "state": 0.152,
+    "head": 0.0,
+    "any": 0.152
+  },
+  "glm:arc": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.006,
+    "any": 0.006
+  },
+  "glm:assistant_decisions": {
+    "n": 500,
+    "state": 0.012,
+    "head": 0.0,
+    "any": 0.012
+  },
+  "glm:boolq": {
+    "n": 500,
+    "state": 0.05,
+    "head": 0.0,
+    "any": 0.05
+  },
+  "glm:calibrated:allenai/scicite": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:calibrated:clinc/clinc_oos": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:calibrated:google-research-datasets/go_emotions": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:calibrated:mteb/amazon_massive_intent": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:calibrated:mteb/amazon_polarity": {
+    "n": 500,
+    "state": 0.004,
+    "head": 0.0,
+    "any": 0.004
+  },
+  "glm:calibrated:mteb/banking77": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:commonsense_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:hellaswag": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.706,
+    "any": 0.706
+  },
+  "glm:helmo_synth": {
+    "n": 500,
+    "state": 0.05,
+    "head": 0.274,
+    "any": 0.306
+  },
+  "glm:helpsteer2": {
+    "n": 500,
+    "state": 0.676,
+    "head": 0.0,
+    "any": 0.676
+  },
+  "glm:mnli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:neuro_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:open_jev:browser-control-v1": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.6,
+    "any": 1.0
+  },
+  "glm:open_jev:customer-control-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.438,
+    "any": 0.438
+  },
+  "glm:open_jev:drone-control-v1": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:open_jev:painting-geometry-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:open_jev:reasoning-control-v1": {
+    "n": 500,
+    "state": 0.034,
+    "head": 0.0,
+    "any": 0.034
+  },
+  "glm:open_jev:snake-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:open_jev:tic_tac_toe-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:open_jev:tile_platformer-v1": {
+    "n": 197,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:open_jev:trex_runner-v1": {
+    "n": 29,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:open_jev:vizdoom-basic-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.478,
+    "any": 0.478
+  },
+  "glm:open_jev:workflow-controls-v1/agent_trace_observability": {
+    "n": 500,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:open_jev:workflow-controls-v1/customer_service": {
+    "n": 500,
+    "state": 0.33,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:open_jev:workflow-controls-v1/invoice_processing": {
+    "n": 500,
+    "state": 0.208,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:open_jev:workflow-controls-v1/security_incidents": {
+    "n": 500,
+    "state": 0.552,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:pawsx_fr": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:pngwn_typed": {
+    "n": 500,
+    "state": 0.008,
+    "head": 0.11,
+    "any": 0.118
+  },
+  "glm:procedural:arithmetic": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:procedural:entity_belief_tracking": {
+    "n": 500,
+    "state": 0.594,
+    "head": 0.0,
+    "any": 0.594
+  },
+  "glm:procedural:event_state_reconstruction": {
+    "n": 500,
+    "state": 0.128,
+    "head": 0.0,
+    "any": 0.128
+  },
+  "glm:procedural:event_triggered_execution": {
+    "n": 500,
+    "state": 0.734,
+    "head": 0.0,
+    "any": 0.734
+  },
+  "glm:procedural:evidence_sufficiency": {
+    "n": 500,
+    "state": 0.592,
+    "head": 0.0,
+    "any": 0.592
+  },
+  "glm:procedural:goal_directed_planning": {
+    "n": 500,
+    "state": 0.33,
+    "head": 0.0,
+    "any": 0.33
+  },
+  "glm:procedural:graph_navigation": {
+    "n": 500,
+    "state": 0.754,
+    "head": 0.0,
+    "any": 0.754
+  },
+  "glm:procedural:instruction_execution": {
+    "n": 500,
+    "state": 0.784,
+    "head": 0.0,
+    "any": 0.784
+  },
+  "glm:procedural:multi_view_adjudication": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:procedural:needle_retrieval": {
+    "n": 500,
+    "state": 0.464,
+    "head": 0.0,
+    "any": 0.464
+  },
+  "glm:procedural:partial_observation_calibration": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:procedural:policy_applicability": {
+    "n": 500,
+    "state": 0.552,
+    "head": 0.0,
+    "any": 0.552
+  },
+  "glm:procedural:policy_under_uncertainty": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:procedural:record_aggregation": {
+    "n": 500,
+    "state": 0.54,
+    "head": 0.0,
+    "any": 0.54
+  },
+  "glm:procedural:record_eligibility": {
+    "n": 500,
+    "state": 0.764,
+    "head": 0.0,
+    "any": 0.764
+  },
+  "glm:procedural:state_perturbation": {
+    "n": 500,
+    "state": 0.534,
+    "head": 0.0,
+    "any": 0.534
+  },
+  "glm:procedural:table_lookup": {
+    "n": 500,
+    "state": 0.252,
+    "head": 0.0,
+    "any": 0.252
+  },
+  "glm:procedural:taxonomy_routing": {
+    "n": 500,
+    "state": 0.334,
+    "head": 0.0,
+    "any": 0.334
+  },
+  "glm:qasc": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:refusal": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:snli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:swarm_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:tasksource:CONDAQA": {
+    "n": 278,
+    "state": 0.20863309352517986,
+    "head": 0.0,
+    "any": 0.20863309352517986
+  },
+  "glm:tasksource:CREAK": {
+    "n": 388,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:FLUTE": {
+    "n": 422,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:FOL-nli": {
+    "n": 314,
+    "state": 0.5127388535031847,
+    "head": 0.0,
+    "any": 0.5127388535031847
+  },
+  "glm:tasksource:HatemojiBuild": {
+    "n": 363,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:HelpSteer/coherence": {
+    "n": 210,
+    "state": 0.7380952380952381,
+    "head": 0.0,
+    "any": 0.7380952380952381
+  },
+  "glm:tasksource:HelpSteer/complexity": {
+    "n": 183,
+    "state": 0.7704918032786885,
+    "head": 0.0,
+    "any": 0.7704918032786885
+  },
+  "glm:tasksource:HelpSteer/correctness": {
+    "n": 171,
+    "state": 0.7192982456140351,
+    "head": 0.0,
+    "any": 0.7192982456140351
+  },
+  "glm:tasksource:HelpSteer/helpfulness": {
+    "n": 179,
+    "state": 0.7094972067039106,
+    "head": 0.0,
+    "any": 0.7094972067039106
+  },
+  "glm:tasksource:HelpSteer/verbosity": {
+    "n": 124,
+    "state": 0.6612903225806451,
+    "head": 0.0,
+    "any": 0.6612903225806451
+  },
+  "glm:tasksource:HelpSteer3/edit_quality": {
+    "n": 284,
+    "state": 0.8591549295774648,
+    "head": 0.9823943661971831,
+    "any": 0.9823943661971831
+  },
+  "glm:tasksource:HelpSteer3/feedback": {
+    "n": 168,
+    "state": 0.875,
+    "head": 0.0,
+    "any": 0.875
+  },
+  "glm:tasksource:HelpSteer3/preference": {
+    "n": 382,
+    "state": 0.5523560209424084,
+    "head": 0.9947643979057592,
+    "any": 0.9947643979057592
+  },
+  "glm:tasksource:HelpSteer3/preference_strength": {
+    "n": 100,
+    "state": 0.9,
+    "head": 0.02,
+    "any": 0.9
+  },
+  "glm:tasksource:HelpSteer3/principle": {
+    "n": 339,
+    "state": 0.8849557522123894,
+    "head": 0.0,
+    "any": 0.8849557522123894
+  },
+  "glm:tasksource:I2D2": {
+    "n": 341,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:MSciNLI": {
+    "n": 249,
+    "state": 0.0321285140562249,
+    "head": 0.0,
+    "any": 0.0321285140562249
+  },
+  "glm:tasksource:MedQA-USMLE-4-options-hf": {
+    "n": 442,
+    "state": 0.083710407239819,
+    "head": 0.02262443438914027,
+    "any": 0.10407239819004525
+  },
+  "glm:tasksource:PARADISE": {
+    "n": 405,
+    "state": 0.0,
+    "head": 0.9160493827160494,
+    "any": 0.9160493827160494
+  },
+  "glm:tasksource:PARARULE-Plus": {
+    "n": 373,
+    "state": 0.225201072386059,
+    "head": 0.0,
+    "any": 0.225201072386059
+  },
+  "glm:tasksource:Prompt-injection-dataset/full": {
+    "n": 471,
+    "state": 0.04246284501061571,
+    "head": 0.0,
+    "any": 0.04246284501061571
+  },
+  "glm:tasksource:PromptShield": {
+    "n": 457,
+    "state": 0.19037199124726478,
+    "head": 0.0,
+    "any": 0.19037199124726478
+  },
+  "glm:tasksource:SDOH-NLI": {
+    "n": 448,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:SpaceNLI": {
+    "n": 386,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:Touche23-ValueEval": {
+    "n": 396,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:TroFi": {
+    "n": 447,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:TuringBench": {
+    "n": 43,
+    "state": 0.6511627906976745,
+    "head": 0.6046511627906976,
+    "any": 0.7441860465116279
+  },
+  "glm:tasksource:UNLI": {
+    "n": 388,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:UltraFeedback-paired": {
+    "n": 355,
+    "state": 0.2112676056338028,
+    "head": 0.9295774647887324,
+    "any": 0.952112676056338
+  },
+  "glm:tasksource:WANLI": {
+    "n": 343,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:acceptability-prediction/binary_votes": {
+    "n": 340,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:acceptability-prediction/rating_votes": {
+    "n": 293,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:acord": {
+    "n": 115,
+    "state": 0.2608695652173913,
+    "head": 0.0,
+    "any": 0.2608695652173913
+  },
+  "glm:tasksource:agent_action_safety": {
+    "n": 485,
+    "state": 0.09896907216494845,
+    "head": 0.0,
+    "any": 0.09896907216494845
+  },
+  "glm:tasksource:amazon_counterfactual/en": {
+    "n": 370,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:amazon_polarity/amazon_polarity": {
+    "n": 473,
+    "state": 0.03805496828752643,
+    "head": 0.0,
+    "any": 0.03805496828752643
+  },
+  "glm:tasksource:arct": {
+    "n": 229,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:args_me": {
+    "n": 288,
+    "state": 0.4548611111111111,
+    "head": 0.0,
+    "any": 0.4548611111111111
+  },
+  "glm:tasksource:autotnli": {
+    "n": 32,
+    "state": 0.3125,
+    "head": 0.0,
+    "any": 0.3125
+  },
+  "glm:tasksource:babi_nli/basic-coreference": {
+    "n": 251,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/basic-deduction": {
+    "n": 236,
+    "state": 0.0211864406779661,
+    "head": 0.0,
+    "any": 0.0211864406779661
+  },
+  "glm:tasksource:babi_nli/basic-induction": {
+    "n": 212,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/compound-coreference": {
+    "n": 241,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/conjunction": {
+    "n": 217,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/counting": {
+    "n": 215,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/indefinite-knowledge": {
+    "n": 214,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/lists-sets": {
+    "n": 223,
+    "state": 0.07623318385650224,
+    "head": 0.0,
+    "any": 0.07623318385650224
+  },
+  "glm:tasksource:babi_nli/path-finding": {
+    "n": 221,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/positional-reasoning": {
+    "n": 160,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/simple-negation": {
+    "n": 240,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/single-supporting-fact": {
+    "n": 230,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/size-reasoning": {
+    "n": 219,
+    "state": 0.0182648401826484,
+    "head": 0.0,
+    "any": 0.0182648401826484
+  },
+  "glm:tasksource:babi_nli/three-arg-relations": {
+    "n": 218,
+    "state": 0.13302752293577982,
+    "head": 0.0,
+    "any": 0.13302752293577982
+  },
+  "glm:tasksource:babi_nli/three-supporting-facts": {
+    "n": 168,
+    "state": 0.6130952380952381,
+    "head": 0.0,
+    "any": 0.6130952380952381
+  },
+  "glm:tasksource:babi_nli/time-reasoning": {
+    "n": 220,
+    "state": 0.05454545454545454,
+    "head": 0.0,
+    "any": 0.05454545454545454
+  },
+  "glm:tasksource:babi_nli/two-arg-relations": {
+    "n": 217,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:babi_nli/two-supporting-facts": {
+    "n": 198,
+    "state": 0.04040404040404041,
+    "head": 0.0,
+    "any": 0.04040404040404041
+  },
+  "glm:tasksource:babi_nli/yes-no-questions": {
+    "n": 251,
+    "state": 0.01593625498007968,
+    "head": 0.0,
+    "any": 0.01593625498007968
+  },
+  "glm:tasksource:balanced-copa": {
+    "n": 180,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:blog_authorship_corpus/age": {
+    "n": 353,
+    "state": 0.41076487252124644,
+    "head": 0.0,
+    "any": 0.41076487252124644
+  },
+  "glm:tasksource:blog_authorship_corpus/gender": {
+    "n": 366,
+    "state": 0.505464480874317,
+    "head": 0.0,
+    "any": 0.505464480874317
+  },
+  "glm:tasksource:breaking_nli": {
+    "n": 474,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:causal-news": {
+    "n": 85,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:causal-reasoning/transitivity": {
+    "n": 121,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cebab/ambiance": {
+    "n": 45,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cebab/food": {
+    "n": 54,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cebab/noise": {
+    "n": 52,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cebab/rating": {
+    "n": 40,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cebab/service": {
+    "n": 46,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cicero": {
+    "n": 385,
+    "state": 0.033766233766233764,
+    "head": 0.1974025974025974,
+    "any": 0.22077922077922077
+  },
+  "glm:tasksource:circa": {
+    "n": 362,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:civil_comments/identity_attack_share": {
+    "n": 159,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:civil_comments/insult_share": {
+    "n": 338,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:civil_comments/obscene_share": {
+    "n": 104,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:civil_comments/severe_toxicity_share": {
+    "n": 4,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:civil_comments/sexual_explicit_share": {
+    "n": 51,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:civil_comments/threat_share": {
+    "n": 97,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:civil_comments/toxicity_share": {
+    "n": 359,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:clcd-english": {
+    "n": 384,
+    "state": 0.028645833333333332,
+    "head": 0.0,
+    "any": 0.028645833333333332
+  },
+  "glm:tasksource:clinc_oos/plus": {
+    "n": 18,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cloth": {
+    "n": 406,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:codah/codah": {
+    "n": 476,
+    "state": 0.0,
+    "head": 0.0021008403361344537,
+    "any": 0.0021008403361344537
+  },
+  "glm:tasksource:commonsense_qa_2.0": {
+    "n": 276,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:comve": {
+    "n": 177,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:conceptrules_v2": {
+    "n": 385,
+    "state": 0.06753246753246753,
+    "head": 0.0,
+    "any": 0.06753246753246753
+  },
+  "glm:tasksource:corr2cause": {
+    "n": 161,
+    "state": 0.6708074534161491,
+    "head": 0.0,
+    "any": 0.6708074534161491
+  },
+  "glm:tasksource:cosmos_qa": {
+    "n": 427,
+    "state": 0.0,
+    "head": 0.00468384074941452,
+    "any": 0.00468384074941452
+  },
+  "glm:tasksource:cuad/answerability": {
+    "n": 94,
+    "state": 1.0,
+    "head": 0.1702127659574468,
+    "any": 1.0
+  },
+  "glm:tasksource:cycic_classification": {
+    "n": 361,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:cycic_multiplechoice": {
+    "n": 429,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:dbpedia_14/dbpedia_14": {
+    "n": 70,
+    "state": 0.14285714285714285,
+    "head": 0.6142857142857143,
+    "any": 0.6142857142857143
+  },
+  "glm:tasksource:defeasible-nli/atomic": {
+    "n": 384,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:defeasible-nli/snli": {
+    "n": 408,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:defeasible-nli/social": {
+    "n": 399,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:dgen": {
+    "n": 480,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:discosense": {
+    "n": 272,
+    "state": 0.0,
+    "head": 0.5,
+    "any": 0.5
+  },
+  "glm:tasksource:discovery/discovery": {
+    "n": 18,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:disrpt/eng.dep.scidtb.rels": {
+    "n": 41,
+    "state": 0.0,
+    "head": 0.5609756097560976,
+    "any": 0.5609756097560976
+  },
+  "glm:tasksource:dnd_style_intents": {
+    "n": 54,
+    "state": 0.0,
+    "head": 0.7037037037037037,
+    "any": 0.7037037037037037
+  },
+  "glm:tasksource:doc-nli": {
+    "n": 402,
+    "state": 0.3756218905472637,
+    "head": 0.0,
+    "any": 0.3756218905472637
+  },
+  "glm:tasksource:docred": {
+    "n": 17,
+    "state": 0.7058823529411765,
+    "head": 0.0,
+    "any": 0.7058823529411765
+  },
+  "glm:tasksource:dynahate": {
+    "n": 406,
+    "state": 0.0049261083743842365,
+    "head": 0.0,
+    "any": 0.0049261083743842365
+  },
+  "glm:tasksource:dynasent/r1_votes": {
+    "n": 351,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:dynasent/r2_votes": {
+    "n": 408,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:e-CARE": {
+    "n": 329,
+    "state": 0.0,
+    "head": 0.00303951367781155,
+    "any": 0.00303951367781155
+  },
+  "glm:tasksource:edos": {
+    "n": 82,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:emo/emo2019": {
+    "n": 338,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:equate": {
+    "n": 114,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:esci": {
+    "n": 330,
+    "state": 0.5848484848484848,
+    "head": 0.0,
+    "any": 0.5848484848484848
+  },
+  "glm:tasksource:ethics/commonsense": {
+    "n": 201,
+    "state": 0.43781094527363185,
+    "head": 0.0,
+    "any": 0.43781094527363185
+  },
+  "glm:tasksource:ethics/deontology": {
+    "n": 244,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:ethics/justice": {
+    "n": 219,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:ethics/virtue": {
+    "n": 216,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:ethos/multilabel": {
+    "n": 439,
+    "state": 0.002277904328018223,
+    "head": 0.0,
+    "any": 0.002277904328018223
+  },
+  "glm:tasksource:faithdial/grounding": {
+    "n": 68,
+    "state": 0.29411764705882354,
+    "head": 0.0,
+    "any": 0.29411764705882354
+  },
+  "glm:tasksource:feasibilityQA": {
+    "n": 424,
+    "state": 0.02122641509433962,
+    "head": 0.0,
+    "any": 0.02122641509433962
+  },
+  "glm:tasksource:fever-evidence-related": {
+    "n": 461,
+    "state": 0.5639913232104121,
+    "head": 0.0,
+    "any": 0.5639913232104121
+  },
+  "glm:tasksource:fig-qa": {
+    "n": 443,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:folio": {
+    "n": 343,
+    "state": 0.037900874635568516,
+    "head": 0.0,
+    "any": 0.037900874635568516
+  },
+  "glm:tasksource:fool-me-twice": {
+    "n": 440,
+    "state": 0.03636363636363636,
+    "head": 0.0,
+    "any": 0.03636363636363636
+  },
+  "glm:tasksource:gap": {
+    "n": 89,
+    "state": 0.12359550561797752,
+    "head": 0.0,
+    "any": 0.12359550561797752
+  },
+  "glm:tasksource:github-issue-similarity": {
+    "n": 373,
+    "state": 0.7908847184986595,
+    "head": 0.0,
+    "any": 0.7908847184986595
+  },
+  "glm:tasksource:go_emotions/simplified": {
+    "n": 45,
+    "state": 0.0,
+    "head": 0.7555555555555555,
+    "any": 0.7555555555555555
+  },
+  "glm:tasksource:goal-step-wikihow/goal": {
+    "n": 410,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:goal-step-wikihow/order": {
+    "n": 376,
+    "state": 0.0,
+    "head": 0.02925531914893617,
+    "any": 0.02925531914893617
+  },
+  "glm:tasksource:goal-step-wikihow/step": {
+    "n": 446,
+    "state": 0.0,
+    "head": 0.05605381165919283,
+    "any": 0.05605381165919283
+  },
+  "glm:tasksource:google_wellformed_query": {
+    "n": 368,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:hallmarks-of-cancer/yesno": {
+    "n": 103,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:hate_speech18": {
+    "n": 409,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:hatexplain/majority": {
+    "n": 304,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:head_qa/en": {
+    "n": 454,
+    "state": 0.0,
+    "head": 0.1299559471365639,
+    "any": 0.1299559471365639
+  },
+  "glm:tasksource:headline_cause/en_simple": {
+    "n": 400,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:health_fact": {
+    "n": 268,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:help-nli": {
+    "n": 289,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:hh-rlhf/harmless-base": {
+    "n": 337,
+    "state": 0.09198813056379822,
+    "head": 0.5103857566765578,
+    "any": 0.5281899109792285
+  },
+  "glm:tasksource:hh-rlhf/helpful-base": {
+    "n": 340,
+    "state": 0.10588235294117647,
+    "head": 0.7411764705882353,
+    "any": 0.7676470588235295
+  },
+  "glm:tasksource:hh-rlhf/helpful-online": {
+    "n": 323,
+    "state": 0.3715170278637771,
+    "head": 0.978328173374613,
+    "any": 0.9938080495356038
+  },
+  "glm:tasksource:hh-rlhf/helpful-rejection-sampled": {
+    "n": 333,
+    "state": 0.1921921921921922,
+    "head": 0.8378378378378378,
+    "any": 0.8648648648648649
+  },
+  "glm:tasksource:hope_edi/english": {
+    "n": 382,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:hotpotqa/supporting-fact": {
+    "n": 111,
+    "state": 0.09009009009009009,
+    "head": 0.0,
+    "any": 0.09009009009009009
+  },
+  "glm:tasksource:hover": {
+    "n": 337,
+    "state": 0.1513353115727003,
+    "head": 0.0,
+    "any": 0.1513353115727003
+  },
+  "glm:tasksource:hyperpartisan_news": {
+    "n": 215,
+    "state": 0.813953488372093,
+    "head": 0.0,
+    "any": 0.813953488372093
+  },
+  "glm:tasksource:implicatures": {
+    "n": 175,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:infotabs": {
+    "n": 110,
+    "state": 0.4090909090909091,
+    "head": 0.0,
+    "any": 0.4090909090909091
+  },
+  "glm:tasksource:it-support-tickets": {
+    "n": 257,
+    "state": 0.0311284046692607,
+    "head": 0.0,
+    "any": 0.0311284046692607
+  },
+  "glm:tasksource:jigsaw_toxicity": {
+    "n": 450,
+    "state": 0.13555555555555557,
+    "head": 0.0,
+    "any": 0.13555555555555557
+  },
+  "glm:tasksource:knowref60k": {
+    "n": 162,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:lex_glue/case_hold": {
+    "n": 362,
+    "state": 0.0,
+    "head": 0.9392265193370166,
+    "any": 0.9392265193370166
+  },
+  "glm:tasksource:lex_glue/ledgar": {
+    "n": 23,
+    "state": 0.2608695652173913,
+    "head": 0.0,
+    "any": 0.2608695652173913
+  },
+  "glm:tasksource:lex_glue/scotus": {
+    "n": 47,
+    "state": 0.9148936170212766,
+    "head": 0.0,
+    "any": 0.9148936170212766
+  },
+  "glm:tasksource:lex_glue/unfair_tos": {
+    "n": 365,
+    "state": 0.0027397260273972603,
+    "head": 0.17534246575342466,
+    "any": 0.1780821917808219
+  },
+  "glm:tasksource:logical-entailment": {
+    "n": 384,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:lonli": {
+    "n": 473,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:magpie/idiomatic": {
+    "n": 118,
+    "state": 0.09322033898305085,
+    "head": 0.0,
+    "any": 0.09322033898305085
+  },
+  "glm:tasksource:mams/atsa": {
+    "n": 82,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:math_qa": {
+    "n": 423,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:maud/antitrust-efforts": {
+    "n": 37,
+    "state": 0.5405405405405406,
+    "head": 0.0,
+    "any": 0.5405405405405406
+  },
+  "glm:tasksource:maud/bringdown-timing": {
+    "n": 35,
+    "state": 0.7714285714285715,
+    "head": 0.0,
+    "any": 0.7714285714285715
+  },
+  "glm:tasksource:maud/consideration": {
+    "n": 35,
+    "state": 0.5142857142857142,
+    "head": 0.0,
+    "any": 0.5142857142857142
+  },
+  "glm:tasksource:maud/ordinary-course-consent": {
+    "n": 20,
+    "state": 0.55,
+    "head": 0.0,
+    "any": 0.55
+  },
+  "glm:tasksource:maud/ordinary-course-efforts": {
+    "n": 24,
+    "state": 0.20833333333333334,
+    "head": 0.0,
+    "any": 0.20833333333333334
+  },
+  "glm:tasksource:maud/specific-performance": {
+    "n": 13,
+    "state": 0.3076923076923077,
+    "head": 0.0,
+    "any": 0.3076923076923077
+  },
+  "glm:tasksource:medmcqa": {
+    "n": 429,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:mindgames": {
+    "n": 373,
+    "state": 0.05361930294906166,
+    "head": 0.0,
+    "any": 0.05361930294906166
+  },
+  "glm:tasksource:monotonicity-entailment": {
+    "n": 341,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:moral_stories/full": {
+    "n": 448,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multidogo/airline/intent": {
+    "n": 36,
+    "state": 0.0,
+    "head": 0.1388888888888889,
+    "any": 0.1388888888888889
+  },
+  "glm:tasksource:multidogo/fastfood/intent": {
+    "n": 7,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:tasksource:multidogo/finance/intent": {
+    "n": 9,
+    "state": 0.0,
+    "head": 0.6666666666666666,
+    "any": 0.6666666666666666
+  },
+  "glm:tasksource:multidogo/insurance/intent": {
+    "n": 32,
+    "state": 0.0,
+    "head": 0.28125,
+    "any": 0.28125
+  },
+  "glm:tasksource:multidogo/media/intent": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.8461538461538461,
+    "any": 0.8461538461538461
+  },
+  "glm:tasksource:multidogo/software/intent": {
+    "n": 5,
+    "state": 0.0,
+    "head": 0.6,
+    "any": 0.6
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/amh": {
+    "n": 74,
+    "state": 0.02702702702702703,
+    "head": 0.0,
+    "any": 0.02702702702702703
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/arq": {
+    "n": 77,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/ary": {
+    "n": 75,
+    "state": 0.02666666666666667,
+    "head": 0.0,
+    "any": 0.02666666666666667
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/hau": {
+    "n": 54,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/ibo": {
+    "n": 60,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/kin": {
+    "n": 85,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/pcm": {
+    "n": 83,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/por": {
+    "n": 79,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/swa": {
+    "n": 69,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/tso": {
+    "n": 39,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/twi": {
+    "n": 49,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/AfriSenti-twitter-sentiment/yor": {
+    "n": 68,
+    "state": 0.014705882352941176,
+    "head": 0.0,
+    "any": 0.014705882352941176
+  },
+  "glm:tasksource:multilingual/MLMA_hate_speech": {
+    "n": 187,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/ace": {
+    "n": 84,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/ban": {
+    "n": 89,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/bbc": {
+    "n": 81,
+    "state": 0.04938271604938271,
+    "head": 0.0,
+    "any": 0.04938271604938271
+  },
+  "glm:tasksource:multilingual/NusaX-senti/bjn": {
+    "n": 106,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/bug": {
+    "n": 51,
+    "state": 0.0392156862745098,
+    "head": 0.0,
+    "any": 0.0392156862745098
+  },
+  "glm:tasksource:multilingual/NusaX-senti/eng": {
+    "n": 105,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/ind": {
+    "n": 113,
+    "state": 0.008849557522123894,
+    "head": 0.0,
+    "any": 0.008849557522123894
+  },
+  "glm:tasksource:multilingual/NusaX-senti/jav": {
+    "n": 101,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/mad": {
+    "n": 84,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/min": {
+    "n": 106,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/nij": {
+    "n": 74,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/NusaX-senti/sun": {
+    "n": 113,
+    "state": 0.07079646017699115,
+    "head": 0.0,
+    "any": 0.07079646017699115
+  },
+  "glm:tasksource:multilingual/americas_nli/all_languages": {
+    "n": 158,
+    "state": 0.04430379746835443,
+    "head": 0.0,
+    "any": 0.04430379746835443
+  },
+  "glm:tasksource:multilingual/disrpt/deu.rst.pcc.rels": {
+    "n": 23,
+    "state": 0.08695652173913043,
+    "head": 0.6086956521739131,
+    "any": 0.6086956521739131
+  },
+  "glm:tasksource:multilingual/disrpt/eus.rst.ert.rels": {
+    "n": 22,
+    "state": 0.0,
+    "head": 0.8181818181818182,
+    "any": 0.8181818181818182
+  },
+  "glm:tasksource:multilingual/disrpt/fas.rst.prstc.rels": {
+    "n": 26,
+    "state": 0.6153846153846154,
+    "head": 0.6538461538461539,
+    "any": 0.6538461538461539
+  },
+  "glm:tasksource:multilingual/disrpt/fra.sdrt.annodis.rels": {
+    "n": 31,
+    "state": 0.0,
+    "head": 0.7419354838709677,
+    "any": 0.7419354838709677
+  },
+  "glm:tasksource:multilingual/disrpt/nld.rst.nldt.rels": {
+    "n": 24,
+    "state": 0.0,
+    "head": 0.8333333333333334,
+    "any": 0.8333333333333334
+  },
+  "glm:tasksource:multilingual/disrpt/por.rst.cstn.rels": {
+    "n": 31,
+    "state": 0.0,
+    "head": 0.7419354838709677,
+    "any": 0.7419354838709677
+  },
+  "glm:tasksource:multilingual/disrpt/rus.rst.rrt.rels": {
+    "n": 18,
+    "state": 0.8333333333333334,
+    "head": 0.8333333333333334,
+    "any": 0.8333333333333334
+  },
+  "glm:tasksource:multilingual/disrpt/spa.rst.rststb.rels": {
+    "n": 27,
+    "state": 0.37037037037037035,
+    "head": 0.7037037037037037,
+    "any": 0.7037037037037037
+  },
+  "glm:tasksource:multilingual/disrpt/tha.pdtb.tdtb.rels": {
+    "n": 40,
+    "state": 0.375,
+    "head": 0.775,
+    "any": 0.825
+  },
+  "glm:tasksource:multilingual/disrpt/zho.rst.gcdt.rels": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.15384615384615385,
+    "any": 0.15384615384615385
+  },
+  "glm:tasksource:multilingual/exams/multilingual": {
+    "n": 413,
+    "state": 0.024213075060532687,
+    "head": 0.31476997578692495,
+    "any": 0.33171912832929784
+  },
+  "glm:tasksource:multilingual/klue/nli": {
+    "n": 257,
+    "state": 0.08560311284046693,
+    "head": 0.0,
+    "any": 0.08560311284046693
+  },
+  "glm:tasksource:multilingual/klue/sts": {
+    "n": 48,
+    "state": 0.16666666666666666,
+    "head": 0.0,
+    "any": 0.16666666666666666
+  },
+  "glm:tasksource:multilingual/klue/ynat": {
+    "n": 310,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/amh": {
+    "n": 96,
+    "state": 0.03125,
+    "head": 0.0,
+    "any": 0.03125
+  },
+  "glm:tasksource:multilingual/masakhanews/eng": {
+    "n": 153,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/fra": {
+    "n": 102,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/hau": {
+    "n": 135,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/ibo": {
+    "n": 138,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/lin": {
+    "n": 119,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/lug": {
+    "n": 95,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/orm": {
+    "n": 100,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/pcm": {
+    "n": 91,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/run": {
+    "n": 156,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/sna": {
+    "n": 94,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/som": {
+    "n": 135,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/swa": {
+    "n": 128,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/tir": {
+    "n": 143,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/xho": {
+    "n": 99,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/masakhanews/yor": {
+    "n": 108,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/massive": {
+    "n": 22,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/miam": {
+    "n": 151,
+    "state": 0.0,
+    "head": 0.026490066225165563,
+    "any": 0.026490066225165563
+  },
+  "glm:tasksource:multilingual/mtop": {
+    "n": 17,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/multilingual-sentiments/all": {
+    "n": 356,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/offenseval_dravidian/kannada": {
+    "n": 200,
+    "state": 0.03,
+    "head": 0.005,
+    "any": 0.035
+  },
+  "glm:tasksource:multilingual/offenseval_dravidian/malayalam": {
+    "n": 261,
+    "state": 0.05363984674329502,
+    "head": 0.038314176245210725,
+    "any": 0.08045977011494253
+  },
+  "glm:tasksource:multilingual/offenseval_dravidian/tamil": {
+    "n": 283,
+    "state": 0.05653710247349823,
+    "head": 0.014134275618374558,
+    "any": 0.0706713780918728
+  },
+  "glm:tasksource:multilingual/tweet_sentiment_multilingual": {
+    "n": 259,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/universal-joy": {
+    "n": 274,
+    "state": 0.0948905109489051,
+    "head": 0.0,
+    "any": 0.0948905109489051
+  },
+  "glm:tasksource:multilingual/wili_2018": {
+    "n": 19,
+    "state": 0.5263157894736842,
+    "head": 0.0,
+    "any": 0.5263157894736842
+  },
+  "glm:tasksource:multilingual/x-stance": {
+    "n": 80,
+    "state": 0.1625,
+    "head": 0.0,
+    "any": 0.1625
+  },
+  "glm:tasksource:multilingual/xcopa/et": {
+    "n": 11,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/ht": {
+    "n": 6,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/id": {
+    "n": 11,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/it": {
+    "n": 10,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/qu": {
+    "n": 6,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/sw": {
+    "n": 11,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/ta": {
+    "n": 9,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:tasksource:multilingual/xcopa/th": {
+    "n": 9,
+    "state": 0.0,
+    "head": 0.3333333333333333,
+    "any": 0.3333333333333333
+  },
+  "glm:tasksource:multilingual/xcopa/tr": {
+    "n": 10,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-et": {
+    "n": 10,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-ht": {
+    "n": 10,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-id": {
+    "n": 10,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-it": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-sw": {
+    "n": 10,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-ta": {
+    "n": 8,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-th": {
+    "n": 7,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-tr": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-vi": {
+    "n": 11,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/translation-zh": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcopa/vi": {
+    "n": 11,
+    "state": 0.0,
+    "head": 0.09090909090909091,
+    "any": 0.09090909090909091
+  },
+  "glm:tasksource:multilingual/xcopa/zh": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-ar": {
+    "n": 97,
+    "state": 0.0,
+    "head": 0.9896907216494846,
+    "any": 0.9896907216494846
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-de": {
+    "n": 117,
+    "state": 0.0,
+    "head": 0.8888888888888888,
+    "any": 0.8888888888888888
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-en": {
+    "n": 113,
+    "state": 0.0,
+    "head": 0.3805309734513274,
+    "any": 0.3805309734513274
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-es": {
+    "n": 112,
+    "state": 0.0,
+    "head": 0.8214285714285714,
+    "any": 0.8214285714285714
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-fr": {
+    "n": 112,
+    "state": 0.0,
+    "head": 0.6875,
+    "any": 0.6875
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-hi": {
+    "n": 78,
+    "state": 0.0,
+    "head": 0.9743589743589743,
+    "any": 0.9743589743589743
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-it": {
+    "n": 103,
+    "state": 0.0,
+    "head": 0.8446601941747572,
+    "any": 0.8446601941747572
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-jap": {
+    "n": 106,
+    "state": 0.0,
+    "head": 0.9905660377358491,
+    "any": 0.9905660377358491
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-nl": {
+    "n": 112,
+    "state": 0.0,
+    "head": 0.8303571428571429,
+    "any": 0.8303571428571429
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-pl": {
+    "n": 87,
+    "state": 0.0,
+    "head": 0.896551724137931,
+    "any": 0.896551724137931
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-pt": {
+    "n": 113,
+    "state": 0.0,
+    "head": 0.8584070796460177,
+    "any": 0.8584070796460177
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-ru": {
+    "n": 92,
+    "state": 0.0,
+    "head": 0.9782608695652174,
+    "any": 0.9782608695652174
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-sw": {
+    "n": 80,
+    "state": 0.0,
+    "head": 0.925,
+    "any": 0.925
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-ur": {
+    "n": 96,
+    "state": 0.0,
+    "head": 0.9791666666666666,
+    "any": 0.9791666666666666
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-vi": {
+    "n": 102,
+    "state": 0.0,
+    "head": 0.9509803921568627,
+    "any": 0.9509803921568627
+  },
+  "glm:tasksource:multilingual/xcsr/X-CODAH-zh": {
+    "n": 111,
+    "state": 0.0,
+    "head": 0.972972972972973,
+    "any": 0.972972972972973
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-ar": {
+    "n": 111,
+    "state": 0.0,
+    "head": 0.14414414414414414,
+    "any": 0.14414414414414414
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-de": {
+    "n": 109,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-en": {
+    "n": 149,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-es": {
+    "n": 140,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-fr": {
+    "n": 125,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-hi": {
+    "n": 82,
+    "state": 0.0,
+    "head": 0.34146341463414637,
+    "any": 0.34146341463414637
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-it": {
+    "n": 118,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-jap": {
+    "n": 84,
+    "state": 0.0,
+    "head": 0.023809523809523808,
+    "any": 0.023809523809523808
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-nl": {
+    "n": 94,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-pl": {
+    "n": 105,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-pt": {
+    "n": 106,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-ru": {
+    "n": 93,
+    "state": 0.0,
+    "head": 0.5591397849462365,
+    "any": 0.5591397849462365
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-sw": {
+    "n": 77,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-ur": {
+    "n": 116,
+    "state": 0.0,
+    "head": 0.11206896551724138,
+    "any": 0.11206896551724138
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-vi": {
+    "n": 109,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xcsr/X-CSQA-zh": {
+    "n": 100,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/ar": {
+    "n": 26,
+    "state": 0.07692307692307693,
+    "head": 0.8076923076923077,
+    "any": 0.8461538461538461
+  },
+  "glm:tasksource:multilingual/xstory_cloze/en": {
+    "n": 29,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/es": {
+    "n": 28,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/eu": {
+    "n": 29,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/hi": {
+    "n": 29,
+    "state": 0.41379310344827586,
+    "head": 0.9655172413793104,
+    "any": 0.9655172413793104
+  },
+  "glm:tasksource:multilingual/xstory_cloze/id": {
+    "n": 29,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/my": {
+    "n": 32,
+    "state": 1.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/ru": {
+    "n": 29,
+    "state": 0.20689655172413793,
+    "head": 0.896551724137931,
+    "any": 0.896551724137931
+  },
+  "glm:tasksource:multilingual/xstory_cloze/sw": {
+    "n": 31,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/te": {
+    "n": 27,
+    "state": 0.9259259259259259,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "glm:tasksource:multilingual/xstory_cloze/zh": {
+    "n": 27,
+    "state": 0.0,
+    "head": 0.5185185185185185,
+    "any": 0.5185185185185185
+  },
+  "glm:tasksource:multiwoz22/categorical-slot": {
+    "n": 16,
+    "state": 0.75,
+    "head": 0.5625,
+    "any": 0.75
+  },
+  "glm:tasksource:multiwoz22/dialogue-act": {
+    "n": 4,
+    "state": 0.75,
+    "head": 0.5,
+    "any": 0.75
+  },
+  "glm:tasksource:nan-nli": {
+    "n": 210,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:naturallogic": {
+    "n": 117,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:nevir": {
+    "n": 77,
+    "state": 0.0,
+    "head": 0.987012987012987,
+    "any": 0.987012987012987
+  },
+  "glm:tasksource:newsmtsc": {
+    "n": 100,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:numer_sense": {
+    "n": 290,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:onestop_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:open_question_type": {
+    "n": 287,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:patent-phrase-similarity": {
+    "n": 160,
+    "state": 0.0,
+    "head": 0.1875,
+    "any": 0.1875
+  },
+  "glm:tasksource:perspectrum/stance": {
+    "n": 107,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:poem_sentiment": {
+    "n": 298,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:prm800k_dpo/solution": {
+    "n": 472,
+    "state": 0.0,
+    "head": 0.9978813559322034,
+    "any": 0.9978813559322034
+  },
+  "glm:tasksource:prm800k_dpo/step": {
+    "n": 402,
+    "state": 0.5199004975124378,
+    "head": 0.2064676616915423,
+    "any": 0.599502487562189
+  },
+  "glm:tasksource:probability_words_nli/reasoning_1hop": {
+    "n": 396,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:probability_words_nli/reasoning_2hop": {
+    "n": 354,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:prompt-injection-dataset": {
+    "n": 463,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:prompt-injections": {
+    "n": 462,
+    "state": 0.015151515151515152,
+    "head": 0.0,
+    "any": 0.015151515151515152
+  },
+  "glm:tasksource:propsegment/nli": {
+    "n": 342,
+    "state": 0.7982456140350878,
+    "head": 0.0,
+    "any": 0.7982456140350878
+  },
+  "glm:tasksource:prosocial-dialog/safety": {
+    "n": 55,
+    "state": 0.05454545454545454,
+    "head": 0.0,
+    "any": 0.05454545454545454
+  },
+  "glm:tasksource:proto_qa/proto_qa": {
+    "n": 267,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:qasc": {
+    "n": 333,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:qasper/yesno": {
+    "n": 22,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:tasksource:quac/answerability": {
+    "n": 82,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:tasksource:quality": {
+    "n": 57,
+    "state": 1.0,
+    "head": 0.08771929824561403,
+    "any": 1.0
+  },
+  "glm:tasksource:quartz": {
+    "n": 443,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:ragtruth/grounding": {
+    "n": 82,
+    "state": 0.9878048780487805,
+    "head": 0.0,
+    "any": 0.9878048780487805
+  },
+  "glm:tasksource:recast/recast_factuality": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:recast/recast_megaveridicality": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:recast/recast_ner": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:recast/recast_puns": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:recast/recast_sentiment": {
+    "n": 17,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:recast/recast_verbcorner": {
+    "n": 7,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:recast/recast_verbnet": {
+    "n": 20,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:redial/preference": {
+    "n": 97,
+    "state": 0.4639175257731959,
+    "head": 0.0,
+    "any": 0.4639175257731959
+  },
+  "glm:tasksource:resnli": {
+    "n": 404,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli/IS_CS": {
+    "n": 16,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli/LI_LI": {
+    "n": 22,
+    "state": 0.18181818181818182,
+    "head": 0.0,
+    "any": 0.18181818181818182
+  },
+  "glm:tasksource:robust_nli/PI_CD": {
+    "n": 18,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli/PI_SP": {
+    "n": 19,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli/ST_LM": {
+    "n": 15,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli/ST_NE": {
+    "n": 19,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli/ST_SE": {
+    "n": 17,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli/ST_WO": {
+    "n": 19,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli_is_sd": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:robust_nli_li_ts": {
+    "n": 9,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:ruletaker": {
+    "n": 344,
+    "state": 0.05813953488372093,
+    "head": 0.0,
+    "any": 0.05813953488372093
+  },
+  "glm:tasksource:rumoureval_2019/RumourEval2019": {
+    "n": 269,
+    "state": 0.03345724907063197,
+    "head": 0.0,
+    "any": 0.03345724907063197
+  },
+  "glm:tasksource:sbic/intent": {
+    "n": 61,
+    "state": 0.0,
+    "head": 0.01639344262295082,
+    "any": 0.01639344262295082
+  },
+  "glm:tasksource:sbic/offensiveness": {
+    "n": 454,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:schema-guided/intent": {
+    "n": 6,
+    "state": 0.6666666666666666,
+    "head": 0.0,
+    "any": 0.6666666666666666
+  },
+  "glm:tasksource:scientific-exaggeration-detection": {
+    "n": 42,
+    "state": 0.023809523809523808,
+    "head": 0.0,
+    "any": 0.023809523809523808
+  },
+  "glm:tasksource:scinli": {
+    "n": 249,
+    "state": 0.024096385542168676,
+    "head": 0.0,
+    "any": 0.024096385542168676
+  },
+  "glm:tasksource:scone": {
+    "n": 34,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:scruples/verdict_votes": {
+    "n": 322,
+    "state": 0.6459627329192547,
+    "head": 0.0,
+    "any": 0.6459627329192547
+  },
+  "glm:tasksource:sem_eval_2010_task_8": {
+    "n": 49,
+    "state": 0.0,
+    "head": 0.673469387755102,
+    "any": 0.673469387755102
+  },
+  "glm:tasksource:sentfin": {
+    "n": 110,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:sentihood/sentiment": {
+    "n": 106,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:shell-safety-v2": {
+    "n": 337,
+    "state": 0.17210682492581603,
+    "head": 0.0,
+    "any": 0.17210682492581603
+  },
+  "glm:tasksource:sherliic": {
+    "n": 22,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:silicone/maptask": {
+    "n": 226,
+    "state": 0.0,
+    "head": 0.022123893805309734,
+    "any": 0.022123893805309734
+  },
+  "glm:tasksource:slurp/intent": {
+    "n": 4,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:slurp/slot-type": {
+    "n": 4,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:sms_spam": {
+    "n": 401,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:snips_built_in_intents": {
+    "n": 344,
+    "state": 0.0,
+    "head": 0.00872093023255814,
+    "any": 0.00872093023255814
+  },
+  "glm:tasksource:social_i_qa": {
+    "n": 411,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:spartqa-mchoice": {
+    "n": 291,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:spartqa-yn": {
+    "n": 270,
+    "state": 0.08148148148148149,
+    "head": 0.0,
+    "any": 0.08148148148148149
+  },
+  "glm:tasksource:spider/column": {
+    "n": 25,
+    "state": 0.04,
+    "head": 0.16,
+    "any": 0.2
+  },
+  "glm:tasksource:squad-v2/answerability": {
+    "n": 99,
+    "state": 0.09090909090909091,
+    "head": 0.0,
+    "any": 0.09090909090909091
+  },
+  "glm:tasksource:stackoverflow-questions": {
+    "n": 153,
+    "state": 0.6143790849673203,
+    "head": 0.0,
+    "any": 0.6143790849673203
+  },
+  "glm:tasksource:starcon": {
+    "n": 385,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:stepgame": {
+    "n": 266,
+    "state": 0.03383458646616541,
+    "head": 0.0,
+    "any": 0.03383458646616541
+  },
+  "glm:tasksource:streusle/noun": {
+    "n": 7,
+    "state": 0.0,
+    "head": 0.7142857142857143,
+    "any": 0.7142857142857143
+  },
+  "glm:tasksource:streusle/verb": {
+    "n": 3,
+    "state": 0.0,
+    "head": 0.3333333333333333,
+    "any": 0.3333333333333333
+  },
+  "glm:tasksource:sts-companion": {
+    "n": 202,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:subjectivity": {
+    "n": 218,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:syntactic-augmentation-nli": {
+    "n": 108,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:tab/identifier": {
+    "n": 24,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:tasksource:tabfact": {
+    "n": 112,
+    "state": 0.5625,
+    "head": 0.0,
+    "any": 0.5625
+  },
+  "glm:tasksource:temporal-nli": {
+    "n": 361,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:tomi-nli": {
+    "n": 414,
+    "state": 0.05314009661835749,
+    "head": 0.0,
+    "any": 0.05314009661835749
+  },
+  "glm:tasksource:tracie": {
+    "n": 371,
+    "state": 0.0431266846361186,
+    "head": 0.0,
+    "any": 0.0431266846361186
+  },
+  "glm:tasksource:tweets_hate_speech_detection": {
+    "n": 377,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:twitter-financial-news-sentiment": {
+    "n": 399,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:ukpconvarg/convincingness": {
+    "n": 148,
+    "state": 0.0,
+    "head": 0.8716216216216216,
+    "any": 0.8716216216216216
+  },
+  "glm:tasksource:utilitarianism": {
+    "n": 158,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:vitaminc": {
+    "n": 378,
+    "state": 0.018518518518518517,
+    "head": 0.0,
+    "any": 0.018518518518518517
+  },
+  "glm:tasksource:wands": {
+    "n": 87,
+    "state": 0.9655172413793104,
+    "head": 0.0,
+    "any": 0.9655172413793104
+  },
+  "glm:tasksource:webinstruct/binary": {
+    "n": 59,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:webinstruct/mc": {
+    "n": 142,
+    "state": 0.0,
+    "head": 0.1056338028169014,
+    "any": 0.1056338028169014
+  },
+  "glm:tasksource:websrc/element": {
+    "n": 2,
+    "state": 1.0,
+    "head": 0.5,
+    "any": 1.0
+  },
+  "glm:tasksource:websrc/yesno": {
+    "n": 35,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:tasksource:wice": {
+    "n": 271,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "glm:tasksource:wiki_hop/original": {
+    "n": 175,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:wikimedqa/medwiki": {
+    "n": 442,
+    "state": 0.4253393665158371,
+    "head": 0.09049773755656108,
+    "any": 0.47285067873303166
+  },
+  "glm:tasksource:wikipedia-detox/aggression": {
+    "n": 420,
+    "state": 0.05714285714285714,
+    "head": 0.0,
+    "any": 0.05714285714285714
+  },
+  "glm:tasksource:wikipedia-detox/aggression_score": {
+    "n": 244,
+    "state": 0.045081967213114756,
+    "head": 0.0,
+    "any": 0.045081967213114756
+  },
+  "glm:tasksource:wikipedia-detox/attack": {
+    "n": 453,
+    "state": 0.059602649006622516,
+    "head": 0.0,
+    "any": 0.059602649006622516
+  },
+  "glm:tasksource:wikipedia-detox/toxicity": {
+    "n": 447,
+    "state": 0.06263982102908278,
+    "head": 0.0,
+    "any": 0.06263982102908278
+  },
+  "glm:tasksource:wikipedia-detox/toxicity_score": {
+    "n": 265,
+    "state": 0.07547169811320754,
+    "head": 0.0,
+    "any": 0.07547169811320754
+  },
+  "glm:tasksource:wildguardmix-cleaned/prompt_harm": {
+    "n": 458,
+    "state": 0.08296943231441048,
+    "head": 0.0,
+    "any": 0.08296943231441048
+  },
+  "glm:tasksource:wildguardmix-cleaned/response_harm": {
+    "n": 451,
+    "state": 0.6607538802660754,
+    "head": 0.0,
+    "any": 0.6607538802660754
+  },
+  "glm:tasksource:wildguardmix-cleaned/response_refusal": {
+    "n": 471,
+    "state": 0.6645435244161358,
+    "head": 0.0,
+    "any": 0.6645435244161358
+  },
+  "glm:tasksource:winodict": {
+    "n": 364,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource:winowhy": {
+    "n": 249,
+    "state": 0.040160642570281124,
+    "head": 0.0,
+    "any": 0.040160642570281124
+  },
+  "glm:tasksource:wnut_17/wnut_17": {
+    "n": 20,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:tasksource_synth": {
+    "n": 500,
+    "state": 0.486,
+    "head": 0.08,
+    "any": 0.532
+  },
+  "glm:tetris_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:trading_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "glm:typed_decisions_train": {
+    "n": 500,
+    "state": 0.06,
+    "head": 0.0,
+    "any": 0.06
+  },
+  "glm:typed_synth": {
+    "n": 500,
+    "state": 0.134,
+    "head": 0.05,
+    "any": 0.17
+  },
+  "glm:when2call": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "hellaswag": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.676,
+    "any": 0.676
+  },
+  "helmo_synth": {
+    "n": 500,
+    "state": 0.042,
+    "head": 0.254,
+    "any": 0.282
+  },
+  "helpsteer2": {
+    "n": 500,
+    "state": 0.736,
+    "head": 0.0,
+    "any": 0.736
+  },
+  "mnli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "neuro_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "notam:deel_subject": {
+    "n": 500,
+    "state": 0.014,
+    "head": 0.0,
+    "any": 0.014
+  },
+  "notam:notam_multi": {
+    "n": 500,
+    "state": 0.05,
+    "head": 0.0,
+    "any": 0.05
+  },
+  "numeric:between": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "numeric:bucket": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "numeric:closest": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "numeric:extreme": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "numeric:greater": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "numeric:sign": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "open_jev:browser-control-v1": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.654,
+    "any": 1.0
+  },
+  "open_jev:customer-control-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.458,
+    "any": 0.458
+  },
+  "open_jev:drone-control-v1": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "open_jev:painting-geometry-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.114,
+    "any": 0.114
+  },
+  "open_jev:reasoning-control-v1": {
+    "n": 500,
+    "state": 0.034,
+    "head": 0.0,
+    "any": 0.034
+  },
+  "open_jev:snake-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "open_jev:tic_tac_toe-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "open_jev:tile_platformer-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "open_jev:trex_runner-v1": {
+    "n": 32,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "open_jev:vizdoom-basic-v1": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.32,
+    "any": 0.32
+  },
+  "open_jev:workflow-controls-v1/agent_trace_observability": {
+    "n": 500,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "open_jev:workflow-controls-v1/customer_service": {
+    "n": 500,
+    "state": 0.316,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "open_jev:workflow-controls-v1/invoice_processing": {
+    "n": 500,
+    "state": 0.196,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "open_jev:workflow-controls-v1/security_incidents": {
+    "n": 500,
+    "state": 0.572,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "pawsx_fr": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "pngwn_typed": {
+    "n": 500,
+    "state": 0.006,
+    "head": 0.11,
+    "any": 0.116
+  },
+  "procedural:arithmetic": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "procedural:entity_belief_tracking": {
+    "n": 500,
+    "state": 0.636,
+    "head": 0.0,
+    "any": 0.636
+  },
+  "procedural:event_state_reconstruction": {
+    "n": 500,
+    "state": 0.132,
+    "head": 0.0,
+    "any": 0.132
+  },
+  "procedural:event_triggered_execution": {
+    "n": 500,
+    "state": 0.774,
+    "head": 0.0,
+    "any": 0.774
+  },
+  "procedural:evidence_sufficiency": {
+    "n": 500,
+    "state": 0.594,
+    "head": 0.0,
+    "any": 0.594
+  },
+  "procedural:goal_directed_planning": {
+    "n": 500,
+    "state": 0.426,
+    "head": 0.0,
+    "any": 0.426
+  },
+  "procedural:graph_navigation": {
+    "n": 500,
+    "state": 0.806,
+    "head": 0.0,
+    "any": 0.806
+  },
+  "procedural:instruction_execution": {
+    "n": 500,
+    "state": 0.826,
+    "head": 0.0,
+    "any": 0.826
+  },
+  "procedural:multi_view_adjudication": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "procedural:needle_retrieval": {
+    "n": 500,
+    "state": 0.598,
+    "head": 0.0,
+    "any": 0.598
+  },
+  "procedural:partial_observation_calibration": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "procedural:policy_applicability": {
+    "n": 500,
+    "state": 0.594,
+    "head": 0.0,
+    "any": 0.594
+  },
+  "procedural:policy_under_uncertainty": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "procedural:record_aggregation": {
+    "n": 500,
+    "state": 0.59,
+    "head": 0.0,
+    "any": 0.59
+  },
+  "procedural:record_eligibility": {
+    "n": 500,
+    "state": 0.844,
+    "head": 0.0,
+    "any": 0.844
+  },
+  "procedural:state_perturbation": {
+    "n": 500,
+    "state": 0.622,
+    "head": 0.0,
+    "any": 0.622
+  },
+  "procedural:table_lookup": {
+    "n": 500,
+    "state": 0.29,
+    "head": 0.016,
+    "any": 0.294
+  },
+  "procedural:taxonomy_routing": {
+    "n": 500,
+    "state": 0.562,
+    "head": 0.182,
+    "any": 0.562
+  },
+  "qasc": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "refusal": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "snli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "swarm_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "tasksource:CONDAQA": {
+    "n": 500,
+    "state": 0.25,
+    "head": 0.0,
+    "any": 0.25
+  },
+  "tasksource:CREAK": {
+    "n": 466,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:FLUTE": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:FOL-nli": {
+    "n": 500,
+    "state": 0.574,
+    "head": 0.0,
+    "any": 0.574
+  },
+  "tasksource:HatemojiBuild": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:HelpSteer/coherence": {
+    "n": 500,
+    "state": 0.756,
+    "head": 0.0,
+    "any": 0.756
+  },
+  "tasksource:HelpSteer/complexity": {
+    "n": 500,
+    "state": 0.794,
+    "head": 0.0,
+    "any": 0.794
+  },
+  "tasksource:HelpSteer/correctness": {
+    "n": 500,
+    "state": 0.774,
+    "head": 0.0,
+    "any": 0.774
+  },
+  "tasksource:HelpSteer/helpfulness": {
+    "n": 500,
+    "state": 0.778,
+    "head": 0.0,
+    "any": 0.778
+  },
+  "tasksource:HelpSteer/verbosity": {
+    "n": 500,
+    "state": 0.79,
+    "head": 0.0,
+    "any": 0.79
+  },
+  "tasksource:HelpSteer3/edit_quality": {
+    "n": 500,
+    "state": 0.86,
+    "head": 0.986,
+    "any": 0.988
+  },
+  "tasksource:HelpSteer3/feedback": {
+    "n": 500,
+    "state": 0.882,
+    "head": 0.0,
+    "any": 0.882
+  },
+  "tasksource:HelpSteer3/preference": {
+    "n": 500,
+    "state": 0.578,
+    "head": 0.994,
+    "any": 0.994
+  },
+  "tasksource:HelpSteer3/preference_strength": {
+    "n": 500,
+    "state": 0.946,
+    "head": 0.006,
+    "any": 0.946
+  },
+  "tasksource:HelpSteer3/principle": {
+    "n": 500,
+    "state": 0.888,
+    "head": 0.0,
+    "any": 0.888
+  },
+  "tasksource:I2D2": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:MSciNLI": {
+    "n": 500,
+    "state": 0.038,
+    "head": 0.0,
+    "any": 0.038
+  },
+  "tasksource:MedQA-USMLE-4-options-hf": {
+    "n": 500,
+    "state": 0.086,
+    "head": 0.022,
+    "any": 0.106
+  },
+  "tasksource:PARADISE": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.904,
+    "any": 0.904
+  },
+  "tasksource:PARARULE-Plus": {
+    "n": 500,
+    "state": 0.268,
+    "head": 0.0,
+    "any": 0.268
+  },
+  "tasksource:Prompt-injection-dataset/full": {
+    "n": 500,
+    "state": 0.046,
+    "head": 0.0,
+    "any": 0.046
+  },
+  "tasksource:PromptShield": {
+    "n": 500,
+    "state": 0.188,
+    "head": 0.0,
+    "any": 0.188
+  },
+  "tasksource:SDOH-NLI": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:SpaceNLI": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:Touche23-ValueEval": {
+    "n": 451,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:TroFi": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:TuringBench": {
+    "n": 500,
+    "state": 0.554,
+    "head": 0.946,
+    "any": 0.97
+  },
+  "tasksource:UNLI": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:UltraFeedback-paired": {
+    "n": 500,
+    "state": 0.226,
+    "head": 0.93,
+    "any": 0.954
+  },
+  "tasksource:WANLI": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:acceptability-prediction/binary_votes": {
+    "n": 406,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:acceptability-prediction/rating_votes": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:acord": {
+    "n": 141,
+    "state": 0.2978723404255319,
+    "head": 0.0,
+    "any": 0.2978723404255319
+  },
+  "tasksource:agent_action_safety": {
+    "n": 500,
+    "state": 0.104,
+    "head": 0.0,
+    "any": 0.104
+  },
+  "tasksource:amazon_counterfactual/en": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:amazon_polarity/amazon_polarity": {
+    "n": 500,
+    "state": 0.052,
+    "head": 0.0,
+    "any": 0.052
+  },
+  "tasksource:arct": {
+    "n": 327,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:args_me": {
+    "n": 445,
+    "state": 0.5056179775280899,
+    "head": 0.0,
+    "any": 0.5056179775280899
+  },
+  "tasksource:autotnli": {
+    "n": 39,
+    "state": 0.3076923076923077,
+    "head": 0.0,
+    "any": 0.3076923076923077
+  },
+  "tasksource:babi_nli/basic-coreference": {
+    "n": 269,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/basic-deduction": {
+    "n": 256,
+    "state": 0.03125,
+    "head": 0.0,
+    "any": 0.03125
+  },
+  "tasksource:babi_nli/basic-induction": {
+    "n": 254,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/compound-coreference": {
+    "n": 257,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/conjunction": {
+    "n": 267,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/counting": {
+    "n": 238,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/indefinite-knowledge": {
+    "n": 265,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/lists-sets": {
+    "n": 264,
+    "state": 0.06439393939393939,
+    "head": 0.0,
+    "any": 0.06439393939393939
+  },
+  "tasksource:babi_nli/path-finding": {
+    "n": 251,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/positional-reasoning": {
+    "n": 251,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/simple-negation": {
+    "n": 271,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/single-supporting-fact": {
+    "n": 243,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/size-reasoning": {
+    "n": 245,
+    "state": 0.0163265306122449,
+    "head": 0.0,
+    "any": 0.0163265306122449
+  },
+  "tasksource:babi_nli/three-arg-relations": {
+    "n": 264,
+    "state": 0.14393939393939395,
+    "head": 0.0,
+    "any": 0.14393939393939395
+  },
+  "tasksource:babi_nli/three-supporting-facts": {
+    "n": 278,
+    "state": 0.6294964028776978,
+    "head": 0.0,
+    "any": 0.6294964028776978
+  },
+  "tasksource:babi_nli/time-reasoning": {
+    "n": 263,
+    "state": 0.060836501901140684,
+    "head": 0.0,
+    "any": 0.060836501901140684
+  },
+  "tasksource:babi_nli/two-arg-relations": {
+    "n": 268,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:babi_nli/two-supporting-facts": {
+    "n": 246,
+    "state": 0.044715447154471545,
+    "head": 0.0,
+    "any": 0.044715447154471545
+  },
+  "tasksource:babi_nli/yes-no-questions": {
+    "n": 267,
+    "state": 0.0149812734082397,
+    "head": 0.0,
+    "any": 0.0149812734082397
+  },
+  "tasksource:balanced-copa": {
+    "n": 209,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:blog_authorship_corpus/age": {
+    "n": 500,
+    "state": 0.368,
+    "head": 0.0,
+    "any": 0.368
+  },
+  "tasksource:blog_authorship_corpus/gender": {
+    "n": 500,
+    "state": 0.442,
+    "head": 0.0,
+    "any": 0.442
+  },
+  "tasksource:breaking_nli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:causal-news": {
+    "n": 123,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:causal-reasoning/transitivity": {
+    "n": 130,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:cebab/ambiance": {
+    "n": 67,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:cebab/food": {
+    "n": 70,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:cebab/noise": {
+    "n": 65,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:cebab/rating": {
+    "n": 61,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:cebab/service": {
+    "n": 66,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:cicero": {
+    "n": 500,
+    "state": 0.032,
+    "head": 0.216,
+    "any": 0.236
+  },
+  "tasksource:circa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:civil_comments/identity_attack_share": {
+    "n": 193,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:civil_comments/insult_share": {
+    "n": 479,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:civil_comments/obscene_share": {
+    "n": 119,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:civil_comments/severe_toxicity_share": {
+    "n": 4,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:civil_comments/sexual_explicit_share": {
+    "n": 60,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:civil_comments/threat_share": {
+    "n": 108,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:civil_comments/toxicity_share": {
+    "n": 471,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:clcd-english": {
+    "n": 479,
+    "state": 0.025052192066805846,
+    "head": 0.0,
+    "any": 0.025052192066805846
+  },
+  "tasksource:clinc_oos/plus": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.962,
+    "any": 0.962
+  },
+  "tasksource:cloth": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:codah/codah": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.002,
+    "any": 0.002
+  },
+  "tasksource:commonsense_qa_2.0": {
+    "n": 355,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:comve": {
+    "n": 189,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:conceptrules_v2": {
+    "n": 500,
+    "state": 0.084,
+    "head": 0.0,
+    "any": 0.084
+  },
+  "tasksource:corr2cause": {
+    "n": 500,
+    "state": 0.626,
+    "head": 0.0,
+    "any": 0.626
+  },
+  "tasksource:cosmos_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.002,
+    "any": 0.002
+  },
+  "tasksource:cuad/answerability": {
+    "n": 126,
+    "state": 1.0,
+    "head": 0.18253968253968253,
+    "any": 1.0
+  },
+  "tasksource:cycic_classification": {
+    "n": 439,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:cycic_multiplechoice": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:dbpedia_14/dbpedia_14": {
+    "n": 500,
+    "state": 0.026,
+    "head": 0.08,
+    "any": 0.086
+  },
+  "tasksource:defeasible-nli/atomic": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:defeasible-nli/snli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:defeasible-nli/social": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:dgen": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:discosense": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.49,
+    "any": 0.49
+  },
+  "tasksource:discovery/discovery": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.956,
+    "any": 0.956
+  },
+  "tasksource:disrpt/eng.dep.scidtb.rels": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.95,
+    "any": 0.95
+  },
+  "tasksource:dnd_style_intents": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.094,
+    "any": 0.094
+  },
+  "tasksource:doc-nli": {
+    "n": 500,
+    "state": 0.456,
+    "head": 0.0,
+    "any": 0.456
+  },
+  "tasksource:docred": {
+    "n": 500,
+    "state": 0.506,
+    "head": 0.96,
+    "any": 0.988
+  },
+  "tasksource:dynahate": {
+    "n": 500,
+    "state": 0.006,
+    "head": 0.0,
+    "any": 0.006
+  },
+  "tasksource:dynasent/r1_votes": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:dynasent/r2_votes": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:e-CARE": {
+    "n": 404,
+    "state": 0.0,
+    "head": 0.0024752475247524753,
+    "any": 0.0024752475247524753
+  },
+  "tasksource:edos": {
+    "n": 126,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:emo/emo2019": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:equate": {
+    "n": 151,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:esci": {
+    "n": 500,
+    "state": 0.542,
+    "head": 0.0,
+    "any": 0.542
+  },
+  "tasksource:ethics/commonsense": {
+    "n": 257,
+    "state": 0.48249027237354086,
+    "head": 0.0,
+    "any": 0.48249027237354086
+  },
+  "tasksource:ethics/deontology": {
+    "n": 297,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:ethics/justice": {
+    "n": 279,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:ethics/virtue": {
+    "n": 251,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:ethos/multilabel": {
+    "n": 500,
+    "state": 0.004,
+    "head": 0.0,
+    "any": 0.004
+  },
+  "tasksource:faithdial/grounding": {
+    "n": 127,
+    "state": 0.2204724409448819,
+    "head": 0.0,
+    "any": 0.2204724409448819
+  },
+  "tasksource:feasibilityQA": {
+    "n": 500,
+    "state": 0.02,
+    "head": 0.0,
+    "any": 0.02
+  },
+  "tasksource:fever-evidence-related": {
+    "n": 500,
+    "state": 0.542,
+    "head": 0.0,
+    "any": 0.542
+  },
+  "tasksource:fig-qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:folio": {
+    "n": 500,
+    "state": 0.054,
+    "head": 0.0,
+    "any": 0.054
+  },
+  "tasksource:fool-me-twice": {
+    "n": 500,
+    "state": 0.048,
+    "head": 0.0,
+    "any": 0.048
+  },
+  "tasksource:gap": {
+    "n": 109,
+    "state": 0.14678899082568808,
+    "head": 0.0,
+    "any": 0.14678899082568808
+  },
+  "tasksource:github-issue-similarity": {
+    "n": 500,
+    "state": 0.82,
+    "head": 0.0,
+    "any": 0.82
+  },
+  "tasksource:go_emotions/simplified": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.09,
+    "any": 0.09
+  },
+  "tasksource:goal-step-wikihow/goal": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:goal-step-wikihow/order": {
+    "n": 466,
+    "state": 0.0,
+    "head": 0.02575107296137339,
+    "any": 0.02575107296137339
+  },
+  "tasksource:goal-step-wikihow/step": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.05,
+    "any": 0.05
+  },
+  "tasksource:google_wellformed_query": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:hallmarks-of-cancer/yesno": {
+    "n": 128,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:hate_speech18": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:hatexplain/majority": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:head_qa/en": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.134,
+    "any": 0.134
+  },
+  "tasksource:headline_cause/en_simple": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:health_fact": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:help-nli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:hh-rlhf/harmless-base": {
+    "n": 500,
+    "state": 0.088,
+    "head": 0.512,
+    "any": 0.53
+  },
+  "tasksource:hh-rlhf/helpful-base": {
+    "n": 500,
+    "state": 0.11,
+    "head": 0.71,
+    "any": 0.738
+  },
+  "tasksource:hh-rlhf/helpful-online": {
+    "n": 500,
+    "state": 0.376,
+    "head": 0.966,
+    "any": 0.99
+  },
+  "tasksource:hh-rlhf/helpful-rejection-sampled": {
+    "n": 500,
+    "state": 0.168,
+    "head": 0.816,
+    "any": 0.842
+  },
+  "tasksource:hope_edi/english": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:hotpotqa/supporting-fact": {
+    "n": 126,
+    "state": 0.09523809523809523,
+    "head": 0.0,
+    "any": 0.09523809523809523
+  },
+  "tasksource:hover": {
+    "n": 500,
+    "state": 0.158,
+    "head": 0.0,
+    "any": 0.158
+  },
+  "tasksource:hyperpartisan_news": {
+    "n": 285,
+    "state": 0.8245614035087719,
+    "head": 0.0,
+    "any": 0.8245614035087719
+  },
+  "tasksource:implicatures": {
+    "n": 204,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:infotabs": {
+    "n": 141,
+    "state": 0.41843971631205673,
+    "head": 0.0,
+    "any": 0.41843971631205673
+  },
+  "tasksource:it-support-tickets": {
+    "n": 500,
+    "state": 0.04,
+    "head": 0.0,
+    "any": 0.04
+  },
+  "tasksource:jigsaw_toxicity": {
+    "n": 500,
+    "state": 0.154,
+    "head": 0.0,
+    "any": 0.154
+  },
+  "tasksource:knowref60k": {
+    "n": 207,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:lex_glue/case_hold": {
+    "n": 500,
+    "state": 0.004,
+    "head": 0.926,
+    "any": 0.928
+  },
+  "tasksource:lex_glue/ledgar": {
+    "n": 500,
+    "state": 0.136,
+    "head": 0.956,
+    "any": 0.968
+  },
+  "tasksource:lex_glue/scotus": {
+    "n": 500,
+    "state": 0.956,
+    "head": 0.006,
+    "any": 0.956
+  },
+  "tasksource:lex_glue/unfair_tos": {
+    "n": 500,
+    "state": 0.002,
+    "head": 0.15,
+    "any": 0.152
+  },
+  "tasksource:logical-entailment": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:lonli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:magpie/idiomatic": {
+    "n": 124,
+    "state": 0.08870967741935484,
+    "head": 0.0,
+    "any": 0.08870967741935484
+  },
+  "tasksource:mams/atsa": {
+    "n": 139,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:math_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:maud/antitrust-efforts": {
+    "n": 42,
+    "state": 0.5952380952380952,
+    "head": 0.0,
+    "any": 0.5952380952380952
+  },
+  "tasksource:maud/bringdown-timing": {
+    "n": 37,
+    "state": 0.7837837837837838,
+    "head": 0.0,
+    "any": 0.7837837837837838
+  },
+  "tasksource:maud/consideration": {
+    "n": 37,
+    "state": 0.4864864864864865,
+    "head": 0.0,
+    "any": 0.4864864864864865
+  },
+  "tasksource:maud/ordinary-course-consent": {
+    "n": 24,
+    "state": 0.625,
+    "head": 0.0,
+    "any": 0.625
+  },
+  "tasksource:maud/ordinary-course-efforts": {
+    "n": 36,
+    "state": 0.16666666666666666,
+    "head": 0.0,
+    "any": 0.16666666666666666
+  },
+  "tasksource:maud/specific-performance": {
+    "n": 20,
+    "state": 0.4,
+    "head": 0.0,
+    "any": 0.4
+  },
+  "tasksource:medmcqa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.002,
+    "any": 0.002
+  },
+  "tasksource:mindgames": {
+    "n": 500,
+    "state": 0.05,
+    "head": 0.0,
+    "any": 0.05
+  },
+  "tasksource:monotonicity-entailment": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:moral_stories/full": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multidogo/airline/intent": {
+    "n": 67,
+    "state": 0.0,
+    "head": 0.08955223880597014,
+    "any": 0.08955223880597014
+  },
+  "tasksource:multidogo/fastfood/intent": {
+    "n": 66,
+    "state": 0.0,
+    "head": 0.13636363636363635,
+    "any": 0.13636363636363635
+  },
+  "tasksource:multidogo/finance/intent": {
+    "n": 67,
+    "state": 0.0,
+    "head": 0.11940298507462686,
+    "any": 0.11940298507462686
+  },
+  "tasksource:multidogo/insurance/intent": {
+    "n": 65,
+    "state": 0.0,
+    "head": 0.13846153846153847,
+    "any": 0.13846153846153847
+  },
+  "tasksource:multidogo/media/intent": {
+    "n": 67,
+    "state": 0.0,
+    "head": 0.23880597014925373,
+    "any": 0.23880597014925373
+  },
+  "tasksource:multidogo/software/intent": {
+    "n": 67,
+    "state": 0.0,
+    "head": 0.04477611940298507,
+    "any": 0.04477611940298507
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/amh": {
+    "n": 131,
+    "state": 0.030534351145038167,
+    "head": 0.0,
+    "any": 0.030534351145038167
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/arq": {
+    "n": 129,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/ary": {
+    "n": 127,
+    "state": 0.031496062992125984,
+    "head": 0.0,
+    "any": 0.031496062992125984
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/hau": {
+    "n": 126,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/ibo": {
+    "n": 115,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/kin": {
+    "n": 133,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/pcm": {
+    "n": 112,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/por": {
+    "n": 133,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/swa": {
+    "n": 121,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/tso": {
+    "n": 113,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/twi": {
+    "n": 100,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/AfriSenti-twitter-sentiment/yor": {
+    "n": 114,
+    "state": 0.03508771929824561,
+    "head": 0.0,
+    "any": 0.03508771929824561
+  },
+  "tasksource:multilingual/MLMA_hate_speech": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/ace": {
+    "n": 121,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/ban": {
+    "n": 123,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/bbc": {
+    "n": 118,
+    "state": 0.03389830508474576,
+    "head": 0.0,
+    "any": 0.03389830508474576
+  },
+  "tasksource:multilingual/NusaX-senti/bjn": {
+    "n": 131,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/bug": {
+    "n": 110,
+    "state": 0.03636363636363636,
+    "head": 0.0,
+    "any": 0.03636363636363636
+  },
+  "tasksource:multilingual/NusaX-senti/eng": {
+    "n": 127,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/ind": {
+    "n": 134,
+    "state": 0.029850746268656716,
+    "head": 0.0,
+    "any": 0.029850746268656716
+  },
+  "tasksource:multilingual/NusaX-senti/jav": {
+    "n": 128,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/mad": {
+    "n": 115,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/min": {
+    "n": 130,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/nij": {
+    "n": 109,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/NusaX-senti/sun": {
+    "n": 133,
+    "state": 0.06015037593984962,
+    "head": 0.0,
+    "any": 0.06015037593984962
+  },
+  "tasksource:multilingual/americas_nli/all_languages": {
+    "n": 369,
+    "state": 0.032520325203252036,
+    "head": 0.0,
+    "any": 0.032520325203252036
+  },
+  "tasksource:multilingual/disrpt/deu.rst.pcc.rels": {
+    "n": 223,
+    "state": 0.03587443946188341,
+    "head": 0.14349775784753363,
+    "any": 0.14349775784753363
+  },
+  "tasksource:multilingual/disrpt/eus.rst.ert.rels": {
+    "n": 297,
+    "state": 0.0,
+    "head": 0.12121212121212122,
+    "any": 0.12121212121212122
+  },
+  "tasksource:multilingual/disrpt/fas.rst.prstc.rels": {
+    "n": 294,
+    "state": 0.14625850340136054,
+    "head": 0.10204081632653061,
+    "any": 0.1564625850340136
+  },
+  "tasksource:multilingual/disrpt/fra.sdrt.annodis.rels": {
+    "n": 266,
+    "state": 0.0,
+    "head": 0.11278195488721804,
+    "any": 0.11278195488721804
+  },
+  "tasksource:multilingual/disrpt/nld.rst.nldt.rels": {
+    "n": 334,
+    "state": 0.0,
+    "head": 0.9670658682634731,
+    "any": 0.9670658682634731
+  },
+  "tasksource:multilingual/disrpt/por.rst.cstn.rels": {
+    "n": 309,
+    "state": 0.0,
+    "head": 0.9546925566343042,
+    "any": 0.9546925566343042
+  },
+  "tasksource:multilingual/disrpt/rus.rst.rrt.rels": {
+    "n": 264,
+    "state": 0.22348484848484848,
+    "head": 0.09090909090909091,
+    "any": 0.22348484848484848
+  },
+  "tasksource:multilingual/disrpt/spa.rst.rststb.rels": {
+    "n": 330,
+    "state": 0.07272727272727272,
+    "head": 0.14545454545454545,
+    "any": 0.14545454545454545
+  },
+  "tasksource:multilingual/disrpt/tha.pdtb.tdtb.rels": {
+    "n": 323,
+    "state": 0.2786377708978328,
+    "head": 0.9628482972136223,
+    "any": 0.9721362229102167
+  },
+  "tasksource:multilingual/disrpt/zho.rst.gcdt.rels": {
+    "n": 225,
+    "state": 0.0,
+    "head": 0.9422222222222222,
+    "any": 0.9422222222222222
+  },
+  "tasksource:multilingual/exams/multilingual": {
+    "n": 500,
+    "state": 0.026,
+    "head": 0.32,
+    "any": 0.34
+  },
+  "tasksource:multilingual/klue/nli": {
+    "n": 290,
+    "state": 0.08620689655172414,
+    "head": 0.0,
+    "any": 0.08620689655172414
+  },
+  "tasksource:multilingual/klue/sts": {
+    "n": 62,
+    "state": 0.1935483870967742,
+    "head": 0.0,
+    "any": 0.1935483870967742
+  },
+  "tasksource:multilingual/klue/ynat": {
+    "n": 450,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/amh": {
+    "n": 123,
+    "state": 0.032520325203252036,
+    "head": 0.0,
+    "any": 0.032520325203252036
+  },
+  "tasksource:multilingual/masakhanews/eng": {
+    "n": 193,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/fra": {
+    "n": 129,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/hau": {
+    "n": 180,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/ibo": {
+    "n": 160,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/lin": {
+    "n": 141,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/lug": {
+    "n": 134,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/orm": {
+    "n": 128,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/pcm": {
+    "n": 108,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/run": {
+    "n": 173,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/sna": {
+    "n": 125,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/som": {
+    "n": 183,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/swa": {
+    "n": 175,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/tir": {
+    "n": 188,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/xho": {
+    "n": 134,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/masakhanews/yor": {
+    "n": 128,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/massive": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.954,
+    "any": 0.954
+  },
+  "tasksource:multilingual/miam": {
+    "n": 397,
+    "state": 0.0,
+    "head": 0.010075566750629723,
+    "any": 0.010075566750629723
+  },
+  "tasksource:multilingual/mtop": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.964,
+    "any": 0.964
+  },
+  "tasksource:multilingual/multilingual-sentiments/all": {
+    "n": 431,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/offenseval_dravidian/kannada": {
+    "n": 320,
+    "state": 0.03125,
+    "head": 0.00625,
+    "any": 0.0375
+  },
+  "tasksource:multilingual/offenseval_dravidian/malayalam": {
+    "n": 416,
+    "state": 0.055288461538461536,
+    "head": 0.040865384615384616,
+    "any": 0.0889423076923077
+  },
+  "tasksource:multilingual/offenseval_dravidian/tamil": {
+    "n": 423,
+    "state": 0.06855791962174941,
+    "head": 0.01182033096926714,
+    "any": 0.07801418439716312
+  },
+  "tasksource:multilingual/tweet_sentiment_multilingual": {
+    "n": 446,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/universal-joy": {
+    "n": 500,
+    "state": 0.084,
+    "head": 0.0,
+    "any": 0.084
+  },
+  "tasksource:multilingual/wili_2018": {
+    "n": 500,
+    "state": 0.33,
+    "head": 0.96,
+    "any": 0.98
+  },
+  "tasksource:multilingual/x-stance": {
+    "n": 105,
+    "state": 0.1523809523809524,
+    "head": 0.0,
+    "any": 0.1523809523809524
+  },
+  "tasksource:multilingual/xcopa/et": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/ht": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/id": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/it": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/qu": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/sw": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/ta": {
+    "n": 13,
+    "state": 0.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "tasksource:multilingual/xcopa/th": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.4166666666666667,
+    "any": 0.4166666666666667
+  },
+  "tasksource:multilingual/xcopa/tr": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-et": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-ht": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-id": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-it": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-sw": {
+    "n": 11,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-ta": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-th": {
+    "n": 9,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-tr": {
+    "n": 14,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-vi": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/translation-zh": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcopa/vi": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.07692307692307693,
+    "any": 0.07692307692307693
+  },
+  "tasksource:multilingual/xcopa/zh": {
+    "n": 13,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-ar": {
+    "n": 134,
+    "state": 0.0,
+    "head": 0.9850746268656716,
+    "any": 0.9850746268656716
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-de": {
+    "n": 138,
+    "state": 0.0,
+    "head": 0.8840579710144928,
+    "any": 0.8840579710144928
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-en": {
+    "n": 128,
+    "state": 0.0,
+    "head": 0.40625,
+    "any": 0.40625
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-es": {
+    "n": 131,
+    "state": 0.0,
+    "head": 0.8396946564885496,
+    "any": 0.8396946564885496
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-fr": {
+    "n": 132,
+    "state": 0.0,
+    "head": 0.696969696969697,
+    "any": 0.696969696969697
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-hi": {
+    "n": 119,
+    "state": 0.0,
+    "head": 0.9831932773109243,
+    "any": 0.9831932773109243
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-it": {
+    "n": 130,
+    "state": 0.0,
+    "head": 0.8615384615384616,
+    "any": 0.8615384615384616
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-jap": {
+    "n": 131,
+    "state": 0.0,
+    "head": 0.9923664122137404,
+    "any": 0.9923664122137404
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-nl": {
+    "n": 130,
+    "state": 0.0,
+    "head": 0.8307692307692308,
+    "any": 0.8307692307692308
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-pl": {
+    "n": 127,
+    "state": 0.0,
+    "head": 0.905511811023622,
+    "any": 0.905511811023622
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-pt": {
+    "n": 138,
+    "state": 0.0,
+    "head": 0.8405797101449275,
+    "any": 0.8405797101449275
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-ru": {
+    "n": 135,
+    "state": 0.0,
+    "head": 0.9851851851851852,
+    "any": 0.9851851851851852
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-sw": {
+    "n": 128,
+    "state": 0.0,
+    "head": 0.890625,
+    "any": 0.890625
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-ur": {
+    "n": 126,
+    "state": 0.0,
+    "head": 0.9841269841269841,
+    "any": 0.9841269841269841
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-vi": {
+    "n": 138,
+    "state": 0.0,
+    "head": 0.9637681159420289,
+    "any": 0.9637681159420289
+  },
+  "tasksource:multilingual/xcsr/X-CODAH-zh": {
+    "n": 136,
+    "state": 0.0,
+    "head": 0.9705882352941176,
+    "any": 0.9705882352941176
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-ar": {
+    "n": 167,
+    "state": 0.0,
+    "head": 0.17964071856287425,
+    "any": 0.17964071856287425
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-de": {
+    "n": 175,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-en": {
+    "n": 190,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-es": {
+    "n": 185,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-fr": {
+    "n": 176,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-hi": {
+    "n": 154,
+    "state": 0.006493506493506494,
+    "head": 0.2792207792207792,
+    "any": 0.2857142857142857
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-it": {
+    "n": 174,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-jap": {
+    "n": 137,
+    "state": 0.0,
+    "head": 0.014598540145985401,
+    "any": 0.014598540145985401
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-nl": {
+    "n": 156,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-pl": {
+    "n": 163,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-pt": {
+    "n": 158,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-ru": {
+    "n": 143,
+    "state": 0.006993006993006993,
+    "head": 0.5874125874125874,
+    "any": 0.5944055944055944
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-sw": {
+    "n": 146,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-ur": {
+    "n": 163,
+    "state": 0.0,
+    "head": 0.12269938650306748,
+    "any": 0.12269938650306748
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-vi": {
+    "n": 155,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xcsr/X-CSQA-zh": {
+    "n": 140,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xstory_cloze/ar": {
+    "n": 31,
+    "state": 0.0967741935483871,
+    "head": 0.7741935483870968,
+    "any": 0.8064516129032258
+  },
+  "tasksource:multilingual/xstory_cloze/en": {
+    "n": 31,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xstory_cloze/es": {
+    "n": 31,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xstory_cloze/eu": {
+    "n": 31,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xstory_cloze/hi": {
+    "n": 31,
+    "state": 0.45161290322580644,
+    "head": 0.967741935483871,
+    "any": 0.967741935483871
+  },
+  "tasksource:multilingual/xstory_cloze/id": {
+    "n": 29,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xstory_cloze/my": {
+    "n": 35,
+    "state": 1.0,
+    "head": 1.0,
+    "any": 1.0
+  },
+  "tasksource:multilingual/xstory_cloze/ru": {
+    "n": 30,
+    "state": 0.23333333333333334,
+    "head": 0.9,
+    "any": 0.9
+  },
+  "tasksource:multilingual/xstory_cloze/sw": {
+    "n": 32,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:multilingual/xstory_cloze/te": {
+    "n": 33,
+    "state": 0.9393939393939394,
+    "head": 0.9696969696969697,
+    "any": 1.0
+  },
+  "tasksource:multilingual/xstory_cloze/zh": {
+    "n": 30,
+    "state": 0.0,
+    "head": 0.5333333333333333,
+    "any": 0.5333333333333333
+  },
+  "tasksource:multiwoz22/categorical-slot": {
+    "n": 118,
+    "state": 0.3644067796610169,
+    "head": 0.07627118644067797,
+    "any": 0.3644067796610169
+  },
+  "tasksource:multiwoz22/dialogue-act": {
+    "n": 112,
+    "state": 0.14285714285714285,
+    "head": 0.9732142857142857,
+    "any": 0.9821428571428571
+  },
+  "tasksource:nan-nli": {
+    "n": 301,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:naturallogic": {
+    "n": 194,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:nevir": {
+    "n": 101,
+    "state": 0.0,
+    "head": 0.9900990099009901,
+    "any": 0.9900990099009901
+  },
+  "tasksource:newsmtsc": {
+    "n": 139,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:numer_sense": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:onestop_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:open_question_type": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:patent-phrase-similarity": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.09,
+    "any": 0.09
+  },
+  "tasksource:perspectrum/stance": {
+    "n": 124,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:poem_sentiment": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:prm800k_dpo/solution": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.998,
+    "any": 0.998
+  },
+  "tasksource:prm800k_dpo/step": {
+    "n": 500,
+    "state": 0.548,
+    "head": 0.206,
+    "any": 0.62
+  },
+  "tasksource:probability_words_nli/reasoning_1hop": {
+    "n": 480,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:probability_words_nli/reasoning_2hop": {
+    "n": 463,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:prompt-injection-dataset": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:prompt-injections": {
+    "n": 500,
+    "state": 0.022,
+    "head": 0.0,
+    "any": 0.022
+  },
+  "tasksource:propsegment/nli": {
+    "n": 500,
+    "state": 0.812,
+    "head": 0.0,
+    "any": 0.812
+  },
+  "tasksource:prosocial-dialog/safety": {
+    "n": 142,
+    "state": 0.028169014084507043,
+    "head": 0.0,
+    "any": 0.028169014084507043
+  },
+  "tasksource:proto_qa/proto_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:qasc": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:qasper/yesno": {
+    "n": 39,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "tasksource:quac/answerability": {
+    "n": 128,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "tasksource:quality": {
+    "n": 118,
+    "state": 1.0,
+    "head": 0.06779661016949153,
+    "any": 1.0
+  },
+  "tasksource:quartz": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:ragtruth/grounding": {
+    "n": 126,
+    "state": 0.9920634920634921,
+    "head": 0.0,
+    "any": 0.9920634920634921
+  },
+  "tasksource:recast/recast_factuality": {
+    "n": 18,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:recast/recast_megaveridicality": {
+    "n": 22,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:recast/recast_ner": {
+    "n": 17,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:recast/recast_puns": {
+    "n": 18,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:recast/recast_sentiment": {
+    "n": 21,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:recast/recast_verbcorner": {
+    "n": 18,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:recast/recast_verbnet": {
+    "n": 23,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:redial/preference": {
+    "n": 140,
+    "state": 0.45714285714285713,
+    "head": 0.0,
+    "any": 0.45714285714285713
+  },
+  "tasksource:resnli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli/IS_CS": {
+    "n": 24,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli/LI_LI": {
+    "n": 24,
+    "state": 0.16666666666666666,
+    "head": 0.0,
+    "any": 0.16666666666666666
+  },
+  "tasksource:robust_nli/PI_CD": {
+    "n": 24,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli/PI_SP": {
+    "n": 27,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli/ST_LM": {
+    "n": 20,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli/ST_NE": {
+    "n": 23,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli/ST_SE": {
+    "n": 23,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli/ST_WO": {
+    "n": 21,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli_is_sd": {
+    "n": 14,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:robust_nli_li_ts": {
+    "n": 12,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:ruletaker": {
+    "n": 500,
+    "state": 0.07,
+    "head": 0.0,
+    "any": 0.07
+  },
+  "tasksource:rumoureval_2019/RumourEval2019": {
+    "n": 500,
+    "state": 0.038,
+    "head": 0.0,
+    "any": 0.038
+  },
+  "tasksource:sbic/intent": {
+    "n": 100,
+    "state": 0.0,
+    "head": 0.02,
+    "any": 0.02
+  },
+  "tasksource:sbic/offensiveness": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:schema-guided/intent": {
+    "n": 167,
+    "state": 0.18562874251497005,
+    "head": 0.9580838323353293,
+    "any": 0.9820359281437125
+  },
+  "tasksource:scientific-exaggeration-detection": {
+    "n": 123,
+    "state": 0.032520325203252036,
+    "head": 0.0,
+    "any": 0.032520325203252036
+  },
+  "tasksource:scinli": {
+    "n": 500,
+    "state": 0.028,
+    "head": 0.0,
+    "any": 0.028
+  },
+  "tasksource:scone": {
+    "n": 47,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:scruples/verdict_votes": {
+    "n": 500,
+    "state": 0.594,
+    "head": 0.0,
+    "any": 0.594
+  },
+  "tasksource:sem_eval_2010_task_8": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.956,
+    "any": 0.956
+  },
+  "tasksource:sentfin": {
+    "n": 140,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:sentihood/sentiment": {
+    "n": 124,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:shell-safety-v2": {
+    "n": 500,
+    "state": 0.156,
+    "head": 0.0,
+    "any": 0.156
+  },
+  "tasksource:sherliic": {
+    "n": 28,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:silicone/maptask": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.018,
+    "any": 0.018
+  },
+  "tasksource:slurp/intent": {
+    "n": 117,
+    "state": 0.0,
+    "head": 0.9658119658119658,
+    "any": 0.9658119658119658
+  },
+  "tasksource:slurp/slot-type": {
+    "n": 117,
+    "state": 0.0,
+    "head": 0.9572649572649573,
+    "any": 0.9572649572649573
+  },
+  "tasksource:sms_spam": {
+    "n": 487,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:snips_built_in_intents": {
+    "n": 388,
+    "state": 0.0,
+    "head": 0.007731958762886598,
+    "any": 0.007731958762886598
+  },
+  "tasksource:social_i_qa": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:spartqa-mchoice": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:spartqa-yn": {
+    "n": 500,
+    "state": 0.086,
+    "head": 0.0,
+    "any": 0.086
+  },
+  "tasksource:spider/column": {
+    "n": 118,
+    "state": 0.3644067796610169,
+    "head": 0.7542372881355932,
+    "any": 0.7627118644067796
+  },
+  "tasksource:squad-v2/answerability": {
+    "n": 129,
+    "state": 0.10077519379844961,
+    "head": 0.0,
+    "any": 0.10077519379844961
+  },
+  "tasksource:stackoverflow-questions": {
+    "n": 500,
+    "state": 0.572,
+    "head": 0.0,
+    "any": 0.572
+  },
+  "tasksource:starcon": {
+    "n": 448,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:stepgame": {
+    "n": 500,
+    "state": 0.032,
+    "head": 0.0,
+    "any": 0.032
+  },
+  "tasksource:streusle/noun": {
+    "n": 108,
+    "state": 0.0,
+    "head": 0.9722222222222222,
+    "any": 0.9722222222222222
+  },
+  "tasksource:streusle/verb": {
+    "n": 109,
+    "state": 0.0,
+    "head": 0.05504587155963303,
+    "any": 0.05504587155963303
+  },
+  "tasksource:sts-companion": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:subjectivity": {
+    "n": 366,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:syntactic-augmentation-nli": {
+    "n": 177,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:tab/identifier": {
+    "n": 139,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "tasksource:tabfact": {
+    "n": 131,
+    "state": 0.5877862595419847,
+    "head": 0.0,
+    "any": 0.5877862595419847
+  },
+  "tasksource:temporal-nli": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:tomi-nli": {
+    "n": 500,
+    "state": 0.056,
+    "head": 0.0,
+    "any": 0.056
+  },
+  "tasksource:tracie": {
+    "n": 500,
+    "state": 0.042,
+    "head": 0.0,
+    "any": 0.042
+  },
+  "tasksource:tweets_hate_speech_detection": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:twitter-financial-news-sentiment": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:ukpconvarg/convincingness": {
+    "n": 187,
+    "state": 0.0,
+    "head": 0.8556149732620321,
+    "any": 0.8556149732620321
+  },
+  "tasksource:utilitarianism": {
+    "n": 212,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:vitaminc": {
+    "n": 500,
+    "state": 0.022,
+    "head": 0.0,
+    "any": 0.022
+  },
+  "tasksource:wands": {
+    "n": 141,
+    "state": 0.950354609929078,
+    "head": 0.0,
+    "any": 0.950354609929078
+  },
+  "tasksource:webinstruct/binary": {
+    "n": 122,
+    "state": 0.03278688524590164,
+    "head": 0.0,
+    "any": 0.03278688524590164
+  },
+  "tasksource:webinstruct/mc": {
+    "n": 213,
+    "state": 0.0,
+    "head": 0.10328638497652583,
+    "any": 0.10328638497652583
+  },
+  "tasksource:websrc/element": {
+    "n": 72,
+    "state": 1.0,
+    "head": 0.9722222222222222,
+    "any": 1.0
+  },
+  "tasksource:websrc/yesno": {
+    "n": 73,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "tasksource:wice": {
+    "n": 500,
+    "state": 1.0,
+    "head": 0.0,
+    "any": 1.0
+  },
+  "tasksource:wiki_hop/original": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.238,
+    "any": 0.238
+  },
+  "tasksource:wikimedqa/medwiki": {
+    "n": 500,
+    "state": 0.414,
+    "head": 0.108,
+    "any": 0.476
+  },
+  "tasksource:wikipedia-detox/aggression": {
+    "n": 500,
+    "state": 0.072,
+    "head": 0.0,
+    "any": 0.072
+  },
+  "tasksource:wikipedia-detox/aggression_score": {
+    "n": 500,
+    "state": 0.058,
+    "head": 0.0,
+    "any": 0.058
+  },
+  "tasksource:wikipedia-detox/attack": {
+    "n": 500,
+    "state": 0.052,
+    "head": 0.0,
+    "any": 0.052
+  },
+  "tasksource:wikipedia-detox/toxicity": {
+    "n": 500,
+    "state": 0.066,
+    "head": 0.0,
+    "any": 0.066
+  },
+  "tasksource:wikipedia-detox/toxicity_score": {
+    "n": 500,
+    "state": 0.084,
+    "head": 0.0,
+    "any": 0.084
+  },
+  "tasksource:wildguardmix-cleaned/prompt_harm": {
+    "n": 500,
+    "state": 0.096,
+    "head": 0.0,
+    "any": 0.096
+  },
+  "tasksource:wildguardmix-cleaned/response_harm": {
+    "n": 500,
+    "state": 0.7,
+    "head": 0.0,
+    "any": 0.7
+  },
+  "tasksource:wildguardmix-cleaned/response_refusal": {
+    "n": 500,
+    "state": 0.668,
+    "head": 0.0,
+    "any": 0.668
+  },
+  "tasksource:winodict": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource:winowhy": {
+    "n": 371,
+    "state": 0.05390835579514825,
+    "head": 0.0,
+    "any": 0.05390835579514825
+  },
+  "tasksource:wnut_17/wnut_17": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "tasksource_synth": {
+    "n": 500,
+    "state": 0.496,
+    "head": 0.106,
+    "any": 0.55
+  },
+  "tetris_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "trading_laya": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "typed_decisions_bench": {
+    "n": 500,
+    "state": 0.042,
+    "head": 0.0,
+    "any": 0.042
+  },
+  "typed_decisions_train": {
+    "n": 500,
+    "state": 0.072,
+    "head": 0.0,
+    "any": 0.072
+  },
+  "typed_synth": {
+    "n": 500,
+    "state": 0.128,
+    "head": 0.052,
+    "any": 0.168
+  },
+  "when2call": {
+    "n": 500,
+    "state": 0.002,
+    "head": 0.0,
+    "any": 0.002
+  },
+  "zs_banking77": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "zs_massive_en": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "zs_massive_fr": {
+    "n": 500,
+    "state": 0.0,
+    "head": 0.0,
+    "any": 0.0
+  },
+  "all": {
+    "n": 258309,
+    "state": 0.14557371210449502,
+    "head": 0.11551281604589851,
+    "any": 0.24040199915604954
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "dump": "runs/s6-micro2/runs/s6-micro/eval/dump-s6-micro.jsonl",
+  "n": 11000,
+  "bins": 15,
+  "sources": {
+    "notam:deel_subject": {
+      "n": 2000,
+      "accuracy": 0.0925,
+      "mean_confidence": 0.11095849036425352,
+      "ece": 0.018458490364253528
+    },
+    "notam:notam_multi": {
+      "n": 2000,
+      "accuracy": 0.353,
+      "mean_confidence": 0.4938813196979463,
+      "ece": 0.14088131969794632
+    },
+    "typed_decisions_bench": {
+      "n": 2000,
+      "accuracy": 0.553,
+      "mean_confidence": 0.5084390656650066,
+      "ece": 0.04981374898552895
+    },
+    "when2call": {
+      "n": 2000,
+      "accuracy": 0.401,
+      "mean_confidence": 0.6119172108769417,
+      "ece": 0.21648713827133176
+    },
+    "zs_massive_en": {
+      "n": 2000,
+      "accuracy": 0.531,
+      "mean_confidence": 0.45948108515888453,
+      "ece": 0.07151891484111549
+    },
+    "zs_massive_fr": {
+      "n": 1000,
+      "accuracy": 0.314,
+      "mean_confidence": 0.32607366240024566,
+      "ece": 0.029993105351924888
+    }
+  },
+  "pooled": {
+    "ece": 0.058794657221571955,
+    "ece_sky_eval_bins": 0.058794657221571955,
+    "accuracy": 0.3795454545454545,
+    "bootstrap": {
+      "resamples": 1000,
+      "seed": 0,
+      "level": 0.95,
+      "lo": 0.052576147721673946,
+      "hi": 0.06869966025838459
+    }
+  }
+}

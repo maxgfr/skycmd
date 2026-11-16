@@ -1,0 +1,8 @@
+== 2026-11-15 13:08:18 start, HEAD 633f1a1
+== 2026-11-16 00:55:42 train step died at 21:40 on 'Operation not permitted' (the session lost access to the folder while the checkpoint was renamed); resumed from decide/last (step 61051, 327.5 of 360 min)
+== 2026-11-16 00:55:42 start, HEAD d46aad1
+== 2026-11-16 02:08:33 step train exit 0
+== 2026-11-16 05:12:20 step dagger exit 0
+== 2026-11-16 05:40:44 step exit exit 0
+== 2026-11-16 05:55:30 step eval exit 0
+touched v1 files:        0

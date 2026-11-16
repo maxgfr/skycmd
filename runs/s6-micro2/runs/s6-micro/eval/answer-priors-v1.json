@@ -1,0 +1,86 @@
+{
+  "dump": "runs/s6-micro/eval/dump-s6-micro.jsonl",
+  "max": 2000,
+  "sources": {
+    "notam:deel_subject": {
+      "n": 2000,
+      "questions": 1,
+      "model_accuracy": 0.052,
+      "share_most_frequent_answer_per_question": 0.8395,
+      "questions_one_answer_95pct": 0,
+      "share_most_frequent_answer_whole_source": 0.8395,
+      "most_frequent_answer_whole_source": "Services and Facilities",
+      "test_majority_per_question_oracle": 0.189,
+      "train_prior": null
+    },
+    "notam:notam_multi": {
+      "n": 2000,
+      "questions": 7,
+      "model_accuracy": 0.394,
+      "share_most_frequent_answer_per_question": 0.9895,
+      "questions_one_answer_95pct": 6,
+      "share_most_frequent_answer_whole_source": 0.6345,
+      "most_frequent_answer_whole_source": "false: no, the statement does not hold",
+      "test_majority_per_question_oracle": 0.6825,
+      "train_prior": null
+    },
+    "typed_decisions_bench": {
+      "n": 2000,
+      "questions": 20,
+      "model_accuracy": 0.547,
+      "share_most_frequent_answer_per_question": 0.795,
+      "questions_one_answer_95pct": 7,
+      "share_most_frequent_answer_whole_source": 0.0865,
+      "most_frequent_answer_whole_source": "level 1: Routine; handle within the normal queue.",
+      "test_majority_per_question_oracle": 0.5185,
+      "train_prior": {
+        "train_source": "typed_decisions_train",
+        "answer_if_one_question": null,
+        "train_questions": 20,
+        "train_records": 5640,
+        "items_covered": 2000,
+        "accuracy": 0.4815
+      }
+    },
+    "when2call": {
+      "n": 2000,
+      "questions": 1,
+      "model_accuracy": 0.4305,
+      "share_most_frequent_answer_per_question": 0.4485,
+      "questions_one_answer_95pct": 0,
+      "share_most_frequent_answer_whole_source": 0.4485,
+      "most_frequent_answer_whole_source": "request_for_info: ask the user for missing information needed to call a tool",
+      "test_majority_per_question_oracle": 0.359,
+      "train_prior": {
+        "train_source": "when2call",
+        "answer_if_one_question": "cannot_answer: explain that the available tools cannot fulfil the request",
+        "train_questions": 1,
+        "train_records": 20108,
+        "items_covered": 2000,
+        "accuracy": 0.359
+      }
+    },
+    "zs_massive_en": {
+      "n": 2000,
+      "questions": 1,
+      "model_accuracy": 0.518,
+      "share_most_frequent_answer_per_question": 0.09,
+      "questions_one_answer_95pct": 0,
+      "share_most_frequent_answer_whole_source": 0.09,
+      "most_frequent_answer_whole_source": "weather query",
+      "test_majority_per_question_oracle": 0.069,
+      "train_prior": null
+    },
+    "zs_massive_fr": {
+      "n": 1000,
+      "questions": 1,
+      "model_accuracy": 0.275,
+      "share_most_frequent_answer_per_question": 0.079,
+      "questions_one_answer_95pct": 0,
+      "share_most_frequent_answer_whole_source": 0.079,
+      "most_frequent_answer_whole_source": "weather query",
+      "test_majority_per_question_oracle": 0.07,
+      "train_prior": null
+    }
+  }
+}

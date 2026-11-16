@@ -1,0 +1,25 @@
+{
+  "model": "runs/s6-micro2/models/s6-micro/skycmd-s6-micro-g3-ternary.gguf",
+  "n_params": 5587201,
+  "split": "test",
+  "sources": {
+    "all": {
+      "n": 2000,
+      "accuracy": 0.763,
+      "nll": 0.6610649249643358,
+      "ece": 0.026456355459988118,
+      "mean_layers": 6.0,
+      "early_exit_rate": 0.0,
+      "median_us": 4918.709
+    },
+    "zs_banking77": {
+      "n": 2000,
+      "accuracy": 0.763,
+      "nll": 0.6610649249643358,
+      "ece": 0.026456355459988118,
+      "mean_layers": 6.0,
+      "early_exit_rate": 0.0,
+      "median_us": 4918.709
+    }
+  }
+}
