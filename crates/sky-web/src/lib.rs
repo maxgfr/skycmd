@@ -19,12 +19,22 @@
 //! const { tau_f1 } = JSON.parse(v.thresholds());   // accepted when p_real >= tau_f1
 //! ```
 //!
+//! The fused tool router (s6-nano v3, [`router`]): the v2 router file and the 4-bit static
+//! embedding file, the tool list cached on both parts:
+//!
+//! ```js
+//! const r = new ToolRouter(modelBytes, embeddingBytes);
+//! const tools = JSON.stringify(["lights_on: Turns the lights on.", "weather: Gives the weather."]);
+//! const { probs, answer, ask, decision, micros } = JSON.parse(r.route("turn on the hall lights", tools, false));
+//! ```
+//!
 //! The Rust API ([`Model`], [`Session`], [`session::bench`]) is usable natively; the
 //! `#[wasm_bindgen]` types below are thin wrappers that turn errors into JS exceptions.
 
 pub mod clock;
 pub mod forecast;
 pub mod model;
+pub mod router;
 pub mod session;
 pub mod verify;
 
@@ -272,6 +282,63 @@ impl SecretVerifier {
 
     /// `{name, n_params, file_bytes, window, words}` as JSON.
     pub fn info(&self) -> String {
+        self.inner.info().to_string()
+    }
+}
+
+/// The fused tool router of s6-nano v3: the model part (the v2 router file) and the embedding
+/// part (`skycmd-embed` file), `p ∝ (p_model · p_embedding)^β`, "ask" below τ_ask3.
+#[wasm_bindgen]
+pub struct ToolRouter {
+    inner: router::Router,
+}
+
+#[wasm_bindgen]
+impl ToolRouter {
+    /// From the GGUF bytes of the model file and of the embedding file.
+    #[wasm_bindgen(constructor)]
+    pub fn new(model_bytes: &[u8], embedding_bytes: &[u8]) -> Result<ToolRouter, JsError> {
+        Ok(ToolRouter {
+            inner: router::Router::load(model_bytes, embedding_bytes)
+                .map_err(|e| JsError::new(&e))?,
+        })
+    }
+
+    /// Route a request against `tools_json`, a JSON array of rendered tool options
+    /// `name: description` (*none* is appended). `fast`: the model stops at its first exit.
+    /// Returns `{probs, index, answer, none, ask, decision, top, tau_ask3, model, embedding,
+    /// fast, exit, layers_used, static_hit, tools_hit, micros, micros_model, micros_embedding}`
+    /// as JSON: `probs` over the tools then *none*; `answer` the top option's name or `none`;
+    /// `decision` `tool`, `none` or `ask` (the top probability below `tau_ask3`); `model` and
+    /// `embedding` the two parts' probabilities; `static_hit` / `tools_hit` whether the tool list
+    /// was cached on the model / embedding part.
+    pub fn route(
+        &mut self,
+        request: &str,
+        tools_json: &str,
+        fast: bool,
+    ) -> Result<String, JsError> {
+        self.inner
+            .route_value(request, tools_json, fast)
+            .map(|v| v.to_string())
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// The token ids of a text in the embedding part (tests, parity).
+    #[wasm_bindgen(js_name = embeddingTokens)]
+    pub fn embedding_tokens(&self, text: &str) -> Vec<u32> {
+        self.inner.embedding().token_ids(text)
+    }
+
+    /// τ_ask3, the ask threshold on the top fused probability.
+    #[wasm_bindgen(js_name = tauAsk)]
+    pub fn tau_ask(&self) -> f64 {
+        self.inner.embedding().tau_ask
+    }
+
+    /// `{model, embedding}` as JSON (the model's description; the embedding's name, bytes,
+    /// dimension, vocabulary size and fitted values).
+    pub fn info(&mut self) -> String {
         self.inner.info().to_string()
     }
 }
