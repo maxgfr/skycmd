@@ -421,6 +421,12 @@ enum Cmd {
         /// Sequences per sequence batch.
         #[arg(long, default_value_t = 16)]
         sleep_batch: usize,
+        /// Sequences per part of a sequence batch (0: the whole batch at once). A batch of more
+        /// is cut into parts whose gradients are summed before its one update: the same
+        /// batches, loss and update (up to the order of floating-point sums), with the memory
+        /// of one part.
+        #[arg(long, default_value_t = 0)]
+        sleep_chunk: usize,
         /// Sleep passes N drawn for each sequence batch (comma-separated; one value fixes N).
         #[arg(long, value_delimiter = ',', default_value = "1,2,3,4")]
         sleep_passes: Vec<usize>,
@@ -954,6 +960,7 @@ fn main() -> Result<()> {
             sleep_records,
             sleep_weights,
             sleep_batch,
+            sleep_chunk,
             sleep_passes,
             sleep_full,
             seq_log,
@@ -1014,6 +1021,7 @@ fn main() -> Result<()> {
             sleep_records,
             sleep_weights,
             sleep_batch,
+            sleep_chunk,
             sleep_passes,
             sleep_full,
             seq_log,

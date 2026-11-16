@@ -385,6 +385,49 @@ pub struct FrameBatch {
     pub n_tokens: usize,
 }
 
+impl FrameBatch {
+    /// Sequences in the batch.
+    pub fn sequences(&self) -> usize {
+        self.frames.first().map_or(0, |f| f.ids.dim(0) as usize)
+    }
+
+    /// The sequences `lo..hi` of the batch, every frame cut as [`data::S2Batch::rows`] cuts it
+    /// (`n_tokens` 0: it is the whole batch's).
+    pub fn rows(&self, lo: usize, hi: usize) -> Result<FrameBatch> {
+        let n = (hi - lo) as i32;
+        let take = mlx_rs::Array::from_iter(lo as i32..hi as i32, &[n]);
+        let cols = |a: &mlx_rs::Array| a.take_axis(&take, 1);
+        Ok(FrameBatch {
+            frames: self
+                .frames
+                .iter()
+                .map(|f| f.rows(lo, hi))
+                .collect::<Result<_>>()?,
+            pauses: self.pauses.clone(),
+            asks: cols(&self.asks)?,
+            colours: cols(&self.colours)?,
+            buckets: cols(&self.buckets)?,
+            shown: cols(&self.shown)?,
+            n_rows: (hi - lo) * self.frames.len(),
+            n_tokens: 0,
+        })
+    }
+
+    /// The batch cut into parts of `size` sequences in order (the last one may be shorter);
+    /// `None` when `size` is 0 or holds the whole batch.
+    pub fn parts(&self, size: usize) -> Result<Option<Vec<FrameBatch>>> {
+        let n = self.sequences();
+        if size == 0 || size >= n {
+            return Ok(None);
+        }
+        (0..n)
+            .step_by(size)
+            .map(|lo| self.rows(lo, (lo + size).min(n)))
+            .collect::<Result<_>>()
+            .map(Some)
+    }
+}
+
 /// Samples `n` sequences of `sd`, all frames padded to one state length.
 pub fn sample_frames(sd: &SeqData, n: usize, rng: &mut Rng, pad_to: usize) -> FrameBatch {
     let picked: Vec<usize> = (0..n).map(|_| rng.below(sd.train.len())).collect();

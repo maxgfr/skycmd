@@ -583,7 +583,32 @@ pub fn seq_loss(
     qat: bool,
     how: Sleep,
 ) -> R<Array> {
-    Ok(seq_frames(p, cfg, frames, pauses, wts, qat, how, None)?.loss)
+    Ok(seq_frames(p, cfg, frames, pauses, wts, qat, how, None, None)?.loss)
+}
+
+/// The batch a part of sequences was cut from (`s2::seq::FrameBatch::parts`): its sequences
+/// and its asks. With it, the losses of the parts of a batch add up to the loss of the whole
+/// batch, and so do their gradients: the mean over the rows of a frame is weighted by the share
+/// of the rows of the part, and the auxiliary term is divided by the asks of the whole batch.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Whole {
+    pub rows: usize,
+    pub asks: f32,
+}
+
+/// [`seq_loss`] of a part of the batch `whole` (see [`Whole`]).
+#[allow(clippy::too_many_arguments)]
+pub fn seq_loss_part(
+    p: &ParamMap,
+    cfg: &S2Config,
+    frames: &[S2Batch],
+    pauses: &[bool],
+    wts: &Array,
+    qat: bool,
+    how: Sleep,
+    whole: Whole,
+) -> R<Array> {
+    Ok(seq_frames(p, cfg, frames, pauses, wts, qat, how, None, Some(whole))?.loss)
 }
 
 /// The ask frames of a `recall` batch: `ask` `[K, B]` (1 on an ask frame) and `colour` `[K, B]`
@@ -666,7 +691,7 @@ pub fn asks_read_off(
 ) -> R<Vec<Array>> {
     let mut off = cfg.clone();
     off.memory = false;
-    let out = seq_frames(p, &off, frames, &[], wts, qat, Sleep::AWAKE, None)?;
+    let out = seq_frames(p, &off, frames, &[], wts, qat, Sleep::AWAKE, None, None)?;
     let (deep, tail) = ask_ce(cfg, &out.logits, frames, wts, asks.ask)?;
     Ok(vec![
         deep,
@@ -762,7 +787,25 @@ pub fn seq_loss_asks(
     how: Sleep,
     asks: Asks<'_>,
 ) -> R<Vec<Array>> {
-    let out = seq_frames(p, cfg, frames, pauses, wts, qat, how, Some(asks))?;
+    seq_loss_asks_part(p, cfg, frames, pauses, wts, qat, how, asks, None)
+}
+
+/// [`seq_loss_asks`] of a part of the batch `whole` (see [`Whole`]; `None`: the whole batch).
+/// Every output but the loss is a sum over the rows, or the centres divided by the rows of the
+/// whole batch, so the outputs of the parts add up to those of the whole batch.
+#[allow(clippy::too_many_arguments)]
+pub fn seq_loss_asks_part(
+    p: &ParamMap,
+    cfg: &S2Config,
+    frames: &[S2Batch],
+    pauses: &[bool],
+    wts: &Array,
+    qat: bool,
+    how: Sleep,
+    asks: Asks<'_>,
+    whole: Option<Whole>,
+) -> R<Vec<Array>> {
+    let out = seq_frames(p, cfg, frames, pauses, wts, qat, how, Some(asks), whole)?;
     let (deep, tail) = ask_ce(cfg, &out.logits, frames, wts, asks.ask)?;
     let splits = ask_splits(&out.logits, frames, asks)?;
     let centre = if out.centre.is_empty() {
@@ -837,7 +880,8 @@ fn aux_rows(
 }
 
 /// The loss of [`seq_loss`] and the logits of every frame; with `asks`, a `memory_aux` config
-/// and a positive `aux_weight`, the auxiliary term of [`seq_loss_asks`] as well.
+/// and a positive `aux_weight`, the auxiliary term of [`seq_loss_asks`] as well. With `whole`,
+/// `frames` are a part of that batch ([`Whole`]).
 #[allow(clippy::too_many_arguments)]
 fn seq_frames(
     p: &ParamMap,
@@ -848,6 +892,7 @@ fn seq_frames(
     qat: bool,
     how: Sleep,
     asks: Option<Asks<'_>>,
+    whole: Option<Whole>,
 ) -> R<SeqOut> {
     let p = &*prepare(p, cfg, qat)?;
     let n_exits = cfg.n_exits();
@@ -909,12 +954,19 @@ fn seq_frames(
     let mut loss = total
         .expect("at least one frame")
         .divide(Array::from_f32(frames.len() as f32))?;
+    if let Some(w) = whole {
+        // Each frame's mean over the rows of the part, weighted by the part's share of the rows.
+        let rows = frames[0].ids.dim(0) as f32;
+        loss = loss.multiply(Array::from_f32(rows / w.rows as f32))?;
+    }
     if let Some(a) = aux {
-        // The mean over the ask frames and the memory layers.
+        // The mean over the ask frames (of the whole batch) and the memory layers.
+        let asks = match whole {
+            Some(w) => Array::from_f32(w.asks),
+            None => a.ask.sum(None)?,
+        };
         let n = ops::maximum(
-            a.ask
-                .sum(None)?
-                .multiply(Array::from_f32(cfg.state_layers as f32))?,
+            asks.multiply(Array::from_f32(cfg.state_layers as f32))?,
             Array::from_f32(1.0),
         )?;
         loss = loss.add(
@@ -924,7 +976,8 @@ fn seq_frames(
         )?;
     }
     let centre = if track {
-        let rows = frames.len() as f32 * frames[0].ids.dim(0) as f32;
+        let rows = whole.map_or(frames[0].ids.dim(0) as usize, |w| w.rows);
+        let rows = frames.len() as f32 * rows as f32;
         centre_rows(cfg, &norm_sum, rows)?
     } else {
         Vec::new()

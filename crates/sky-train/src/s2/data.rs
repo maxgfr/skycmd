@@ -679,6 +679,73 @@ pub struct S2Batch {
     pub n_rows: usize,
 }
 
+impl S2Batch {
+    /// The rows `lo..hi` of the batch as a batch of their own, every padded length unchanged,
+    /// with only the static streams their indices refer to (in their order in the batch; padded
+    /// entries included, so every gathered token is the one of the whole batch). A static stream
+    /// is encoded independently of the others, so each row is computed as in the whole batch.
+    /// `n_tokens` is left at 0: it is the whole batch's.
+    pub fn rows(&self, lo: usize, hi: usize) -> Result<S2Batch> {
+        let b = self.ids.dim(0) as usize;
+        if lo >= hi || hi > b {
+            bail!("rows {lo}..{hi} of a batch of {b}");
+        }
+        let host = |a: &Array| -> Result<Vec<i32>> {
+            let flat = a.reshape(&[-1])?;
+            flat.eval()?;
+            Ok(flat.as_slice::<i32>().to_vec())
+        };
+        let ts = self.st_ids.dim(1);
+        let (k, tq) = (self.marker_idx.dim(1) as usize, self.q_idx.dim(1) as usize);
+        let mut marker = host(&self.marker_idx)?[lo * k..hi * k].to_vec();
+        let mut q = host(&self.q_idx)?[lo * tq..hi * tq].to_vec();
+        let mut used: Vec<i32> = marker.iter().chain(&q).map(|i| i / ts).collect();
+        used.sort_unstable();
+        used.dedup();
+        let slot: HashMap<i32, i32> = used
+            .iter()
+            .enumerate()
+            .map(|(j, &u)| (u, j as i32))
+            .collect();
+        for i in marker.iter_mut().chain(q.iter_mut()) {
+            *i = slot[&(*i / ts)] * ts + *i % ts;
+        }
+        let n = (hi - lo) as i32;
+        let streams = Array::from_slice(&used, &[used.len() as i32]);
+        let take = Array::from_iter(lo as i32..hi as i32, &[n]);
+        let st = |a: &Array| a.take_axis(&streams, 0);
+        let row = |a: &Array| a.take_axis(&take, 0);
+        let audio = if self.audio.ndim() == 3
+            && self.audio.dim(0) as usize == b
+            && self.audio.dim(2) as usize == sky_infer::audio::FRAME_DIM
+        {
+            row(&self.audio)?
+        } else {
+            self.audio.clone()
+        };
+        Ok(S2Batch {
+            st_ids: st(&self.st_ids)?,
+            st_values: st(&self.st_values)?,
+            st_has: st(&self.st_has)?,
+            st_seg: st(&self.st_seg)?,
+            st_pos: st(&self.st_pos)?,
+            marker_idx: Array::from_slice(&marker, &[n, k as i32]),
+            q_idx: Array::from_slice(&q, &[n, tq as i32]),
+            q_valid: row(&self.q_valid)?,
+            ids: row(&self.ids)?,
+            values: row(&self.values)?,
+            has: row(&self.has)?,
+            valid: row(&self.valid)?,
+            audio,
+            qtype: row(&self.qtype)?,
+            marker_mask: row(&self.marker_mask)?,
+            target: row(&self.target)?,
+            n_tokens: 0,
+            n_rows: hi - lo,
+        })
+    }
+}
+
 fn round_up(x: usize, m: usize) -> usize {
     x.max(1).div_ceil(m.max(1)) * m.max(1)
 }

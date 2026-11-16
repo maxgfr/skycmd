@@ -154,6 +154,36 @@ fn memory_trace(
     Ok(json!({"grad": grad, "weight": weight, "ternary": ternary, "layers": layers}))
 }
 
+/// Adds the outputs and the gradients of one part of a batch to the running sums `sum`, and
+/// evaluates them: the graph of a part is freed before the next part is built.
+fn add_part(
+    sum: &mut Option<(Vec<Array>, ParamMap)>,
+    values: Vec<Array>,
+    grads: ParamMap,
+) -> Result<()> {
+    let next = match sum.take() {
+        None => (values, grads),
+        Some((v0, mut g0)) => {
+            let v = v0
+                .iter()
+                .zip(&values)
+                .map(|(a, b)| a.add(b))
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            for (k, g) in grads {
+                let acc = g0
+                    .get(&k)
+                    .with_context(|| format!("no gradient of {k} in the first part"))?
+                    .add(&g)?;
+                g0.insert(k, acc);
+            }
+            (v, g0)
+        }
+    };
+    mlx_rs::transforms::eval(next.1.values().chain(&next.0))?;
+    *sum = Some(next);
+    Ok(())
+}
+
 /// Parameter groups of the gradient report: name prefixes, and `other` for the rest
 /// (embeddings, exit norms, the scorer).
 pub const GROUPS: [&str; 4] = ["mem.", "blk.", "fusion.", "static."];
@@ -209,6 +239,11 @@ pub struct S2Session {
     pub dis_beta: Option<Vec<f32>>,
     /// s6 self-distillation of the early exits toward the deepest (`model::ExitKd`).
     pub exit_kd: Option<model::ExitKd>,
+    /// Sequences per part of a step on whole sequences (`--sleep-chunk`; 0: the whole batch at
+    /// once). A batch of more is cut into parts whose gradients add up to those of the whole
+    /// batch before its one update ([`Self::sleep_step`]): the same step, with the memory of
+    /// one part.
+    pub sleep_chunk: usize,
 }
 
 /// Number of arrays [`dec_arrays`] produces per batch.
@@ -328,6 +363,7 @@ impl S2Session {
             seq_fn: BTreeMap::new(),
             dis_beta: None,
             exit_kd: None,
+            sleep_chunk: 0,
         }
     }
 
@@ -541,6 +577,96 @@ impl S2Session {
         })
     }
 
+    /// The parts of `batch` of [`Self::sleep_chunk`] sequences, with what the losses of the parts
+    /// need of the whole batch; `None` when the batch is taken at once (`sleep_chunk` 0 or at
+    /// least the batch: the step is then exactly the one without parts).
+    fn sleep_parts(
+        &self,
+        batch: &crate::s2::seq::FrameBatch,
+    ) -> Result<Option<(Vec<crate::s2::seq::FrameBatch>, crate::s2::memory::Whole)>> {
+        let Some(parts) = batch.parts(self.sleep_chunk)? else {
+            return Ok(None);
+        };
+        let asks = batch.asks.sum(None)?;
+        asks.eval()?;
+        let whole = crate::s2::memory::Whole {
+            rows: batch.sequences(),
+            asks: asks.item_exact::<f32>(),
+        };
+        Ok(Some((parts, whole)))
+    }
+
+    /// The loss of [`Self::sleep_step`] and its gradients, with no update: those of the whole
+    /// batch, or the sums of those of its parts ([`Self::sleep_chunk`]).
+    fn sleep_grads(
+        &self,
+        batch: &crate::s2::seq::FrameBatch,
+        qat: bool,
+        how: crate::s2::memory::Sleep,
+    ) -> Result<(Array, ParamMap)> {
+        let wv = model::exit_weight_vec(&self.cfg, None);
+        let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+        let cfg = &self.cfg;
+        let Some((parts, whole)) = self.sleep_parts(batch)? else {
+            return loss_and_grads(&self.params, batch, |p, b| {
+                crate::s2::memory::seq_loss(p, cfg, &b.frames, &b.pauses, &wts, qat, how)
+            });
+        };
+        // The batch in parts: their losses and gradients add up to the whole batch's.
+        let mut sum = None;
+        for b in &parts {
+            let (l, g) = loss_and_grads(&self.params, b, |p, b| {
+                crate::s2::memory::seq_loss_part(
+                    p, cfg, &b.frames, &b.pauses, &wts, qat, how, whole,
+                )
+            })?;
+            add_part(&mut sum, vec![l], g)?;
+        }
+        let (mut values, grads) = sum.context("a sequence step with no part")?;
+        Ok((values.swap_remove(0), grads))
+    }
+
+    /// The outputs of `s2::memory::seq_loss_asks` and the gradient of its loss, with no update,
+    /// for [`Self::sleep_step_report`]: those of the whole batch, or the sums of those of the
+    /// `parts` of [`Self::sleep_parts`].
+    fn sleep_report_grads(
+        &self,
+        batch: &crate::s2::seq::FrameBatch,
+        parts: Option<&(Vec<crate::s2::seq::FrameBatch>, crate::s2::memory::Whole)>,
+        qat: bool,
+        how: crate::s2::memory::Sleep,
+    ) -> Result<(Vec<Array>, ParamMap)> {
+        let wv = model::exit_weight_vec(&self.cfg, None);
+        let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+        let cfg = &self.cfg;
+        let whole = parts.map(|(_, w)| *w);
+        let f = |p: std::collections::HashMap<std::rc::Rc<str>, Array>,
+                 b: &crate::s2::seq::FrameBatch|
+         -> mlx_rs::error::Result<Vec<Array>> {
+            let asks = crate::s2::memory::Asks {
+                ask: &b.asks,
+                colour: &b.colours,
+                bucket: &b.buckets,
+                shown: &b.shown,
+            };
+            crate::s2::memory::seq_loss_asks_part(
+                &p, cfg, &b.frames, &b.pauses, &wts, qat, how, asks, whole,
+            )
+        };
+        let mut f = mlx_rs::transforms::keyed_value_and_grad(f);
+        let Some((parts, _)) = parts else {
+            return Ok(f(self.params.clone(), batch)?);
+        };
+        // The batch in parts: every output is a sum over the rows (the loss and the centres
+        // weighted for it, `s2::memory::Whole`), and so the gradient.
+        let mut sum = None;
+        for b in parts {
+            let (v, g) = f(self.params.clone(), b)?;
+            add_part(&mut sum, v, g)?;
+        }
+        sum.context("a sequence step with no part")
+    }
+
     /// One step on whole sequences (`s2::memory::seq_loss`): with a memory config the model
     /// reads and writes its memory frame after frame and sleeps as `how` says; without one,
     /// every frame is answered alone. Every exit of every frame is supervised.
@@ -551,13 +677,9 @@ impl S2Session {
         qat: bool,
         how: crate::s2::memory::Sleep,
     ) -> Result<StepStats> {
-        let wv = model::exit_weight_vec(&self.cfg, None);
-        let wts = Array::from_slice(&wv, &[wv.len() as i32]);
-        let cfg = &self.cfg;
+        let (loss, grads) = self.sleep_grads(batch, qat, how)?;
         let (loss, grad_norm) =
-            train_step(&mut self.params, &mut self.opt, batch, lr_scale, |p, b| {
-                crate::s2::memory::seq_loss(p, cfg, &b.frames, &b.pauses, &wts, qat, how)
-            })?;
+            apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?;
         self.state.step += 1;
         Ok(StepStats {
             loss,
@@ -587,19 +709,8 @@ impl S2Session {
         let wv = model::exit_weight_vec(&self.cfg, None);
         let wts = Array::from_slice(&wv, &[wv.len() as i32]);
         let cfg = &self.cfg;
-        let f = |p: std::collections::HashMap<std::rc::Rc<str>, Array>,
-                 b: &crate::s2::seq::FrameBatch|
-         -> mlx_rs::error::Result<Vec<Array>> {
-            let asks = crate::s2::memory::Asks {
-                ask: &b.asks,
-                colour: &b.colours,
-                bucket: &b.buckets,
-                shown: &b.shown,
-            };
-            crate::s2::memory::seq_loss_asks(&p, cfg, &b.frames, &b.pauses, &wts, qat, how, asks)
-        };
-        let (values, grads) =
-            mlx_rs::transforms::keyed_value_and_grad(f)(self.params.clone(), batch)?;
+        let parts = self.sleep_parts(batch)?;
+        let (values, grads) = self.sleep_report_grads(batch, parts.as_ref(), qat, how)?;
         let [loss, deep, last, asks, aux_ce, aux_right, splits, centre]: [Array; 8] = values
             .try_into()
             .map_err(|_| anyhow::anyhow!("eight outputs expected"))?;
@@ -610,20 +721,36 @@ impl S2Session {
                 .collect())
         };
         let off = if off && self.cfg.memory {
-            let asks = crate::s2::memory::Asks {
-                ask: &batch.asks,
-                colour: &batch.colours,
-                bucket: &batch.buckets,
-                shown: &batch.shown,
+            let read_off = |b: &crate::s2::seq::FrameBatch| {
+                let asks = crate::s2::memory::Asks {
+                    ask: &b.asks,
+                    colour: &b.colours,
+                    bucket: &b.buckets,
+                    shown: &b.shown,
+                };
+                crate::s2::memory::asks_read_off(&self.params, cfg, &b.frames, &wts, qat, asks)
             };
-            let out = crate::s2::memory::asks_read_off(
-                &self.params,
-                cfg,
-                &batch.frames,
-                &wts,
-                qat,
-                asks,
-            )?;
+            let out = match &parts {
+                None => read_off(batch)?,
+                Some((parts, _)) => {
+                    // Sums over the rows: those of the parts add up.
+                    let mut sum: Option<Vec<Array>> = None;
+                    for b in parts {
+                        let out = read_off(b)?;
+                        let next = match sum.take() {
+                            None => out,
+                            Some(s) => s
+                                .iter()
+                                .zip(&out)
+                                .map(|(a, b)| a.add(b))
+                                .collect::<std::result::Result<_, _>>()?,
+                        };
+                        mlx_rs::transforms::eval(&next)?;
+                        sum = Some(next);
+                    }
+                    sum.context("a sequence step with no part")?
+                }
+            };
             let mut v = Vec::new();
             for a in &out {
                 v.extend(host(&a.reshape(&[-1])?)?);
@@ -638,6 +765,8 @@ impl S2Session {
             None
         };
         let memory = if trace && self.cfg.memory {
+            // On the whole batch even with `sleep_chunk` (a diagnostic of its means; no
+            // gradient, but the memory of the whole batch on the steps it traces).
             Some(memory_trace(&self.params, &grads, cfg, batch, qat, how)?)
         } else {
             None
@@ -743,6 +872,7 @@ impl S2Session {
             seq_fn: BTreeMap::new(),
             dis_beta: None,
             exit_kd: None,
+            sleep_chunk: 0,
         })
     }
 }
@@ -1778,6 +1908,9 @@ pub struct S2DecideArgs {
     pub sleep_weights: Option<String>,
     /// Sequences per sequence batch.
     pub sleep_batch: usize,
+    /// Sequences per part of a sequence batch ([`S2Session::sleep_chunk`]; 0: the whole batch at
+    /// once). The same batches, loss and update, with the memory of one part.
+    pub sleep_chunk: usize,
     /// Sleep passes `N` a batch can draw (one value: a fixed `N`). Drawn with or without a
     /// memory, so both arms see the same batches.
     pub sleep_passes: Vec<usize>,
@@ -2194,6 +2327,13 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                 ", gradient through the last pass"
             }
         );
+        if a.sleep_chunk > 0 && a.sleep_chunk < a.sleep_batch {
+            println!(
+                "sequence batches in parts of {} sequences, their gradients summed before the update",
+                a.sleep_chunk
+            );
+        }
+        s.sleep_chunk = a.sleep_chunk;
         Some(sl)
     };
     if !(0.0..=1.0).contains(&a.memory_centre_ema) {
@@ -2337,6 +2477,23 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                         "non-finite sequence loss at step {} ({}, {passes} passes)",
                         s.state.step,
                         sl.games[g].0
+                    );
+                }
+                if mem_trace {
+                    // SKY_MEM_TRACE=1: the peak of MLX's memory of each sequence step and the
+                    // shapes of its frames (sequences x state tokens, static streams x tokens).
+                    let peak = mlx_rs::memory::peak_memory().unwrap_or(0) as f64 / 1e6;
+                    mlx_rs::memory::reset_peak_memory()?;
+                    let (blocks, bytes) = crate::heap::in_use();
+                    println!(
+                        "mem seq step {} peak {peak:.0} MB heap {:.0} MB {blocks} blocks game {} frames {} parts of {} state {:?} static {:?}",
+                        s.state.step,
+                        bytes as f64 / 1e6,
+                        sl.games[g].0,
+                        b.frames.len(),
+                        if a.sleep_chunk == 0 { a.sleep_batch } else { a.sleep_chunk.min(a.sleep_batch) },
+                        b.frames[0].ids.shape(),
+                        b.frames[0].st_ids.shape()
                     );
                 }
                 seq_loss_sum = (seq_loss_sum.0 + st.loss as f64, seq_loss_sum.1 + 1);
@@ -2836,6 +2993,225 @@ mod tests {
                 for n in [None, Some(1)] {
                     let st = k.decision_step_exits(&fixed, 1.0, false, n).unwrap();
                     assert!(st.loss.is_finite(), "compile {compile}, exits {n:?}");
+                }
+            }
+        });
+    }
+
+    /// `--sleep-chunk`: batches of 5 sequences cut into parts of 2, 2 and 1 give the gradients
+    /// and the outputs of the whole batches, and, step after step, the loss, every reading of the
+    /// `--seq-log` line (the asks and their cross-entropy, the splits, the auxiliary loss, the
+    /// reading without the memory, the gradient norms) and the parameters, with a memory (its
+    /// auxiliary loss, a sleep pass, QAT) and without (the control), within f32 rounding. A part
+    /// that holds the whole batch (or a chunk of 0) takes the path without parts.
+    #[test]
+    fn a_sequence_step_in_parts_is_the_step_of_the_whole_batch() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            use crate::s2::config::{MemoryQk, MemoryValue};
+            let dir = tempfile::tempdir().unwrap();
+            let rec = dir.path().join("recall.jsonl");
+            crate::s2::seq::generate("recall", 12, 16, 3, &rec).unwrap();
+            let (_d, tok) = s2_tok();
+            let mut sleep = S2Config {
+                hidden_size: 64,
+                intermediate_size: 32,
+                state_loops: 2,
+                exits: vec![1, 2, 3, 4],
+                fuse_numbers: true,
+                max_state_tokens: 96,
+                memory: true,
+                memory_qk: MemoryQk::Shared,
+                memory_value: MemoryValue::Frame,
+                memory_aux: true,
+                ..S2Config::tiny(262)
+            };
+            sleep.memory_run.aux_weight = 1.0;
+            sleep.validate().unwrap();
+            let control = S2Config {
+                memory: false,
+                memory_qk: MemoryQk::Separate,
+                memory_value: MemoryValue::Token,
+                memory_aux: false,
+                memory_run: Default::default(),
+                ..sleep.clone()
+            };
+            control.validate().unwrap();
+            let sd = crate::s2::seq::SleepData::load(&[rec], None, &tok, &sleep).unwrap();
+            let mut rng = Rng::new(11);
+            // Padded as in the runs (--pad-to 32: 32 static streams per frame).
+            let batches: Vec<_> = (0..2).map(|_| sd.sample(5, &mut rng, 32).1).collect();
+            let parts = batches[0].parts(2).unwrap().expect("parts");
+            assert_eq!(
+                parts.iter().map(|p| p.sequences()).collect::<Vec<_>>(),
+                [2, 2, 1]
+            );
+            let streams = |b: &crate::s2::seq::FrameBatch| b.frames[0].st_ids.dim(0);
+            assert!(
+                streams(&parts[2]) < streams(&batches[0]),
+                "only the streams a part uses"
+            );
+            assert!(batches[0].parts(5).unwrap().is_none());
+            assert!(batches[0].parts(0).unwrap().is_none());
+            let asks: f32 = batches
+                .iter()
+                .map(|b| b.asks.sum(None).unwrap().item_exact::<f32>())
+                .sum();
+            assert!(asks > 0.0, "the batches hold asks");
+            let opt = OptConfig {
+                muon: false,
+                mem_lr_mult: 10.0,
+                mem_gate_lr_mult: 0.0,
+                ..OptConfig::default()
+            };
+            let how = crate::s2::memory::Sleep {
+                passes: 2,
+                every: crate::s2::memory::SLEEP_EVERY,
+                full: false,
+            };
+            let wants = SeqWants {
+                groups: true,
+                trace: false,
+                off: true,
+                centre_ema: 0.0,
+            };
+            // The readings of every step, the group norms, and the parameters at the end.
+            let run = |cfg: &S2Config, opt: &OptConfig, chunk: usize, report: bool| {
+                let p = crate::s2::golden::golden_params(cfg, 5).unwrap();
+                let mut s = S2Session::new(cfg.clone(), p, opt.clone(), "s2-decide", 0, 60.0);
+                s.sleep_chunk = chunk;
+                let (mut logged, mut groups) = (Vec::new(), Vec::new());
+                for b in &batches {
+                    if report {
+                        let (st, rep) = s.sleep_step_report(b, 1.0, true, how, wants).unwrap();
+                        logged.extend([
+                            st.loss as f64,
+                            st.grad_norm as f64,
+                            rep.ask_ce_sum,
+                            rep.ask_ce_last_sum,
+                            rep.asks,
+                            rep.aux_ce_sum,
+                            rep.aux_right,
+                        ]);
+                        logged.extend(&rep.splits);
+                        logged.extend(rep.off.unwrap_or_default());
+                        groups.extend(rep.groups.unwrap().into_values());
+                    } else {
+                        let st = s.sleep_step(b, 1.0, true, how).unwrap();
+                        logged.extend([st.loss as f64, st.grad_norm as f64]);
+                    }
+                }
+                let params: BTreeMap<String, Vec<f32>> = s
+                    .params
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), crate::model::host_f32(v).unwrap()))
+                    .collect();
+                (logged, groups, params)
+            };
+            let host =
+                |a: &Array| crate::model::host_f32(&a.as_dtype(Dtype::Float32).unwrap()).unwrap();
+            let norm = |x: &[f32]| x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>().sqrt();
+            // 1. The gradients of a step, at the start and for each batch: per tensor, the norm
+            // of the difference over the norm of the whole batch's gradient, floored at 1e-4 of
+            // the norm of the whole gradient (the gradient of the bias of the output of a softmax
+            // is zero but for rounding).
+            let grad_gap = |a: &ParamMap, b: &ParamMap| -> f64 {
+                assert_eq!(a.len(), b.len());
+                let all: Vec<(Vec<f32>, Vec<f32>)> =
+                    a.iter().map(|(k, x)| (host(x), host(&b[k]))).collect();
+                let total = norm(&all.iter().flat_map(|(x, _)| x.clone()).collect::<Vec<_>>());
+                let mut worst = 0f64;
+                for (x, y) in &all {
+                    let gap = norm(&x.iter().zip(y).map(|(u, v)| u - v).collect::<Vec<_>>());
+                    worst = worst.max(gap / norm(x).max(1e-4 * total));
+                }
+                worst
+            };
+            let value_gap = |a: &[Array], b: &[Array]| -> f64 {
+                let (x, y): (Vec<f32>, Vec<f32>) = (
+                    a.iter().flat_map(&host).collect(),
+                    b.iter().flat_map(&host).collect(),
+                );
+                assert_eq!(x.len(), y.len());
+                x.iter()
+                    .zip(&y)
+                    .map(|(u, v)| ((u - v).abs() / u.abs().max(v.abs()).max(1.0)) as f64)
+                    .fold(0.0, f64::max)
+            };
+            for (cfg, arm) in [(&sleep, "sleep"), (&control, "control")] {
+                let p = crate::s2::golden::golden_params(cfg, 5).unwrap();
+                let mut s = S2Session::new(cfg.clone(), p, opt.clone(), "s2-decide", 0, 60.0);
+                for b in &batches {
+                    s.sleep_chunk = 0;
+                    let (v0, g0) = s.sleep_report_grads(b, None, true, how).unwrap();
+                    let (l0, h0) = s.sleep_grads(b, true, how).unwrap();
+                    s.sleep_chunk = 2;
+                    let parts = s.sleep_parts(b).unwrap();
+                    assert!(parts.is_some());
+                    let (v2, g2) = s.sleep_report_grads(b, parts.as_ref(), true, how).unwrap();
+                    let (l2, h2) = s.sleep_grads(b, true, how).unwrap();
+                    let (report, plain) = (grad_gap(&g0, &g2), grad_gap(&h0, &h2));
+                    let (outputs, loss) = (value_gap(&v0, &v2), value_gap(&[l0], &[l2]));
+                    println!(
+                        "{arm}: parts of 2 against the whole batch: gradients {report:.1e} (sleep_step {plain:.1e}), outputs {outputs:.1e}, loss {loss:.1e}"
+                    );
+                    assert!(report <= 1e-4 && plain <= 1e-4, "{arm}: gradients differ");
+                    assert!(outputs <= 1e-5 && loss <= 1e-5, "{arm}: outputs differ");
+                }
+            }
+            // 2. Two steps: every reading of the log (relative, from 1 down to an absolute
+            // difference) and the parameters after them (absolute), against the whole batches.
+            // AdamW's first steps move an element by about the rate times the sign of its
+            // gradient, so an element whose gradient is zero but for rounding moves by the sign
+            // of the rounding: with the runs' `eps` (1e-8) two runs of the very same step already
+            // differ by up to ~1e-3 in a parameter (the rates are 3e-3, and 3e-2 on mem.*), so
+            // there the parameters are printed, not held. With `eps` 1e-3, where the update is
+            // smooth in the gradient, they are held to 2e-6 (a few units of f32 rounding).
+            type Run = (Vec<f64>, Vec<f64>, BTreeMap<String, Vec<f32>>);
+            let compare = |a: &Run, b: &Run, tol: f32, what: &str| -> (f64, f32) {
+                assert_eq!((a.0.len(), a.1.len()), (b.0.len(), b.1.len()), "{what}");
+                let mut reading = 0f64;
+                for (i, (x, y)) in
+                    a.0.iter()
+                        .chain(&a.1)
+                        .zip(b.0.iter().chain(&b.1))
+                        .enumerate()
+                {
+                    let d = (x - y).abs() / x.abs().max(y.abs()).max(1.0);
+                    assert!(d <= 1e-5, "{what}: reading {i}: {x} vs {y}");
+                    reading = reading.max(d);
+                }
+                let mut worst = 0f32;
+                for (k, x) in &a.2 {
+                    for (u, v) in x.iter().zip(&b.2[k]) {
+                        worst = worst.max((u - v).abs());
+                    }
+                }
+                assert!(worst <= tol, "{what}: parameters differ by {worst}");
+                (reading, worst)
+            };
+            let smooth = OptConfig {
+                eps: 1e-3,
+                ..opt.clone()
+            };
+            for (opt, tol, name) in [
+                (&opt, f32::INFINITY, "eps 1e-8"),
+                (&smooth, 2e-6, "eps 1e-3"),
+            ] {
+                for (cfg, arm) in [(&sleep, "sleep"), (&control, "control")] {
+                    for report in [true, false] {
+                        let whole = run(cfg, opt, 0, report);
+                        assert!(whole.0.iter().all(|x| x.is_finite()));
+                        // A new session runs the same step with its own parameter order (a new
+                        // hash map), which changes the order of floating-point sums.
+                        let again = compare(&whole, &run(cfg, opt, 0, report), tol, "again");
+                        let one = compare(&whole, &run(cfg, opt, 5, report), tol, "one part");
+                        let parts = compare(&whole, &run(cfg, opt, 2, report), tol, "parts");
+                        println!(
+                            "{name}, {arm}, report {report}: largest reading / parameter difference: again {:.1e} / {:.1e}, one part {:.1e} / {:.1e}, parts of 2 {:.1e} / {:.1e}",
+                            again.0, again.1, one.0, one.1, parts.0, parts.1
+                        );
+                    }
                 }
             }
         });
