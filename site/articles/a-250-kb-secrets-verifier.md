@@ -110,7 +110,7 @@ Why two readings? Before running anything, I counted the rows: one test reposito
 
 It did. The rule scanners do well on that repository. Without it, Betterleaks falls from 0.7332 to 0.5367 and the model only to 0.8114, 0.27 above. With it, the margin is 0.123.
 
-I did not move the bar. I had set +0.15 with in mind the 0.442 that cbx-secrets-detector-17M's card reports for Gitleaks, a bar near 0.59. On this test Gitleaks scores 0.7037, and the bar was 0.8832. A bar that moves when you miss it is not a bar. Both readings are reported side by side.
+I did not move the bar. I had set +0.15 with one number in mind: the 0.442 that the card of cbx-secrets-detector-17M reports for Gitleaks, which would have put the bar near 0.59. On this test Gitleaks scores 0.7037, and the bar was 0.8832. A bar that moves when you miss it is not a bar. Both readings are reported side by side.
 
 ## v3: the system as it would ship, on a second look
 
