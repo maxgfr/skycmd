@@ -29,9 +29,11 @@ tags:
 > once trained on MASSIVE (a validation rehearsal, not a test). Its French training data are two
 > yes/no tasks. On When2Call, `tool_call` is 13.9% of the training split and 35% of the test, and
 > the model predicts it 39 times in 2,000. NOTAM has no training data. The verdict stands (it
-> passed the gate as written); a narrower second version was studied and is not scheduled (the
-> study puts its chance of clearing all its gates, against size-matched baselines, at about 10 to
-> 20%).
+> passed the gate as written); a narrower second version was studied (the study put its chance of
+> clearing all its gates, against size-matched baselines, at about 10 to 20%), then pre-registered
+> and trained once as s6-route-nano, a tool router: it failed its gate, 0.8395 on unseen tools
+> against 0.8500 for BM25 and 38.9 ms per request in WASM against 2 ms
+> ([result](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-route-nano-s6-nano-v2-a-tool-router-pre-registered-gate-failed)).
 
 **One 715 KB ternary model for four games and for typed questions in free text.** 1,486,225
 parameters. It reads a state as text and answers typed questions (`choice`, `score`, `noul`) with

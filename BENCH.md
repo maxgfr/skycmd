@@ -346,7 +346,7 @@ At full depth s6-nano plays at the oracle's score in every game: 0 crashes, Resc
 **Gates** (`docs/s6-gen-prereg.md` §6; each also needs no game more than 5% below s3-pico and ECE ≤ 0.08):
 
 - **s6-nano: passed, published at full depth.** Bench 0.480 > 0.398, ECE 0.0479, no game below s3-pico. The CRC thresholds are not kept, so the published file `site/public/models/s6-nano.gguf` is the last DAgger round with its three exit thresholds set to 1 (`gguf-set`; the calibration had left them at 0.5). The bar of 0.398 is the global majority class, and a constant answer per task passes it: answering each question with its most common answer in `typed_decisions_train` scores 0.4815 on the bench.
-- **s6-nano: what its gate did not measure** (`docs/s6-nano2-study.md`, 15/11/2026, after the gate; from the evaluation dumps and from validation splits). On 17 of the 20 tasks of `typed_decisions_bench` it gives one answer to at least 95% of the items (13 of them at 100%); its 0.4805 equals the most-common-training-answer prior (0.4815). The bench's tasks were 0.4% of its decision-training draws (about 10,200 of 2,546,304). A hashed character n-gram logistic regression of at most 715,136 bytes reaches 0.703 on the validation split of the 20 tasks (per-task prior 0.525), and 0.947 / 0.944 on MASSIVE English / French validation once trained on MASSIVE's train split (a rehearsal on validation, not a test). French in the decision data: two yes/no tasks (`pawsx_fr`, `allocine`). When2Call: `tool_call` is 13.9% of the training split and 35% of the test, and s6-nano predicts it 39 times in 2,000. NOTAM: no training data. The verdict stands. A narrower second version (a router for tool and intent decisions) was studied and is not scheduled; the study puts its chance of clearing all its gates at about 10 to 20%.
+- **s6-nano: what its gate did not measure** (`docs/s6-nano2-study.md`, 15/11/2026, after the gate; from the evaluation dumps and from validation splits). On 17 of the 20 tasks of `typed_decisions_bench` it gives one answer to at least 95% of the items (13 of them at 100%); its 0.4805 equals the most-common-training-answer prior (0.4815). The bench's tasks were 0.4% of its decision-training draws (about 10,200 of 2,546,304). A hashed character n-gram logistic regression of at most 715,136 bytes reaches 0.703 on the validation split of the 20 tasks (per-task prior 0.525), and 0.947 / 0.944 on MASSIVE English / French validation once trained on MASSIVE's train split (a rehearsal on validation, not a test). French in the decision data: two yes/no tasks (`pawsx_fr`, `allocine`). When2Call: `tool_call` is 13.9% of the training split and 35% of the test, and s6-nano predicts it 39 times in 2,000. NOTAM: no training data. The verdict stands. A narrower second version (a router for tool and intent decisions) was studied and is not scheduled; the study puts its chance of clearing all its gates at about 10 to 20%. **Outcome (16/11).** A second version narrowed to run-time tool lists, s6-route-nano, was pre-registered ([`docs/s6-nano2-prereg.md`](docs/s6-nano2-prereg.md)), trained once and failed its gate, on G1 against BM25 (0.8395 against 0.8500) and on G4 (38.9 ms in WASM against 2 ms); its file is published as a result (section "s6-route-nano" below).
 - **s6-micro-v1: failed on calibration only.** Bench 0.547 ≥ 0.45, and the announced goal of 0.50 is met; no game below s3-pico; but ECE 0.0821 at full depth and 0.0804 at the CRC thresholds, above 0.08. It failed its gate; its file is published as a result (owner's decision of 15/11/2026), as `site/public/models/s6-micro-v1.gguf`: the last DAgger round with its three exit thresholds set to 1 (`gguf-set`), the weights of the evaluated file byte for byte (amendments 13 and 15). The verdict does not change: it is recommended for no use.
 - **s6-micro v2: passed at τ = 1, published at full depth as `s6-micro`; a second look** (amendment 17). Bench 0.553 ≥ 0.45 (the announced goal of 0.50 is met), ECE 0.0588 ≤ 0.08, no game below s3-pico. It was designed after v1's ECE failure and judged on the same test records, so its pass is not a first look. Its CRC thresholds are rejected (one extra Dodge veto), so the published file `site/public/models/s6-micro.gguf` is the last DAgger round with its three exit thresholds set to 1 (2,420,032 bytes, sha256 `f66d7021…40ff`); the other metadata and every tensor byte are those of the evaluated file. Deviations: one restart from its checkpoint after a technical failure, a loaded machine for the end of the run (latencies not comparable), a trainer binary that is not v1's.
 
@@ -716,6 +716,105 @@ In each memory run the `recall` score is the same at N = 1, 2 and 4, overall and
 - **The probe is sound**: the fact is on screen for one frame, the ask frame shows only the door, and the answer key and the option order are checked by tests and on the training data.
 - **A fact, not an explanation:** at P1's last step the gradients reaching the memory projections (1.6e-5 to 3.2e-5) are 10 to 20 times smaller than those of the base blocks (about 3e-4).
 - **Not tested:** no unit test checks that a hand-written fact reads back as the right answer through the memory (a show frame, idle frames, then an ask giving the right colour). That test is still to add. There is no rerun.
+
+## s6-route-nano (s6-nano v2): a tool router, pre-registered, gate failed
+
+Pre-registration: [`docs/s6-nano2-prereg.md`](docs/s6-nano2-prereg.md), gate in §8, amendments 1 and 2 (both before training) and its result block of 16/11; the builder's readings in [`docs/s6-nano2-readings.md`](docs/s6-nano2-readings.md). Results: [`runs/s6-nano2/eval-test/results.md`](runs/s6-nano2/eval-test/results.md) and `gate.json` next to it (the test, opened once), the latency files in `runs/s6-nano2/eval-test/latency/`, the run's report `runs/s6-nano2/report.md`, the pilots `runs/s6-nano2-pilot/summary.json`, and the validation rehearsal of the gate script with potion-cos in the model's seat, `runs/s6-nano2/eval-val/seat-potion-cos/`.
+
+**Failed on G1 (against BM25) and on G4.** On T-tools, 2,000 slates of tools that no training item contains, the model is at 0.8395: above potion-base-2M with cosine + 0.03 (0.6975) and above both trained baselines of its size, but not above BM25 (0.8500), the lexical score that amendment 1 hands the model in its state and that G1 asks it to beat (difference −0.0105 [−0.0265, +0.0055]). Its WASM median is 38.9 ms per request with the tool list cached, against a bar of 2 ms. G2 and G3 hold. It is not published as a router; its file is published as evaluated, as a result (owner's decision of 15/11/2026, §11 of the pre-registration): `site/public/models/s6-route-nano.gguf`, 2,418,912 bytes, sha256 `a124dfe86f76e9547db98edc03351f66908617ae2be3f5a4f423a876b7956c82`, with a card and no playground. This run is not repeated.
+
+**The task.** A request and a list of up to 7 tools, each `name: description` (the first sentence, at most 30 words), then `none of these tools fits the request`, always last; one `choice` question, "Which tool should handle the user's request?". The state is `User: <request>` and, by amendment 1, a line with each tool's BM25 score against the request and its rank in the slate (`sky_infer::route`, shared by the data builder and the engine). s6-nano (v1) gave one answer to at least 95% of the items on 17 of the 20 bench tasks; this version trains on run-time option lists only, with counterfactual slates (the right tool removed, every tool renamed) so that only reading the options lowers the loss.
+
+**Data and splits** (`sky-data route`, the data folder outside the repository; sources and licences in [`DATA_LICENSES.md`](DATA_LICENSES.md)). Tools of glaive, hermes, ToolACE, Seal-Tools and API-Bank are clustered by normalised name and MiniLM description cosine, and each cluster goes to training, validation or test as a whole (85 / 5 / 10). Training / validation records: tools 81,596 / 4,185, intents (MASSIVE en and fr on 14 of 18 scenarios, Banking77) 95,411 / 11,543, When2Call 14,621 / 896, drawn 0.60 / 0.25 / 0.15. The teacher (GLM-5.3-flash, 4,174 calls) wrote the intent descriptions, filtered the hard distractors and rewrote the training tools' descriptions; it never saw a test request. Test sources: T-tools (gated), T-metatool and T-clinc (announced goals), tool-routing-data, BFCL, When2Call and the 4 held-out MASSIVE scenarios (reported); their sha256 are in `runs/s6-nano2/test-files.json`.
+
+**Model and run.** The pilot rule (validation, ternary, full depth): nano 0.5778, micro 0.6390, potion-cos 0.7255 (abort bar 0.5755), so micro (at least 0.04 above nano) and no abort. The run is micro: the s6-micro graph and tokenizer (2 blocks × 3 loops, exits after 2, 4 and 6 block passes, d 256, vocabulary 4,096), windows of 384 state and 256 head tokens, from s6-micro's pretraining init: 5,587,201 parameters, ternary GGUF of 2,418,912 bytes. One run, seed 0, no restart, on 16/11 (`runs/s6-nano2/report.md`, `runs/all/route-train.log`):
+
+| phase | budget | steps |
+|---|---:|---:|
+| pilot, nano (from s6-nano's pretraining init) | 20 working min | 3,271 |
+| pilot, micro (from s6-micro's pretraining init) | 20 working min | 3,191 |
+| main decision training, micro, QAT over the last 90%, loop dropout 0.25 | 120 working min | 20,504 |
+
+Validation at full depth (v_tools, 1,144 slates): 0.8339. τ_ask = 0.72938 (validation accuracy 0.9501 among answered requests, coverage 0.7360), stored under `skycmd-s2.route.tau_ask` with the exit thresholds at 1 before the test was opened. The size-matched baselines were refitted on validation at B = 2,418,912 bytes, the file's size, before the test was opened (reading 28; `runs/all/route-val-fit.log`), with the values of amendment 2.
+
+**Test, T-tools** (the gated source; 2,000 slates, 20% with *none* right; ternary, full depth; validation from amendment 2 and the refit):
+
+| system | size | validation | **accuracy** | tool gold | *none* gold | *none* F1 | ECE | NLL | *none* answers |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **s6-route-nano** | 2,418,912 bytes | 0.8339 | **0.8395** | 0.8925 | 0.6275 | 0.7041 | **0.0244** | 0.4699 | 0.1565 |
+| BM25 (bm25s 0.3.16, the slate's own tools) | no parameters | 0.8549 | 0.8500 | 0.9125 | 0.6000 | 0.6486 | 0.0610 | 0.5816 | 0.1700 |
+| all-MiniLM-L6-v2, cosine | 90.9 MB | 0.9126 | 0.8840 | 0.9187 | 0.7450 | 0.7516 | 0.0231 | 0.3539 | 0.1965 |
+| toolrouter (stanley-nv) | 7.66 MB | 0.7832 | 0.7855 | 0.9263 | 0.2225 | 0.3333 | 0.0886 | 1.0616 | 0.0670 |
+| static-ft (size-matched) | ≤ B | 0.7351 | 0.6735 | 0.7331 | 0.4350 | 0.4715 | 0.0430 | 0.9761 | 0.1690 |
+| potion-base-2M, cosine (potion-cos) | 7,559,256 bytes | 0.7255 | 0.6675 | 0.7194 | 0.4600 | 0.4724 | 0.0393 | 0.9889 | 0.1895 |
+| potion-cos, 4 bits | about 1 MB | 0.7229 | 0.6665 | 0.7256 | 0.4300 | 0.4661 | 0.0398 | 0.9870 | 0.1690 |
+| pair-lr (size-matched) | ≤ B | 0.4843 | 0.4500 | 0.4975 | 0.2600 | 0.3114 | 0.0426 | 1.5292 | 0.1340 |
+| name-prior | | 0.2002 | 0.2000 | 0.0000 | 1.0000 | 0.3333 | 0.8000 | 22.1048 | 1.0000 |
+| s6-nano (v1), full depth | 715,136 bytes | 0.0848 | 0.0885 | 0.1100 | 0.0025 | 0.0049 | 0.1152 | 2.1902 | 0.0025 |
+
+**By source** (accuracy; every metric of every system is in `results.md`):
+
+| source | n | role | s6-route-nano | potion-cos | BM25 | MiniLM | toolrouter |
+|---|---:|---|---:|---:|---:|---:|---:|
+| T-tools | 2,000 | gated | **0.8395** | 0.6675 | 0.8500 | 0.8840 | 0.7855 |
+| T-metatool | 2,000 | announced goal (≥ potion-cos) | 0.3260 | 0.5245 | 0.4525 | 0.6610 | 0.5855 |
+| T-clinc | 2,000 | announced goal (≥ potion-cos) | 0.3980 | 0.7740 | 0.4775 | 0.8605 | 0.7235 |
+| tool-routing-data `tools/test` | 100 | reported | 0.3700 | 0.6100 | 0.3800 | 0.6000 | 0.7900 |
+| BFCL `multiple` and `irrelevance` | 440 | reported | 0.7205 | 0.7250 | 0.8295 | 0.7136 | 0.5250 |
+| When2Call `test/mcq` | 1,863 | reported | 0.5153 | 0.5722 | 0.4895 | 0.6720 | 0.5915 |
+| MASSIVE, 4 held-out scenarios, en and fr | 1,657 | reported | 0.3645 | 0.4762 | 0.3343 | 0.5836 | 0.6035 |
+
+**Reading checks** (§7.3, T-tools; the answer changes on gold-removed pairs among the requests answered correctly with the gold present, 500 pairs; names masked on all 2,000 slates; the descriptions of the gold and of one distractor swapped on 500):
+
+| system | answer changes, gold removed | names masked: accuracy | swapped: follows the description | follows the name |
+|---|---:|---:|---:|---:|
+| **s6-route-nano** | 0.9528 | **0.1050** | 0.6700 | 0.0780 |
+| BM25 | 0.9453 | 0.8445 | 0.8400 | 0.0260 |
+| MiniLM | 0.9692 | 0.8845 | 0.8100 | 0.0500 |
+| toolrouter | 0.9033 | 0.7725 | 0.7920 | 0.0820 |
+| static-ft | 0.9396 | 0.7035 | 0.6940 | 0.0700 |
+| potion-cos | 0.9418 | 0.7015 | 0.6600 | 0.0720 |
+| potion-cos, 4 bits | 0.9339 | 0.7035 | 0.6780 | 0.0680 |
+| pair-lr | 0.8250 | 0.3755 | 0.3240 | 0.1000 |
+| name-prior | — | 0.1180 | 0.0000 | 0.0000 |
+| s6-nano (v1) | 0.7447 | 0.0870 | 0.1400 | 0.1320 |
+
+With every tool renamed `tool_<k>`, the model falls to chance (0.1050, below the name-prior's 0.1180), where BM25, which reads the same masked texts, keeps 0.8445. The BM25 entries of its state are keyed by the masked names too. One reading, not tested: the model ties each BM25 entry to its option through a distinctive name, and loses that binding when the names look alike.
+
+**Latency and size** (§7.4; Apple M5; 200 T-tools requests under Node, a copy with exit thresholds 1; `runs/s6-nano2/eval-test/latency/`):
+
+| | SIMD128 | relaxed SIMD | native (`sky-eval`) |
+|---|---:|---:|---:|
+| median per request, tool list cached | **38,929 µs** | 23,532 µs | 24,031 µs (p95 48,782 µs) |
+| first request (tool list encoded) | 50,922 µs | 33,204 µs | |
+| max \|p_wasm − p_native\|, argmax agreement | 2.2e-6, 200 / 200 | 2.8e-6, 200 / 200 | |
+
+At exit 0 (2 of 6 block passes) the model is at 0.8340 on the 2,000 T-tools slates (ECE 0.0277), at a native median of 13,340 µs. The evaluation ran in this order: the model (every source, the reading checks, exit 0, native latency), its WASM timing, s6-nano v1, the baselines, the gate.
+
+**The gate, as read** (`gate.json`):
+
+| gate | condition | measured | verdict |
+|---|---|---|---|
+| G1 | ≥ potion-cos + 0.03 | 0.8395 against 0.6675 + 0.03 = 0.6975 | holds |
+| G1 | > static-ft | 0.8395 against 0.6735 | holds |
+| G1 | > pair-lr | 0.8395 against 0.4500 | holds |
+| G1 | > BM25 (amendment 1) | 0.8395 against 0.8500 | **fails** |
+| G2 | *none* answers in 0.10–0.30; no tool name above twice its gold share + 0.01; answer changes on ≥ 0.80 of the gold-removed pairs | 0.1565; largest excess −0.0085; 0.9528 | holds |
+| G3 | ECE ≤ 0.05 | 0.0244 | holds |
+| G4 | WASM SIMD128 median ≤ 2 ms per request, tool list cached; max \|p_wasm − p_native\| ≤ 1e-4 | 38,929 µs; 2.2e-6 | **fails** |
+
+**Verdict: failed on G1 (against BM25) and on G4.** As amendment 1 wrote before training, "a router that reads a lexical score and does no better than that score has no use". G1 holds against potion-cos and against both size-matched trained baselines, so neither the first nor the second case of §11 applies. Not published as a router; its file is published as a result (owner's decision of 15/11/2026), with no playground.
+
+**Reported with the result, not a way around the gate.**
+
+- **Uncertainty** (paired bootstrap over the slates, 1,000 resamples, 95%): model minus potion-cos +0.1720 [0.1490, 0.1965], minus static-ft +0.1660 [0.1415, 0.1895], minus pair-lr +0.3895 [0.3625, 0.4150], minus BM25 −0.0105 [−0.0265, +0.0055].
+- **Announced goals** (not gates): T-tools ≥ 0.80, met (0.8395); T-metatool and T-clinc ≥ potion-cos, not met (0.3260 against 0.5245, 0.3980 against 0.7740); ≥ 0.95 among answered requests at τ_ask with coverage ≥ 0.70, not met (0.9433 at coverage 0.7325).
+- **Risk and coverage on T-tools** (accuracy among the 50% / 70% / 90% most confident slates): model 0.991 / 0.956 / 0.885, BM25 0.979 / 0.945 / 0.878, MiniLM 0.993 / 0.974 / 0.928.
+- **Deviations.** `runs/s6-nano2/TEST-OPEN` was created by the run's operator under the owner's delegation, not by the owner's hand as `scripts/route-eval.sh` says, after the refit of the baselines (both at 09:41:39 on 16/11; gate written at 09:50:02). The evaluation binaries and the WASM package were rebuilt from `origin/main` at `8b0ece3` after training; the training used binaries built earlier the same day, before the engine changes of s6-sleep v3 were merged; WASM and native agree to 2.2e-6 with the same answer on 200 of 200.
+- **Disclosure** (§10). v2 was designed after v1's results were read, and after a study that read v1's test dumps. T-tools is new: built by a rule fixed before training, hashed and read once. MetaTool, CLINC150, BFCL and the tool-routing-data test had not been read by the project (amendment 1 records one BFCL function name and one MASSIVE test line seen while a schema was printed); the When2Call and MASSIVE test utterances were read in v1's evaluation and are reported only. The clustering that defines "unseen tool" uses all-MiniLM-L6-v2, which is also a reported baseline.
+- **Not reported here:** the hand-read label-noise estimate and the teacher's agreement per source (§4.5), the draws per group and passes per record, and the baselines' CPU time per request (§7.4); they are not in the result files.
+
+**Exploratory, after the gate, nothing fitted, on the already-read test.** Not a result: `scripts/s6-route-explore.py` takes the equal-weight geometric mean of two systems' probabilities over the options of each slate (`runs/s6-nano2/explore/test.txt`). On T-tools: model + potion-cos-4bit 0.8885 (above BM25 0.8500 and MiniLM 0.8840; BM25 + potion-cos-4bit gives 0.8475), model + BM25 0.8780, model + MiniLM 0.9295, BM25 + MiniLM 0.9165. Model + potion-cos-4bit elsewhere: T-metatool 0.5290, T-clinc 0.7935, When2Call 0.6280, MASSIVE held-out 0.5570, BFCL 0.7659. Where the model and BM25 agree (0.8275 of the T-tools slates), the shared answer is right on 0.9384. These are hypotheses for a later pre-registration on fresh slates.
 
 ## LFM3-1.7B: System 1 first, System 2 when needed, pre-registered, failed
 
