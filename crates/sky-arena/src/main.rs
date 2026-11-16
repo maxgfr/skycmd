@@ -3,6 +3,7 @@
 //! ```text
 //! sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game flappy|rescue|dodge|doom|all] [--json out.json]
 //!           [--exit-threshold T]   # s2: override the early-exit threshold (1.0 = full depth)
+//!           [--memory-passes N]    # s2 with a memory: each episode is one stream, N sleep passes
 //! sky-arena <model> --dagger N --out data/dagger [--dagger-beta B]
 //!           # N oracle-labelled records per game, from the model's own play (the oracle acts on a
 //!           # share B of the decisions, default 0.2: lower it round after round)
@@ -38,7 +39,21 @@ struct EnginePolicy {
     /// `--calibrate-crc`: every exit of every decision, per question type (choice, score, noul);
     /// the game is played at full depth.
     calib: Option<[Vec<crc::Sample>; 3]>,
+    /// `--memory-passes N`: a model with a memory plays each episode as one stream of frames
+    /// (docs/s6-sleep-prereg.md §2): it reads and writes its memory at every frame and sleeps
+    /// `N − 1` passes every 8 frames and at each pause of the game; a new episode starts from
+    /// an empty memory. `None`: every decision alone (a zero memory).
+    memory: Option<MemoryPlay>,
 }
+
+/// The stream of a model with a memory in the arena.
+struct MemoryPlay {
+    /// Steps of the game at the last frame: fewer steps means a new episode.
+    last_steps: u32,
+}
+
+/// The one stream of the arena (one game is played at a time).
+const STREAM: u64 = 1;
 
 impl EnginePolicy {
     fn new(engine: Engine) -> Self {
@@ -69,11 +84,25 @@ impl EnginePolicy {
             exits: Vec::new(),
             trace,
             calib: None,
+            memory: None,
         }
     }
 }
 
 impl Policy for EnginePolicy {
+    fn observe(&mut self, g: &dyn sky_games::DecisionGame) {
+        let Some(m) = &mut self.memory else {
+            return;
+        };
+        let steps = g.stats().steps;
+        if steps < m.last_steps {
+            self.engine.reset_stream(STREAM);
+        }
+        m.last_steps = steps;
+        // One frame per decision point; the questions of a frame read the same memory.
+        self.engine.new_frame(STREAM, g.pause());
+    }
+
     fn decide(
         &mut self,
         game: &str,
@@ -91,10 +120,15 @@ impl Policy for EnginePolicy {
             return per_exit.last().cloned().unwrap_or_default();
         }
         let t0 = Instant::now();
-        let p = self
-            .engine
-            .decide_raw(qtype, ins, opts, state_text)
-            .expect("decision");
+        let p = if self.memory.is_some() {
+            self.engine
+                .decide_raw_stream(STREAM, qtype, ins, opts, state_text)
+                .expect("decision")
+        } else {
+            self.engine
+                .decide_raw(qtype, ins, opts, state_text)
+                .expect("decision")
+        };
         self.micros.push(t0.elapsed().as_secs_f64() * 1e6);
         let stats = self.engine.last_stats().cloned().unwrap_or_default();
         if let (Some(e), Some(l)) = (stats.exit, stats.layers_used) {
@@ -321,7 +355,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .cloned()
     };
     let Some(model) = args.first().filter(|a| !a.starts_with("--")) else {
-        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T] [--dagger N --out DIR [--dagger-beta B]] [--trajectories DIR] [--calibrate-crc ALPHA]");
+        eprintln!("usage: sky-arena <model.gguf | laya_dir> [--episodes N] [--seed S] [--game G|all|a,b] [--json out.json] [--max-pipes N] [--exit-threshold T] [--memory-passes N] [--dagger N --out DIR [--dagger-beta B]] [--trajectories DIR] [--calibrate-crc ALPHA]");
         std::process::exit(2);
     };
     let name = std::path::Path::new(model)
@@ -365,6 +399,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Engine::from_safetensors_dir_with(model, opts)?
     };
     let mut policy = EnginePolicy::new(engine);
+    if let Some(n) = flag("--memory-passes") {
+        if !policy.engine.has_memory() {
+            return Err(format!("--memory-passes: {model} has no memory").into());
+        }
+        policy
+            .engine
+            .set_sleep(sky_infer::s2::memory::SleepOptions {
+                passes: n.parse()?,
+                ..Default::default()
+            });
+        policy.memory = Some(MemoryPlay {
+            last_steps: u32::MAX,
+        });
+    }
     if let Some(alpha) = flag("--calibrate-crc") {
         return calibrate_crc(
             &mut policy,
@@ -398,6 +446,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     report.insert("arch".into(), policy.engine.arch().name().into());
     if let Some(t) = exit_threshold {
         report.insert("exit_threshold".into(), t.into());
+    }
+    if policy.memory.is_some() {
+        report.insert(
+            "memory_passes".into(),
+            policy
+                .engine
+                .s2_engine_mut()
+                .map_or(1, |e| e.sleep_options().passes)
+                .into(),
+        );
     }
     for game in games {
         policy.micros.clear();
