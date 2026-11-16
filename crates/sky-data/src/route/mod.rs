@@ -12,6 +12,7 @@
 
 pub mod build;
 pub mod cluster;
+pub mod fresh;
 pub mod slates;
 pub mod sources;
 

@@ -210,6 +210,25 @@ enum RouteStep {
         #[arg(long)]
         out: PathBuf,
     },
+    /// s6-nano v3 (docs/s6-nano3-prereg.md, section 4): the fresh test files, from v2's build
+    /// (read only; its split recomputed and checked against its test files) into --out, written
+    /// once, with FRESH.json (hashes and counts). Needs `--seed 1235`.
+    Fresh {
+        /// v2's build folder.
+        #[arg(long)]
+        build: PathBuf,
+        /// The fresh folder (`<build>/fresh`).
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value = "data/commands/massive.jsonl")]
+        massive: PathBuf,
+        /// v2's seed (its BUILD.json).
+        #[arg(long, default_value_t = sky_data::route::fresh::V2_SEED)]
+        v2_seed: u64,
+        /// Where test-files.json and counts.json go (runs/s6-nano3).
+        #[arg(long)]
+        record: Option<PathBuf>,
+    },
     /// <out>/BUILD.json: inputs, counts, hashes, the test files' hashes, the head window.
     Manifest {
         #[arg(long)]
@@ -1040,6 +1059,30 @@ fn main() -> Result<()> {
                     provisional,
                 })?,
                 RouteStep::Render { input, out } => rb::render(&input, &out)?,
+                RouteStep::Fresh {
+                    build,
+                    out,
+                    massive,
+                    v2_seed,
+                    record,
+                } => {
+                    use sky_data::route::fresh as rf;
+                    if cli.seed != rf::FRESH_SEED {
+                        anyhow::bail!(
+                            "the fresh files are built with --seed {} (docs/s6-nano3-prereg.md, section 4)",
+                            rf::FRESH_SEED
+                        );
+                    }
+                    rf::fresh(&rf::FreshOptions {
+                        build,
+                        out,
+                        massive: Some(massive),
+                        seed: cli.seed,
+                        v2_seed,
+                        cap: rf::FRESH_CAP,
+                        record,
+                    })?
+                }
                 RouteStep::Manifest {
                     data,
                     out,

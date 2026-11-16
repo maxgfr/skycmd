@@ -233,19 +233,19 @@ pub struct SplitOptions {
 }
 
 /// What the split step loads: the tool table, the requests, the embeddings by tool.
-struct Loaded {
-    tools: Vec<Tool>,
-    index: HashMap<String, usize>,
-    requests: Vec<Request>,
+pub(super) struct Loaded {
+    pub tools: Vec<Tool>,
+    pub index: HashMap<String, usize>,
+    pub requests: Vec<Request>,
     minilm: Matrix,
     potion: Matrix,
     /// Row of each tool in the embedding files.
     row: Vec<Option<usize>>,
-    norm: Vec<String>,
+    pub norm: Vec<String>,
     stage: PathBuf,
 }
 
-fn load(out: &Path) -> Result<Loaded> {
+pub(super) fn load(out: &Path) -> Result<Loaded> {
     let st = stage(out);
     let tools: Vec<Tool> = read_lines(&st.join("tools.jsonl"))?;
     let index: HashMap<String, usize> = tools
@@ -293,22 +293,28 @@ fn load(out: &Path) -> Result<Loaded> {
 
 /// A request kept for a split, with its tools as indices.
 #[derive(Clone, Debug)]
-struct Kept {
-    r: Request,
-    split: String,
-    gold: Option<usize>,
-    own: Vec<usize>,
-    exclude: HashSet<usize>,
+pub(super) struct Kept {
+    pub r: Request,
+    pub split: String,
+    pub gold: Option<usize>,
+    pub own: Vec<usize>,
+    pub exclude: HashSet<usize>,
 }
 
-/// Writes a test file once: a file that is there already must hold the same bytes (4.6, item 1;
-/// section 12 forbids rebuilding one).
-fn write_once(path: &Path, recs: &[RouteRecord]) -> Result<String> {
+/// The bytes of a slate file as [`write_once`] writes them.
+pub(super) fn records_bytes<T: Serialize>(recs: &[T]) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     for r in recs {
         bytes.extend(serde_json::to_vec(r)?);
         bytes.push(b'\n');
     }
+    Ok(bytes)
+}
+
+/// Writes a test file once: a file that is there already must hold the same bytes (4.6, item 1;
+/// section 12 forbids rebuilding one).
+pub(super) fn write_once<T: Serialize>(path: &Path, recs: &[T]) -> Result<String> {
+    let bytes = records_bytes(recs)?;
     let h = sha256_hex(&bytes);
     if path.exists() {
         if sha256_file(path)? != h {
@@ -327,9 +333,9 @@ fn write_once(path: &Path, recs: &[RouteRecord]) -> Result<String> {
     Ok(h)
 }
 
-struct Ctx<'a> {
-    l: &'a Loaded,
-    seed: u64,
+pub(super) struct Ctx<'a> {
+    pub l: &'a Loaded,
+    pub seed: u64,
 }
 
 impl Ctx<'_> {
@@ -337,7 +343,7 @@ impl Ctx<'_> {
         self.l.tools[t].option()
     }
 
-    fn rng(&self, label: &str) -> Rng {
+    pub fn rng(&self, label: &str) -> Rng {
         Rng::derived(self.seed, label)
     }
 
@@ -380,7 +386,7 @@ impl Ctx<'_> {
 
 /// The test-like slates of a set of `route/tools` requests (4.4): T-tools or the validation
 /// slates; and the files of the reading checks (7.3).
-fn tool_slates(
+pub(super) fn tool_slates(
     cx: &Ctx,
     name: &str,
     split: &str,
@@ -520,14 +526,65 @@ fn tool_slates(
     ])
 }
 
-/// Step 4: clusters, splits, caps, the test files, the validation slates, the plan of the
-/// training slates and the items of the false-negative and rewrite jobs.
-pub fn split(o: &SplitOptions) -> Result<Value> {
-    let l = load(&o.out)?;
-    let cx = Ctx {
-        l: &l,
-        seed: o.seed,
-    };
+/// The clusters, the split of every request, the dedup across sides and the caps of 4.2: what
+/// [`split()`] decides before any slate is drawn (the fresh files of v3 read it again).
+pub(super) struct Assigned {
+    /// The clustered tools (route/tools and When2Call).
+    pub u: Vec<usize>,
+    /// The cluster (its representative tool) of each tool.
+    pub cluster_of: Vec<Option<usize>>,
+    pub members: BTreeMap<usize, Vec<usize>>,
+    pub csplit: BTreeMap<usize, &'static str>,
+    /// Every request after the dedup across sides, before the caps.
+    pub all: Vec<Kept>,
+    /// The indices of `all` over their cluster's cap.
+    pub drop: HashSet<usize>,
+    /// Per split, (requests before the cap, cluster) of every capped cluster.
+    pub largest: BTreeMap<String, Vec<(usize, usize)>>,
+    pub counts: Counts,
+}
+
+impl Assigned {
+    pub fn tsplit(&self, t: usize) -> Option<&'static str> {
+        self.cluster_of[t].map(|c| self.csplit[&c])
+    }
+
+    pub fn allowed(&self, group: &str, split: &str, t: usize) -> bool {
+        match (group, split) {
+            (WHEN2CALL, "val") => matches!(self.tsplit(t), Some("train" | "val")),
+            _ => {
+                self.tsplit(t)
+                    == Some(match split {
+                        "train" => "train",
+                        "val" => "val",
+                        _ => "test",
+                    })
+            }
+        }
+    }
+
+    /// The requests kept after the caps, in order.
+    pub fn kept(&self) -> Vec<Kept> {
+        self.all
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !self.drop.contains(i))
+            .map(|(_, k)| k.clone())
+            .collect()
+    }
+
+    /// The tools of a split's clusters, in index order.
+    pub fn pool(&self, split: &str) -> Vec<usize> {
+        self.u
+            .iter()
+            .copied()
+            .filter(|&t| self.tsplit(t) == Some(split))
+            .collect()
+    }
+}
+
+/// 4.2 and 4.3: the clusters, the splits, the dedup across sides and the caps.
+pub(super) fn assign(l: &Loaded) -> Result<Assigned> {
     let n = l.tools.len();
     let mut counts = Counts::new();
 
@@ -560,20 +617,19 @@ pub fn split(o: &SplitOptions) -> Result<Value> {
         let key = ms.iter().map(|&t| l.norm[t].as_str()).min().unwrap_or("");
         csplit.insert(c, cluster::split_of_key(key));
     }
-    let tsplit = |t: usize| cluster_of[t].map(|c| csplit[&c]);
-    let allowed = |group: &str, split: &str, t: usize| -> bool {
-        match (group, split) {
-            (WHEN2CALL, "val") => matches!(tsplit(t), Some("train" | "val")),
-            _ => {
-                tsplit(t)
-                    == Some(match split {
-                        "train" => "train",
-                        "val" => "val",
-                        _ => "test",
-                    })
-            }
-        }
+    let mut a = Assigned {
+        u,
+        cluster_of,
+        members,
+        csplit,
+        all: Vec::new(),
+        drop: HashSet::new(),
+        largest: BTreeMap::new(),
+        counts: Counts::new(),
     };
+    let tsplit = |t: usize| a.tsplit(t);
+    let allowed = |group: &str, split: &str, t: usize| a.allowed(group, split, t);
+    let cluster_of = &a.cluster_of;
 
     // the requests and their splits
     let mut kept: Vec<Kept> = Vec::new();
@@ -668,21 +724,59 @@ pub fn split(o: &SplitOptions) -> Result<Value> {
             );
         }
     }
-    let kept: Vec<Kept> = kept
+    a.all = kept;
+    a.drop = drop;
+    a.largest = largest;
+    a.counts = counts;
+    Ok(a)
+}
+
+/// The `route/tools` requests of a split, in order.
+pub(super) fn tool_reqs<'a>(kept: &'a [Kept], split: &str) -> Vec<&'a Kept> {
+    kept.iter()
+        .filter(|k| k.r.group == TOOLS && k.split == split)
+        .collect()
+}
+
+/// The 2,000 requests of T-tools, drawn by seed among the test-side requests (4.4).
+pub(super) fn t_tools_drawn<'a>(cx: &Ctx, kept: &'a [Kept]) -> Vec<&'a Kept> {
+    let test_all = tool_reqs(kept, "test");
+    slates::draw(test_all.len(), TEST_SLATES, &mut cx.rng("route/t-tools"))
         .into_iter()
-        .enumerate()
-        .filter(|(i, _)| !drop.contains(i))
-        .map(|(_, k)| k)
-        .collect();
+        .map(|i| test_all[i])
+        .collect()
+}
+
+/// v2's test files as [`split()`] writes them (file stem with `-` → name).
+pub(super) fn v2_test_files(
+    cx: &Ctx,
+    a: &Assigned,
+    kept: &[Kept],
+) -> Result<BTreeMap<String, Vec<RouteRecord>>> {
+    let drawn = t_tools_drawn(cx, kept);
+    let mut test_files = tool_slates(cx, "t-tools", "test", &drawn, &a.pool("test"));
+    other_tests(cx, kept, &mut test_files)?;
+    Ok(test_files)
+}
+
+/// Step 4: clusters, splits, caps, the test files, the validation slates, the plan of the
+/// training slates and the items of the false-negative and rewrite jobs.
+pub fn split(o: &SplitOptions) -> Result<Value> {
+    let l = load(&o.out)?;
+    let cx = Ctx {
+        l: &l,
+        seed: o.seed,
+    };
+    let a = assign(&l)?;
+    let kept = a.kept();
+    let counts = a.counts.clone();
+    let tsplit = |t: usize| a.tsplit(t);
+    let allowed = |group: &str, split: &str, t: usize| a.allowed(group, split, t);
+    let (cluster_of, members, csplit) = (&a.cluster_of, &a.members, &a.csplit);
+    let largest = a.largest.clone();
 
     // the pools of random tools
-    let pool_of = |split: &str| -> Vec<usize> {
-        u.iter()
-            .copied()
-            .filter(|&t| tsplit(t) == Some(split))
-            .collect()
-    };
-    let (train_pool, val_pool, test_pool) = (pool_of("train"), pool_of("val"), pool_of("test"));
+    let (train_pool, val_pool, test_pool) = (a.pool("train"), a.pool("val"), a.pool("test"));
     let w2c_val_pool: Vec<usize> = {
         let mut v: Vec<usize> = train_pool.iter().chain(val_pool.iter()).copied().collect();
         v.sort_unstable();
@@ -690,20 +784,9 @@ pub fn split(o: &SplitOptions) -> Result<Value> {
     };
 
     // ---- the test files (written once) and the validation slates
-    let tool_reqs = |split: &str| -> Vec<&Kept> {
-        kept.iter()
-            .filter(|k| k.r.group == TOOLS && k.split == split)
-            .collect()
-    };
-    let test_all = tool_reqs("test");
-    let drawn: Vec<&Kept> = slates::draw(test_all.len(), TEST_SLATES, &mut cx.rng("route/t-tools"))
-        .into_iter()
-        .map(|i| test_all[i])
-        .collect();
-    let mut test_files = tool_slates(&cx, "t-tools", "test", &drawn, &test_pool);
-    let val_all = tool_reqs("val");
+    let test_files = v2_test_files(&cx, &a, &kept)?;
+    let val_all = tool_reqs(&kept, "val");
     let val_files = tool_slates(&cx, "v-tools", "val", &val_all, &val_pool);
-    other_tests(&cx, &kept, &mut test_files)?;
 
     let test_dir = o.out.join("test");
     let mut test_hashes = BTreeMap::new();
@@ -965,7 +1048,7 @@ pub fn split(o: &SplitOptions) -> Result<Value> {
     }
     let mut clusters_by = Counts::new();
     let mut tools_by = Counts::new();
-    for (&c, ms) in &members {
+    for (&c, ms) in members.iter() {
         bump(&mut clusters_by, csplit[&c]);
         add(&mut tools_by, csplit[&c], ms.len());
     }
@@ -1018,92 +1101,16 @@ fn other_tests(
     kept: &[Kept],
     files: &mut BTreeMap<String, Vec<RouteRecord>>,
 ) -> Result<()> {
-    let l = cx.l;
     let of =
         |source: &str| -> Vec<&Kept> { kept.iter().filter(|k| k.r.source == source).collect() };
-    let tool_set = |reqs: &[&Kept]| -> Vec<usize> {
-        let mut v: Vec<usize> = reqs
-            .iter()
-            .flat_map(|k| k.gold.into_iter().chain(k.own.iter().copied()))
-            .collect();
-        v.sort_unstable();
-        v.dedup();
-        v
-    };
 
     // T-metatool: the query's tool, 3 of its similar-choices group where it has one, then random
-    let similar: BTreeMap<String, Vec<String>> =
-        serde_json::from_value(super::read_json(&stage_of(cx).join("similar.json"))?)?;
-    let mt = of("metatool");
-    // the tools of plugin_des.json, by name (MetaTool's names are its own)
-    let mt_ids: BTreeSet<String> =
-        super::read_lines::<Value>(&stage_of(cx).join("metatool-tools.jsonl"))?
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect();
-    let by_name: HashMap<&str, usize> = mt_ids
-        .iter()
-        .map(|id| (l.tools[l.index[id]].name.as_str(), l.index[id]))
-        .collect();
-    let mut mt_pool: Vec<usize> = by_name.values().copied().collect();
-    mt_pool.sort_unstable();
-    let drawn = slates::draw(mt.len(), TEST_SLATES, &mut cx.rng("route/t-metatool"));
-    let removed = slates::removed_set(
-        drawn.len(),
-        REMOVED_SHARE,
-        &mut cx.rng("route/t-metatool/removed"),
-    );
-    let mut recs = Vec::new();
-    for (j, &i) in drawn.iter().enumerate() {
-        let k = mt[i];
-        let g = k.gold.unwrap();
-        let mut rng = cx.rng(&format!("route/t-metatool/slate/{}", k.r.id));
-        let mut group: Vec<usize> = similar
-            .get(&l.tools[g].name)
-            .map(|v| {
-                v.iter()
-                    .filter_map(|n| by_name.get(n.as_str()).copied())
-                    .filter(|&t| t != g)
-                    .collect()
-            })
-            .unwrap_or_default();
-        rng.shuffle(&mut group);
-        group.truncate(3);
-        let s = slates::test_slate(
-            Some(g),
-            &group,
-            &mt_pool,
-            removed.contains(&j),
-            &mut rng,
-            &|t| t != g,
-        );
-        let kind = if removed.contains(&j) {
-            "removed"
-        } else {
-            "test"
-        };
-        recs.push(cx.record("t-metatool", "test", k.r.id.clone(), kind, k, &s));
-    }
+    let recs = metatool_file(cx, "t-metatool", "test", &of("metatool"), TEST_SLATES)?;
     files.insert("t-metatool".into(), recs);
 
     // T-clinc: in-scope queries with their intent and 6 random intents, out-of-scope ones with 7
     let cl = of("clinc");
-    let pool = tool_set(&cl);
-    let (ins, oos): (Vec<&Kept>, Vec<&Kept>) = cl.iter().partition(|k| k.gold.is_some());
-    let n_oos = ((TEST_SLATES as f64) * NONE_SHARE).round() as usize;
-    let mut recs = Vec::new();
-    for (part, n, label) in [(&ins, TEST_SLATES - n_oos, "in"), (&oos, n_oos, "oos")] {
-        for i in slates::draw(
-            part.len(),
-            n,
-            &mut cx.rng(&format!("route/t-clinc/{label}")),
-        ) {
-            let k = part[i];
-            let mut rng = cx.rng(&format!("route/t-clinc/slate/{}", k.r.id));
-            let s = slates::test_slate(k.gold, &[], &pool, false, &mut rng, &|t| Some(t) != k.gold);
-            recs.push(cx.record("t-clinc", "test", k.r.id.clone(), "test", k, &s));
-        }
-    }
+    let recs = clinc_file(cx, "t-clinc", "test", &cl, &tool_set(&cl));
     files.insert("t-clinc".into(), recs);
 
     // the sources whose items carry their own tool lists: every tool, then none
@@ -1136,7 +1143,120 @@ fn other_tests(
 
     // MASSIVE held-out scenarios, test partition: the intent, 6 random MASSIVE intents, none;
     // 20% removed; at most 1,000 per language
-    let ms = of("massive-heldout");
+    let recs = massive_file(
+        cx,
+        "t-massive",
+        "test",
+        &of("massive-heldout"),
+        &massive_pool(kept),
+        MASSIVE_PROBE,
+    );
+    files.insert("t-massive".into(), recs);
+    Ok(())
+}
+
+/// The tools of a set of requests (their golds and own tools), sorted.
+pub(super) fn tool_set(reqs: &[&Kept]) -> Vec<usize> {
+    let mut v: Vec<usize> = reqs
+        .iter()
+        .flat_map(|k| k.gold.into_iter().chain(k.own.iter().copied()))
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// The MetaTool file of 7.1 (`name`, e.g. `t-metatool`): `n` queries drawn by seed among
+/// `mt`; the query's tool, 3 of its similar-choices group where it has one, then random tools
+/// of `plugin_des.json`; 20% removed.
+pub(super) fn metatool_file(
+    cx: &Ctx,
+    name: &str,
+    split: &str,
+    mt: &[&Kept],
+    n: usize,
+) -> Result<Vec<RouteRecord>> {
+    let l = cx.l;
+    let similar: BTreeMap<String, Vec<String>> =
+        serde_json::from_value(super::read_json(&stage_of(cx).join("similar.json"))?)?;
+    // the tools of plugin_des.json, by name (MetaTool's names are its own)
+    let mt_ids: BTreeSet<String> =
+        super::read_lines::<Value>(&stage_of(cx).join("metatool-tools.jsonl"))?
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+    let by_name: HashMap<&str, usize> = mt_ids
+        .iter()
+        .map(|id| (l.tools[l.index[id]].name.as_str(), l.index[id]))
+        .collect();
+    let mut mt_pool: Vec<usize> = by_name.values().copied().collect();
+    mt_pool.sort_unstable();
+    let drawn = slates::draw(mt.len(), n, &mut cx.rng(&format!("route/{name}")));
+    let removed = slates::removed_set(
+        drawn.len(),
+        REMOVED_SHARE,
+        &mut cx.rng(&format!("route/{name}/removed")),
+    );
+    let mut recs = Vec::new();
+    for (j, &i) in drawn.iter().enumerate() {
+        let k = mt[i];
+        let g = k.gold.unwrap();
+        let mut rng = cx.rng(&format!("route/{name}/slate/{}", k.r.id));
+        let mut group: Vec<usize> = similar
+            .get(&l.tools[g].name)
+            .map(|v| {
+                v.iter()
+                    .filter_map(|n| by_name.get(n.as_str()).copied())
+                    .filter(|&t| t != g)
+                    .collect()
+            })
+            .unwrap_or_default();
+        rng.shuffle(&mut group);
+        group.truncate(3);
+        let s = slates::test_slate(
+            Some(g),
+            &group,
+            &mt_pool,
+            removed.contains(&j),
+            &mut rng,
+            &|t| t != g,
+        );
+        let kind = if removed.contains(&j) {
+            "removed"
+        } else {
+            "test"
+        };
+        recs.push(cx.record(name, split, k.r.id.clone(), kind, k, &s));
+    }
+    Ok(recs)
+}
+
+/// The CLINC150 file of 7.1 (`name`, e.g. `t-clinc`): 80% in-scope queries with their intent
+/// and 6 random intents of `pool`, 20% out-of-scope queries with 7, each part drawn by seed
+/// (fewer when the part holds fewer).
+pub(super) fn clinc_file(
+    cx: &Ctx,
+    name: &str,
+    split: &str,
+    cl: &[&Kept],
+    pool: &[usize],
+) -> Vec<RouteRecord> {
+    let (ins, oos): (Vec<&Kept>, Vec<&Kept>) = cl.iter().partition(|k| k.gold.is_some());
+    let n_oos = ((TEST_SLATES as f64) * NONE_SHARE).round() as usize;
+    let mut recs = Vec::new();
+    for (part, n, label) in [(&ins, TEST_SLATES - n_oos, "in"), (&oos, n_oos, "oos")] {
+        for i in slates::draw(part.len(), n, &mut cx.rng(&format!("route/{name}/{label}"))) {
+            let k = part[i];
+            let mut rng = cx.rng(&format!("route/{name}/slate/{}", k.r.id));
+            let s = slates::test_slate(k.gold, &[], pool, false, &mut rng, &|t| Some(t) != k.gold);
+            recs.push(cx.record(name, split, k.r.id.clone(), "test", k, &s));
+        }
+    }
+    recs
+}
+
+/// The MASSIVE intents (the golds of every MASSIVE request), sorted.
+pub(super) fn massive_pool(kept: &[Kept]) -> Vec<usize> {
     let mut pool: Vec<usize> = kept
         .iter()
         .filter(|k| k.r.source == "massive" || k.r.source == "massive-heldout")
@@ -1144,23 +1264,37 @@ fn other_tests(
         .collect();
     pool.sort_unstable();
     pool.dedup();
+    pool
+}
+
+/// The MASSIVE probe of 7.1 (`name`, e.g. `t-massive`): per language, at most `per_lang`
+/// utterances drawn by seed among `ms`, each with its intent, 6 random intents of `pool` and
+/// none; 20% removed.
+pub(super) fn massive_file(
+    cx: &Ctx,
+    name: &str,
+    split: &str,
+    ms: &[&Kept],
+    pool: &[usize],
+    per_lang: usize,
+) -> Vec<RouteRecord> {
     let mut recs = Vec::new();
     for lang in ["en", "fr"] {
         let part: Vec<&Kept> = ms.iter().copied().filter(|k| k.r.lang == lang).collect();
         let drawn = slates::draw(
             part.len(),
-            MASSIVE_PROBE,
-            &mut cx.rng(&format!("route/t-massive/{lang}")),
+            per_lang,
+            &mut cx.rng(&format!("route/{name}/{lang}")),
         );
         let removed = slates::removed_set(
             drawn.len(),
             REMOVED_SHARE,
-            &mut cx.rng(&format!("route/t-massive/{lang}/removed")),
+            &mut cx.rng(&format!("route/{name}/{lang}/removed")),
         );
         for (j, &i) in drawn.iter().enumerate() {
             let k = part[i];
-            let mut rng = cx.rng(&format!("route/t-massive/slate/{}", k.r.id));
-            let s = slates::test_slate(k.gold, &[], &pool, removed.contains(&j), &mut rng, &|t| {
+            let mut rng = cx.rng(&format!("route/{name}/slate/{}", k.r.id));
+            let s = slates::test_slate(k.gold, &[], pool, removed.contains(&j), &mut rng, &|t| {
                 Some(t) != k.gold
             });
             let kind = if removed.contains(&j) {
@@ -1169,8 +1303,8 @@ fn other_tests(
                 "test"
             };
             recs.push(cx.record(
-                &format!("t-massive-{lang}"),
-                "test",
+                &format!("{name}-{lang}"),
+                split,
                 k.r.id.clone(),
                 kind,
                 k,
@@ -1178,8 +1312,7 @@ fn other_tests(
             ));
         }
     }
-    files.insert("t-massive".into(), recs);
-    Ok(())
+    recs
 }
 
 fn stage_of(cx: &Ctx) -> PathBuf {
@@ -1634,7 +1767,7 @@ pub fn manifest(o: &ManifestOptions) -> Result<Value> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::route::slates::TEST_TOOLS;
 
@@ -1690,7 +1823,7 @@ mod tests {
 
     /// An invented build: 400 tools in 200 near-duplicate pairs, 50 requests per pair (over
     /// the cap), When2Call requests with and without a gold, intents.
-    fn fixture(dir: &Path) {
+    pub(crate) fn fixture(dir: &Path) {
         let st = stage(dir);
         std::fs::create_dir_all(&st).unwrap();
         std::fs::create_dir_all(dir.join("emb")).unwrap();
@@ -1785,7 +1918,7 @@ mod tests {
         .unwrap();
     }
 
-    fn hashes(dir: &Path) -> BTreeMap<String, Value> {
+    pub(crate) fn hashes(dir: &Path) -> BTreeMap<String, Value> {
         let mut h = BTreeMap::new();
         for rel in ["records", "val", "test", "stage", "teacher"] {
             hash_tree(dir, rel, &mut h).unwrap();
@@ -1793,7 +1926,7 @@ mod tests {
         h
     }
 
-    fn run(dir: &Path, seed: u64) {
+    pub(crate) fn run(dir: &Path, seed: u64) {
         split(&SplitOptions {
             out: dir.into(),
             seed,
