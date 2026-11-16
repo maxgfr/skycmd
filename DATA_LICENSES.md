@@ -151,7 +151,7 @@ Not used from these corpora: the `common_crawl-*` parts of Dolma 3 (overlap with
 Paraphrases and drone orders were generated for s1 to s3 by GLM-5.3-Flash, the open-weight MIT
 model that is also the teacher of s6, through a hosted endpoint used as a proxy (`sky-data teacher
 ...`). The model's name was not logged with the files at the time: it is the owner's statement
-(16/11/2026), with his decision that this data is free to use and to publish. No s6 model trains on
+(16/11/2026), with the decision that this data is free to use and to publish. No s6 model trains on
 these two files: both were absent from `data/decisions` when the s6 data was prepared
 (`docs/big-run-report.md` §7, item 9).
 
