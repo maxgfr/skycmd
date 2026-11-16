@@ -404,7 +404,24 @@ v2 passes if all of these hold:
 
 ## 14. Amendments
 
-None yet.
+**Amendment 1 (16/11/2026, after the latency probe, the data build and the harness check, before any v2 training, the smoke included; no v2 model exists, no v2 test score exists).**
+
+- **The probe (§4.4) picks R4.** Each rung with seeded random ternary weights, 1,000 decisions on a full 4 s window, features already computed, Apple M5, Node, SIMD128, one thread (`runs/s6-ear2-probe/rung.json`, measured once, at 09:53, with no training running; the load average of the owner's own applications was about 2.6):
+
+  | rung | WASM median | WASM p95 | native median | parameters | file (random weights) |
+  |---|---:|---:|---:|---:|---:|
+  | R1 | 10.10 ms | 10.22 ms | 5.95 ms | 2,714,754 | 931,264 bytes |
+  | R2 | 6.79 ms | 6.86 ms | 8.03 ms | 1,829,250 | 699,008 bytes |
+  | R3 | 4.89 ms | 4.94 ms | 5.98 ms | 1,278,658 | 521,856 bytes |
+  | **R4** | **2.39 ms** | 2.42 ms | 2.31 ms | 1,306,178 | 631,936 bytes |
+
+  The first rung whose WASM median is ≤ 4.0 ms is **R4** (d 160, ff 640, 4 blocks, one position per 80 ms, 50 positions). R3 misses the rule by 0.89 ms and is not taken. The front end costs 0.017 ms per 10 ms hop in WASM. The native medians are not ordered by size (R2 above R1) and their p95 are 3 to 4 times their medians: the native numbers were disturbed by other work on the machine and are recorded as measured, not used by the rule. An informal timing of R3 during the development of the probe, on a loaded machine, had given 5.9 ms; it is not a probe result.
+- **The data build is final.** `pipecat-ai/smart-turn-data-v3.2-train` at `f8c95d28`: 83 shards, 270,946 rows, all decodable, **270,946 kept: 257,353 training, 13,593 validation**. The leakage rule of §3.2 dropped no row (0 by test id, 0 by the hash of the PCM tail); the sentence rule cannot be checked, `spoken_text` being empty in both sets, as the build's manifest says. The teacher's targets (Smart Turn v3.2 CPU at `f766f81d`) are written for the 83 shards.
+- **The harness check (§8.1) passed, before any v2 test score:** Smart Turn v3.2 CPU through the fixed `scripts/ear-baseline.py` gives **0.9260** on the 31,527 test clips (bar 0.9263 ± 0.003), the always-finished rule gives 0.4979, the padding is on the left (`runs/s6-ear2-harness/check.json`, 16/11/2026 06:09). T of G1 is therefore 0.9260, and the binding bar stays 0.85.
+- **eot-bench (§8.4):** the cuts are built from `livekit/eot-bench-data` at `ae834af9` (15 files, 14 languages); no model of this project has read them.
+- **Two fixes of `scripts/train-turn.sh` before any run:** the file was committed without its executable bit, and the harness step did not create its output folder. Neither changes a number.
+- **Where the run happens.** From the worktree of the session, on the code of `origin/main`, with the data outside the repository (`skycmd-data/s6-ear2`) and v1's `data/ear` read through a link from the main checkout. The brake is the automatic one (`scripts/auto-brake.sh`). CPU work of other models (write-ups, evaluations on dumps) may run during the pilot and the training; budgets are in working minutes, so this can only lower the number of steps, and the steps are reported. The latencies of §8.3 are measured with no training running.
+- **What does not change:** everything else, in particular the pilot and its stop rule (0.82), the budget (240 working minutes, seed 1, once), the checkpoint rule, the thresholds from validation, the gate.
 
 ## 15. Choices (the first value of each line is the one taken at the freeze; the alternative is recorded)
 

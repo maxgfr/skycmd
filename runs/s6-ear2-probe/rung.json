@@ -1,0 +1,56 @@
+{
+  "rung": "R4",
+  "rule": "the first rung of R1-R4 whose WASM median is <= 4.0 ms (\u00a74.4)",
+  "table": [
+    {
+      "rung": "R1",
+      "wasm_median_ms": 10.099207999999862,
+      "wasm_p95_ms": 10.21758299999965,
+      "wasm_frontend_ms_per_hop": 0.017361950782997786,
+      "native_median_ms": 5.947708,
+      "native_p95_ms": 20.738666000000002,
+      "native_frontend_ms_per_hop": 0.01335234899328859,
+      "params": 2714754,
+      "file_bytes": 931264,
+      "qualifies": false
+    },
+    {
+      "rung": "R2",
+      "wasm_median_ms": 6.785542000001442,
+      "wasm_p95_ms": 6.862999999999374,
+      "wasm_frontend_ms_per_hop": 0.016783371364650412,
+      "native_median_ms": 8.025459000000001,
+      "native_p95_ms": 20.891416999999997,
+      "native_frontend_ms_per_hop": 0.02042216554809843,
+      "params": 1829250,
+      "file_bytes": 699008,
+      "qualifies": false
+    },
+    {
+      "rung": "R3",
+      "wasm_median_ms": 4.885207999999693,
+      "wasm_p95_ms": 4.9398330000003625,
+      "wasm_frontend_ms_per_hop": 0.016752888143174056,
+      "native_median_ms": 5.980459,
+      "native_p95_ms": 19.502333999999998,
+      "native_frontend_ms_per_hop": 0.026225017897091724,
+      "params": 1278658,
+      "file_bytes": 521856,
+      "qualifies": false
+    },
+    {
+      "rung": "R4",
+      "wasm_median_ms": 2.3902909999997064,
+      "wasm_p95_ms": 2.4231659999968542,
+      "wasm_frontend_ms_per_hop": 0.01672958612975717,
+      "native_median_ms": 2.309167,
+      "native_p95_ms": 7.597625,
+      "native_frontend_ms_per_hop": 0.020578114093959734,
+      "params": 1306178,
+      "file_bytes": 631936,
+      "qualifies": true
+    }
+  ],
+  "measured": "2026-11-16T09:53:44+0100",
+  "host": "Apple M5"
+}

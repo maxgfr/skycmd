@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "teacher_accuracy": 0.9259999365623117,
+  "checks": {
+    "bar": {
+      "value": 0.9259999365623117,
+      "want": "0.9263 +- 0.003",
+      "ok": true
+    },
+    "timer": {
+      "value": 0.4979224157071716,
+      "want": 0.4979,
+      "ok": true
+    },
+    "clips": {
+      "value": 31527,
+      "want": 31527,
+      "ok": true
+    },
+    "padding": {
+      "value": "left",
+      "want": "left",
+      "ok": true
+    }
+  },
+  "baseline": "runs/s6-ear2-harness/smart-turn.json",
+  "rule": "\u00a78.1: Smart Turn v3.2 CPU through the fixed harness gives 0.9263 +- 0.003 on the 31,527 test clips and the always-finished rule the test's share of finished clips (0.4979)",
+  "checked": "2026-11-16T06:09:55+0100"
+}
