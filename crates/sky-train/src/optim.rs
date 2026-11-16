@@ -130,7 +130,10 @@ pub fn is_mem_input(name: &str) -> bool {
 
 /// True for the gates of a memory layer (`mem.{l}.alpha.weight`, `mem.{l}.beta.weight`).
 pub fn is_mem_gate(name: &str) -> bool {
-    name.starts_with("mem.") && (name.ends_with(".alpha.weight") || name.ends_with(".beta.weight"))
+    name.starts_with("mem.")
+        && [".alpha.weight", ".beta.weight", ".beta_bias.weight"]
+            .iter()
+            .any(|tail| name.ends_with(tail))
 }
 
 fn default_polish() -> usize {

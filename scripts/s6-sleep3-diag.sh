@@ -14,9 +14,13 @@
 # Train sequences only; no dev or test seed of the probes is read.
 #
 #   CFG        the model config (default runs/s6-sleep2/checks/sleep2.json: v2's memory, form frame);
-#              CFG=aux adds the auxiliary head (memory_aux) to it
+#              CFG=aux adds the auxiliary head (memory_aux) to it, CFG=slot takes the slot write
+#              (memory_write: slot, one key and one value per frame), CFG=slot-aux both
 #   SEQ        the recall sequences (default runs/s6-sleep/seq/recall.jsonl, v1's)
-#   STOP       stop after that many steps (the schedule stays that of 300 steps)
+#   STOP       stop after that many steps (the schedule stays that of STEPS steps)
+#   STEPS      the steps of the schedule (default 300, C4's)
+#   SEED       the seed of the run (default 0, C4's)
+#   DATA       the folder of the stateless records (default data)
 #   PICO_BASE  runs/s6lr/softmax-adamw-x2/decide/last
 #   SKY_TRAIN  a sky-train binary to use as is
 set -euo pipefail
@@ -27,25 +31,35 @@ export SKY_COOL=${SKY_COOL-45:15}
 export SKY_BRAKE_FILE=${SKY_BRAKE_FILE-$PWD/runs/brake}
 export SKY_MLX_CACHE_GB=${SKY_MLX_CACHE_GB:-2}
 T=${SKY_TRAIN:-$CARGO_TARGET_DIR/release/sky-train}
-[ $# -ge 1 ] || { sed -n '2,22p' "$0" >&2; exit 2; }
+[ $# -ge 1 ] || { sed -n '2,26p' "$0" >&2; exit 2; }
 name=$1
 shift
 root=runs/s6-sleep3
 base=${PICO_BASE:-runs/s6lr/softmax-adamw-x2/decide/last}
 seq=${SEQ:-runs/s6-sleep/seq/recall.jsonl}
 cfg=${CFG:-runs/s6-sleep2/checks/sleep2.json}
+data=${DATA:-data}
 out=$root/$name
 mkdir -p "$root/configs"
 
-if [ "$cfg" = aux ]; then
-  cfg=$root/configs/sleep3-aux.json
-  python3 -I - runs/s6-sleep2/checks/sleep2.json "$cfg" <<'EOF'
+case "$cfg" in
+aux | slot | slot-aux)
+  form=$cfg
+  cfg=$root/configs/sleep3-$form.json
+  python3 -I - runs/s6-sleep2/checks/sleep2.json "$cfg" "$form" <<'EOF'
 import json, sys
 c = json.load(open(sys.argv[1]))
-c.update(name="s6-sleep3-pico-aux", memory_aux=True)
+form = sys.argv[3]
+c["name"] = "s6-sleep3-pico-" + form
+if "aux" in form:
+    c["memory_aux"] = True
+if "slot" in form:
+    c["memory_write"] = "slot"
+    del c["memory_value"]  # one value per frame: the value forms do not apply
 json.dump(c, open(sys.argv[2], "w"), indent=2)
 EOF
-fi
+  ;;
+esac
 
 flags=("$@")
 if [ "$name" = oracle ]; then
@@ -77,8 +91,8 @@ rm -rf "$out"
 mkdir -p "$out"
 echo "== $out: ${flags[*]-}"
 nice -n 19 "$T" --cpu s2-decide --config "$cfg" --init "$base" --tokenizer "$base/tokenizer.json" \
-  --records data/decisions,data/games,data/numeric --weights decisions=0.3,games=0.6,numeric=0.1 \
-  --batch 128 --steps 300 --seed 0 --qat-frac 1.0 --loop-dropout 0.25 --length-pool 16 --pad-to 32 \
+  --records "$data/decisions,$data/games,$data/numeric" --weights decisions=0.3,games=0.6,numeric=0.1 \
+  --batch 128 --steps "${STEPS:-300}" --seed "${SEED:-0}" --qat-frac 1.0 --loop-dropout 0.25 --length-pool 16 --pad-to 32 \
   --out "$out" --step-mem-gb 3 --adam-lr 0.002 --no-muon --seq-log \
   --sleep-records "$seq" --sleep-weights recall=1 --sleep-batch 8 --seq-frac 0.9 --sleep-passes 1 \
   --no-compile --val-max 256 ${stop[@]+"${stop[@]}"} ${flags[@]+"${flags[@]}"} >"$out/stdout.txt" 2>&1

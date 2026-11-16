@@ -582,8 +582,9 @@ pub fn config_from_gguf(g: &Gguf<'_>) -> Result<S2Config> {
     };
     let memory_write = match g.get_str(&format!("{ARCH}.memory_write")) {
         None => crate::s2::config::MemoryWrite::Average,
-        Some(k) => crate::s2::config::MemoryWrite::parse(k)
-            .ok_or_else(|| anyhow!("{ARCH}.memory_write {k:?} (average, delta, exact, centred)"))?,
+        Some(k) => crate::s2::config::MemoryWrite::parse(k).ok_or_else(|| {
+            anyhow!("{ARCH}.memory_write {k:?} (average, delta, exact, centred, slot)")
+        })?,
     };
     let state_loops = g
         .get_u64(&format!("{ARCH}.state_loops"))

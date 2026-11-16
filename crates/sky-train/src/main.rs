@@ -461,6 +461,24 @@ enum Cmd {
         /// --memory-float).
         #[arg(long, default_value_t = 0.0)]
         memory_copy_init: f32,
+        /// A slot memory (memory_write: slot in the config) starts with its centre measured on
+        /// one batch of sequences in place of zero (a fresh run only; needs --sleep-records).
+        #[arg(long)]
+        memory_centre_init: bool,
+        /// With --seq-log and a slot memory: after each sequence step the centre moves towards
+        /// the one measured on the batch, c <- (1 - m) c + m c_batch (0: the centre is a trained
+        /// parameter like the others).
+        #[arg(long, requires = "seq_log", value_name = "M", default_value_t = 0.0)]
+        memory_centre_ema: f32,
+        /// The bias of the write gate of a slot memory at the start: the gate starts at the
+        /// sigmoid of it (0: one half; a fresh run only).
+        #[arg(long, default_value_t = 0.0, allow_negative_numbers = true)]
+        memory_gate_bias: f32,
+        /// With --seq-log: one sequence step in N is also answered without the memory, before
+        /// its update, and logged under "off": the control of the memory on the same batch
+        /// (0: never; docs/s6-sleep3-diagnosis.md).
+        #[arg(long, requires = "seq_log", value_name = "N", default_value_t = 0)]
+        memory_off_eval: u64,
         /// Weight of the auxiliary loss of a memory_aux config: the colour asked, decoded from
         /// what the memory retrieves at the ask frames of recall (0: none; needs --seq-log).
         #[arg(long, default_value_t = 0.0)]
@@ -946,6 +964,10 @@ fn main() -> Result<()> {
             memory_out_float,
             memory_out_init,
             memory_copy_init,
+            memory_centre_init,
+            memory_centre_ema,
+            memory_gate_bias,
+            memory_off_eval,
             memory_aux_weight,
             memory_aux_probe,
             mem_in_lr_mult,
@@ -1005,6 +1027,10 @@ fn main() -> Result<()> {
             },
             memory_out_init,
             memory_copy_init,
+            memory_centre_init,
+            memory_centre_ema,
+            memory_gate_bias,
+            memory_off_eval,
             dis,
             exit_kd: exit_kd.map(|weight| ExitKd {
                 weight,

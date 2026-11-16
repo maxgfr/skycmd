@@ -21,6 +21,21 @@
 //!   initialisation a token retrieves what was written under similar tokens;
 //! - `memory_value: frame` (M2): `v_i = heads(LN(x_i + x̄)·Wv)`, `x̄` the mean block output over
 //!   the frame's valid tokens, so that a door's slot holds the colour shown next to it.
+//!
+//! **The slot form** (`memory_write: slot`, `docs/s6-sleep3-diagnosis.md` §7): one key, one value
+//! and one gate per frame instead of one per token. With `x̄` the mean block output over the
+//! frame's valid tokens and `y = LN(x̄) − c` (`c` the row of the parameter `mem.{l}.centre` for
+//! the loop the block is in, the mean of `LN(x̄)` over frames at that loop, so that `y` holds
+//! what is particular to the frame at every depth):
+//! - **Read**: `q = l2norm(heads(y·Wqk))`, `x_i ← x_i + merge(√hd · l2norm(S·q))·Wo` for every
+//!   valid token: what is retrieved is brought to the scale of a normalized state before the
+//!   read-out, whatever the scale of the values (an empty memory still reads zero);
+//! - **Write**: `k = l2norm(heads(y·Wqk))`, `v = heads(y·Wv)`, `β = σ(wβ·y + b)` (`b` the
+//!   parameter `mem.{l}.beta_bias`), `α = σ(wα·y + 6)`, `S ← α·S + β·(v − α·S·k)·kᵀ`.
+//!
+//! The keys have unit norm, so a full step (`β = 1`) leaves `S·k = v`: a door shown again
+//! replaces what its slot held, and what is stored under an orthogonal key is untouched. The
+//! gates read the normalized state, as every projection does.
 
 use mlx_rs::{error::Exception, ops, ops::indexing::IndexOp, stop_gradient, Array, Dtype};
 
@@ -31,8 +46,9 @@ use crate::{
         config::{MemoryQk, MemoryValue, MemoryWrite, S2Config},
         data::S2Batch,
         model::{
-            cast_like, forward_prepared_mem, frame_ce, frame_ce_rows, heads, linear, merge_heads,
-            prepare, state_written, to_f32, w, Init,
+            cast_like, forward_prepared_mem, forward_prepared_taps, frame_ce, frame_ce_rows, heads,
+            last_exit_right, linear, merge_heads, prepare, state_taps, state_written, to_f32, w,
+            Init,
         },
     },
 };
@@ -101,6 +117,16 @@ pub(crate) fn specs(out: &mut Vec<(String, Vec<i32>, Init)>, cfg: &S2Config) {
         out.push((format!("{p}.out.weight"), vec![d, d], Init::Zeros));
         out.push((format!("{p}.alpha.weight"), vec![d], Init::Zeros));
         out.push((format!("{p}.beta.weight"), vec![d], Init::Zeros));
+        if cfg.memory_write == MemoryWrite::Slot {
+            // One centre per loop of the block (its output moves with the depth), the loops
+            // one after the other in one vector: a vector has no weight decay.
+            out.push((
+                format!("{p}.centre.weight"),
+                vec![cfg.state_loops as i32 * d],
+                Init::Zeros,
+            ));
+            out.push((format!("{p}.beta_bias.weight"), vec![1], Init::Zeros));
+        }
         if cfg.memory_aux {
             // Training only: the colour asked, decoded from what the layer retrieves.
             out.push((
@@ -117,7 +143,12 @@ pub fn param_count(cfg: &S2Config) -> usize {
     let d = cfg.hidden_size;
     let matrices = inputs(cfg).len() + 1;
     let aux = if cfg.memory_aux { AUX_CLASSES * d } else { 0 };
-    cfg.state_layers * (matrices * d * d + 3 * d + aux)
+    let slot = if cfg.memory_write == MemoryWrite::Slot {
+        cfg.state_loops * d + 1
+    } else {
+        0
+    };
+    cfg.state_layers * (matrices * d * d + 3 * d + aux + slot)
 }
 
 /// The memory of a batch of streams: one `[B, H, hd, hd]` array (f32) per memory layer.
@@ -170,9 +201,77 @@ fn project(p: &ParamMap, cfg: &S2Config, l: usize, part: &str, y: &Array) -> R<A
     )?)
 }
 
-/// What memory layer `l` retrieves for the hidden states `x` `[B, T, d]` from `s`
-/// `[B, H, hd, hd]`, before the read-out: `merge(S·q)` `[B, T, d]`, in the dtype of `x`.
-pub(crate) fn retrieve(p: &ParamMap, cfg: &S2Config, l: usize, x: &Array, s: &Array) -> R<Array> {
+/// The slot form's reading of a frame, before the centre is taken off: `LN(x̄)` `[B, 1, d]`, `x̄`
+/// the mean of the block output `x` `[B, T, d]` over the frame's valid tokens (`valid` `[B, T]`).
+fn frame_norm(p: &ParamMap, cfg: &S2Config, l: usize, x: &Array, valid: &Array) -> R<Array> {
+    let (b, t) = (x.dim(0), x.dim(1));
+    let on = valid.as_dtype(Dtype::Float32)?;
+    let n = ops::maximum(on.sum_axis(-1, true)?, Array::from_f32(1.0))?;
+    let on_x = cast_like(on.reshape(&[b, t, 1])?, x)?;
+    let n_x = cast_like(n.reshape(&[b, 1, 1])?, x)?;
+    let mean = x.multiply(&on_x)?.sum_axis(1, true)?.divide(&n_x)?;
+    layer_norm(&mean, w(p, &name(l, "norm"))?, None, cfg.norm_eps)
+}
+
+/// The slot form's view of a frame at loop `lp` of block `l`: `y = LN(x̄) − c_lp` `[B, 1, d]`,
+/// what the keys, the queries, the values and the gates of the frame are built from.
+fn frame_state(
+    p: &ParamMap,
+    cfg: &S2Config,
+    l: usize,
+    lp: usize,
+    x: &Array,
+    valid: &Array,
+) -> R<Array> {
+    let y = frame_norm(p, cfg, l, x, valid)?;
+    let centre = w(p, &name(l, "centre"))?
+        .reshape(&[cfg.state_loops as i32, cfg.hidden_size as i32])?
+        .index(lp as i32);
+    y.subtract(cast_like(centre, &y)?)
+}
+
+/// The loop a frame writes from: the last one (a frame is written at full depth).
+fn write_loop(cfg: &S2Config) -> usize {
+    cfg.state_loops - 1
+}
+
+/// What memory layer `l` retrieves for the hidden states `x` `[B, T, d]` (`valid` `[B, T]`)
+/// from `s` `[B, H, hd, hd]`, before the read-out: `merge(S·q)` `[B, T, d]`, in the dtype of
+/// `x`. In the slot form the frame asks once and every valid token gets the same reading;
+/// `x` is then the output of the block's last loop ([`retrieve_at`] for another loop).
+pub(crate) fn retrieve(
+    p: &ParamMap,
+    cfg: &S2Config,
+    l: usize,
+    x: &Array,
+    valid: &Array,
+    s: &Array,
+) -> R<Array> {
+    retrieve_at(p, cfg, l, write_loop(cfg), x, valid, s)
+}
+
+/// [`retrieve`] for the output `x` of loop `lp` of block `l`.
+pub(crate) fn retrieve_at(
+    p: &ParamMap,
+    cfg: &S2Config,
+    l: usize,
+    lp: usize,
+    x: &Array,
+    valid: &Array,
+    s: &Array,
+) -> R<Array> {
+    if cfg.memory_write == MemoryWrite::Slot {
+        let y = frame_state(p, cfg, l, lp, x, valid)?;
+        let q = l2norm(&project(p, cfg, l, query_part(cfg), &y)?)?;
+        // √hd · l2norm(S·q), per head: the scale of a normalized state.
+        let r = l2norm(&ops::matmul(&q, s.transpose_axes(&[0, 1, 3, 2])?)?)?
+            .multiply(Array::from_f32((cfg.head_dim() as f32).sqrt()))?;
+        let r = merge_heads(&r)?;
+        let on = valid
+            .as_dtype(Dtype::Float32)?
+            .reshape(&[x.dim(0), x.dim(1), 1])?;
+        return cast_like(r.multiply(&on)?, x);
+    }
     let y = layer_norm(x, w(p, &name(l, "norm"))?, None, cfg.norm_eps)?;
     let q = l2norm(&project(p, cfg, l, query_part(cfg), &y)?)?;
     // r_i = S · q_i, for every token at once.
@@ -180,27 +279,70 @@ pub(crate) fn retrieve(p: &ParamMap, cfg: &S2Config, l: usize, x: &Array, s: &Ar
     cast_like(merge_heads(&r)?, x)
 }
 
-/// The read of memory layer `l`: `x + merge(S·q)·Wo` (`x` `[B, T, d]`, `s` `[B, H, hd, hd]`).
-/// With `memory_run.read_off` the read adds nothing, as a read-out held at zero.
-pub(crate) fn read(p: &ParamMap, cfg: &S2Config, l: usize, x: &Array, s: &Array) -> R<Array> {
+/// The read of memory layer `l` at loop `lp` of its block: `x + merge(S·q)·Wo` (`x` `[B, T, d]`,
+/// `valid` `[B, T]`, `s` `[B, H, hd, hd]`). With `memory_run.read_off` the read adds nothing,
+/// as a read-out held at zero.
+pub(crate) fn read(
+    p: &ParamMap,
+    cfg: &S2Config,
+    l: usize,
+    lp: usize,
+    x: &Array,
+    valid: &Array,
+    s: &Array,
+) -> R<Array> {
     if cfg.memory_run.read_off {
         return Ok(x.clone());
     }
-    let r = retrieve(p, cfg, l, x, s)?;
+    let r = retrieve_at(p, cfg, l, lp, x, valid, s)?;
     x.add(linear(&r, w(p, &name(l, "out"))?, None)?)
 }
 
 /// The keys memory layer `l` writes under for the block output `x` `[B, T, d]`:
-/// `l2norm(heads(LN(x)·Wk))` `[B, H, T, hd]` (f32), `Wqk` when the projection is shared.
-pub(crate) fn keys(p: &ParamMap, cfg: &S2Config, l: usize, x: &Array) -> R<Array> {
+/// `l2norm(heads(LN(x)·Wk))` `[B, H, T, hd]` (f32), `Wqk` when the projection is shared. In the
+/// slot form, the one key of the frame, repeated for every token.
+pub(crate) fn keys(p: &ParamMap, cfg: &S2Config, l: usize, x: &Array, valid: &Array) -> R<Array> {
+    if cfg.memory_write == MemoryWrite::Slot {
+        let y = frame_state(p, cfg, l, write_loop(cfg), x, valid)?;
+        let k = l2norm(&project(p, cfg, l, key_part(cfg), &y)?)?;
+        let shape = [k.dim(0), k.dim(1), x.dim(1), k.dim(3)];
+        return ops::broadcast_to(&k, &shape);
+    }
     let y = layer_norm(x, w(p, &name(l, "norm"))?, None, cfg.norm_eps)?;
     l2norm(&project(p, cfg, l, key_part(cfg), &y)?)
 }
 
+/// The gates of the slot form for a frame: the write strength `β = σ(wβ·y + b)` and the decay
+/// `α = σ(wα·y + 6)`, both `[B, 1]` (f32), from the frame's state `y` `[B, 1, d]`.
+fn slot_gates(p: &ParamMap, l: usize, y: &Array) -> R<(Array, Array)> {
+    let yf = to_f32(y.clone())?;
+    let gate = |part: &str| -> R<Array> {
+        yf.multiply(to_f32(w(p, &name(l, part))?.clone())?)?
+            .sum_axis(-1, None)
+    };
+    let bias = to_f32(w(p, &name(l, "beta_bias"))?.clone())?;
+    let beta = ops::sigmoid(gate("beta")?.add(&bias)?)?;
+    let alpha = ops::sigmoid(gate("alpha")?.add(Array::from_f32(ALPHA_BIAS))?)?;
+    Ok((beta, alpha))
+}
+
 /// The gates of the write of memory layer `l` for a frame's block output `x` `[B, T, d]`
 /// (`valid` `[B, T]`): the write strengths `β_i = σ(wβ·x_i)` `[B, T]` and the decay
-/// `α = σ(mean_i(wα·x_i) + 6)` `[B, 1]`, the mean over the valid tokens (f32).
-pub(crate) fn gates(p: &ParamMap, l: usize, x: &Array, valid: &Array) -> R<(Array, Array)> {
+/// `α = σ(mean_i(wα·x_i) + 6)` `[B, 1]`, the mean over the valid tokens (f32). In the slot form,
+/// the one `β` of the frame for every token, and its `α`.
+pub(crate) fn gates(
+    p: &ParamMap,
+    cfg: &S2Config,
+    l: usize,
+    x: &Array,
+    valid: &Array,
+) -> R<(Array, Array)> {
+    if cfg.memory_write == MemoryWrite::Slot {
+        let y = frame_state(p, cfg, l, write_loop(cfg), x, valid)?;
+        let (beta, alpha) = slot_gates(p, l, &y)?;
+        let beta = ops::broadcast_to(&beta, &[x.dim(0), x.dim(1)])?;
+        return Ok((beta, alpha));
+    }
     let xf = to_f32(x.clone())?;
     let gate = |part: &str| -> R<Array> {
         xf.multiply(to_f32(w(p, &name(l, part))?.clone())?)?
@@ -230,6 +372,17 @@ pub(crate) fn write(
     s: &Array,
 ) -> R<Array> {
     let (b, t) = (x.dim(0), x.dim(1));
+    if cfg.memory_write == MemoryWrite::Slot {
+        // One pair per frame: S ← αS + β (v − αS k) kᵀ, k of unit norm.
+        let y = frame_state(p, cfg, l, write_loop(cfg), x, valid)?;
+        let k = l2norm(&project(p, cfg, l, key_part(cfg), &y)?)?;
+        let v = project(p, cfg, l, "v", &y)?;
+        let (beta, alpha) = slot_gates(p, l, &y)?;
+        let kept = s.multiply(alpha.reshape(&[b, 1, 1, 1])?)?;
+        let err = v.subtract(ops::matmul(&k, kept.transpose_axes(&[0, 1, 3, 2])?)?)?;
+        let step = err.multiply(beta.reshape(&[b, 1, 1, 1])?)?;
+        return kept.add(ops::matmul(step.transpose_axes(&[0, 1, 3, 2])?, &k)?);
+    }
     let norm = w(p, &name(l, "norm"))?;
     let y = layer_norm(x, norm, None, cfg.norm_eps)?;
     let k = l2norm(&project(p, cfg, l, key_part(cfg), &y)?)?;
@@ -271,7 +424,7 @@ pub(crate) fn write(
         let sol = spd_solve(&g, &err)?;
         return s.add(ops::matmul(sol.transpose_axes(&[0, 1, 3, 2])?, &km)?);
     }
-    let (beta, alpha) = gates(p, l, x, valid)?;
+    let (beta, alpha) = gates(p, cfg, l, x, valid)?;
     let beta = match cfg.memory_write {
         // W1: a fresh model (wβ = 0) takes full steps.
         MemoryWrite::Delta => beta.multiply(Array::from_f32(2.0))?,
@@ -434,17 +587,161 @@ pub fn seq_loss(
 }
 
 /// The ask frames of a `recall` batch: `ask` `[K, B]` (1 on an ask frame) and `colour` `[K, B]`
-/// (i32, the colour that answers it, as its index in `s2::seq::COLOURS`).
+/// (i32, the colour that answers it, as its index in `s2::seq::COLOURS`); for the split reading
+/// of [`ask_splits`], `bucket` `[K, B]` (i32, the delay bucket of the ask, −1 elsewhere) and
+/// `shown` `[K, B]` (i32, the distinct colours the asked door had been shown with, 0 elsewhere).
 #[derive(Clone, Copy)]
 pub struct Asks<'a> {
     pub ask: &'a Array,
     pub colour: &'a Array,
+    pub bucket: &'a Array,
+    pub shown: &'a Array,
+}
+
+/// Delay buckets of `recall` (`sky_games::recall::BUCKETS`).
+pub const DELAY_BUCKETS: usize = sky_games::recall::BUCKETS.len();
+/// Entries of [`ask_splits`].
+pub const SPLITS: usize = 1 + 2 * DELAY_BUCKETS + 4;
+
+/// The asks the last exit answers right, split (`docs/s6-sleep3-diagnosis.md` §6): `[right,
+/// then (right, asks) per delay bucket, (right, asks) for a door shown with one colour, (right,
+/// asks) for a door shown with several]` (`[SPLITS]`, f32, no gradient).
+fn ask_splits(logits: &[Array], frames: &[S2Batch], asks: Asks<'_>) -> R<Array> {
+    let mut total = ops::zeros::<f32>(&[SPLITS as i32])?;
+    for (t, (l, b)) in logits.iter().zip(frames).enumerate() {
+        let t = t as i32;
+        let on = asks.ask.index(t);
+        let (bucket, shown) = (asks.bucket.index(t), asks.shown.index(t));
+        let right = last_exit_right(&stop_gradient(l)?, b)?;
+        let mut parts = vec![right.multiply(&on)?.sum(None)?.reshape(&[1])?];
+        let mut push = |m: Array| -> R<()> {
+            let m = m.as_dtype(Dtype::Float32)?.multiply(&on)?;
+            parts.push(right.multiply(&m)?.sum(None)?.reshape(&[1])?);
+            parts.push(m.sum(None)?.reshape(&[1])?);
+            Ok(())
+        };
+        for j in 0..DELAY_BUCKETS as i32 {
+            push(bucket.eq(Array::from_int(j))?)?;
+        }
+        push(shown.eq(Array::from_int(1))?)?;
+        push(shown.ge(Array::from_int(2))?)?;
+        total = total.add(ops::concatenate(&parts, 0)?)?;
+    }
+    Ok(total)
+}
+
+/// Over the ask frames: `Σ` deep-supervision cross-entropy and `Σ` last-exit cross-entropy of
+/// the logits of every frame (no gradient).
+fn ask_ce(
+    cfg: &S2Config,
+    logits: &[Array],
+    frames: &[S2Batch],
+    wts: &Array,
+    ask: &Array,
+) -> R<(Array, Array)> {
+    let e = cfg.n_exits() as i32;
+    let one_hot: Vec<f32> = (0..e).map(|i| (i == e - 1) as u8 as f32).collect();
+    let last = Array::from_slice(&one_hot, &[e]);
+    let (mut deep, mut tail) = (Array::from_f32(0.0), Array::from_f32(0.0));
+    for (t, (l, b)) in logits.iter().zip(frames).enumerate() {
+        let on = ask.index(t as i32);
+        let l = stop_gradient(l)?;
+        deep = deep.add(frame_ce_rows(&l, b, wts)?.multiply(&on)?.sum(None)?)?;
+        tail = tail.add(frame_ce_rows(&l, b, &last)?.multiply(&on)?.sum(None)?)?;
+    }
+    Ok((deep, tail))
+}
+
+/// The asks of a batch answered by the same parameters without their memory: every frame alone,
+/// which is the read held at zero (`memory_run.read_off`). Returns `[Σ deep-supervision CE over
+/// the asks, Σ last-exit CE over the asks, asks, the splits of [`ask_splits`]]`, without a
+/// gradient: the control of a trained memory on the very batch it is read on.
+pub fn asks_read_off(
+    p: &ParamMap,
+    cfg: &S2Config,
+    frames: &[S2Batch],
+    wts: &Array,
+    qat: bool,
+    asks: Asks<'_>,
+) -> R<Vec<Array>> {
+    let mut off = cfg.clone();
+    off.memory = false;
+    let out = seq_frames(p, &off, frames, &[], wts, qat, Sleep::AWAKE, None)?;
+    let (deep, tail) = ask_ce(cfg, &out.logits, frames, wts, asks.ask)?;
+    Ok(vec![
+        deep,
+        tail,
+        asks.ask.sum(None)?,
+        ask_splits(&out.logits, frames, asks)?,
+    ])
+}
+
+/// `Σ` over the rows of a frame of `LN(x̄)` at each block application of `taps` (`[1, d]`, f32,
+/// no gradient), added to `sum` (one entry per application, grown as needed).
+fn add_frame_norms(
+    p: &ParamMap,
+    cfg: &S2Config,
+    taps: &[Array],
+    valid: &Array,
+    sum: &mut Vec<Array>,
+) -> R<()> {
+    for (a, x) in taps.iter().enumerate() {
+        let y = to_f32(frame_norm(p, cfg, a % cfg.state_layers, x, valid)?)?;
+        let y = stop_gradient(&y.sum_axis(0, None)?)?;
+        if a < sum.len() {
+            sum[a] = sum[a].add(&y)?;
+        } else {
+            sum.push(y);
+        }
+    }
+    Ok(())
+}
+
+/// Per memory layer, the centre of the slot form (`[loops · d]`, as `mem.{l}.centre`) from the
+/// sums of [`add_frame_norms`] over `rows` frame rows; zero for a loop no frame ran.
+fn centre_rows(cfg: &S2Config, sum: &[Array], rows: f32) -> R<Vec<Array>> {
+    let (nb, d) = (cfg.state_layers, cfg.hidden_size as i32);
+    let rows = Array::from_f32(rows.max(1.0));
+    (0..nb)
+        .map(|l| {
+            let of_layer: Vec<Array> = (0..cfg.state_loops)
+                .map(|lp| match sum.get(lp * nb + l) {
+                    Some(s) => s.divide(&rows),
+                    None => ops::zeros::<f32>(&[1, d]),
+                })
+                .collect::<R<_>>()?;
+            ops::concatenate(&of_layer, 0)?.reshape(&[-1])
+        })
+        .collect()
+}
+
+/// The centre of the slot form on a batch of sequences: per memory layer and per loop of its
+/// block, the mean over the frames and the rows of `LN(x̄)` (`[loops · d]`, f32), the frames
+/// played in order from an empty memory with the parameters as they are. A fresh slot memory
+/// starts with it in `mem.{l}.centre`, so that its keys, queries and values hold what is
+/// particular to a frame.
+pub fn centres(p: &ParamMap, cfg: &S2Config, frames: &[S2Batch], qat: bool) -> R<Vec<Array>> {
+    let p = &*prepare(p, cfg, qat)?;
+    let mut sum: Vec<Array> = Vec::new();
+    let mut rows = 0f32;
+    let mut mem = Memory::zeros(cfg, frames[0].ids.dim(0))?;
+    for b in frames {
+        let (taps, written) = state_taps(p, cfg, b, &mem.0)?;
+        add_frame_norms(p, cfg, &taps, &b.valid, &mut sum)?;
+        rows += b.ids.dim(0) as f32;
+        mem = after_writes(p, cfg, &written, &b.valid, &mem)?;
+        mlx_rs::transforms::eval(mem.0.iter().chain(sum.iter()))?;
+    }
+    centre_rows(cfg, &sum, rows)
 }
 
 /// [`seq_loss`] and, for the training log of `docs/s6-sleep2-prereg.md` §2 (M5), the
 /// cross-entropy of the ask frames apart. Returns `[loss, Σ deep-supervision CE over the asks,
 /// Σ last-exit CE over the asks, asks, Σ auxiliary CE over the asks, asks the auxiliary head
-/// decodes right]`; only the loss carries a gradient.
+/// decodes right, the splits of [`ask_splits`], the centres of the batch]`; only the loss
+/// carries a gradient. The centres are those of [`centres`] measured on this batch as it is
+/// played (every layer of a slot memory one after the other, `[layers · loops · d]`; a single
+/// zero for any other form): what `--memory-centre-ema` moves `mem.{l}.centre` towards.
 ///
 /// With a `memory_aux` config and `cfg.memory_run.aux_weight > 0`
 /// (`docs/s6-sleep3-diagnosis.md`), the loss also holds `aux_weight ·` the mean over the ask
@@ -466,16 +763,13 @@ pub fn seq_loss_asks(
     asks: Asks<'_>,
 ) -> R<Vec<Array>> {
     let out = seq_frames(p, cfg, frames, pauses, wts, qat, how, Some(asks))?;
-    let e = cfg.n_exits() as i32;
-    let one_hot: Vec<f32> = (0..e).map(|i| (i == e - 1) as u8 as f32).collect();
-    let last = Array::from_slice(&one_hot, &[e]);
-    let (mut deep, mut tail) = (Array::from_f32(0.0), Array::from_f32(0.0));
-    for (t, (l, b)) in out.logits.iter().zip(frames).enumerate() {
-        let on = asks.ask.index(t as i32);
-        let l = stop_gradient(l)?;
-        deep = deep.add(frame_ce_rows(&l, b, wts)?.multiply(&on)?.sum(None)?)?;
-        tail = tail.add(frame_ce_rows(&l, b, &last)?.multiply(&on)?.sum(None)?)?;
-    }
+    let (deep, tail) = ask_ce(cfg, &out.logits, frames, wts, asks.ask)?;
+    let splits = ask_splits(&out.logits, frames, asks)?;
+    let centre = if out.centre.is_empty() {
+        ops::zeros::<f32>(&[1])?
+    } else {
+        ops::concatenate(&out.centre, 0)?
+    };
     Ok(vec![
         out.loss,
         deep,
@@ -483,6 +777,8 @@ pub fn seq_loss_asks(
         asks.ask.sum(None)?,
         stop_gradient(&out.aux_ce)?,
         out.aux_right,
+        splits,
+        centre,
     ])
 }
 
@@ -496,6 +792,9 @@ struct SeqOut {
     /// number of them the auxiliary head decodes right; zeros without an auxiliary head.
     aux_ce: Array,
     aux_right: Array,
+    /// With `asks` and a slot memory: per memory layer, the centre measured on the batch
+    /// ([`centre_rows`]); empty otherwise.
+    centre: Vec<Array>,
 }
 
 /// The auxiliary reading of memory layer `l` at one frame: per row, the cross-entropy of the
@@ -510,7 +809,7 @@ fn aux_rows(
     s: &Array,
     colour: &Array,
 ) -> R<(Array, Array)> {
-    let r = to_f32(retrieve(p, cfg, l, x, s)?)?;
+    let r = to_f32(retrieve(p, cfg, l, x, valid, s)?)?;
     let r = if cfg.memory_run.aux_probe {
         stop_gradient(&r)?
     } else {
@@ -554,6 +853,8 @@ fn seq_frames(
     let n_exits = cfg.n_exits();
     let aux = asks.filter(|_| cfg.memory && cfg.memory_aux && cfg.memory_run.aux_weight > 0.0);
     let (mut aux_ce, mut aux_right) = (Array::from_f32(0.0), Array::from_f32(0.0));
+    let track = cfg.memory && cfg.memory_write == MemoryWrite::Slot && asks.is_some();
+    let mut norm_sum: Vec<Array> = Vec::new();
     let mut total: Option<Array> = None;
     let mut seen = Vec::with_capacity(frames.len());
     let mut add = |l: Array| -> R<()> {
@@ -572,8 +873,17 @@ fn seq_frames(
                 mem = sleep(p, cfg, &chunk, mem, how)?;
                 chunk.clear();
             }
-            let (logits, _, written) =
-                forward_prepared_mem(p, cfg, b, n_exits, None, Some(&mem.0))?;
+            let mut taps = Vec::new();
+            let (logits, _, written) = forward_prepared_taps(
+                p,
+                cfg,
+                b,
+                n_exits,
+                None,
+                Some(&mem.0),
+                track.then_some(&mut taps),
+            )?;
+            add_frame_norms(p, cfg, &taps, &b.valid, &mut norm_sum)?;
             if let Some(a) = aux {
                 let (on, colour) = (a.ask.index(t as i32), a.colour.index(t as i32));
                 for (l, x) in written.iter().enumerate() {
@@ -613,11 +923,18 @@ fn seq_frames(
                 .multiply(Array::from_f32(cfg.memory_run.aux_weight))?,
         )?;
     }
+    let centre = if track {
+        let rows = frames.len() as f32 * frames[0].ids.dim(0) as f32;
+        centre_rows(cfg, &norm_sum, rows)?
+    } else {
+        Vec::new()
+    };
     Ok(SeqOut {
         loss,
         logits: seen,
         aux_ce,
         aux_right,
+        centre,
     })
 }
 
@@ -641,6 +958,11 @@ pub struct LayerTrace {
     pub x_norm_ask: f64,
     pub r_norm_ask: f64,
     pub read_norm_ask: f64,
+    /// How far the frames of a sequence write under one key: the squared norm of the mean over
+    /// the frames of a frame's key (itself the mean of its keys over the valid tokens), mean
+    /// over rows and heads. 1 when every frame writes under the same key, 1/frames when the
+    /// keys of different frames are orthogonal.
+    pub key_overlap: f64,
 }
 
 /// The memory along one sequence batch, layer by layer: the sequence is played as
@@ -666,6 +988,8 @@ pub fn trace(
             a
         })
         .collect();
+    // Per layer: Σ over the frames of the frame's key `[B, H, hd]`.
+    let mut key_sum: Vec<Option<Array>> = vec![None; nl];
     // Valid tokens, rows, ask rows, valid tokens of ask rows.
     let mut count: [Array; 4] = std::array::from_fn(|_| zero());
     let token_norm =
@@ -689,10 +1013,10 @@ pub fn trace(
         for (l, a) in acc.iter_mut().enumerate() {
             let Some(x) = &written[l] else { continue };
             let s = &mem.0[l];
-            let (beta, alpha) = gates(p, l, x, &b.valid)?;
+            let (beta, alpha) = gates(p, cfg, l, x, &b.valid)?;
             let beta = beta.multiply(&on)?;
             let s_norm = s.square()?.sum_axes(&[1, 2, 3], None)?.sqrt()?;
-            let r = retrieve(p, cfg, l, x, s)?;
+            let r = retrieve(p, cfg, l, x, &b.valid, s)?;
             let read = linear(&r, w(p, &name(l, "out"))?, None)?;
             a[0] = a[0].add(beta.sum(None)?)?;
             a[1] = ops::maximum(&a[1], beta.max(None)?)?;
@@ -703,17 +1027,39 @@ pub fn trace(
             a[6] = a[6].add(token_norm(x)?.multiply(&on_ask)?.sum(None)?)?;
             a[7] = a[7].add(token_norm(&r)?.multiply(&on_ask)?.sum(None)?)?;
             a[8] = a[8].add(token_norm(&read)?.multiply(&on_ask)?.sum(None)?)?;
+            let n = ops::maximum(on.sum_axis(-1, true)?, Array::from_f32(1.0))?;
+            let k = keys(p, cfg, l, x, &b.valid)?
+                .multiply(on.reshape(&[x.dim(0), 1, x.dim(1), 1])?)?
+                .sum_axis(2, None)?
+                .divide(n.reshape(&[x.dim(0), 1, 1])?)?;
+            key_sum[l] = Some(match key_sum[l].take() {
+                Some(sum) => sum.add(&k)?,
+                None => k,
+            });
         }
         mem = after_writes(p, cfg, &written, &b.valid, &mem)?;
         // The graph of a long sequence is cut frame by frame: nothing here needs a gradient.
-        mlx_rs::transforms::eval(mem.0.iter().chain(acc.iter().flatten()).chain(count.iter()))?;
+        mlx_rs::transforms::eval(
+            mem.0
+                .iter()
+                .chain(acc.iter().flatten())
+                .chain(count.iter())
+                .chain(key_sum.iter().flatten()),
+        )?;
         chunk.push(b);
     }
     let f = |a: &Array| a.item_exact::<f32>() as f64;
     let per = |a: &Array, n: &Array| if f(n) > 0.0 { f(a) / f(n) } else { 0.0 };
+    let frames_n = frames.len() as f64;
+    let overlap = |sum: &Option<Array>| -> R<f64> {
+        let Some(sum) = sum else { return Ok(0.0) };
+        Ok(f(&sum.square()?.sum_axis(-1, None)?.mean(None)?) / (frames_n * frames_n))
+    };
+    let overlaps = key_sum.iter().map(overlap).collect::<R<Vec<f64>>>()?;
     Ok(acc
         .iter()
-        .map(|a| LayerTrace {
+        .zip(overlaps)
+        .map(|(a, key_overlap)| LayerTrace {
             beta_mean: per(&a[0], &count[0]),
             beta_max: f(&a[1]),
             alpha_mean: per(&a[2], &count[1]),
@@ -723,6 +1069,7 @@ pub fn trace(
             x_norm_ask: per(&a[6], &count[3]),
             r_norm_ask: per(&a[7], &count[3]),
             read_norm_ask: per(&a[8], &count[3]),
+            key_overlap,
         })
         .collect())
 }
@@ -880,7 +1227,7 @@ pub fn algebra(
                         noise[n_idle]
                     ));
                     // The ask's door token is the sixth word.
-                    let r = crate::model::host_f32(&retrieve(&p, &cfg, 0, &ask, &st)?)?;
+                    let r = crate::model::host_f32(&retrieve(&p, &cfg, 0, &ask, &valid, &st)?)?;
                     let r = &r[5 * D..6 * D];
                     let mut proj = [0f32; 4];
                     for (c, dir) in colours.iter().enumerate() {
@@ -1042,7 +1389,7 @@ pub fn synth_read(
         "show none colour none ask a noise {}",
         syn.noise[idle]
     ));
-    let r = crate::model::host_f32(&retrieve(p, cfg, 0, &ask, &st)?)?;
+    let r = crate::model::host_f32(&retrieve(p, cfg, 0, &ask, &valid, &st)?)?;
     Ok(r[5 * SYN_D..6 * SYN_D].to_vec())
 }
 
@@ -1117,7 +1464,7 @@ pub fn diagnostic(seeds: std::ops::Range<u64>) -> R<Diagnostic> {
                 &ops::zeros::<f32>(&[1, 1, 96, 96])?,
             )?;
             // The door is the second word of the show frame: its query is its key.
-            let r = crate::model::host_f32(&retrieve(&p, &cfg, 0, &x, &st)?)?;
+            let r = crate::model::host_f32(&retrieve(&p, &cfg, 0, &x, &valid, &st)?)?;
             let r = &r[SYN_D..2 * SYN_D];
             // The stored value of form `frame`: LN(x_door + x̄)·I.
             let mean = x.mean_axis(1, true)?;
@@ -1394,11 +1741,338 @@ mod tests {
                 assert!(l.s_norm > 0.0 && l.s_norm_ask > l.s_norm, "{l:?}");
                 assert!(l.x_norm_ask > 0.0 && l.r_norm_ask > 0.0, "{l:?}");
                 assert_eq!(l.read_norm_ask, 0.0);
+                assert!(
+                    l.key_overlap > 1.0 / 3.0 && l.key_overlap <= 1.0 + 1e-5,
+                    "{l:?}"
+                );
             }
             // Random weights: the read adds something, and the gates have moved.
             let random = run(&golden_params(&cfg, 3).unwrap());
             assert!(random.iter().all(|l| l.read_norm_ask > 0.0));
             assert!(random.iter().any(|l| (l.beta_mean - 0.5).abs() > 1e-3));
+        });
+    }
+
+    /// The slot memory of `docs/s6-sleep3-diagnosis.md` §7 on `cfg`.
+    fn slot(cfg: S2Config) -> S2Config {
+        let mut cfg = v2(cfg, MemoryValue::Token);
+        cfg.memory_write = MemoryWrite::Slot;
+        cfg.validate().unwrap();
+        cfg
+    }
+
+    #[test]
+    fn a_slot_memory_stores_one_pair_per_frame_and_a_full_step_replaces_it() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let cfg = slot(sleepy());
+            let d = cfg.hidden_size;
+            // Its parameters: the v2 memory's, and a centre and a gate bias per layer.
+            assert_eq!(
+                param_count(&cfg),
+                param_count(&v2(sleepy(), MemoryValue::Token))
+                    + cfg.state_layers * (cfg.state_loops * d + 1)
+            );
+            assert!(!is_ternary("mem.0.centre.weight") && !is_ternary("mem.0.beta_bias.weight"));
+            let j = serde_json::to_value(&cfg).unwrap();
+            assert_eq!(j["memory_write"], "slot");
+            assert_eq!(serde_json::from_value::<S2Config>(j).unwrap(), cfg);
+            let f = frames(
+                &cfg,
+                &[
+                    "show a colour red ask none noise 3",
+                    "show b colour blue ask none noise 8",
+                    "show none colour none ask a noise 1",
+                ],
+            );
+            // A fresh model is its base, whatever it wrote.
+            let fresh = init(&cfg, S2Parts::DECISION, 1).unwrap();
+            let mut base = cfg.clone();
+            (base.memory, base.memory_qk, base.memory_write) =
+                (false, MemoryQk::Separate, MemoryWrite::Average);
+            let zero = Memory::zeros(&cfg, 2).unwrap();
+            let (_, m1) = wake(&fresh, &cfg, &f[0], cfg.n_exits(), &zero).unwrap();
+            assert!(m1.0.iter().all(|s| total(s) > 0.0), "the frame wrote");
+            let (l1, _) = wake(&fresh, &cfg, &f[2], cfg.n_exits(), &m1).unwrap();
+            let plain = forward(&fresh, &base, &f[2], false).unwrap();
+            assert!(l1.all_close(&plain, 1e-6, 1e-6, None).unwrap());
+            // The centre measured on frames is the mean of LN(x̄) over them, loop by loop: with
+            // it, the states of those frames sum to zero.
+            let c = centres(&fresh, &cfg, &f, false).unwrap();
+            assert_eq!(c.len(), cfg.state_layers);
+            let last = write_loop(&cfg);
+            let mut centred = fresh.clone();
+            for (l, c) in c.iter().enumerate() {
+                assert_eq!(c.shape(), &[(cfg.state_loops * d) as i32]);
+                let by_loop = c.reshape(&[cfg.state_loops as i32, d as i32]).unwrap();
+                for lp in 0..cfg.state_loops {
+                    assert!(
+                        total(&by_loop.index(lp as i32)) > 0.0,
+                        "layer {l}, loop {lp}"
+                    );
+                }
+                centred.insert(name(l, "centre").into(), c.clone());
+            }
+            // The sequence loss measures the same centres on the batch it plays.
+            let ask = Array::from_slice(&[0.0f32, 0.0, 0.0, 0.0, 1.0, 1.0], &[3, 2]);
+            let none = Array::from_slice(&[0i32; 6], &[3, 2]);
+            let asks = Asks {
+                ask: &ask,
+                colour: &none,
+                bucket: &none,
+                shown: &none,
+            };
+            let wv = exit_weight_vec(&cfg, None);
+            let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+            let out = seq_loss_asks(
+                &fresh,
+                &cfg,
+                &f,
+                &[false; 3],
+                &wts,
+                false,
+                Sleep::AWAKE,
+                asks,
+            )
+            .unwrap();
+            let all = ops::concatenate(&c, 0).unwrap();
+            assert!(out[7].all_close(&all, 1e-4, 1e-4, None).unwrap());
+            let x_of = |p: &ParamMap, b: &S2Batch| {
+                forward_prepared_mem(p, &cfg, b, cfg.n_exits(), None, Some(&zero.0))
+                    .unwrap()
+                    .2[0]
+                    .clone()
+                    .unwrap()
+            };
+            let mut sum = ops::zeros::<f32>(&[2, 1, d as i32]).unwrap();
+            for b in &f {
+                let x = x_of(&centred, b);
+                let y = frame_state(&centred, &cfg, 0, last, &x, &b.valid).unwrap();
+                sum = sum.add(&y).unwrap();
+            }
+            // Two identical rows: each row's sum is the batch's.
+            assert!(total(&sum) < 1e-2, "{}", total(&sum));
+            // Random weights, the gate wide open: after a frame's write, asking with that frame
+            // returns its value, whatever the memory held (a full step replaces the slot).
+            let mut p = golden_params(&cfg, 3).unwrap();
+            for l in 0..cfg.state_layers {
+                p.insert(
+                    name(l, "beta_bias").into(),
+                    Array::from_slice(&[30.0f32], &[1]),
+                );
+                p.insert(
+                    name(l, "beta").into(),
+                    ops::zeros::<f32>(&[d as i32]).unwrap(),
+                );
+            }
+            let (x0, x1) = (x_of(&p, &f[0]), x_of(&p, &f[1]));
+            let first = |a: &Array| a.take_axis(Array::from_slice(&[0], &[1]), 1).unwrap();
+            // (What is read is brought to the norm √hd, head by head.)
+            let value = |x: &Array, b: &S2Batch| {
+                let y = frame_state(&p, &cfg, 0, last, x, &b.valid).unwrap();
+                let v = l2norm(&project(&p, &cfg, 0, "v", &y).unwrap())
+                    .unwrap()
+                    .multiply(Array::from_f32((cfg.head_dim() as f32).sqrt()))
+                    .unwrap();
+                merge_heads(&v).unwrap()
+            };
+            let read = |x: &Array, b: &S2Batch, s: &Array| {
+                first(&retrieve(&p, &cfg, 0, x, &b.valid, s).unwrap())
+            };
+            let s1 = write(&p, &cfg, 0, &x0, &f[0].valid, &zero.0[0]).unwrap();
+            let v0 = value(&x0, &f[0]);
+            assert!(total(&v0) > 0.0);
+            assert!(read(&x0, &f[0], &s1)
+                .all_close(&v0, 1e-3, 1e-3, None)
+                .unwrap());
+            let s2 = write(&p, &cfg, 0, &x1, &f[1].valid, &s1).unwrap();
+            assert!(read(&x1, &f[1], &s2)
+                .all_close(value(&x1, &f[1]), 1e-3, 1e-3, None)
+                .unwrap());
+            // Every token of the frame gets the same reading.
+            let r = retrieve(&p, &cfg, 0, &x0, &f[0].valid, &s1).unwrap();
+            let k = keys(&p, &cfg, 0, &x0, &f[0].valid).unwrap();
+            assert_eq!(r.shape(), x0.shape());
+            assert_eq!(k.dim(2), x0.dim(1));
+            let (beta, alpha) = gates(&p, &cfg, 0, &x0, &f[0].valid).unwrap();
+            assert_eq!(beta.shape(), &[2, x0.dim(1)]);
+            assert_eq!(alpha.shape(), &[2, 1]);
+            assert!(host_f32(&beta).unwrap().iter().all(|b| *b > 0.999));
+            // Every parameter of the form is trained by the sequence loss, and its trace reads.
+            let p = golden_params(&cfg, 5).unwrap();
+            let grads = grads_of(&cfg, &p, &f);
+            for l in 0..cfg.state_layers {
+                for part in [
+                    "norm",
+                    "qk",
+                    "v",
+                    "out",
+                    "alpha",
+                    "beta",
+                    "centre",
+                    "beta_bias",
+                ] {
+                    let n = name(l, part);
+                    assert!(total(&grads[n.as_str()]) > 0.0, "{n}: no gradient");
+                }
+            }
+            let t = trace(&p, &cfg, &f, &[false; 3], true, Sleep::AWAKE, &ask).unwrap();
+            assert!(t.iter().all(|l| l.read_norm_ask > 0.0 && l.beta_mean > 0.0));
+        });
+    }
+
+    /// On C1's synthetic states: door a is shown with colour `old`, three idle frames pass, it
+    /// is shown again with colour `new`, `idle` idle frames pass, and it is asked. Returns what
+    /// the ask retrieves. The slot memory writes at full step (`β = 1`) with its centre
+    /// measured on frames in the proportions of the game (one show and one ask for six idle
+    /// frames); any other rule is played as C1 plays it.
+    fn reshown_read(
+        syn: &Synth,
+        rule: MemoryWrite,
+        old: usize,
+        new: usize,
+        idle: usize,
+    ) -> Vec<f32> {
+        let (cfg, mut p) = synth_layer(rule, MemoryValue::Frame).unwrap();
+        let valid = Array::from_slice(&[true; 8], &[1, 8]);
+        let idle_frame = |i: usize| {
+            syn.frame(&format!(
+                "show none colour none ask none noise {}",
+                syn.noise[i]
+            ))
+        };
+        let mut before = vec![syn.show(old)];
+        before.extend((0..3).map(idle_frame));
+        before.push(syn.show(new));
+        before.extend((3..3 + idle).map(idle_frame));
+        let ask = syn.frame(&format!(
+            "show none colour none ask a noise {}",
+            syn.noise[3 + idle]
+        ));
+        if rule == MemoryWrite::Slot {
+            p.insert(
+                name(0, "centre").into(),
+                ops::zeros::<f32>(&[SYN_D as i32]).unwrap(),
+            );
+            p.insert(
+                name(0, "beta_bias").into(),
+                Array::from_slice(&[30.0f32], &[1]),
+            );
+            let mut texts = Vec::new();
+            for (d, door) in ["a", "b", "c"].iter().enumerate() {
+                for (c, colour) in SYN_COLOURS.iter().enumerate() {
+                    let n = 4 * d + c;
+                    texts.push(format!("show {door} colour {colour} ask none noise {n}"));
+                    texts.push(format!("show none colour none ask {door} noise {}", 12 + n));
+                }
+            }
+            texts.extend((24..96).map(|n| format!("show none colour none ask none noise {n}")));
+            let mut sum = ops::zeros::<f32>(&[1, 1, SYN_D as i32]).unwrap();
+            for text in &texts {
+                let y = frame_norm(&p, &cfg, 0, &syn.frame(text), &valid).unwrap();
+                sum = sum.add(y).unwrap();
+            }
+            let centre = sum
+                .divide(Array::from_f32(texts.len() as f32))
+                .unwrap()
+                .reshape(&[-1])
+                .unwrap();
+            p.insert(name(0, "centre").into(), centre);
+        }
+        let mut st = ops::zeros::<f32>(&[1, 1, SYN_D as i32, SYN_D as i32]).unwrap();
+        for f in &before {
+            st = write(&p, &cfg, 0, f, &valid, &st).unwrap();
+        }
+        let r = host_f32(&retrieve(&p, &cfg, 0, &ask, &valid, &st).unwrap()).unwrap();
+        // The ask's door token is the sixth word (the slot memory reads the same at every one).
+        r[5 * SYN_D..6 * SYN_D].to_vec()
+    }
+
+    #[test]
+    fn a_door_shown_again_is_read_with_its_new_colour_by_the_slot_memory() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            // C1 with a door shown twice (docs/s6-sleep3-diagnosis.md §7): for each of the four
+            // new colours the old one is the next in the list, and the four readings are decoded
+            // contrastively against the colour directions, as C1 is read. Right means the four
+            // new colours all matched; the slot memory must be right in at least 18 of 20 draws
+            // at 1, 4 and 8 idle frames after the second show. v1's rule is printed next to it.
+            for rule in [MemoryWrite::Slot, MemoryWrite::Average] {
+                for idle in [1usize, 4, 8, 16] {
+                    let mut right = 0;
+                    for seed in 0..20 {
+                        let syn = Synth::new(seed);
+                        let reads: Vec<Vec<f32>> = (0..4)
+                            .map(|new| reshown_read(&syn, rule, (new + 1) % 4, new, idle))
+                            .collect();
+                        let reads: [Vec<f32>; 4] = reads.try_into().unwrap();
+                        right += decode_contrastive(&reads, &syn.colours()) as usize;
+                    }
+                    println!(
+                        "door shown again: rule {:7} idle {idle:2}: {right} of 20 draws",
+                        rule.name()
+                    );
+                    if rule == MemoryWrite::Slot && idle <= 8 {
+                        assert!(right >= 18, "idle {idle}: {right} of 20");
+                    }
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn the_asks_answered_without_the_memory_are_those_of_a_read_held_at_zero() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let cfg = v2(sleepy(), MemoryValue::Frame);
+            let p = golden_params(&cfg, 7).unwrap();
+            let f = frames(
+                &cfg,
+                &[
+                    "show a colour red ask none noise 3",
+                    "show none colour none ask none noise 8",
+                    "show none colour none ask a noise 1",
+                ],
+            );
+            let ask = Array::from_slice(&[0.0f32, 0.0, 0.0, 0.0, 1.0, 1.0], &[3, 2]);
+            let colour = Array::from_slice(&[0i32, 0, 0, 0, 0, 0], &[3, 2]);
+            let bucket = Array::from_slice(&[-1i32, -1, -1, -1, 0, 2], &[3, 2]);
+            let shown = Array::from_slice(&[0i32, 0, 0, 0, 1, 2], &[3, 2]);
+            let asks = Asks {
+                ask: &ask,
+                colour: &colour,
+                bucket: &bucket,
+                shown: &shown,
+            };
+            let wv = exit_weight_vec(&cfg, None);
+            let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+            let pauses = [false; 3];
+            let with = |c: &S2Config| {
+                seq_loss_asks(&p, c, &f, &pauses, &wts, true, Sleep::AWAKE, asks).unwrap()
+            };
+            let on = with(&cfg);
+            let mut held = cfg.clone();
+            held.memory_run.read_off = true;
+            let want = with(&held);
+            let off = asks_read_off(&p, &cfg, &f, &wts, true, asks).unwrap();
+            let x = |a: &Array| a.item_exact::<f32>();
+            assert!((x(&off[0]) - x(&want[1])).abs() < 1e-4);
+            assert!((x(&off[1]) - x(&want[2])).abs() < 1e-4);
+            assert_eq!(x(&off[2]), 2.0);
+            assert!(off[3].all_close(&want[6], 1e-6, 1e-6, None).unwrap());
+            assert!(
+                (x(&on[1]) - x(&off[0])).abs() > 1e-5,
+                "the memory moves the answer"
+            );
+            // The splits: one ask in the first delay bucket and one in the third; one of a door
+            // shown with one colour and one of a door shown with two.
+            let s = host_f32(&on[6]).unwrap();
+            assert_eq!(s.len(), SPLITS);
+            assert_eq!((s[2], s[4], s[6], s[8]), (1.0, 0.0, 1.0, 0.0));
+            assert_eq!((s[10], s[12]), (1.0, 1.0));
+            assert_eq!(s[0], s[1] + s[5]);
+            assert_eq!(s[0], s[9] + s[11]);
+            assert!(s[0] <= 2.0);
         });
     }
 
@@ -1429,6 +2103,8 @@ mod tests {
             );
             let ask = Array::from_slice(&[0.0f32, 0.0, 0.0, 0.0, 1.0, 1.0], &[3, 2]);
             let colour = Array::from_slice(&[0i32, 0, 0, 0, 2, 3], &[3, 2]);
+            let bucket = Array::from_slice(&[-1i32, -1, -1, -1, 0, 0], &[3, 2]);
+            let shown = Array::from_slice(&[0i32, 0, 0, 0, 1, 2], &[3, 2]);
             let wv = exit_weight_vec(&cfg, None);
             let wts = Array::from_slice(&wv, &[wv.len() as i32]);
             let pauses = [false; 3];
@@ -1440,11 +2116,13 @@ mod tests {
                     let asks = Asks {
                         ask: &ask,
                         colour: &colour,
+                        bucket: &bucket,
+                        shown: &shown,
                     };
                     seq_loss_asks(&q, &c, &f, &pauses, &wts, true, Sleep::AWAKE, asks)
                 };
                 let (out, grads) = keyed_value_and_grad(g)(p.clone(), ()).unwrap();
-                let v: Vec<f32> = out.iter().map(|a| a.item_exact::<f32>()).collect();
+                let v: Vec<f32> = out[..6].iter().map(|a| a.item_exact::<f32>()).collect();
                 (v, grads)
             };
             let size = |g: &HashMap<Rc<str>, Array>, part: &str| total(&g[name(0, part).as_str()]);
@@ -1626,7 +2304,7 @@ mod tests {
                 / 2.0) as usize;
             let y = layer_norm(x, w(&p, &name(0, "norm")).unwrap(), None, base.norm_eps).unwrap();
             let v = project(&p, &base, 0, "v", &y).unwrap();
-            let k = keys(&p, &base, 0, x).unwrap();
+            let k = keys(&p, &base, 0, x, valid).unwrap();
             let s0 = &zero.0[0];
             let err_at = |cfg: &S2Config, i: i32| -> f32 {
                 let s = write(&p, cfg, 0, x, valid, s0).unwrap();
@@ -1720,7 +2398,7 @@ mod tests {
                 let per_layer: Vec<Vec<f32>> = (0..cfg.state_layers)
                     .map(|l| {
                         let x = written[l].as_ref().unwrap();
-                        let k = host_f32(&keys(&p, &cfg, l, x).unwrap()).unwrap();
+                        let k = host_f32(&keys(&p, &cfg, l, x, &f[0].valid).unwrap()).unwrap();
                         // Row 0, every head, token `at`: [H, hd].
                         let t = x.dim(1) as usize;
                         (0..h)
@@ -1759,7 +2437,8 @@ mod tests {
                         .unwrap();
                 for (l, x) in written.iter().enumerate() {
                     let x = x.as_ref().unwrap();
-                    let r = host_f32(&retrieve(&p, &cfg, l, x, &hand.0[l]).unwrap()).unwrap();
+                    let r = host_f32(&retrieve(&p, &cfg, l, x, &f[0].valid, &hand.0[l]).unwrap())
+                        .unwrap();
                     let t = x.dim(1) as usize;
                     for hh in 0..h {
                         let at_door =

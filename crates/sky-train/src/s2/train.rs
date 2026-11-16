@@ -81,10 +81,31 @@ pub struct SeqReport {
     /// cross-entropy, and the asks its head decodes right.
     pub aux_ce_sum: f64,
     pub aux_right: f64,
+    /// The asks the last exit answers right, split by delay and by the colours the door was
+    /// shown with (`s2::memory::ask_splits`).
+    pub splits: Vec<f64>,
+    /// With `off`: the same batch answered by the same parameters without their memory, before
+    /// the update (`s2::memory::asks_read_off`): `[Σ deep-supervision CE, Σ last-exit CE, asks,
+    /// then the splits]`.
+    pub off: Option<Vec<f64>>,
     /// Gradient norm of each parameter group ([`GROUPS`]), before clipping.
     pub groups: Option<BTreeMap<String, f64>>,
     /// The memory trace of the step ([`memory_trace`]), when asked for.
     pub memory: Option<serde_json::Value>,
+}
+
+/// What [`S2Session::sleep_step_report`] reads or does besides the loss and the asks.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SeqWants {
+    /// The norm of the gradient of each parameter group before clipping.
+    pub groups: bool,
+    /// The memory trace ([`memory_trace`]).
+    pub trace: bool,
+    /// The same batch answered by the same parameters without their memory, before the update.
+    pub off: bool,
+    /// Rate at which the centre of a slot memory follows the one measured on the batch, after
+    /// the update (0: the centre is a trained parameter like the others).
+    pub centre_ema: f32,
 }
 
 /// The memory trace of one sequence step (`--memory-trace`, `docs/s6-sleep3-diagnosis.md`),
@@ -546,17 +567,23 @@ impl S2Session {
     }
 
     /// [`Self::sleep_step`] with the readings of the training log of `docs/s6-sleep2-prereg.md`
-    /// §2 (M5): the cross-entropy of the `recall` ask frames apart, and with `groups`, the norm
-    /// of the gradient of each parameter group before clipping. The update is the same.
+    /// §2 (M5): the cross-entropy of the `recall` ask frames apart, and what `wants` asks for.
+    /// The update is the same, but for the centre of a slot memory when it follows the batches
+    /// ([`SeqWants::centre_ema`]).
     pub fn sleep_step_report(
         &mut self,
         batch: &crate::s2::seq::FrameBatch,
         lr_scale: f32,
         qat: bool,
         how: crate::s2::memory::Sleep,
-        groups: bool,
-        trace: bool,
+        wants: SeqWants,
     ) -> Result<(StepStats, SeqReport)> {
+        let SeqWants {
+            groups,
+            trace,
+            off,
+            centre_ema,
+        } = wants;
         let wv = model::exit_weight_vec(&self.cfg, None);
         let wts = Array::from_slice(&wv, &[wv.len() as i32]);
         let cfg = &self.cfg;
@@ -566,14 +593,45 @@ impl S2Session {
             let asks = crate::s2::memory::Asks {
                 ask: &b.asks,
                 colour: &b.colours,
+                bucket: &b.buckets,
+                shown: &b.shown,
             };
             crate::s2::memory::seq_loss_asks(&p, cfg, &b.frames, &b.pauses, &wts, qat, how, asks)
         };
         let (values, grads) =
             mlx_rs::transforms::keyed_value_and_grad(f)(self.params.clone(), batch)?;
-        let [loss, deep, last, asks, aux_ce, aux_right]: [Array; 6] = values
+        let [loss, deep, last, asks, aux_ce, aux_right, splits, centre]: [Array; 8] = values
             .try_into()
-            .map_err(|_| anyhow::anyhow!("six outputs expected"))?;
+            .map_err(|_| anyhow::anyhow!("eight outputs expected"))?;
+        let host = |a: &Array| -> Result<Vec<f64>> {
+            Ok(crate::model::host_f32(a)?
+                .into_iter()
+                .map(f64::from)
+                .collect())
+        };
+        let off = if off && self.cfg.memory {
+            let asks = crate::s2::memory::Asks {
+                ask: &batch.asks,
+                colour: &batch.colours,
+                bucket: &batch.buckets,
+                shown: &batch.shown,
+            };
+            let out = crate::s2::memory::asks_read_off(
+                &self.params,
+                cfg,
+                &batch.frames,
+                &wts,
+                qat,
+                asks,
+            )?;
+            let mut v = Vec::new();
+            for a in &out {
+                v.extend(host(&a.reshape(&[-1])?)?);
+            }
+            Some(v)
+        } else {
+            None
+        };
         let groups = if groups {
             Some(group_norms(&grads)?)
         } else {
@@ -586,6 +644,25 @@ impl S2Session {
         };
         let (loss, grad_norm) =
             apply_update(&mut self.params, &mut self.opt, loss, &grads, lr_scale)?;
+        if centre_ema > 0.0 && cfg.memory_write == crate::s2::config::MemoryWrite::Slot {
+            // The centre follows the mean frame state of the batches as the base moves: after
+            // the update, c ← (1 − m)·c + m·(the centre measured on this batch).
+            let n = (cfg.state_loops * cfg.hidden_size) as i32;
+            let seen = centre.reshape(&[cfg.state_layers as i32, n])?;
+            for l in 0..cfg.state_layers {
+                let name: std::rc::Rc<str> = format!("mem.{l}.centre.weight").into();
+                let old = self
+                    .params
+                    .get(&name)
+                    .with_context(|| format!("missing parameter {name}"))?;
+                let new = old.multiply(Array::from_f32(1.0 - centre_ema))?.add(
+                    mlx_rs::ops::indexing::IndexOp::index(&seen, l as i32)
+                        .multiply(Array::from_f32(centre_ema))?,
+                )?;
+                mlx_rs::transforms::eval([&new])?;
+                self.params.insert(name, new);
+            }
+        }
         mlx_rs::transforms::eval([&deep, &last, &asks, &aux_ce, &aux_right])?;
         self.state.step += 1;
         Ok((
@@ -600,6 +677,8 @@ impl S2Session {
                 asks: asks.item_exact::<f32>() as f64,
                 aux_ce_sum: aux_ce.item_exact::<f32>() as f64,
                 aux_right: aux_right.item_exact::<f32>() as f64,
+                splits: host(&splits)?,
+                off,
                 groups,
                 memory,
             },
@@ -1723,6 +1802,19 @@ pub struct S2DecideArgs {
     /// 0 keeps the usual start. A fresh run only; meant for float memory projections (the
     /// ternary form of a diagonal matrix has a scale 1/d of its diagonal).
     pub memory_copy_init: f32,
+    /// A slot memory (`memory_write: slot`) starts with its centre measured on one batch of
+    /// sequences (`s2::memory::centres`) in place of zero. A fresh run only.
+    pub memory_centre_init: bool,
+    /// The bias of the write gate of a slot memory at the start (`mem.*.beta_bias`; the gate
+    /// starts at `σ` of it; 0: one half). A fresh run only.
+    pub memory_gate_bias: f32,
+    /// With `seq_log` and a slot memory: after each sequence step the centre moves towards the
+    /// one measured on the batch, `c ← (1 − m)·c + m·c_batch` with this `m` (0: the centre is a
+    /// trained parameter like the others).
+    pub memory_centre_ema: f32,
+    /// With `seq_log`: one sequence step in that many is also answered without the memory
+    /// (`s2::memory::asks_read_off`), before its update, and logged under `off` (0: never).
+    pub memory_off_eval: u64,
     /// s4 deep improvement supervision: sharpening exponent of the first exit's target
     /// (rising linearly to 1 at the last exit); `None` disables it.
     pub dis: Option<f32>,
@@ -1892,6 +1984,21 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             println!(
                 "memory: started as a copy path (values at the identity, read-out at {} times it)",
                 a.memory_copy_init
+            );
+        }
+        if a.memory_gate_bias != 0.0 {
+            if cfg.memory_write != crate::s2::config::MemoryWrite::Slot {
+                bail!("--memory-gate-bias needs a slot memory (memory_write: slot)");
+            }
+            for l in 0..cfg.state_layers {
+                p.insert(
+                    format!("mem.{l}.beta_bias.weight").into(),
+                    Array::from_slice(&[a.memory_gate_bias], &[1]),
+                );
+            }
+            println!(
+                "memory: write gate started at a bias of {}",
+                a.memory_gate_bias
             );
         }
         let mut s = S2Session::new(
@@ -2089,6 +2196,42 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         );
         Some(sl)
     };
+    if !(0.0..=1.0).contains(&a.memory_centre_ema) {
+        bail!("--memory-centre-ema must be in [0, 1]");
+    }
+    if a.memory_centre_ema > 0.0 {
+        if s.cfg.memory_write != crate::s2::config::MemoryWrite::Slot || !a.seq_log {
+            bail!("--memory-centre-ema needs a slot memory (memory_write: slot) and --seq-log");
+        }
+        println!(
+            "memory: the centre follows the batches at a rate of {}",
+            a.memory_centre_ema
+        );
+    }
+    if a.memory_centre_init {
+        if s.cfg.memory_write != crate::s2::config::MemoryWrite::Slot {
+            bail!("--memory-centre-init needs a slot memory (memory_write: slot)");
+        }
+        let sl = sleeps
+            .as_ref()
+            .context("--memory-centre-init needs --sleep-records")?;
+        if !resumed {
+            // Its own generator: the batches of the training are those of a run without it.
+            let mut rng = Rng::new(a.seed ^ 0x63656e74);
+            let (_, b) = sl.sample(a.sleep_batch, &mut rng, a.pad_to);
+            let qat = s.state.qat
+                || qat_due(
+                    a.progress.frac(s.state.step, s.state.elapsed_secs),
+                    a.qat_frac,
+                );
+            let centres = crate::s2::memory::centres(&s.params, &s.cfg, &b.frames, qat)?;
+            for (l, c) in centres.into_iter().enumerate() {
+                let norm = c.square()?.sum(None)?.sqrt()?.item_exact::<f32>();
+                println!("memory: centre of layer {l} measured on one batch (norm {norm:.3})");
+                s.params.insert(format!("mem.{l}.centre.weight").into(), c);
+            }
+        }
+    }
     let mut seq_loss_sum = (0.0f64, 0usize);
     let mut seq_steps = 0u64;
     while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
@@ -2150,8 +2293,14 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                         lr_scale,
                         qat,
                         how,
-                        seq_steps.is_multiple_of(50),
-                        a.memory_trace > 0 && (seq_steps - 1).is_multiple_of(a.memory_trace),
+                        SeqWants {
+                            groups: seq_steps.is_multiple_of(50),
+                            trace: a.memory_trace > 0
+                                && (seq_steps - 1).is_multiple_of(a.memory_trace),
+                            off: a.memory_off_eval > 0
+                                && (seq_steps - 1).is_multiple_of(a.memory_off_eval),
+                            centre_ema: a.memory_centre_ema,
+                        },
                     )?;
                     let mut rec = json!({"step": s.state.step, "seq_game": sl.games[g].0,
                         "passes": passes, "seq_step_loss": st.loss, "grad_norm": st.grad_norm});
@@ -2159,6 +2308,13 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                         rec["asks"] = rep.asks.into();
                         rec["ask_ce"] = (rep.ask_ce_sum / rep.asks).into();
                         rec["ask_ce_last"] = (rep.ask_ce_last_sum / rep.asks).into();
+                        rec["ask_acc"] = (rep.splits[0] / rep.asks).into();
+                        rec["ask_splits"] = json!(rep.splits);
+                        if let Some(off) = &rep.off {
+                            rec["off"] = json!({"ask_ce": off[0] / off[2],
+                                "ask_ce_last": off[1] / off[2], "ask_acc": off[3] / off[2],
+                                "ask_splits": off[3..]});
+                        }
                         if s.cfg.memory_aux && s.cfg.memory_run.aux_weight > 0.0 {
                             let n = rep.asks * s.cfg.state_layers as f64;
                             rec["aux_ce"] = (rep.aux_ce_sum / n).into();

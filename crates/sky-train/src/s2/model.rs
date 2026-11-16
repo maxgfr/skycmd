@@ -760,10 +760,25 @@ pub(crate) type ExitStates = Vec<(Array, Array)>;
 pub(crate) fn state_run_mem(
     p: &ParamMap,
     cfg: &S2Config,
+    x: Array,
+    valid: &Array,
+    exits: &[usize],
+    mem: Option<&[Array]>,
+) -> R<(ExitStates, Written)> {
+    state_run_taps(p, cfg, x, valid, exits, mem, None)
+}
+
+/// [`state_run_mem`] that also pushes to `taps`, with a memory, the output of every block
+/// application before its read, in order (application `a` is loop `a / state_layers` of block
+/// `a % state_layers`).
+pub(crate) fn state_run_taps(
+    p: &ParamMap,
+    cfg: &S2Config,
     mut x: Array,
     valid: &Array,
     exits: &[usize],
     mem: Option<&[Array]>,
+    mut taps: Option<&mut Vec<Array>>,
 ) -> R<(ExitStates, Written)> {
     let mask = padding_mask(valid)?;
     let rope = Rope::Sequential(cfg.rope_theta, cfg.head_dim() as i32);
@@ -789,7 +804,10 @@ pub(crate) fn state_run_mem(
         x = block(p, cfg, &format!("blk.{l}"), norm, x, &mask, &rope)?;
         if let Some(m) = mem {
             written[l] = Some(x.clone());
-            x = crate::s2::memory::read(p, cfg, l, &x, &m[l])?;
+            if let Some(t) = taps.as_deref_mut() {
+                t.push(x.clone());
+            }
+            x = crate::s2::memory::read(p, cfg, l, lp, &x, valid, &m[l])?;
         }
         for &e in exits {
             if cfg.exits[e] == a + 1 {
@@ -955,6 +973,21 @@ pub(crate) fn state_written(
     Ok(state_run_mem(p, cfg, x, &b.valid, &[cfg.n_exits() - 1], Some(mem))?.1)
 }
 
+/// The state encoder alone at full depth, reading `mem`: the output of every block application
+/// before its read ([`state_run_taps`]), and what each state block writes to the memory.
+pub(crate) fn state_taps(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    mem: &[Array],
+) -> R<(Vec<Array>, Written)> {
+    let x = embed_state(p, cfg, b)?;
+    let mut taps = Vec::new();
+    let last = [cfg.n_exits() - 1];
+    let (_, written) = state_run_taps(p, cfg, x, &b.valid, &last, Some(mem), Some(&mut taps))?;
+    Ok((taps, written))
+}
+
 /// [`forward_prepared`] with an optional memory; the third value is what each state block
 /// writes to it (see [`state_run_mem`]).
 pub(crate) fn forward_prepared_mem(
@@ -964,6 +997,20 @@ pub(crate) fn forward_prepared_mem(
     n: usize,
     carry: Option<Carry<'_>>,
     mem: Option<&[Array]>,
+) -> R<(Array, Vec<Array>, Written)> {
+    forward_prepared_taps(p, cfg, b, n, carry, mem, None)
+}
+
+/// [`forward_prepared_mem`] that also pushes to `taps` the output of every block application
+/// before its read ([`state_run_taps`]).
+pub(crate) fn forward_prepared_taps(
+    p: &ParamMap,
+    cfg: &S2Config,
+    b: &S2Batch,
+    n: usize,
+    carry: Option<Carry<'_>>,
+    mem: Option<&[Array]>,
+    taps: Option<&mut Vec<Array>>,
 ) -> R<(Array, Vec<Array>, Written)> {
     let st = static_encode(
         p,
@@ -991,7 +1038,7 @@ pub(crate) fn forward_prepared_mem(
         x = x.add(cast_like(term, &x)?.multiply(&on)?)?;
     }
     let used: Vec<usize> = (0..n).collect();
-    let (run, written) = state_run_mem(p, cfg, x, &b.valid, &used, mem)?;
+    let (run, written) = state_run_taps(p, cfg, x, &b.valid, &used, mem, taps)?;
     let (hs, raw): (Vec<Array>, Vec<Array>) = run.into_iter().unzip();
     let logits = fusion(p, cfg, &m, &b.qtype, &hs, &b.valid, &qt, &b.q_valid)?;
     Ok((logits, raw, written))
@@ -1009,6 +1056,15 @@ pub(crate) fn frame_ce(logits: &Array, b: &S2Batch, wts: &Array) -> R<Array> {
         .mean_axis(-1, None)?
         .negative()?;
     ce.multiply(wts)?.sum(None)
+}
+
+/// The rows the last exit answers right: the largest of its logits `[E, B, K]` over the valid
+/// options is the option of the largest target (`[B]`, f32).
+pub(crate) fn last_exit_right(logits: &Array, b: &S2Batch) -> R<Array> {
+    let last = masked(&logits.index(logits.dim(0) - 1), &b.marker_mask)?;
+    let got = ops::indexing::argmax_axis(&last, -1, None)?;
+    let want = ops::indexing::argmax_axis(&b.target, -1, None)?;
+    got.eq(&want)?.as_dtype(Dtype::Float32)
 }
 
 /// [`frame_ce`] per row, before the mean over the rows: `Σ_e w_e · CE(exit e)` `[B]`.

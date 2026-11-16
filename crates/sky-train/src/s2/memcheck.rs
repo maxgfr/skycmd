@@ -110,10 +110,18 @@ pub struct MemcheckArgs {
     /// step-0 gradient of every parameter group, v1 against v2.
     #[arg(long)]
     pub grads_only: bool,
+    /// Only C2's reading (`c2.json`, with the split by the colours the door was shown with and
+    /// no verdict), for `docs/s6-sleep3-diagnosis.md`: every form under `--write`, or the one
+    /// form of `--write slot`, whose centre is measured on the first batch of episodes.
+    #[arg(long)]
+    pub c2_only: bool,
+    /// With `--write slot`: the bias of the write gate (the gate is at the sigmoid of it).
+    #[arg(long, default_value_t = 0.0, allow_negative_numbers = true)]
+    pub gate_bias: f32,
 }
 
 fn parse_write(s: &str) -> std::result::Result<MemoryWrite, String> {
-    MemoryWrite::parse(s).ok_or_else(|| format!("{s:?}: average, delta, exact or centred"))
+    MemoryWrite::parse(s).ok_or_else(|| format!("{s:?}: average, delta, exact, centred or slot"))
 }
 
 /// One memory form of the checks.
@@ -343,6 +351,10 @@ pub struct C2Form {
     /// On every held-out ask, and per delay bucket (1–4, 5–8, 9–16, 17–32).
     pub accuracy_all: f64,
     pub by_bucket: Vec<f64>,
+    /// With `--c2-only`: on the held-out asks of a door shown with one colour, and of a door
+    /// shown with several.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_shown: Option<Vec<f64>>,
     /// Mean squared cosine between the door keys of the show frames and the keys of the idle
     /// frames of the same episode (mean over heads).
     pub key_overlap: f64,
@@ -350,8 +362,9 @@ pub struct C2Form {
 
 /// What C2 reads on one form, and the base's own door-token hidden states at the show frames.
 struct Played {
-    /// (episode, bucket, colour, r at the door token over the layers).
-    asks: Vec<(usize, usize, usize, Vec<f32>)>,
+    /// (episode, bucket, colour, r at the door token over the layers, the distinct colours the
+    /// door had been shown with).
+    asks: Vec<(usize, usize, usize, Vec<f32>, usize)>,
     /// (episode, colour, the block output at the door token over the layers).
     shows: Vec<(usize, usize, Vec<f32>)>,
     key_overlap: f64,
@@ -382,6 +395,7 @@ fn play(
         // Per row: the last show of each door (frame, colour), the door keys of its shows and
         // the keys of its idle frames, per head.
         let mut last_show = vec![[None::<(usize, usize)>; 3]; b];
+        let mut colours_of = vec![[[false; COLOURS.len()]; 3]; b];
         let mut door_keys: Vec<Vec<Vec<f32>>> = vec![Vec::new(); b];
         let mut idle_keys: Vec<Vec<Vec<f32>>> = vec![Vec::new(); b];
         for t in 0..frames {
@@ -396,9 +410,16 @@ fn play(
             let mut k_host = Vec::new();
             for (l, x) in written.iter().enumerate() {
                 let x = x.as_ref().context("a block the frame did not run")?;
-                r_host.push(host_f32(&memory::retrieve(p, cfg, l, x, &mem.0[l])?)?);
+                r_host.push(host_f32(&memory::retrieve(
+                    p,
+                    cfg,
+                    l,
+                    x,
+                    &batch.valid,
+                    &mem.0[l],
+                )?)?);
                 x_host.push(host_f32(x)?);
-                k_host.push(host_f32(&memory::keys(p, cfg, l, x)?)?);
+                k_host.push(host_f32(&memory::keys(p, cfg, l, x, &batch.valid)?)?);
             }
             let over_layers = |host: &[Vec<f32>], r: usize, at: usize| -> Vec<f32> {
                 host.iter()
@@ -425,14 +446,16 @@ fn play(
                         out.shows.push((ep, colour, over_layers(&x_host, r, at)));
                         door_keys[r].push(key_at(r, at));
                         last_show[r][door] = Some((t, colour));
+                        colours_of[r][door][colour] = true;
                     }
                     (None, None, Some(door)) => {
                         let at = enc.door(&e[t], "ask", door)?;
                         let (shown, colour) = last_show[r][door]
                             .with_context(|| format!("ask of door {door} before its show"))?;
                         let bucket = sky_games::recall::bucket_of((t - shown) as u32);
+                        let shown = colours_of[r][door].iter().filter(|c| **c).count();
                         out.asks
-                            .push((ep, bucket, colour, over_layers(&r_host, r, at)));
+                            .push((ep, bucket, colour, over_layers(&r_host, r, at), shown));
                     }
                     (None, None, None) => {
                         for tt in 0..lens[r] {
@@ -470,6 +493,18 @@ fn play(
     Ok(out)
 }
 
+/// The frames of `seeds` side by side, as [`play`] encodes them: one batch per frame.
+fn episode_frames(enc: &Encoder<'_>, seeds: &[u64]) -> Result<Vec<crate::s2::data::S2Batch>> {
+    let eps: Vec<Vec<String>> = seeds.iter().map(|&s| episode(s)).collect::<Result<_>>()?;
+    (0..eps[0].len())
+        .map(|t| {
+            let items: Vec<S2Item> = eps.iter().map(|e| enc.item(&e[t])).collect::<Result<_>>()?;
+            let refs: Vec<&S2Item> = items.iter().collect();
+            Ok(make_batch(&enc.statics, &refs, 1))
+        })
+        .collect()
+}
+
 /// The reading of C2 on one form.
 fn read_form(form: Form, played: &Played, n_train: usize) -> C2Form {
     let train: Vec<(Vec<f32>, usize)> = played
@@ -478,15 +513,16 @@ fn read_form(form: Form, played: &Played, n_train: usize) -> C2Form {
         .filter(|a| a.0 < n_train)
         .map(|a| (a.3.clone(), a.2))
         .collect();
-    let test = |keep: &dyn Fn(usize) -> bool| -> (f64, usize) {
+    let test_of = |keep: &dyn Fn(usize, usize) -> bool| -> (f64, usize) {
         let t: Vec<(&[f32], usize)> = played
             .asks
             .iter()
-            .filter(|a| a.0 >= n_train && keep(a.1))
+            .filter(|a| a.0 >= n_train && keep(a.1, a.4))
             .map(|a| (a.3.as_slice(), a.2))
             .collect();
         nearest_centroid(&train, &t)
     };
+    let test = |keep: &dyn Fn(usize) -> bool| test_of(&|b, _| keep(b));
     let (acc, n) = test(&|b| b <= 1);
     C2Form {
         form: form.name,
@@ -496,6 +532,7 @@ fn read_form(form: Form, played: &Played, n_train: usize) -> C2Form {
         asks_1_8: n,
         accuracy_all: test(&|_| true).0,
         by_bucket: (0..4).map(|k| test(&|b| b == k).0).collect(),
+        by_shown: Some(vec![test_of(&|_, n| n == 1).0, test_of(&|_, n| n >= 2).0]),
         key_overlap: played.key_overlap,
     }
 }
@@ -814,6 +851,9 @@ fn run(a: &MemcheckArgs) -> Result<()> {
         )?;
         return Ok(());
     }
+    if a.c2_only {
+        return c2_reading(a, &base_cfg, &base, &tok);
+    }
     let c1_pass = c1(&a.out)?;
     if a.c1_only {
         return Ok(());
@@ -841,7 +881,8 @@ fn run(a: &MemcheckArgs) -> Result<()> {
         let mut enc = Encoder::new(&tok, &cfg)?;
         let t0 = std::time::Instant::now();
         let played = play(&p, &cfg, &mut enc, &seeds, a.rows)?;
-        let f = read_form(form, &played, n_train);
+        let mut f = read_form(form, &played, n_train);
+        f.by_shown = None;
         println!(
             "  form {:5} (qk {}, values {}): accuracy {:.4} on {} asks of delays 1-8 | all {:.4} | by delay {} | key overlap {:.4} ({:.0}s)",
             f.form,
@@ -920,6 +961,72 @@ fn run(a: &MemcheckArgs) -> Result<()> {
         verdict(c3_pass)
     );
     Ok(())
+}
+
+/// `--c2-only`: C2's reading with its splits and no verdict (`docs/s6-sleep3-diagnosis.md`).
+fn c2_reading(a: &MemcheckArgs, base_cfg: &S2Config, base: &ParamMap, tok: &Tok) -> Result<()> {
+    if a.episodes < 2 {
+        bail!("--episodes needs at least 2");
+    }
+    let slot = a.write == MemoryWrite::Slot;
+    let seeds = train_seeds(a.from_seed, a.episodes);
+    let n_train = a.episodes / 2;
+    println!(
+        "C2 alone: {} recall train episodes (seeds {}..={}), centroids from the first {n_train}, write {}",
+        seeds.len(),
+        seeds[0],
+        seeds[seeds.len() - 1],
+        a.write.name()
+    );
+    let mut forms = Vec::new();
+    // A slot memory writes one value per frame: the value forms are one form.
+    for form in &FORMS[..if slot { 1 } else { 2 }] {
+        let cfg = form_cfg(base_cfg, *form, a.write)?;
+        let mut raw = step0_params(&cfg, base, a.seed)?;
+        let mut enc = Encoder::new(tok, &cfg)?;
+        if slot {
+            let frames = episode_frames(&enc, &seeds[..a.rows.min(seeds.len())])?;
+            for (l, c) in memory::centres(&raw, &cfg, &frames, true)?
+                .into_iter()
+                .enumerate()
+            {
+                raw.insert(format!("mem.{l}.centre.weight").into(), c);
+                raw.insert(
+                    format!("mem.{l}.beta_bias.weight").into(),
+                    Array::from_slice(&[a.gate_bias], &[1]),
+                );
+            }
+        }
+        let p = prepare(&raw, &cfg, true)?.into_owned();
+        params::eval(&p)?;
+        let t0 = std::time::Instant::now();
+        let played = play(&p, &cfg, &mut enc, &seeds, a.rows)?;
+        let f = read_form(*form, &played, n_train);
+        let list = |v: &[f64]| {
+            v.iter()
+                .map(|x| format!("{x:.3}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        println!(
+            "  form {:5}: accuracy {:.4} on delays 1-8 | all {:.4} | by delay {} | one colour, several {} | key overlap {:.4} ({:.0}s)",
+            f.form,
+            f.accuracy_1_8,
+            f.accuracy_all,
+            list(&f.by_bucket),
+            list(f.by_shown.as_deref().unwrap_or(&[])),
+            f.key_overlap,
+            t0.elapsed().as_secs_f64()
+        );
+        forms.push(f);
+    }
+    write_json(
+        &a.out.join("c2.json"),
+        &json!({"episodes": seeds.len(), "from_seed": a.from_seed, "first_seed": seeds[0],
+            "last_seed": seeds[seeds.len() - 1], "train_episodes": n_train, "qat": true,
+            "init_seed": a.seed, "write": a.write.name(), "gate_bias": a.gate_bias,
+            "forms": forms}),
+    )
 }
 
 /// C3's measures on the three forms: per form, the mean pairwise cosine of the step-0 gradients

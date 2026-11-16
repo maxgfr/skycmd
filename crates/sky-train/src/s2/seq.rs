@@ -131,7 +131,56 @@ pub struct SeqData {
     /// Per train sequence and frame: the colour a `recall` ask is answered by, as its index in
     /// [`COLOURS`] ([`answer_colour`]); 0 on every other frame.
     pub colours: Vec<Vec<i32>>,
+    /// Per train sequence and frame: the delay bucket of a `recall` ask (the frames since the
+    /// last show of the asked door, as an index into `sky_games::recall::BUCKETS`); −1 on every
+    /// other frame.
+    pub buckets: Vec<Vec<i32>>,
+    /// Per train sequence and frame: the distinct colours the door of a `recall` ask had been
+    /// shown with before the ask (1: one colour; 2 or more: shown again with another); 0 on
+    /// every other frame.
+    pub shown: Vec<Vec<i32>>,
     pub k: usize,
+}
+
+/// What a `recall` state shows and asks: `(shown door, shown colour, asked door)`, the word
+/// after `show`, `colour` and `ask` when it is not `none`.
+pub fn recall_words(state: &str) -> [Option<&str>; 3] {
+    let words: Vec<&str> = state.split_whitespace().collect();
+    ["show", "colour", "ask"].map(|head| {
+        words
+            .windows(2)
+            .find(|w| w[0] == head && w[1] != "none")
+            .map(|w| w[1])
+    })
+}
+
+/// Per frame of one `recall` sequence (its states in order): the delay bucket of an ask (−1
+/// elsewhere, and for a delay outside the buckets) and the distinct colours its door had been
+/// shown with (0 elsewhere).
+pub fn ask_splits(states: &[&str]) -> (Vec<i32>, Vec<i32>) {
+    let mut last: HashMap<&str, (usize, Vec<&str>)> = HashMap::new();
+    let (mut buckets, mut shown) = (vec![-1; states.len()], vec![0; states.len()]);
+    for (t, state) in states.iter().enumerate() {
+        let [door, colour, asked] = recall_words(state);
+        if let Some(door) = asked {
+            if let Some((at, colours)) = last.get(door) {
+                let delay = (t - at) as u32;
+                buckets[t] = sky_games::recall::BUCKETS
+                    .iter()
+                    .position(|&(lo, hi)| (lo..=hi).contains(&delay))
+                    .map_or(-1, |b| b as i32);
+                shown[t] = colours.len() as i32;
+            }
+        }
+        if let (Some(door), Some(colour)) = (door, colour) {
+            let e = last.entry(door).or_insert((t, Vec::new()));
+            e.0 = t;
+            if !e.1.contains(&colour) {
+                e.1.push(colour);
+            }
+        }
+    }
+    (buckets, shown)
 }
 
 /// The colours of `recall`, in the order of the auxiliary head of a memory
@@ -173,6 +222,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
     let mut paused: Vec<bool> = Vec::new();
     let mut asked: Vec<bool> = Vec::new();
     let mut colour: Vec<i32> = Vec::new();
+    let mut states: Vec<String> = Vec::new();
     for file in list_jsonl(path)? {
         let f = std::fs::File::open(&file)?;
         for line in BufReader::new(f).lines() {
@@ -190,6 +240,7 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
                 paused.push(v["pause"].as_bool().unwrap_or(false));
                 asked.push(is_ask(v["state"].as_str().unwrap_or("")));
                 colour.push(answer_colour(&v).unwrap_or(0) as i32);
+                states.push(v["state"].as_str().unwrap_or("").to_string());
             }
         }
     }
@@ -240,12 +291,18 @@ pub fn load(path: &Path, tok: &Tok, cfg: &S2Config) -> Result<SeqData> {
         .iter()
         .map(|s| s.iter().map(|&i| colour[i]).collect())
         .collect();
+    let (buckets, shown) = train
+        .iter()
+        .map(|s| ask_splits(&s.iter().map(|&i| states[i].as_str()).collect::<Vec<_>>()))
+        .unzip();
     Ok(SeqData {
         data,
         train,
         pauses,
         asks,
         colours,
+        buckets,
+        shown,
         k,
     })
 }
@@ -319,6 +376,11 @@ pub struct FrameBatch {
     pub asks: mlx_rs::Array,
     /// `[K, n]` (i32): the colour that answers each ask ([`SeqData::colours`]).
     pub colours: mlx_rs::Array,
+    /// `[K, n]` (i32): the delay bucket of each ask ([`SeqData::buckets`]).
+    pub buckets: mlx_rs::Array,
+    /// `[K, n]` (i32): the distinct colours the door of each ask had been shown with
+    /// ([`SeqData::shown`]).
+    pub shown: mlx_rs::Array,
     pub n_rows: usize,
     pub n_tokens: usize,
 }
@@ -344,10 +406,14 @@ pub fn sample_frames(sd: &SeqData, n: usize, rng: &mut Rng, pad_to: usize) -> Fr
     debug_assert!(picked.iter().all(|&s| sd.pauses[s] == pauses));
     let mut asks = vec![0f32; sd.k * n];
     let mut colours = vec![0i32; sd.k * n];
+    let mut buckets = vec![-1i32; sd.k * n];
+    let mut shown = vec![0i32; sd.k * n];
     for (r, &s) in picked.iter().enumerate() {
         for t in 0..sd.k {
             asks[t * n + r] = sd.asks[s][t] as u8 as f32;
             colours[t * n + r] = sd.colours[s][t];
+            buckets[t * n + r] = sd.buckets[s][t];
+            shown[t * n + r] = sd.shown[s][t];
         }
     }
     FrameBatch {
@@ -355,6 +421,8 @@ pub fn sample_frames(sd: &SeqData, n: usize, rng: &mut Rng, pad_to: usize) -> Fr
         pauses,
         asks: mlx_rs::Array::from_slice(&asks, &[sd.k as i32, n as i32]),
         colours: mlx_rs::Array::from_slice(&colours, &[sd.k as i32, n as i32]),
+        buckets: mlx_rs::Array::from_slice(&buckets, &[sd.k as i32, n as i32]),
+        shown: mlx_rs::Array::from_slice(&shown, &[sd.k as i32, n as i32]),
         n_rows: n * sd.k,
         n_tokens,
     }
@@ -555,6 +623,46 @@ mod tests {
         for (asks, colours) in game.asks.iter().zip(&game.colours) {
             assert!(asks.iter().zip(colours).all(|(a, c)| *a || *c == 0));
         }
+        // Every ask has its delay bucket and the colours its door was shown with; no other
+        // frame has either.
+        assert_eq!(b.buckets.shape(), &[64, 3]);
+        assert_eq!(b.shown.shape(), &[64, 3]);
+        for ((asks, buckets), shown) in game.asks.iter().zip(&game.buckets).zip(&game.shown) {
+            for t in 0..asks.len() {
+                assert_eq!(asks[t], buckets[t] >= 0, "frame {t}");
+                assert_eq!(asks[t], shown[t] >= 1, "frame {t}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_asks_of_recall_are_split_by_delay_and_by_the_colours_shown() {
+        let idle = "show none colour none ask none noise 2";
+        let states = [
+            "show a colour red ask none noise 1",
+            idle,
+            "show none colour none ask a noise 3",
+            "show a colour red ask none noise 4",
+            "show b colour blue ask none noise 5",
+            "show a colour green ask none noise 6",
+            idle,
+            idle,
+            idle,
+            idle,
+            "show none colour none ask b noise 7",
+            "show none colour none ask a noise 8",
+            "show none colour none ask c noise 9",
+        ];
+        assert_eq!(recall_words(states[0]), [Some("a"), Some("red"), None]);
+        assert_eq!(recall_words(states[2]), [None, None, Some("a")]);
+        assert_eq!(recall_words(idle), [None, None, None]);
+        assert_eq!(recall_words("x 3 y 4"), [None, None, None]);
+        let (buckets, shown) = ask_splits(&states);
+        // Door a: asked 2 frames after its show (one colour), then 6 frames after its last show
+        // (red twice, then green: two colours). Door b: 6 frames, one colour. Door c: never
+        // shown.
+        assert_eq!(buckets, [-1, -1, 0, -1, -1, -1, -1, -1, -1, -1, 1, 1, -1]);
+        assert_eq!(shown, [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0]);
     }
 
     #[test]

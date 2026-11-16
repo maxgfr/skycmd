@@ -54,8 +54,9 @@ pub struct S2Config {
     #[serde(default, skip_serializing_if = "MemoryValue::is_token")]
     pub memory_value: MemoryValue,
     /// `docs/s6-sleep2-prereg.md` amendment 1: the write rule of a memory layer, `average`
-    /// (v1's gated 1/n frame step), `delta` (W1), `exact` (W2) or `centred` (W3). Written only
-    /// when not `average`.
+    /// (v1's gated 1/n frame step), `delta` (W1), `exact` (W2), `centred` (W3) or `slot`
+    /// (`docs/s6-sleep3-diagnosis.md` §7: one key and one value per frame). Written only when
+    /// not `average`.
     #[serde(default, skip_serializing_if = "MemoryWrite::is_average")]
     pub memory_write: MemoryWrite,
     /// `docs/s6-sleep3-diagnosis.md`: a training-only linear head per memory layer
@@ -210,6 +211,14 @@ pub enum MemoryWrite {
     Exact,
     /// W3: v1's rule with the keys centred on the frame's mean key (then of unit norm again).
     Centred,
+    /// `docs/s6-sleep3-diagnosis.md` §7: one key, one value and one gate per frame, from the
+    /// mean block output over the frame's valid tokens, normalized and centred
+    /// (`y = LN(x̄) − c`, `c` the parameter `mem.{l}.centre`): `k = l2norm(heads(y·Wqk))`,
+    /// `v = heads(y·Wv)`, `β = σ(wβ·y + b)`, `α = σ(wα·y + 6)`,
+    /// `S ← αS + β (v − αS k) kᵀ`: a full step (`β = 1`) replaces what the slot `k` held. The
+    /// read asks with the frame's own `q`, built as `k` is, and adds `merge(S·q)·Wo` to every
+    /// token.
+    Slot,
 }
 
 impl MemoryWrite {
@@ -223,13 +232,20 @@ impl MemoryWrite {
             MemoryWrite::Delta => "delta",
             MemoryWrite::Exact => "exact",
             MemoryWrite::Centred => "centred",
+            MemoryWrite::Slot => "slot",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        [Self::Average, Self::Delta, Self::Exact, Self::Centred]
-            .into_iter()
-            .find(|w| w.name() == s)
+        [
+            Self::Average,
+            Self::Delta,
+            Self::Exact,
+            Self::Centred,
+            Self::Slot,
+        ]
+        .into_iter()
+        .find(|w| w.name() == s)
     }
 }
 
