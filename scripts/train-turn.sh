@@ -353,6 +353,7 @@ harness() {
     return
   fi
   if [ ! -f "$h/smart-turn.json" ]; then
+    x mkdir -p "$h"
     x nice -n 19 uv run --python 3.12 scripts/ear-baseline.py --clips "$ear/clips/smart-turn.jsonl" \
       --json "$h/smart-turn.json" --dump "$h/smart-turn-test.jsonl"
   fi
