@@ -34,7 +34,7 @@
 #   latency   §8.3: v2 natively and in WASM (decision median and p95, front end per hop), Smart
 #             Turn CPU through onnxruntime natively, the GGUF size
 #   wasm      §7: WASM parity on 20 test clips (|dp| <= 1e-4 and the same decision)
-#   eval      §8.2: v2's probabilities on the test clips (the stored features of turn-test)
+#   eval      §8.2: v2's probabilities on the 31,527 test clips, through the WAV path (sky-turn --records)
 #   eotbench  §8.4: v2's probabilities on the eot-bench cuts
 #   gate      §9: the verdict (G1-G3) with §8.2-8.4 and §10, and §11's disclosure
 #             (scripts/turn-gate.py), into runs/s6-ear2-nano/GATE.md and gate.json
@@ -405,7 +405,9 @@ eval_test() {
   if [ -n "$smoke" ]; then
     x "$S" "$m/$name.gguf" --store "$data/train" --split val --out "$run/test-probs.jsonl"
   else
-    x "$S" "$m/$name.gguf" --store "$data/test" --out "$run/test-probs.jsonl"
+    # the deployed path: each test WAV through the front end and the file as exported (the f16
+    # hops of turn-test are the same features rounded; they serve the leakage filter's hashes)
+    x "$S" "$m/$name.gguf" --records "$ear/jev/turn_end.jsonl" --split test --out "$run/test-probs.jsonl"
   fi
 }
 
