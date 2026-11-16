@@ -39,9 +39,10 @@ and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/d
 | s6-nano (games and free-text questions) | s6, ternary, full depth | 1.5M | [s6-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-nano.gguf) (715 KB) | skycmd engine only |
 | s6-micro (games and free-text questions; second version, passed its gate on a second look after v1 failed, see [results](/results/#s6-micro-v2-passed-on-a-second-look)) | s6, ternary, full depth | 5.6M | [s6-micro.gguf](https://maxgfr.github.io/skycmd/models/s6-micro.gguf) (2.4 MB) | skycmd engine only |
 | s6-secrets-pico (secret detection on its synthetic bench, its four questions only; not a scanner: it flags 59.8% of clean real files at p ≥ 0.9, see [results](/results/#s6-secrets-real-text)) | s6, ternary, full depth | 445K | [s6-secrets-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-pico.gguf) (250 KB) | skycmd engine only |
+| s6-route (a tool from a run-time list; two files fused, passed its gate on fresh slates with a system defined after v2's test was read; it needs distinctive tool names, see [results](/results/#s6-route-passed)) | the s6-route-nano file and potion-base-2M packed to 4 bits (MIT), `ToolRouter` | 5.6M + a static embedding | [s6-route-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-route-nano.gguf) (2.4 MB) and [s6-route-embed.gguf](https://maxgfr.github.io/skycmd/models/s6-route-embed.gguf) (1.3 MB) | skycmd engine only (`ToolRouter` in WASM, `sky-route fuse` natively) |
 
 Every model is also on Hugging Face with its model card and a demo Space that runs in the browser:
-[s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-micro](https://huggingface.co/maxgfr/s6-micro), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
+[s6-route](https://huggingface.co/maxgfr/s6-route) (once uploaded), [s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-micro](https://huggingface.co/maxgfr/s6-micro), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
@@ -63,7 +64,8 @@ On Hugging Face: [s6-micro-v1](https://huggingface.co/maxgfr/s6-micro-v1),
 [s6-secrets-verify-pico](https://huggingface.co/maxgfr/s6-secrets-verify-pico) with a card only
 (its state is built from a candidate of secretgate's rules, which no demo runs), and
 [s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (once uploaded) with a card only (its
-pre-registration publishes the playground only if the gate passes).
+pre-registration publishes the playground only if the gate passes). Its file, fused with a static
+embedding, is the model part of s6-route, which passed its own gate (above).
 
 Next to s6-cast-pico, the [Forecast](/forecast/) page runs two reference forecasters, which are not ours and keep their own licenses:
 
