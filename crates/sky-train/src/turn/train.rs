@@ -78,6 +78,11 @@ pub struct TrainArgs {
     pub log_every: u64,
     #[arg(long, default_value_t = 2000)]
     pub eval_every: u64,
+    /// The periodic validation (the curve) reads the first N validation clips (0: all); the
+    /// validations at the QAT switch and at the end read them all.
+    #[arg(long, default_value_t = 0)]
+    #[serde(default)]
+    pub curve_val: usize,
     #[arg(long, default_value_t = 10.0)]
     pub checkpoint_minutes: f64,
     /// Peak AdamW learning rate.
@@ -216,8 +221,24 @@ pub struct ValMetrics {
 }
 
 pub fn validate(p: &ParamMap, cfg: &TurnConfig, data: &Data, qat: bool) -> Result<ValMetrics> {
+    validate_first(p, cfg, data, qat, 0)
+}
+
+/// [`validate`] on the first `limit` validation clips (0: all).
+pub fn validate_first(
+    p: &ParamMap,
+    cfg: &TurnConfig,
+    data: &Data,
+    qat: bool,
+    limit: usize,
+) -> Result<ValMetrics> {
+    let val = if limit > 0 && limit < data.val.len() {
+        &data.val[..limit]
+    } else {
+        &data.val[..]
+    };
     let (mut correct, mut bce, mut agree, mut n_t, mut n) = (0usize, 0.0f64, 0usize, 0usize, 0);
-    for chunk in data.val.chunks(256) {
+    for chunk in val.chunks(256) {
         let clips: Vec<_> = chunk.iter().map(|&i| &data.store.clips[i]).collect();
         let hb = host_batch(cfg, &data.store, &clips, None)?;
         let f = model::forward(p, cfg, &hb.arrays(cfg), qat)?;
@@ -432,7 +453,7 @@ fn train_on(a: &TrainArgs) -> Result<()> {
             (wl, wn, wtime) = (0.0, 0, Instant::now());
         }
         if step % a.eval_every == 0 {
-            let m = validate(&s.params, &cfg, &data, qat)?;
+            let m = validate_first(&s.params, &cfg, &data, qat, a.curve_val)?;
             log_val(&mut log, step, if qat { "ternary" } else { "f32" }, &m)?;
         }
         if last_ckpt.elapsed().as_secs_f64() >= a.checkpoint_minutes * 60.0 {
@@ -549,6 +570,7 @@ pub(crate) mod tests {
             max_val: 0,
             log_every: 10,
             eval_every: 20,
+            curve_val: 3,
             checkpoint_minutes: 100.0,
             adam_lr: 3e-3,
             muon_lr: None,

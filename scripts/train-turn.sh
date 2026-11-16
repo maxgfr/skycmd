@@ -325,7 +325,7 @@ train() {
   fi
   echo "== $name: ${minutes} working minutes (brake $SKY_DUTY ${SKY_COOL:-no long rests}, file $SKY_BRAKE_FILE)"
   logged "$run/train.log" "$T" turn-train "${common[@]}" --out "$run" --minutes "$minutes" --resume \
-    --qat-frac 0.15 --ema 0.999 --eval-every 2000 --adam-lr "$lr" ${hard[@]+"${hard[@]}"} ${opt[@]+"${opt[@]}"}
+    --qat-frac 0.15 --ema 0.999 --eval-every 2000 --curve-val 2000 --adam-lr "$lr" ${hard[@]+"${hard[@]}"} ${opt[@]+"${opt[@]}"}
 }
 
 export_model() {

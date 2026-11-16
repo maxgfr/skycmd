@@ -113,47 +113,51 @@ it stands.
     four arms.
 30. **Validation accuracy during training** is read on the uncalibrated logit (z > 0): a
     temperature does not move the decision at 0.5.
-31. **Batch on the GPU, CPU sanity.** `turn-train --cpu` runs the graph on the CPU (tests, sanity);
+31. **The validation curve.** Every 2,000 steps on the first 2,000 validation clips (a full pass
+    over about 13,500 clips would take a sizeable share of the working minutes); the validations
+    at the QAT switch and at the end, which the checkpoint rule reads, use every validation clip.
+    Validation time counts as working time, as in s6-cast.
+32. **Batch on the GPU, CPU sanity.** `turn-train --cpu` runs the graph on the CPU (tests, sanity);
     every pre-registered run is without it.
 
 ## Checkpoint, calibration, export (7)
 
-32. **"Ternary validation BCE"** is the one the training log records at the end, the weights
+33. **"Ternary validation BCE"** is the one the training log records at the end, the weights
     fake-quantized in the graph (f32 scales), as `scripts/train-cast2.sh` picks; the file stores
     f16 scales.
-33. **The temperature** minimizes the validation NLL of the ternary file's logits by a
+34. **The temperature** minimizes the validation NLL of the ternary file's logits by a
     golden-section search of log T over [0.05, 20]; an uncalibrated export is used for the fit,
     then the file is exported again with the temperature and thresholds.
-34. **τ₈₅** is the ⌈0.85 · n⌉-th largest calibrated probability among the finished validation
+35. **τ₈₅** is the ⌈0.85 · n⌉-th largest calibrated probability among the finished validation
     clips: the highest threshold with END recall ≥ 0.85. v2 answers "finished" when `p ≥ τ`;
     Smart Turn keeps its own `p > 0.5`.
-35. **WASM parity on 20 test clips** goes through the WAV path natively (`sky-turn --records`) and
+36. **WASM parity on 20 test clips** goes through the WAV path natively (`sky-turn --records`) and
     `TurnDetector.probEndPcm` in Node; "the same decision" is at τ₀.₅. No label is read.
 
 ## Evaluation and gate (8, 9)
 
-36. **The harness check's timer.** "Must give 0.4979" is read as the test's share of finished
+37. **The harness check's timer.** "Must give 0.4979" is read as the test's share of finished
     clips rounded to four decimals; the check also asks for all 31,527 clips and the left padding.
-37. **v2's test probabilities** come from the deployed path (each WAV through the front end and the
+38. **v2's test probabilities** come from the deployed path (each WAV through the front end and the
     file as exported), not from the float16 hops `turn-test` stored.
-38. **ECE** uses 10 equal-width bins of the calibrated probability. Bootstrap intervals are 95%
+39. **ECE** uses 10 equal-width bins of the calibrated probability. Bootstrap intervals are 95%
     percentile intervals over 1,000 resamples of clips, seeded.
-39. **Subsets.** English is language `eng` (v1's manifest uses ISO 639-3); the English human
+40. **Subsets.** English is language `eng` (v1's manifest uses ISO 639-3); the English human
     subsets are its clips of `human_5` and `human_convcollector_1`. Speko's oracle point is
     computed on all test clips and on that subset, reported only.
-40. **Teacher-student agreement.** Validation: `p ≥ τ₀.₅` against the stored z_T > 0. Test: against
+41. **Teacher-student agreement.** Validation: `p ≥ τ₀.₅` against the stored z_T > 0. Test: against
     the harness check's per-clip dump of Smart Turn (`p > 0.5`).
-41. **eot-bench.** The cut is `round(start · 16000)` samples; v2 reads the last 400 complete hops
+42. **eot-bench.** The cut is `round(start · 16000)` samples; v2 reads the last 400 complete hops
     before it, Smart Turn the last 8 s left-padded; a cut either model cannot decide (under 40 ms
     of audio) is left out of both and counted. v2 is read at its stored τ₈₅, Smart Turn at its 0.5;
     the timer answers `eot` everywhere. Cohorts and languages are those of the data. Smart Turn's
     pass runs file by file while the parquet is on disk; its probabilities are written and not read
     until the gate.
-42. **G3.** "≤ 3 MB" is 3,000,000 bytes. The front end per hop is measured by pushing 10 ms chunks
+43. **G3.** "≤ 3 MB" is 3,000,000 bytes. The front end per hop is measured by pushing 10 ms chunks
     into a stream (median of five passes); the decision time includes the window's normalisation
     (`probEnd` on the stream's 4 s), the features being computed.
-43. **The probe's random weights** are the training initialisation (seed 7) exported ternary; the
+44. **The probe's random weights** are the training initialisation (seed 7) exported ternary; the
     rule reads the WASM medians of R1 to R4 in order.
-44. **SMOKE** trains 5 working minutes on 2,000 clips (pilot arms of 1 minute) and evaluates on
+45. **SMOKE** trains 5 working minutes on 2,000 clips (pilot arms of 1 minute) and evaluates on
     validation clips in place of the test clips, with no harness check and no eot-bench: no v2 test
     score exists before §8.1 and §8.3 are on file (§13).
