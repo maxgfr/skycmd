@@ -198,8 +198,8 @@ API-Bank (MIT), clustered so that no test tool has a training tool in its cluste
 MASSIVE in English and French (14 of 18 scenarios) and Banking77 (CC-BY-4.0); When2Call
 (CC-BY-4.0). The teacher GLM-5.3-flash (open weights, MIT, called through the z.ai API) wrote
 the intent descriptions, filtered the hard distractors and rewrote the training tools'
-descriptions; it never saw a test request and gives no training target. The z.ai terms of service
-restrict training on its outputs; the project's choice is described in
+descriptions; it never saw a test request and gives no training target. The teacher's weights are open
+(MIT); how its outputs are used is described in
 [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md). Licence of the
 file: Apache-2.0.
 

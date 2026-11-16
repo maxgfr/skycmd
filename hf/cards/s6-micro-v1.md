@@ -144,8 +144,8 @@ Face, classic datasets converted into typed questions, game states labelled by e
 numeric curriculum, the same as s6-nano. Pretraining text: SimpleStories, TinyStories, FineWeb and
 the non-web parts of Dolma 3 and TxT360. Soft labels on 747,077 training questions come from
 GLM-5.3-flash (open weights, MIT, called through the z.ai API), kept only where they agree with
-the gold answer; no test question was sent. The z.ai terms of service restrict training on its
-outputs; the project's choice and the labels are described in
+the gold answer; no test question was sent. The teacher's weights are open (MIT); the labels and
+their publication are described in
 [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md), with every
 other license.
 

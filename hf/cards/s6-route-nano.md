@@ -203,8 +203,8 @@ drawn 0.60 / 0.25 / 0.15:
 
 The teacher, GLM-5.3-flash (open weights, MIT, called through the z.ai API), wrote the intent
 descriptions, filtered the hard distractors and rewrote the training tools' descriptions; it was
-never sent a test request or slate, and it gives no training target. The z.ai terms of service
-restrict training on its outputs; the project's choice is described in
+never sent a test request or slate, and it gives no training target. The teacher's weights are open
+(MIT); how its outputs are used is described in
 [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md), with the licence
 and commit of every source. MetaTool, CLINC150, BFCL, tool-routing-data and the When2Call test are
 test only.

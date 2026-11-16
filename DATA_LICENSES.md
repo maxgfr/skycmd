@@ -76,12 +76,14 @@ outputs are not redistributed.
 
 ## s6-nano / s6-micro: GLM teacher mix and evaluation sets (`docs/s6-gen-prereg.md`)
 
-**Terms of the z.ai API.** The GLM-5.3-Flash weights are MIT, but the labels come from the z.ai
-API, whose [terms](https://docs.z.ai/legal-agreement/terms-of-use) (14 April 2026, §1(f)(xii))
-forbid using model-generated content for "training, labeling, fine-tuning ... related to external
-models" outside an authorized integration, and ask for AI outputs to be marked. The user chose to
-publish them anyway (3 November 2026): `maxgfr/skycmd-glm-labels`, marked as AI-generated, with
-the texts under their sources' licences (TODO.md §1.2).
+**The teacher is an open-weight model.** GLM-5.3-Flash is published under the MIT licence
+([`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash)). A model of that size
+does not run on the laptop, so it is called through a hosted endpoint used as a proxy (the one
+`ccs` configures, hosted by z.ai); the labels can be produced again from the open weights without
+that endpoint. The owner's position (3 November 2026, restated on 16 November 2026): the outputs
+of an open-weight MIT model are free to use as training labels and to publish. They are published
+as `maxgfr/skycmd-glm-labels`, marked as AI-generated, with the texts under their sources'
+licences (TODO.md §1.2).
 
 s6-nano and s6-micro train on `data/decisions`, `data/distill`, `data/games` and `data/numeric`
 (train splits only) and pretrain on `data/text-open` then `data/text`. The GLM files of
@@ -90,7 +92,7 @@ endpoint, and the report states whether they were there.
 
 | file | how it is used | rows |
 |---|---|---|
-| `data/teacher/glm_labels.jsonl` | `sky-data teacher label-decisions` (`scripts/distill-glm.sh`): GLM-5.3-flash, an open-weight model (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) called through the z.ai API, gives one probability per option for every train record of `data/decisions` (benchmark, held-out and GLM-generated sources excluded); the z.ai terms of service apply to the API calls | 747,198 selected: 747,077 labelled, 121 refused by the provider's moderation (05/11/2026) |
+| `data/teacher/glm_labels.jsonl` | `sky-data teacher label-decisions` (`scripts/distill-glm.sh`): GLM-5.3-flash, an open-weight model (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) called through a hosted endpoint used as a proxy, gives one probability per option for every train record of `data/decisions` (benchmark, held-out and GLM-generated sources excluded) | 747,198 selected: 747,077 labelled, 121 refused by the provider's moderation (05/11/2026) |
 | `data/distill/glm.jsonl` | `sky-data teacher mix-labels`: the labels whose argmax is the gold answer, `target = 0.5 · gold + 0.5 · teacher`, `src = glm:<source>`, train split; agreement per source in `agreement.json` | 560,238 (agreement 0.750) |
 
 The test
@@ -278,7 +280,7 @@ The router (`docs/lfm3-s1s2-prereg.md`) is inference only. Since its amendment 1
 - the GSM8K and MATH train worked solutions;
 - the base model's own correct answers on those train questions (self-distillation).
 
-None of the 600 calibration questions and no test question is trained on; questions with the same normalized text are excluded too. The GLM / z.ai labels are **never** used for LFM3: z.ai's API terms forbid training external models on its outputs.
+None of the 600 calibration questions and no test question is trained on; questions with the same normalized text are excluded too. The GLM labels are **never** used for LFM3, as its pre-registration fixed (`docs/lfm3-ft-prereg.md`).
 
 **Where the outputs go.**
 - Generations, evaluations and logs go to the private dataset repo `maxgfr/skycmd-lfm3-ft-work`.
@@ -391,8 +393,8 @@ cluster in training, 10 on the validation and test sides).
 | sentence-transformers/all-MiniLM-L6-v2 | Apache-2.0 | https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 @ `1110a243` | tool clustering (§4.2), the test distractor rule (§4.4); baseline minilm-cos | — |
 | stanley-nv/toolrouter | MIT | https://huggingface.co/stanley-nv/toolrouter @ `b2607a34` | baseline toolrouter (reported) | — |
 
-Teacher: GLM-5.3-flash (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) through the z.ai API
-(its terms apply to the calls), `sky-data teacher describe-intent | false-negatives |
+Teacher: GLM-5.3-flash (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) through a hosted
+endpoint used as a proxy, `sky-data teacher describe-intent | false-negatives |
 rewrite-description`: one description per intent from its name (287 intents), the
 false-negative filter of the hard training and validation slates, one rewrite per gold tool of
 the training and validation requests. It never receives a test request or slate.
