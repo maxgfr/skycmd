@@ -44,6 +44,8 @@ Any question, any options, any type: `choice`, `score` (levels from lowest to hi
 
 Describe the tools in one line each. The model picks the tool for the request, or `no_tool` when none fits.
 
+A dedicated tool router, s6-route-nano, was pre-registered and trained for this job. It failed its gate (it ties BM25 on tools it never saw, 0.8395 against 0.8500, and takes 38.9 ms per request in WASM where 2 ms was asked), so it is not offered here: its pre-registration publishes a playground only if the gate passes ([results](/results/#s6-route-nano-failed)).
+
 <ClientOnly>
   <LiveDecide mode="tools" />
 </ClientOnly>

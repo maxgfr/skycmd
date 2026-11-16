@@ -45,7 +45,7 @@ Every model is also on Hugging Face with its model card and a demo Space that ru
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
-**Failed their gates, published as results.** These four s6 models failed their pre-registered
+**Failed their gates, published as results.** These five s6 models failed their pre-registered
 gates; each file is published as a result (owner's decision of 15/11/2026), not for use. The
 verdicts do not change, and each card opens with the failure and its numbers:
 
@@ -55,12 +55,15 @@ verdicts do not change, and each card opens with the failure and its numbers:
 | s6-ear-nano (audio: end of turn, keywords) | failed three of its four gates: end of turn 0.5681 against 0.9263 for Smart Turn v3.2 | 1,532,449 | [s6-ear-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-ear-nano.gguf) (899 KB) | skycmd engine only (`decideAudio`) |
 | s6-cast-pico (forecasting) | failed: nGMASE 0.9471 (bar 0.838), nWQL 0.6646 (bar 0.587) on GIFT-Eval | 369,792 | [s6-cast-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-cast-pico.gguf) (143 KB) | skycmd engine only (`Forecaster`) |
 | s6-secrets-verify-pico (one rule candidate in its context) | failed G1 on its every-repository reading: line F1 0.8561 against 0.7332 + 0.15; the six other gates held | 445,345 | [s6-secrets-verify-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-verify-pico.gguf) (250 KB) | skycmd engine only |
+| s6-route-nano (a tool from a run-time list, with a BM25 line in its state) | failed G1 against BM25 (0.8395 against 0.8500 on tools never seen in training) and G4 (38.9 ms per request in WASM against 2 ms) | 5,587,201 | [s6-route-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-route-nano.gguf) (2.4 MB) | skycmd engine only |
 
 On Hugging Face: [s6-micro-v1](https://huggingface.co/maxgfr/s6-micro-v1),
 [s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano) and
 [s6-cast-pico](https://huggingface.co/maxgfr/s6-cast-pico) with a demo Space,
 [s6-secrets-verify-pico](https://huggingface.co/maxgfr/s6-secrets-verify-pico) with a card only
-(its state is built from a candidate of secretgate's rules, which no demo runs).
+(its state is built from a candidate of secretgate's rules, which no demo runs), and
+[s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (once uploaded) with a card only (its
+pre-registration publishes the playground only if the gate passes).
 
 Next to s6-cast-pico, the [Forecast](/forecast/) page runs two reference forecasters, which are not ours and keep their own licenses:
 
