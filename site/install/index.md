@@ -37,10 +37,11 @@ and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/d
 | s4-micro (experimental) | s2, ternary | 5.6M | [s4-micro.gguf](https://maxgfr.github.io/skycmd/models/s4-micro.gguf) (2.4 MB) | skycmd engine only |
 | s5-lite | iso, q8_0 | 17M | [s5-lite.gguf](https://maxgfr.github.io/skycmd/models/s5-lite.gguf) (20.7 MB) | skycmd engine only |
 | s6-nano (games and free-text questions) | s6, ternary, full depth | 1.5M | [s6-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-nano.gguf) (715 KB) | skycmd engine only |
+| s6-micro (games and free-text questions; second version, passed its gate on a second look after v1 failed, see [results](/results/#s6-micro-v2-passed-on-a-second-look)) | s6, ternary, full depth | 5.6M | [s6-micro.gguf](https://maxgfr.github.io/skycmd/models/s6-micro.gguf) (2.4 MB) | skycmd engine only |
 | s6-secrets-pico (secret detection on its synthetic bench, its four questions only; not a scanner: it flags 59.8% of clean real files at p ≥ 0.9, see [results](/results/#s6-secrets-real-text)) | s6, ternary, full depth | 445K | [s6-secrets-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-pico.gguf) (250 KB) | skycmd engine only |
 
 Every model is also on Hugging Face with its model card and a demo Space that runs in the browser:
-[s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
+[s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-micro](https://huggingface.co/maxgfr/s6-micro) (once uploaded), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
@@ -50,7 +51,7 @@ verdicts do not change, and each card opens with the failure and its numbers:
 
 | model | result | parameters | file | runs in |
 |---|---|---:|---|---|
-| s6-micro-v1 (games and free-text questions) | failed its calibration guard: ECE 0.0821 against 0.08 (0.547 on `typed_decisions_bench`) | 5,587,201 | [s6-micro-v1.gguf](https://maxgfr.github.io/skycmd/models/s6-micro-v1.gguf) (2.4 MB) | skycmd engine only |
+| s6-micro-v1 (games and free-text questions; the first version of s6-micro) | failed its calibration guard: ECE 0.0821 against 0.08 (0.547 on `typed_decisions_bench`) | 5,587,201 | [s6-micro-v1.gguf](https://maxgfr.github.io/skycmd/models/s6-micro-v1.gguf) (2.4 MB) | skycmd engine only |
 | s6-ear-nano (audio: end of turn, keywords) | failed three of its four gates: end of turn 0.5681 against 0.9263 for Smart Turn v3.2 | 1,532,449 | [s6-ear-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-ear-nano.gguf) (899 KB) | skycmd engine only (`decideAudio`) |
 | s6-cast-pico (forecasting) | failed: nGMASE 0.9471 (bar 0.838), nWQL 0.6646 (bar 0.587) on GIFT-Eval | 369,792 | [s6-cast-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-cast-pico.gguf) (143 KB) | skycmd engine only (`Forecaster`) |
 | s6-secrets-verify-pico (one rule candidate in its context) | failed G1 on its every-repository reading: line F1 0.8561 against 0.7332 + 0.15; the six other gates held | 445,345 | [s6-secrets-verify-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-verify-pico.gguf) (250 KB) | skycmd engine only |

@@ -1,6 +1,6 @@
 # 27 s6-nano: one small file for the games and for free-text questions
 
-*Trained in November 2026 and published on 14 November 2026, at full depth. It passed a gate fixed before training; its larger sibling s6-micro, trained the same way, failed its own and is [reported below](#s6-micro-the-same-recipe-four-times-larger-failed-its-gate).*
+*Trained in November 2026 and published on 14 November 2026, at full depth. It passed a gate fixed before training; its larger sibling s6-micro, trained the same way, failed its own and is [reported below](#s6-micro-the-same-recipe-four-times-larger-failed-its-gate), with its second version, which passed on 16 November on the same test records.*
 
 Every earlier small model had to choose. s3-pico plays the four games at the oracle's level but scores 0.382 on `typed_decisions_bench`, below the 0.398 of always giving the most frequent answer ([chapter 21](./21-s3-recursive-tiny)). s4-micro was meant to answer any question and fell lower ([chapter 22](./22-s4-generic-decisions)). s5-lite answers well, but it is a 20.7 MB model built on a pretrained encoder ([chapter 23](./23-s5-lite)).
 
@@ -119,6 +119,8 @@ The site loads the relaxed-SIMD build where the browser supports it ([chapter 14
 s6-micro has the s4-micro shape (5,587,201 parameters) and longer budgets: 180 minutes of pretraining and 180 of decision training, then three DAgger rounds of 20 minutes. It reaches 0.547 on the bench, above its gate (0.45) and its announced goal (0.50), and plays the games at s3-pico's score. It fails the calibration guard: ECE 0.0821 at full depth and 0.0804 at its conformal thresholds, against 0.08. It failed its gate; its file is published as a result (owner's decision of 15/11/2026), as s6-micro-v1, at full depth: selectable on Play and Live, marked as failed and never the default.
 
 Where the ECE comes from was analysed after the gate, as exploration ([amendment 12](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)). In distribution the model is calibrated (ECE 0.037 on validation). The largest part of the pooled error is one zero-shot NOTAM statement: 412 of its 11,000 items, false for 99.5 % of them, which s6-micro answers "true" almost every time at a confidence near 0.5, while s6-nano answers "false". Those 412 items alone weigh up to about 0.02 in the pooled ECE. The gate was not changed for that. A second version with twice the decision training is pre-registered in the same amendment, with its rules written before it runs.
+
+That second version ran on 15 and 16 November ([amendment 17](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)): 360 minutes of decision training, everything else the same. It reaches 0.553 on the bench with an ECE of 0.0588, and plays the games at s3-pico's score, so it passed the same gate; its conformal thresholds were rejected (one extra Dodge veto), so it is published at full depth as s6-micro. Because it was designed after the first version's ECE was read, and judged on the same test records, its pass is a second look at those sets, not a first one. The ECE fell most on NOTAM and English MASSIVE and rose on When2Call, where it answers `tool_call` 45 times in 2,000. On 11 of the 20 bench tasks it still gives one answer to at least 95% of the items.
 
 ## Try it
 

@@ -60,7 +60,7 @@ export interface ModelEntry {
   /** `f32`, `f16`, `q8_0` or `ternary`. */
   weight_format?: string
   /** `generic`: a decision model for free-text questions (s4, s5: the Live page), not for the games.
-   * `general`: both, the games and free-text questions (s6-nano, s6-micro-v1). `secrets`: the four
+   * `general`: both, the games and free-text questions (s6-nano, s6-micro, s6-micro-v1). `secrets`: the four
    * questions of the API-key jev only (s6-secrets-pico, its own demo). `secrets-verify`: one rule
    * candidate judged in its context (s6-secrets-verify-pico; no demo). `ear`: an audio state
    * (s6-ear, the Listen page). `forecast`: a forecaster, not a decision engine (s6-cast, the
