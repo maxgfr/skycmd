@@ -77,6 +77,7 @@ export default defineConfig({
     nav: [
       { text: 'Play', link: '/play/' },
       { text: 'Live', link: '/live/' },
+      { text: 'Router', link: '/router/' },
       { text: 'Forecast', link: '/forecast/' },
       { text: 'Tutorial', link: '/tutorial/' },
       { text: 'Bench', link: '/bench/' },

@@ -12,6 +12,7 @@ import LiveCascade from './components/LiveCascade.vue'
 import S5Results from './components/S5Results.vue'
 import ForecastView from './components/ForecastView.vue'
 import EarDemo from './components/EarDemo.vue'
+import RouterDemo from './components/RouterDemo.vue'
 import './custom.css'
 
 export default {
@@ -32,5 +33,6 @@ export default {
     app.component('S5Results', S5Results)
     app.component('ForecastView', ForecastView)
     app.component('EarDemo', EarDemo)
+    app.component('RouterDemo', RouterDemo)
   },
 } satisfies Theme
