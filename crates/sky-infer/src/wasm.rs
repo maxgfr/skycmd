@@ -268,6 +268,13 @@ impl TurnDetector {
     }
 }
 
+/// The deterministic speech-like signal of `sky_infer::audio::synth_speech` (the input of
+/// `sky-turn --bench` and of `crates/sky-web/bench/turn-bench.mjs`).
+#[wasm_bindgen(js_name = turnSynthSpeech)]
+pub fn turn_synth_speech(secs: f64, seed: u64, amp: f32) -> Vec<f32> {
+    crate::audio::synth_speech(secs, seed, amp)
+}
+
 /// Product kernels on one matrix shape, for `bench/kernels-node.mjs` (feature `wasm-bench`):
 /// runs `iters` products of `rows` x `k` activations by an `n` x `k` ternary matrix with the
 /// kernel `kind` (`f32` panels, `int8` dot products, `lut1` / `lut2` lookup tables with one / two

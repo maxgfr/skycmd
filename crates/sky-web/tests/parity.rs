@@ -182,6 +182,55 @@ fn s6_ear_random() {
     compare("s6-ear-random", got);
 }
 
+/// s6-ear v2 (docs/s6-ear2-prereg.md §4.5): the new channels (f0, voicing, energy) and the
+/// normalized window of the v2 front end, and the decisions of the golden femto model, native vs
+/// wasm32. The front end uses no libm call per hop, so its features agree bit for bit; each clip
+/// gives a checksum row of the raw hops, one of the prosody channels, one of the normalized window,
+/// then the stream's and the whole clip's probabilities.
+#[test]
+fn s6_ear2_turn() {
+    use sky_infer::audio::{
+        normalize_window, synth_speech, FeatureStream, TurnFrontEnd, CH_ENERGY, CH_F0, CH_VOICING,
+        TURN_CHANNELS,
+    };
+    let mut m = sky_infer::turn::TurnModel::from_bytes(include_bytes!(
+        "../../sky-infer/tests/golden/turn-ternary.gguf"
+    ))
+    .expect("model loads");
+    m.prepare_compute(sky_infer::TernaryCompute::Auto);
+    let mut fe = TurnFrontEnd::new();
+    let weighted = |v: &[f32]| -> f64 {
+        v.iter()
+            .enumerate()
+            .map(|(i, &x)| x as f64 * (1.0 + (i % 7) as f64))
+            .sum::<f64>()
+    };
+    let mut got: Vec<Vec<f64>> = Vec::new();
+    for (secs, seed, amp) in [(0.5f64, 1u64, 1.0f32), (2.0, 2, 0.6), (5.0, 3, 0.9)] {
+        let pcm = synth_speech(secs, seed, amp);
+        let (h, n) = fe.hops(&pcm, 400);
+        let prosody: Vec<f32> = h
+            .as_chunks::<TURN_CHANNELS>()
+            .0
+            .iter()
+            .flat_map(|r| [r[CH_F0], r[CH_VOICING], r[CH_ENERGY]])
+            .collect();
+        let (x, t) = normalize_window(&h, n, 4);
+        // checksums: a value of magnitude above 1, compared to 1e-12 relative
+        got.push(vec![1e3 + weighted(&h), n as f64 + 2.0]);
+        got.push(vec![1e3 + weighted(&prosody)]);
+        got.push(vec![1e3 + weighted(&x), t as f64 + 2.0]);
+        let mut s = FeatureStream::new(400);
+        for c in pcm.chunks(333) {
+            s.push(c);
+        }
+        let a = m.decide_hops(&s.hops(), s.len()).expect("decision");
+        let b = m.decide_pcm(&mut fe, &pcm).expect("decision");
+        got.push(vec![a.prob as f64, b.prob as f64]);
+    }
+    compare("s6-ear2-turn", got);
+}
+
 /// `got` against (or, with `SKY_PARITY_UPDATE=1` natively, into) `expected.json[name]`.
 fn compare(name: &str, got: Vec<Vec<f64>>) {
     #[cfg(not(target_arch = "wasm32"))]

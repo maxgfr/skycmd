@@ -9,6 +9,10 @@
 // s6-ear dumps (`sky-eval --dump` on an audio model) carry a `wav` path per row: those rows go
 // through `Engine.decideAudio` on the clip's samples (16-bit PCM WAV at 16 kHz).
 //
+// `--turn` (s6-ear v2): the dump is `sky-turn <model> --records ... --out dump.jsonl` and each
+// clip goes through `TurnDetector.probEndPcm`; `--pkg <dir>` loads a `wasm-pack --target nodejs`
+// build of sky-web instead of the site's module.
+//
 // Prints one JSON line: {n, max_abs_diff, argmax_agree, median_wasm_us}. Exit status 1 when a
 // gap exceeds 1e-4 or an argmax differs.
 //
@@ -20,7 +24,8 @@
 // tool list cached" latency). The line adds {median_first_us, median_cached_us, static_hits,
 // state_hits}; median_wasm_us is the cached median.
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -30,24 +35,58 @@ const args = process.argv.slice(2)
 let n = 20
 let relaxed = false
 let router = false
+let turn = false
+let nodePkg
 const files = []
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--n') n = Number(args[++i])
   else if (args[i] === '--relaxed') relaxed = true
   else if (args[i] === '--router') router = true
+  else if (args[i] === '--turn') turn = true
+  else if (args[i] === '--pkg') nodePkg = args[++i]
   else files.push(args[i])
 }
 if (files.length !== 2) {
-  console.error('usage: parity-node.mjs model.gguf dump.jsonl [--n 20] [--relaxed] [--router]')
+  console.error('usage: parity-node.mjs model.gguf dump.jsonl [--n 20] [--relaxed] [--router] [--turn] [--pkg <nodejs pkg>]')
   process.exit(2)
 }
 const [modelPath, dumpPath] = files
 
-const mod = await import(join(pkg, 'sky_web.js'))
-await mod.default({ module_or_path: readFileSync(join(pkg, relaxed ? 'sky_web_relaxed_bg.wasm' : 'sky_web_bg.wasm')) })
-const engine = new mod.Engine(new Uint8Array(readFileSync(modelPath)))
+// `--pkg` loads a `wasm-pack --target nodejs` build of sky-web instead of the site's module
+let mod
+if (nodePkg) {
+  mod = createRequire(import.meta.url)(resolve(nodePkg, 'sky_web.js'))
+} else {
+  mod = await import(join(pkg, 'sky_web.js'))
+  await mod.default({ module_or_path: readFileSync(join(pkg, relaxed ? 'sky_web_relaxed_bg.wasm' : 'sky_web_bg.wasm')) })
+}
 
 const rows = readFileSync(dumpPath, 'utf8').split('\n').filter(Boolean).slice(0, n).map((l) => JSON.parse(l))
+
+// s6-ear v2 (docs/s6-ear2-prereg.md §7): rows of `sky-turn <model> --records ... --out dump.jsonl`
+// ({id, wav, prob}); each clip goes through `TurnDetector.probEndPcm` (its last 4 s) and must give
+// the native probability within 1e-4 and the same decision at tau50.
+if (turn) {
+  const det = new mod.TurnDetector(new Uint8Array(readFileSync(modelPath)))
+  const tau = det.tau50()
+  let maxDiff = 0
+  let same = 0
+  const us = []
+  const used = rows.filter((r) => Number.isFinite(r.prob))
+  for (const r of used) {
+    const x = readWav(r.wav)
+    const t0 = performance.now()
+    const p = det.probEndPcm(x)
+    us.push((performance.now() - t0) * 1000)
+    maxDiff = Math.max(maxDiff, Math.abs(p - r.prob))
+    same += (p >= tau) === (r.prob >= tau) ? 1 : 0
+  }
+  us.sort((a, b) => a - b)
+  const out = { mode: 'turn', n: used.length, max_abs_diff: maxDiff, same_decision: same, tau50: tau, median_wasm_us: us[Math.floor(us.length / 2)] }
+  console.log(JSON.stringify(out))
+  process.exit(maxDiff <= 1e-4 && same === used.length && used.length > 0 ? 0 : 1)
+}
+const engine = new mod.Engine(new Uint8Array(readFileSync(modelPath)))
 let maxDiff = 0
 let agree = 0
 const us = []
