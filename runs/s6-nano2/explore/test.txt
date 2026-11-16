@@ -1,0 +1,84 @@
+== t_tools (n 2000)
+  bm25                         0.8500
+  minilm-cos                   0.8840
+  model                        0.8395
+  potion-cos                   0.6675
+  potion-cos-4bit              0.6665
+  model+bm25                   fused 0.8780 | agree on 0.8275, accuracy there 0.9384 | disagree 345: first right 126, second right 147, neither 72
+  model+potion-cos-4bit        fused 0.8885 | agree on 0.6185, accuracy there 0.9588 | disagree 763: first right 493, second right 147, neither 123
+  bm25+potion-cos-4bit         fused 0.8475 | agree on 0.6820, accuracy there 0.9164 | disagree 636: first right 450, second right 83, neither 103
+  bm25+potion-cos              fused 0.8515 | agree on 0.6830, accuracy there 0.9143 | disagree 634: first right 451, second right 86, neither 97
+  bm25+minilm-cos              fused 0.9165 | agree on 0.8270, accuracy there 0.9565 | disagree 346: first right 118, second right 186, neither 42
+  model+minilm-cos             fused 0.9295 | agree on 0.7905, accuracy there 0.9753 | disagree 419: first right 137, second right 226, neither 56
+== t_tools_masked (n 2000)
+  bm25                         0.8445
+  minilm-cos                   0.8845
+  model                        0.1050
+  potion-cos                   0.7015
+  potion-cos-4bit              0.7035
+  model+bm25                   fused 0.4330 | agree on 0.1060, accuracy there 0.8774 | disagree 1788: first right 24, second right 1503, neither 261
+  model+potion-cos-4bit        fused 0.2990 | agree on 0.1160, accuracy there 0.7241 | disagree 1768: first right 42, second right 1239, neither 487
+  bm25+potion-cos-4bit         fused 0.8440 | agree on 0.7120, accuracy there 0.9235 | disagree 576: first right 374, second right 92, neither 110
+  bm25+potion-cos              fused 0.8470 | agree on 0.7120, accuracy there 0.9221 | disagree 576: first right 376, second right 90, neither 110
+  bm25+minilm-cos              fused 0.9070 | agree on 0.8260, accuracy there 0.9528 | disagree 348: first right 115, second right 195, neither 38
+  model+minilm-cos             fused 0.5325 | agree on 0.1045, accuracy there 0.9234 | disagree 1791: first right 17, second right 1576, neither 198
+== t_metatool (n 2000)
+  bm25                         0.4525
+  minilm-cos                   0.6610
+  model                        0.3260
+  potion-cos                   0.5245
+  potion-cos-4bit              0.5270
+  model+bm25                   fused 0.4380 | agree on 0.4425, accuracy there 0.5774 | disagree 1115: first right 141, second right 394, neither 580
+  model+potion-cos-4bit        fused 0.5290 | agree on 0.3140, accuracy there 0.7261 | disagree 1372: first right 196, second right 598, neither 578
+  bm25+potion-cos-4bit         fused 0.5480 | agree on 0.4535, accuracy there 0.6814 | disagree 1093: first right 287, second right 436, neither 370
+  bm25+potion-cos              fused 0.5445 | agree on 0.4725, accuracy there 0.6614 | disagree 1055: first right 280, second right 424, neither 351
+  bm25+minilm-cos              fused 0.6450 | agree on 0.5125, accuracy there 0.7161 | disagree 975: first right 171, second right 588, neither 216
+  model+minilm-cos             fused 0.6355 | agree on 0.3405, accuracy there 0.7783 | disagree 1319: first right 122, second right 792, neither 405
+== t_clinc (n 2000)
+  bm25                         0.4775
+  minilm-cos                   0.8605
+  model                        0.3980
+  potion-cos                   0.7740
+  potion-cos-4bit              0.7800
+  model+bm25                   fused 0.6100 | agree on 0.2410, accuracy there 0.8714 | disagree 1518: first right 376, second right 535, neither 607
+  model+potion-cos-4bit        fused 0.7935 | agree on 0.3660, accuracy there 0.9467 | disagree 1268: first right 103, second right 867, neither 298
+  bm25+potion-cos-4bit         fused 0.7515 | agree on 0.5380, accuracy there 0.7853 | disagree 924: first right 110, second right 715, neither 99
+  bm25+potion-cos              fused 0.7495 | agree on 0.5565, accuracy there 0.7664 | disagree 887: first right 102, second right 695, neither 90
+  bm25+minilm-cos              fused 0.8180 | agree on 0.5540, accuracy there 0.8267 | disagree 892: first right 39, second right 805, neither 48
+  model+minilm-cos             fused 0.8810 | agree on 0.3745, accuracy there 0.9760 | disagree 1251: first right 65, second right 990, neither 196
+== t_bfcl (n 440)
+  bm25                         0.8295
+  minilm-cos                   0.7136
+  model                        0.7205
+  potion-cos                   0.7250
+  potion-cos-4bit              0.7205
+  model+bm25                   fused 0.8182 | agree on 0.7068, accuracy there 0.9003 | disagree 129: first right 37, second right 85, neither 7
+  model+potion-cos-4bit        fused 0.7659 | agree on 0.6795, accuracy there 0.8328 | disagree 141: first right 68, second right 68, neither 5
+  bm25+potion-cos-4bit         fused 0.8182 | agree on 0.5909, accuracy there 0.9769 | disagree 180: first right 111, second right 63, neither 6
+  bm25+potion-cos              fused 0.8205 | agree on 0.5977, accuracy there 0.9772 | disagree 177: first right 108, second right 62, neither 7
+  bm25+minilm-cos              fused 0.8114 | agree on 0.5818, accuracy there 0.9766 | disagree 184: first right 115, second right 64, neither 5
+  model+minilm-cos             fused 0.7636 | agree on 0.6932, accuracy there 0.8197 | disagree 135: first right 67, second right 64, neither 4
+== t_when2call (n 1863)
+  bm25                         0.4895
+  minilm-cos                   0.6720
+  model                        0.5153
+  potion-cos                   0.5722
+  potion-cos-4bit              0.5658
+  model+bm25                   fused 0.5470 | agree on 0.6323, accuracy there 0.5569 | disagree 685: first right 304, second right 256, neither 125
+  model+potion-cos-4bit        fused 0.6280 | agree on 0.4820, accuracy there 0.6904 | disagree 965: first right 340, second right 434, neither 191
+  bm25+potion-cos-4bit         fused 0.6055 | agree on 0.4707, accuracy there 0.6534 | disagree 986: first right 339, second right 481, neither 166
+  bm25+potion-cos              fused 0.6103 | agree on 0.4858, accuracy there 0.6497 | disagree 958: first right 324, second right 478, neither 156
+  bm25+minilm-cos              fused 0.6667 | agree on 0.4321, accuracy there 0.7391 | disagree 1058: first right 317, second right 657, neither 84
+  model+minilm-cos             fused 0.6812 | agree on 0.4788, accuracy there 0.7590 | disagree 971: first right 283, second right 575, neither 113
+== t_massive (n 1657)
+  bm25                         0.3343
+  minilm-cos                   0.5836
+  model                        0.3645
+  potion-cos                   0.4762
+  potion-cos-4bit              0.4762
+  model+bm25                   fused 0.4713 | agree on 0.1255, accuracy there 0.8846 | disagree 1449: first right 420, second right 370, neither 659
+  model+potion-cos-4bit        fused 0.5570 | agree on 0.2106, accuracy there 0.8997 | disagree 1308: first right 290, second right 475, neither 543
+  bm25+potion-cos-4bit         fused 0.4424 | agree on 0.6578, accuracy there 0.3872 | disagree 567: first right 132, second right 367, neither 68
+  bm25+potion-cos              fused 0.4393 | agree on 0.6717, accuracy there 0.3854 | disagree 544: first right 125, second right 360, neither 59
+  bm25+minilm-cos              fused 0.5208 | agree on 0.6457, accuracy there 0.4570 | disagree 587: first right 65, second right 478, neither 44
+  model+minilm-cos             fused 0.6626 | agree on 0.2607, accuracy there 0.9282 | disagree 1225: first right 203, second right 566, neither 456

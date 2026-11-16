@@ -1,0 +1,25 @@
+{
+  "model": "runs/s6-nano2/full-depth.gguf",
+  "n_params": 5587201,
+  "split": "val",
+  "sources": {
+    "all": {
+      "n": 1144,
+      "accuracy": 0.833916083916084,
+      "nll": 0.47485044772242013,
+      "ece": 0.027244269053314948,
+      "mean_layers": 6.0,
+      "early_exit_rate": 0.0,
+      "median_us": 25323.667
+    },
+    "v-tools": {
+      "n": 1144,
+      "accuracy": 0.833916083916084,
+      "nll": 0.47485044772242013,
+      "ece": 0.027244269053314948,
+      "mean_layers": 6.0,
+      "early_exit_rate": 0.0,
+      "median_us": 25323.667
+    }
+  }
+}

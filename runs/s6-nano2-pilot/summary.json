@@ -1,0 +1,16 @@
+{
+ "nano": 0.5777972027972028,
+ "micro": 0.638986013986014,
+ "potion_cos": 0.7255244755244755,
+ "size": "micro",
+ "chosen_accuracy": 0.638986013986014,
+ "abort_bar": 0.5755244755244755,
+ "abort": false,
+ "rule": "micro if its accuracy >= nano's + 0.04; abort if the chosen pilot's accuracy < potion-cos - 0.15",
+ "inputs": {
+  "nano": "runs/s6-nano2-pilot/nano/v_tools.dump.jsonl",
+  "micro": "runs/s6-nano2-pilot/micro/v_tools.dump.jsonl",
+  "potion": "/Users/maxime/Documents/Code/skycmd-data/s6-route/eval/val/potion-cos/v_tools.jsonl"
+ },
+ "slates_sha256": "fa3e27a73229973e42bd131f61d471d362d936c416d8fc1119561f19c6eb6446"
+}

@@ -1,0 +1,37 @@
+{
+  "model": "/Users/maxime/Documents/Code/skycmd-data/s6-route/eval/test/model/full-depth.gguf",
+  "n_params": 5587201,
+  "split": "test",
+  "sources": {
+    "all": {
+      "n": 200,
+      "accuracy": 0.83,
+      "nll": 0.4490841052030584,
+      "ece": 0.08760759621858596,
+      "mean_layers": 6.0,
+      "early_exit_rate": 0.0,
+      "median_us": 24142.791
+    },
+    "t-tools": {
+      "n": 200,
+      "accuracy": 0.83,
+      "nll": 0.4490841052030584,
+      "ece": 0.08760759621858596,
+      "mean_layers": 6.0,
+      "early_exit_rate": 0.0,
+      "median_us": 24142.791
+    }
+  },
+  "latency": {
+    "n": 200,
+    "batch": 1,
+    "default": {
+      "p50_us": 24030.7505,
+      "p95_us": 48781.608649999995
+    },
+    "no_cache": {
+      "p50_us": 24377.186999999998,
+      "p95_us": 47898.147899999974
+    }
+  }
+}
