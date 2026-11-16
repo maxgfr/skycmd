@@ -240,7 +240,7 @@ $D augment-paraphrases                  # -> data/decisions/paraphrased.jsonl
 
 ## Status
 
-On the build machine, `paraphrase-questions` wrote 1,999 paraphrase items in 52 calls (`data/teacher/paraphrase.log`), and `drone-orders` holds 3,000 orders after dropping 51 invalid ones in its last run (`data/teacher/orders.log`). `data/STATS.md` (written by `sky-data stats`) counts 3,000 `glm_orders` records and 40,000 `paraphrased` records in `data/decisions` (`DATA_LICENSES.md` gives the same counts: the paraphrases cover 932 distinct instructions). The training scripts read every file in `data/decisions`, so a run started after these two steps trains on them. Their effect on accuracy was not measured on its own. `DATA_LICENSES.md` notes that teacher-generated data is subject to the provider's terms of service.
+On the build machine, `paraphrase-questions` wrote 1,999 paraphrase items in 52 calls (`data/teacher/paraphrase.log`), and `drone-orders` holds 3,000 orders after dropping 51 invalid ones in its last run (`data/teacher/orders.log`). `data/STATS.md` (written by `sky-data stats`) counts 3,000 `glm_orders` records and 40,000 `paraphrased` records in `data/decisions` (`DATA_LICENSES.md` gives the same counts: the paraphrases cover 932 distinct instructions). The training scripts read every file in `data/decisions`, so a run started after these two steps trains on them. Their effect on accuracy was not measured on its own. `DATA_LICENSES.md` names the model that wrote this data and its licence.
 
 ## Next
 

@@ -41,7 +41,7 @@ The second version, [s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano)
 
 Its main idea comes from the project's best result, a secrets detector where rules propose candidates and the model judges them. The principle: whatever a cheap algorithm can compute, compute it and hand it to the model. Here, that algorithm is BM25. BM25 is a classic search score: it measures the words a request shares with each tool's description, giving more weight to rare words. It learns nothing and weighs nothing. Each tool's BM25 score and rank were written into the model's input.
 
-Training took 120 "working minutes" on the M5, about two hours of GPU time spread over a morning because of the throttling: 20,504 steps, on about 190,000 examples built from public tool-calling datasets. A larger model served as a teacher, only to clean the training labels (4,174 calls).
+Training took 120 "working minutes" on the M5, about two hours of GPU time spread over a morning because of the throttling: 20,504 steps, on about 190,000 examples built from public tool-calling datasets. A larger open-weight model (GLM-5.3-Flash, MIT licence) served as a teacher, only to clean the training labels (4,174 calls).
 
 The gate compared the model with a static embedding, [potion-base-2M](https://huggingface.co/minishlab/potion-base-2M). An embedding turns a text into a list of numbers, so that texts with close meanings get close lists; you then pick the tool whose description is closest to the request. "Static" means each word has a fixed list, which makes the whole thing very light.
 

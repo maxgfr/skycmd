@@ -172,12 +172,12 @@ Looking back with the s5 experiment done, the failure has six causes. Each one i
 
 ### Why s5 uses no GLM output
 
-The provider that serves the GLM models used by s1 to s3 forbids, in its terms of use, using model outputs to develop or train models. Its terms also require generated content to be marked as AI-generated. s5 is a trained model, so no GLM output enters it anywhere: training, validation, calibration, thresholds and published sets are all free of it. Its labels come from:
+When s5 was designed, the project read the terms of use of the hosted endpoint that served the GLM models of s1 to s3 as forbidding the use of model outputs to develop or train models, and as requiring generated content to be marked as AI-generated. s5 was therefore built with no GLM output anywhere: training, validation, calibration, thresholds and published sets are all free of it, and that is still true. Since s6 the teacher is another model, GLM-5.3-Flash, whose weights are open under the MIT licence; the owner's position is that the outputs of an open-weight MIT model are free to use as training labels and to publish, marked as AI-generated ([`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)). The labels of s5 come from:
 
 - the gold labels of permissive datasets;
 - Apache-2.0 teachers run locally;
 - code generators.
 
-The `glm_orders` and `paraphrased` files of the earlier models are flagged in `DATA_LICENSES.md`.
+The `glm_orders` and `paraphrased` files of the earlier models, and the model that wrote them, are described in `DATA_LICENSES.md`.
 
 [Chapter 23](/tutorial/23-s5-lite) starts from a pretrained encoder, as point 1 of "Next" suggested. It also fixes every claim in advance.

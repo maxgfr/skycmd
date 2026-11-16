@@ -30,10 +30,13 @@
 
 ## Synthetic data and labels
 
-- **Every generated example, label, paraphrase or teacher output that enters a training,
-  validation or test set comes from an open-weight model whose licence allows that use**: today
-  GLM-5.3-flash, through `sky-data teacher` (rules in `docs/s6-gen-prereg.md`, amendments 1 and 3).
-  Never from a proprietary model or API whose terms restrict training on its outputs.
+- **Every example, label, paraphrase or teacher output that the project generates for a
+  training, validation or test set comes from an open-weight model whose licence allows that
+  use**: today GLM-5.3-Flash (MIT), through `sky-data teacher` (rules in `docs/s6-gen-prereg.md`,
+  amendments 1 and 3). Never from a proprietary model, nor from a model whose licence is not a
+  permissive open-weight one (check its licence on the Hub before the first call).
+- Public datasets are another matter: each is used under its own licence, and `DATA_LICENSES.md`
+  says so when an upstream set was itself written by a model.
 - Each generated source is listed in `DATA_LICENSES.md` with its model, its licence and its role.
 - Text written for a demo or a test fixture (presets, edge cases) is not training data and never
   enters a data set.
