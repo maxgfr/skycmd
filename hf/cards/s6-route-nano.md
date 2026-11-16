@@ -213,8 +213,10 @@ utterances were read in s6-nano's evaluation and are reported only. The clusteri
 
 **Read after the gate, not a result.** On the already-read test, with nothing fitted, the
 equal-weight geometric mean of this model's probabilities and potion-base-2M's (4 bits) reaches
-0.8885 on T-tools, and 0.5290 on MetaTool and 0.7935 on CLINC150. These are hypotheses for a later
-pre-registration on fresh slates (the result block of the pre-registration).
+0.8885 on T-tools, and 0.5290 on MetaTool and 0.7935 on CLINC150. These are hypotheses, not
+results. That fusion is pre-registered as s6-nano v3
+([`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md)),
+to be read on fresh slates; it has not been read yet.
 
 ## Files
 
