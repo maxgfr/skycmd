@@ -3,7 +3,6 @@ import type { Theme } from 'vitepress'
 import { h } from 'vue'
 import HeroGame from './components/HeroGame.vue'
 import LiveStats from './components/LiveStats.vue'
-import FeatureCards from './components/FeatureCards.vue'
 import PlayGame from './components/PlayGame.vue'
 import BenchView from './components/BenchView.vue'
 import LiveDecide from './components/LiveDecide.vue'
@@ -24,7 +23,6 @@ export default {
     }),
   enhanceApp({ app }) {
     app.component('LiveStats', LiveStats)
-    app.component('FeatureCards', FeatureCards)
     app.component('PlayGame', PlayGame)
     app.component('BenchView', BenchView)
     app.component('LiveDecide', LiveDecide)

@@ -35,51 +35,101 @@
     margin: 0 !important;
   }
 }
-
-.home-section {
-  max-width: 1152px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-@media (min-width: 640px) {
-  .home-section {
-    padding: 0 48px;
+/* On narrow screens the default theme puts the image first, pulled up under the nav and over the
+   name: put the words first, so the first screen says what skycmd is, and the live game after. */
+@media (max-width: 959px) {
+  .VPHero .image {
+    order: 3;
+    margin: 40px 0 0 !important;
   }
 }
 
-.home-s6 {
-  margin-top: 24px;
-  padding: 14px 18px;
-  border: 1px solid var(--vp-c-divider);
-  border-left: 3px solid var(--vp-c-brand-1);
-  border-radius: 10px;
-  background: var(--vp-c-bg-soft);
+
+/* Home page, below the hero: the live counters, then four short blocks. The home container of
+   VitePress already pads the sides. */
+.home-section {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding-bottom: 32px;
+}
+.vp-doc .home-block h2 {
+  margin-top: 56px;
+}
+.vp-doc .home-lead {
+  max-width: 68ch;
+  margin: 8px 0 0;
+  color: var(--vp-c-text-2);
+}
+.vp-doc .home-more {
+  margin: 16px 0 0;
   font-size: 15px;
-  line-height: 1.6;
+  font-weight: 600;
 }
-.home-s6 p {
-  margin: 0;
-}
-.home-s6 code {
-  font-size: 13px;
+.vp-doc .home-more a {
+  text-underline-offset: 3px;
 }
 
-.links-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
+/* Three plain facts on how the project works. */
+.vp-doc .home-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 0 32px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
 }
-.links-row a {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--vp-c-divider);
-  font-size: 14px;
-  font-weight: 600;
+.vp-doc .home-facts li {
+  margin: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+.vp-doc .home-facts strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 16px;
+  color: var(--vp-c-text-1);
+}
+
+/* Labelled entry points: a name, then what is behind it. */
+.vp-doc .home-entries {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 0 32px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-doc .home-entries li {
+  margin: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--vp-c-divider);
+}
+.vp-doc .home-entries li > a {
+  font-size: 17px;
+  font-weight: 650;
   text-decoration: none;
 }
-.links-row a:hover {
-  border-color: var(--vp-c-brand-1);
+.vp-doc .home-entries li > a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vp-doc .home-entries span {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--vp-c-text-2);
+}
+
+/* Visible keyboard focus on every link and button the theme leaves without one. */
+.vp-doc a:focus-visible,
+.VPHero .VPButton:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Figures in articles: an inline SVG that follows the theme, with its caption below. */

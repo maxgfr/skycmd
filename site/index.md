@@ -5,82 +5,79 @@ titleTemplate: Tiny decision models in the browser
 
 hero:
   name: skycmd
-  text: Tiny typed decision models that play live
-  tagline: "Typed questions in, calibrated probabilities out, in one forward pass. s3-pico, 251 KB, plays all four games at the oracle's level in about 50 µs per frame in WASM. s5-lite, 20.7 MB, answers questions you write yourself, and option order or key names cannot change its answers by construction. Everything is Rust, from training to the browser."
+  text: Tiny decision models in your browser
+  tagline: "Model files from 143 KB to 20.7 MB, built on one MacBook and run on your device through WebAssembly. Since s5, every experiment is pre-registered before training, and every result is published, failures included."
   actions:
     - theme: brand
-      text: Play
+      text: See the models
+      link: /models/
+    - theme: alt
+      text: Play a game
       link: /play/
-    - theme: brand
-      text: Live
-      link: /live/
-    - theme: alt
-      text: Forecast
-      link: /forecast/
-    - theme: alt
-      text: What we bring
-      link: /novelty/
     - theme: alt
       text: Results
       link: /results/
-    - theme: alt
-      text: Articles
-      link: /articles/
-    - theme: alt
-      text: Install
-      link: /install/
-    - theme: alt
-      text: Tutorial
-      link: /tutorial/
-    - theme: alt
-      text: Bench
-      link: /bench/
-    - theme: alt
-      text: GitHub
-      link: https://github.com/maxgfr/skycmd
 ---
+
+<script setup>
+import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
+</script>
 
 <div class="home-section">
 
 <LiveStats />
 
-<FeatureCards />
+<section class="home-block" aria-labelledby="works-today">
 
-<div class="home-s6">
+<h2 id="works-today">What works today</h2>
 
-**For researchers.** What is new here, the measurement behind each claim, failures included, and a demo for each, in one table: [What we bring, at a glance](./novelty/#at-a-glance). Every gate was fixed before training and every amendment is dated ([Results](./results/)); the methods and data are credited with links on [Sources](./sources/).
+<p class="home-lead">Four of the models you can use now, each with its key number and a demo on this site. Their cards say how each was judged and what to know before using it.</p>
 
-**New, November 2026: s6-nano.** One 715 KB ternary model plays the four games at the oracle's level and answers typed questions in free text: 0.480 on `typed_decisions_bench`, above the majority class (0.398) where the earlier small models stayed below it, with an ECE of 0.0479. It passed a gate fixed before training, though a constant answer per task passes that gate too: answering each question with its most common training answer scores 0.4815 ([what the gate did not measure](./results/#s6-nano-what-the-gate-did-not-measure)). The three siblings that missed theirs are reported too: s6-micro on calibration (its second version, designed after that reading, passed on the same test records: a second look), s6-ear-nano on three of four gates, and the forecaster s6-cast-pico on both of its GIFT-Eval bars ([results](./results/#s6-cast-pico-failed)). Each failed its gate; its file is published as a result (owner's decision of 15/11/2026), marked as failed wherever it is offered and never selected by default. The pilot of s6-sleep, an s6 with a memory, found the memory below a control without it, so its nano run never took place ([results](./results/#s6-sleep-stopped-by-its-pilot)). s6-route-nano, a narrower second version of s6-nano that routes a request to one of the tools a page describes, ties BM25 on tools it never saw (0.8395 against 0.8500) and takes 38.9 ms per request in WASM where its gate asked for 2 ms: it failed its gate too, and has no playground ([results](./results/#s6-route-nano-failed)). In WASM it gives the native answers to 9.5e-7 on 200 bench questions, at 436 µs per Flappy frame under Node (SIMD128 build; about 1.2x faster with relaxed SIMD, which the site loads where the browser supports it). [Try it on Live](./live/#s6-nano-the-questions-it-was-trained-for) · [Results](./results/#s6-november-2026) · [Chapter 27](./tutorial/27-s6-nano) · [What it shows](./novelty/#_8-what-s6-adds-trained-in-november-2026)
+<ModelCatalogue home />
 
-**Also new: s6-secrets-pico.** A 250 KB ternary model trained to say whether a short text exposes a secret, which service issued it and what kind of value it is. On a synthetic bench of file types it never saw it beats a gitleaks-style rule scanner (secret 0.9990 against 0.977, service 0.9795 against 0.787); its line answer is weak (0.6859). **On real files it fails:** measured after publication, it flags 59.8% of clean files at p ≥ 0.9 and 49.4% at p ≥ 0.999 ([measurement](https://github.com/maxgfr/secretgate/pull/19)). It is published as the result of its pre-registration, not as a scanner. The scanner's score was written down before training; in WASM the model takes 1,420 to 1,427 µs per decision under Node. Its second version, s6-secrets-verify-pico, judges the candidates of a rule on real repositories: line F1 0.8561 against 0.7332 for the best rule scanner, +0.123 where its gate asked for +0.15, so it failed its gate, although its six other gates hold; its file is published as a result (owner's decision of 15/11/2026) ([results](./results/#s6-secrets-verify-pico-failed)). [Try it on Live](./live/#s6-secrets-pico-is-a-secret-exposed-in-this-text) · [Results](./results/#s6-secrets-pico-passed-published-at-full-depth) · [Real text](./results/#s6-secrets-real-text) · [Chapter 28](./tutorial/28-s6-secrets-pico)
+<p class="home-more"><a href="./models/">All models, with their status and what each one brings</a></p>
 
-**Also new: s6-route, a 3.7 MB tool router.** The s6-route-nano file, unchanged, fused option by option with potion-base-2M packed to 4 bits: it passed its pre-registered gate on fresh slates, with a system defined after v2's test was read. On 945 fresh requests about tools never seen in training it picks the right option on 0.8868, against 0.8169 for BM25 and 0.9048 for all-MiniLM-L6-v2 (91.6 MB), in about 31 ms per request in WASM. Without the three largest clusters of the test its advantage over BM25 holds zero in its interval, and with tool names masked it falls to 0.2497: it needs distinctive tool names. [Try it on Router](./router/) · [Results](./results/#s6-route-passed)
+</section>
 
-</div>
+<section class="home-block" aria-labelledby="how-it-works">
 
-<div class="links-row">
-  <a href="./play/">Play the games</a>
-  <a href="./play/?game=rescue">Rescue Run</a>
-  <a href="./play/?game=dodge">Obstacle Dodge</a>
-  <a href="./play/?game=doom">Doom-like</a>
-  <a href="./live/">Live: ask s5-lite anything</a>
-  <a href="./forecast/">Forecast: TinyCast and Timestral-5M in the browser</a>
-  <a href="./live/#s6-nano-the-questions-it-was-trained-for">s6-nano: games and typed questions, 715 KB</a>
-  <a href="./live/#s6-secrets-pico-is-a-secret-exposed-in-this-text">s6-secrets-pico: secrets on its bench, not a scanner, 250 KB</a>
-  <a href="./results/">s6 and s5 results, failures included</a>
-  <a href="./novelty/#at-a-glance">What is new, with its evidence</a>
-  <a href="./sources/">Sources: papers, data and credits</a>
-  <a href="https://huggingface.co/maxgfr">Models on Hugging Face</a>
-  <a href="./install/">Install</a>
-  <a href="./tutorial/01-why-tiny-decision-models">Start the tutorial</a>
-  <a href="./tutorial/27-s6-nano">s6-nano: games and questions in 715 KB</a>
-  <a href="./tutorial/28-s6-secrets-pico">s6-secrets-pico: a secret detector that fails on real files</a>
-  <a href="./tutorial/23-s5-lite">s5-lite: invariant by construction</a>
-  <a href="./tutorial/24-reproduce-s5-lite">Reproduce s5-lite</a>
-  <a href="./tutorial/21-s3-recursive-tiny">s3: 251 KB, four games</a>
-  <a href="./tutorial/19-s2-architecture">The s2 architecture</a>
-  <a href="./tutorial/20-dagger-lessons">What DAgger taught us</a>
-  <a href="./bench/">Size vs accuracy vs latency</a>
-</div>
+<h2 id="how-it-works">How the project works</h2>
+
+<ul class="home-facts">
+  <li><strong>A bar fixed before training.</strong> Since s5, each experiment has a pre-registration with its gate, committed before the model is trained; amendments are dated, and a missed gate is reported as missed.</li>
+  <li><strong>One laptop.</strong> The models are trained on one Apple M5 MacBook, in Rust; s3-pico was trained from scratch in about 47 minutes.</li>
+  <li><strong>Runs in your browser.</strong> The demos run the models in WebAssembly on your device, from the files their numbers were measured on; nothing is sent to a server.</li>
+</ul>
+
+<p class="home-more"><a href="./novelty/">What we bring: every claim, with its measurement and its evidence</a></p>
+
+</section>
+
+<section class="home-block" aria-labelledby="what-failed">
+
+<h2 id="what-failed">What failed, and what it taught</h2>
+
+<p class="home-lead">Most experiments here missed their gate. Each failure is published with its numbers, and the next version starts from what it showed:</p>
+
+<ModelCatalogue lessons />
+
+<p class="home-more"><a href="./models/#results">Every failed gate and its lesson</a> · <a href="./articles/">Articles: two of these stories told in full</a></p>
+
+</section>
+
+<section class="home-block" aria-labelledby="where-to-go">
+
+<h2 id="where-to-go">Where to go</h2>
+
+<ul class="home-entries">
+  <li><a href="./models/">Models</a><span>Every model, its status, its size and where to try it.</span></li>
+  <li><a href="./play/">Demos</a><span><a href="./play/">Play</a> four games, ask your own questions on <a href="./live/">Live</a>, pick a tool on <a href="./router/">Router</a>, forecast a series on <a href="./forecast/">Forecast</a>, test audio on <a href="./ear/">Listen</a>.</span></li>
+  <li><a href="./results/">Results</a><span>Every gate with its numbers, failures included, and the <a href="./bench/">Bench</a> of sizes and latencies.</span></li>
+  <li><a href="./tutorial/">Tutorial</a><span>28 chapters: setup, data, training, export to WebAssembly, and the story of each model.</span></li>
+  <li><a href="./install/">Install</a><span>The files, and the engine for the browser, Node, Python, the command line and an HTTP server.</span></li>
+  <li><a href="https://github.com/maxgfr/skycmd">GitHub</a><span>The code, the pre-registrations and the result files.</span></li>
+</ul>
+
+</section>
 
 </div>
