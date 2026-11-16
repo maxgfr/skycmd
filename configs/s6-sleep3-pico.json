@@ -1,0 +1,32 @@
+{
+  "name": "s6-sleep3-pico",
+  "vocab_size": 1024,
+  "hidden_size": 96,
+  "intermediate_size": 192,
+  "state_layers": 1,
+  "static_layers": 1,
+  "fusion_layers": 2,
+  "exits": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "head_count": 1,
+  "fuse_numbers": true,
+  "state_loops": 4,
+  "max_state_tokens": 64,
+  "max_head_tokens": 96,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "exit_threshold": [
+    0.9,
+    0.9,
+    0.9
+  ],
+  "temperature": {},
+  "memory": true,
+  "memory_qk": "shared",
+  "memory_value": "frame",
+  "memory_aux": true
+}

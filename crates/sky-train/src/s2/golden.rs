@@ -139,7 +139,13 @@ pub fn golden_params(cfg: &S2Config, seed: u64) -> Result<ParamMap> {
         let (k, next) = random::split(&key, 2)?;
         key = next;
         let n = random::normal::<f32>(&shape[..], 0.0, 1.0, &k)?;
-        let a = if name.ends_with(".bias") {
+        let mem_gate = name.starts_with("mem.")
+            && (name.ends_with(".alpha.weight") || name.ends_with(".beta.weight"));
+        let a = if mem_gate {
+            // The gates of a memory read the raw block output: small weights keep them away
+            // from 0 and 1, so the memory both keeps and writes.
+            n.multiply(Array::from_f32(0.02))?
+        } else if name.ends_with(".bias") {
             n.multiply(Array::from_f32(0.1))?
         } else if name.contains("norm") {
             n.multiply(Array::from_f32(0.2))?
@@ -301,6 +307,7 @@ pub fn golden_with(
     let mut files = Vec::new();
     let mut outputs: Vec<Vec<Value>> = vec![Vec::new(); 2];
     let mut seq_out: Vec<Vec<Value>> = vec![Vec::new(); 2];
+    let mut mem_out: Vec<Vec<Value>> = vec![Vec::new(); 2];
     for (fi, format) in [WeightFormat::F32, WeightFormat::Ternary]
         .into_iter()
         .enumerate()
@@ -318,6 +325,11 @@ pub fn golden_with(
         if gcfg.temporal_carry {
             for s in seq_cases() {
                 seq_out[fi].push(run_sequence(&p, &gcfg, &tok, &s)?);
+            }
+        }
+        if gcfg.memory {
+            for s in mem_cases() {
+                mem_out[fi].push(run_memory_sequence(&p, &gcfg, &tok, &s)?);
             }
         }
         files.push(json!({"format": format.name(), "path": file, "bytes": bytes.len()}));
@@ -349,6 +361,14 @@ pub fn golden_with(
     }
     if cfg.temporal_carry {
         notes.push("temporal_carry (SPEC-S3 7): `sequences` are streams of frames answered in order with one carry buffer per stream. A frame is warm when a previous frame exists and its state token ids equal the previous frame's (else cold, carry term 0). Warm start: x0 = embed(state) + carry_gate.weight * LayerNorm(h_prev; carry_norm.weight, no bias, eps layer_norm_epsilon). h_prev = the previous frame's raw hidden states (before the exit norm) after the last block application that frame ran, i.e. exits[exit] applications where `exit` is that frame's early-exit answer (carry_source_layers). Each frame lists `warm`, every exit's logits/probs (computed for checking; an engine may stop early), the early-exit answer and the layers of the latent it hands to the next frame.".into());
+    }
+    if cfg.memory {
+        notes.push(format!("memory (docs/s6-sleep-prereg.md 2, docs/s6-sleep2-prereg.md 4; keys memory, memory_qk = {qk}, memory_value = {value}): one memory layer per state block, shared across loops, state S [heads][hd][hd] per layer, zero for a new stream. After every application of block l, x is kept as what the frame writes, then x <- x + merge(S q) . mem.l.out with q = l2norm per head (sqrt(sum q^2 + 1e-6)) of LN(x; mem.l.norm, no bias) . W{q}, then the exit of that application is taken. Once per frame, from the block's output at its last application at full depth (whatever the early exit): k_i = l2norm(heads(LN(x_i) . W{k})), v_i = heads(LN(x_i{xbar}) . mem.l.v){xnote}, beta_i = sigmoid(mem.l.beta . x_i), alpha = sigmoid(mean_i(mem.l.alpha . x_i) + 6), S <- alpha S + (1/n) sum_i beta_i (v_i - alpha S k_i) k_i^T over the n state tokens. Sleep: before a frame, if frames were seen since the last sleep and there are K = 8 of them or the game paused, they are replayed N - 1 times in order (each replayed frame: embed, the state encoder at full depth reading S, then the write), and dropped. memory_off: S is reset to zero before every frame (no sleep). `memory_sequences` give per sequence N (passes), memory_off, the pause flags (paused before frame t) and per frame the answers. The auxiliary head of the training (memory_aux) is not in the files.",
+            qk = cfg.memory_qk.name(), value = cfg.memory_value.name(),
+            q = if cfg.memory_qk.is_separate() { "mem.l.q" } else { "mem.l.qk" },
+            k = if cfg.memory_qk.is_separate() { "mem.l.k" } else { "mem.l.qk" },
+            xbar = if cfg.memory_value.is_token() { "" } else { " + xbar" },
+            xnote = if cfg.memory_value.is_token() { "" } else { " with xbar the mean of the x_i" }));
     }
     if let Some(es) = &cfg.ffn_es {
         let d = cfg.hidden_size;
@@ -387,6 +407,27 @@ pub fn golden_with(
             })
             .collect();
         doc["sequences"] = json!(seqs);
+    }
+    if cfg.memory {
+        let seqs: Vec<Value> = mem_cases()
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let mut v = mem_out[0][i].clone();
+                v["name"] = json!(s.name);
+                v["question"] = s.question.clone();
+                v["passes"] = json!(s.passes);
+                v["memory_off"] = json!(s.memory_off);
+                v["pauses"] = json!(s.pauses);
+                for (fi, f) in v["frames"].as_array_mut().unwrap().iter_mut().enumerate() {
+                    let t = mem_out[1][i]["frames"][fi]["expected"].clone();
+                    let e = f["expected"].clone();
+                    f["expected"] = json!({"f32": e, "ternary": t});
+                }
+                v
+            })
+            .collect();
+        doc["memory_sequences"] = json!(seqs);
     }
     std::fs::write(
         out_dir.join(format!("{prefix}.json")),
@@ -493,6 +534,187 @@ fn run_sequence(p: &ParamMap, cfg: &S2Config, tok: &Tok, s: &SeqCase) -> Result<
         }));
         prev = Some((stream.ids.clone(), raw[e].clone()));
     }
+    let (head, _, _) = s2_texts(&DecisionRecord {
+        src: String::new(),
+        t: t.clone(),
+        ins: ins.clone(),
+        opts: opts.clone(),
+        state: String::new(),
+        target: vec![],
+        split: String::new(),
+    });
+    Ok(json!({"qtype": t, "head_text": head, "option_texts": opts, "frames": frames}))
+}
+
+struct MemCase {
+    name: &'static str,
+    question: Value,
+    /// Sleep passes `N` (1: no sleep).
+    passes: usize,
+    /// The memory is reset before every frame.
+    memory_off: bool,
+    /// `pauses[t]`: the game paused before frame `t`.
+    pauses: Vec<bool>,
+    states: Vec<&'static str>,
+}
+
+/// Streams of a model with a memory: doors shown with a colour, idle frames, asks (short states:
+/// the golden window is 24 tokens), with and without sleep, a pause, and the memory off.
+fn mem_cases() -> Vec<MemCase> {
+    let states = vec![
+        "a red n 46",
+        "idle n 3",
+        "b blue n 71",
+        "ask a n 12",
+        "c green n 5",
+        "idle n 88",
+        "ask b n 19",
+        "a yellow n 64",
+        "idle n 3",
+        "ask c n 27",
+        "ask a n 40",
+        "b red n 9",
+        "idle n 52",
+        "ask b n 33",
+    ];
+    let recall = json!({"type": "choice", "instructions": "Which colour was the asked door given?",
+        "criteria": {"wait": "nothing is asked", "red": "the red key", "green": "the green key",
+            "blue": "the blue key", "yellow": "the yellow key"}});
+    let pause_at =
+        |ts: &[usize]| -> Vec<bool> { (0..states.len()).map(|t| ts.contains(&t)).collect() };
+    vec![
+        MemCase {
+            name: "recall_awake",
+            question: recall.clone(),
+            passes: 1,
+            memory_off: false,
+            pauses: pause_at(&[]),
+            states: states.clone(),
+        },
+        MemCase {
+            name: "recall_sleep2_pause",
+            question: recall.clone(),
+            passes: 2,
+            memory_off: false,
+            pauses: pause_at(&[5]),
+            states: states.clone(),
+        },
+        MemCase {
+            name: "recall_sleep3",
+            question: recall.clone(),
+            passes: 3,
+            memory_off: false,
+            pauses: pause_at(&[]),
+            states: states.clone(),
+        },
+        MemCase {
+            name: "noul_first_exit_sleep2",
+            question: json!({"type": "noul", "instructions": "Is the asked door red?"}),
+            passes: 2,
+            memory_off: false,
+            pauses: pause_at(&[3]),
+            states: states.clone(),
+        },
+        MemCase {
+            name: "recall_memory_off",
+            question: recall,
+            passes: 2,
+            memory_off: true,
+            pauses: pause_at(&[5]),
+            states,
+        },
+    ]
+}
+
+/// Plays a stream of frames on a model with a memory, as `s2-probe` does (`s2::memory::wake`
+/// and `sleep`, every exit computed, the early-exit answer read).
+fn run_memory_sequence(p: &ParamMap, cfg: &S2Config, tok: &Tok, s: &MemCase) -> Result<Value> {
+    use crate::s2::memory::{sleep, wake, Memory, Sleep, SLEEP_EVERY};
+    let (t, ins, opts) = render(&s.question);
+    let qtype = qtype_id(&t).unwrap_or(0);
+    let k = opts.len();
+    let how = Sleep {
+        passes: s.passes,
+        every: SLEEP_EVERY,
+        full: true,
+    };
+    let mut frames = Vec::new();
+    mlx_rs::with_device(mlx_rs::Device::cpu(), || -> Result<()> {
+        let mut mem = Memory::zeros(cfg, 1)?;
+        let mut chunk: Vec<crate::s2::data::S2Batch> = Vec::new();
+        for (ti, state) in s.states.iter().enumerate() {
+            if s.memory_off {
+                mem = Memory::zeros(cfg, 1)?;
+                chunk.clear();
+            }
+            if !chunk.is_empty() && (chunk.len() >= how.every || s.pauses[ti]) {
+                let refs: Vec<&crate::s2::data::S2Batch> = chunk.iter().collect();
+                mem = sleep(p, cfg, &refs, mem, how)?;
+                chunk.clear();
+            }
+            let rec = DecisionRecord {
+                src: "golden".into(),
+                t: t.clone(),
+                ins: ins.clone(),
+                opts: opts.clone(),
+                state: (*state).into(),
+                target: vec![1.0; k],
+                split: "test".into(),
+            };
+            let (st, stream) = encode_record_cfg(tok, &rec, cfg)?;
+            let item = S2Item {
+                stat: 0,
+                state: stream.clone(),
+                qtype,
+                target: vec![1.0 / k as f32; k],
+                src: "golden".into(),
+                group: 0,
+            };
+            let b = make_batch(std::slice::from_ref(&st), &[&item], 1);
+            let (l, next) = wake(p, cfg, &b, cfg.n_exits(), &mem)?;
+            let logits = logits_per_row(&l, &[k])?;
+            mem = next;
+            mlx_rs::transforms::eval(mem.0.iter())?;
+            chunk.push(b);
+            let mut exits = Vec::new();
+            let mut chosen = None;
+            for (e, l) in logits.iter().enumerate() {
+                let temp = cfg.temperature_of(e, qtype, k);
+                let probs: Vec<f32> = softmax_t(&l[0], temp)
+                    .into_iter()
+                    .map(|x| x as f32)
+                    .collect();
+                let top = probs.iter().cloned().fold(0f32, f32::max);
+                if chosen.is_none() && (top >= cfg.exit_threshold[qtype] || e + 1 == cfg.n_exits())
+                {
+                    chosen = Some(e);
+                }
+                exits.push(json!({"exit": e, "layers": cfg.exits[e], "logits": l[0], "temperature": temp, "probs": probs}));
+            }
+            let e = chosen.unwrap_or(cfg.n_exits() - 1);
+            let norm: f32 = mem
+                .0
+                .iter()
+                .map(|a| {
+                    a.square()
+                        .and_then(|x| x.sum(None))
+                        .map(|x| x.item_exact::<f32>())
+                })
+                .collect::<std::result::Result<Vec<f32>, _>>()?
+                .iter()
+                .sum::<f32>()
+                .sqrt();
+            frames.push(json!({
+                "state": state,
+                "pause": s.pauses[ti],
+                "state_stream": {"ids": stream.ids, "values": stream.values,
+                    "has_value": (0..stream.len()).map(|i| stream.has(i) as u8).collect::<Vec<_>>()},
+                "expected": {"exits": exits, "exit": e, "layers_used": cfg.exits[e],
+                    "probs": exits[e]["probs"], "memory_norm_after": norm},
+            }));
+        }
+        Ok(())
+    })?;
     let (head, _, _) = s2_texts(&DecisionRecord {
         src: String::new(),
         t: t.clone(),
@@ -671,6 +893,83 @@ mod tests {
             }
         }
         // The cold standard cases are still there.
+        assert_eq!(doc["cases"].as_array().unwrap().len(), 7);
+    }
+
+    /// The probabilities of the early-exit answer of every frame of a memory sequence.
+    fn answers(seq: &Value, fmt: &str) -> Vec<Vec<f64>> {
+        seq["frames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| {
+                f["expected"][fmt]["probs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_f64().unwrap())
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn differ(a: &[Vec<f64>], b: &[Vec<f64>], t: usize) -> bool {
+        a[t].iter().zip(&b[t]).any(|(x, y)| (x - y).abs() > 1e-4)
+    }
+
+    #[test]
+    fn s6m_golden_memory_sequences() {
+        let _g = test_util::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../configs/s6-sleep3-pico.json");
+        let base = S2Config::load(path).unwrap();
+        assert!(base.memory && base.memory_aux);
+        golden_with(&s2_tokenizer_json(), dir.path(), 7, Some(&base), "s6m").unwrap();
+        let doc: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join("s6m.json")).unwrap())
+                .unwrap();
+        // The auxiliary head is a training head: not in the files, not in their config.
+        for f in ["s6m-f32.gguf", "s6m-ternary.gguf"] {
+            let bytes = std::fs::read(dir.path().join(f)).unwrap();
+            let g = Gguf::parse(&bytes).unwrap();
+            assert_eq!(g.get_bool("skycmd-s2.memory"), Some(true));
+            assert_eq!(g.get_str("skycmd-s2.memory_qk"), Some("shared"));
+            assert_eq!(g.get_str("skycmd-s2.memory_value"), Some("frame"));
+            assert!(g.tensors.iter().all(|t| !t.name.contains(".aux")), "{f}");
+            assert!(!config_from_gguf(&g).unwrap().memory_aux);
+            let qk = if f.contains("ternary") {
+                "mem.0.qk.tq"
+            } else {
+                "mem.0.qk.weight"
+            };
+            assert!(g.tensor(qk).is_some() && g.tensor("mem.0.beta.weight").is_some());
+        }
+        let seqs = doc["memory_sequences"].as_array().unwrap();
+        assert_eq!(seqs.len(), 5);
+        let by = |name: &str| seqs.iter().find(|s| s["name"] == name).unwrap();
+        for fmt in ["f32", "ternary"] {
+            let awake = answers(by("recall_awake"), fmt);
+            let slept = answers(by("recall_sleep2_pause"), fmt);
+            let off = answers(by("recall_memory_off"), fmt);
+            // Frame 0 reads a zero memory everywhere.
+            assert!(!differ(&awake, &off, 0) && !differ(&awake, &slept, 0));
+            // From frame 1 the memory is read; the sleep at the pause before frame 5 changes it.
+            assert!((1..awake.len()).all(|t| differ(&awake, &off, t)), "{fmt}");
+            assert!(
+                !differ(&awake, &slept, 4) && differ(&awake, &slept, 5),
+                "{fmt}"
+            );
+            // With the memory off a frame still writes; the memory is reset before the next one.
+            for f in by("recall_memory_off")["frames"].as_array().unwrap() {
+                assert!(f["expected"][fmt]["memory_norm_after"].as_f64().unwrap() > 0.0);
+            }
+            // The noul question exits at its first exit; its memory is written at full depth.
+            for f in by("noul_first_exit_sleep2")["frames"].as_array().unwrap() {
+                assert_eq!(f["expected"][fmt]["exit"], 0);
+            }
+        }
+        // The stateless cases are still there (a zero memory: the base's computation).
         assert_eq!(doc["cases"].as_array().unwrap().len(), 7);
     }
 
