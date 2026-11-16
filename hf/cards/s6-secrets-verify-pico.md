@@ -25,8 +25,10 @@ tags:
 > against **0.7332 + 0.15** for Betterleaks (+0.123): **it failed G1 on its every-repository
 > reading.** The six other gates held. The file is published so that the result can be checked
 > and run (owner's decision of 15/11/2026, amendment 9 of the pre-registration); the verdict does
-> not change, the model does not enter [secretgate](https://github.com/maxgfr/secretgate), and it
-> is not continued in this form. Numbers:
+> not change, and it is not continued in this form. Since version 1.9.0 (16/11/2026),
+> [secretgate](https://github.com/maxgfr/secretgate) offers this file as an experimental option,
+> off by default: its rules decide first and their result never changes, the verifier only adds
+> redactions in tool output, and its page says that the model failed its gate. Numbers:
 > [BENCH.md, section s6-secrets-verify-pico](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-secrets-verify-pico-s6-secrets-v2-a-verifier-of-rule-candidates-pre-registered-gate-failed)
 > and [`runs/s6-secrets2/eval-test/results.md`](https://github.com/maxgfr/skycmd/blob/main/runs/s6-secrets2/eval-test/results.md).
 >
