@@ -27,3 +27,13 @@
   every number says what it was measured on, and the limits of a result are stated as plainly as
   the result. Link to the evidence in the repository (pre-registrations in `docs/`, result files
   in `runs/`).
+
+## Synthetic data and labels
+
+- **Every generated example, label, paraphrase or teacher output that enters a training,
+  validation or test set comes from an open-weight model whose licence allows that use**: today
+  GLM-5.3-flash, through `sky-data teacher` (rules in `docs/s6-gen-prereg.md`, amendments 1 and 3).
+  Never from a proprietary model or API whose terms restrict training on its outputs.
+- Each generated source is listed in `DATA_LICENSES.md` with its model, its licence and its role.
+- Text written for a demo or a test fixture (presets, edge cases) is not training data and never
+  enters a data set.
