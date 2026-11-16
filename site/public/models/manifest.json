@@ -72,7 +72,7 @@
     "weight_format": "ternary",
     "task": "ear",
     "gate": "failed",
-    "gate_note": "It missed three of its four gates: end of turn 0.5681 against 0.8518 for Smart Turn v3.2, keywords 0.8885 against 0.90, French zero-shot keywords 0.1330 against 0.20; its control model, trained without the Mimi pretraining, did better on all four sets",
+    "gate_note": "It missed three of its four gates: end of turn 0.5681 against 0.9263 for Smart Turn v3.2, keywords 0.8885 against 0.90, French zero-shot keywords 0.1330 against 0.20; its control model, trained without the Mimi pretraining, did better on all four sets",
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear-nano-first-run-gates-failed",
     "params": 1532449,
     "bytes": 899200,

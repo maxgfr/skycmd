@@ -24,8 +24,8 @@ tags:
 
 > **Failed its pre-registered gate: published as a result, not for use.** It failed three of its
 > four gates ([`docs/s6-ear-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md)
-> §6, test split, ternary, full depth): end of turn **0.5681** against **0.8518** for Smart Turn
-> v3.2 on the same clips, 12 Speech Commands keywords **0.8885** against **0.90**, French zero-shot
+> §6, test split, ternary, full depth): end of turn **0.5681** against **0.9263** for Smart Turn
+> v3.2 on the same clips (Pipecat's report; the v1 harness read 0.8518 because it padded short clips on the wrong side), 12 Speech Commands keywords **0.8885** against **0.90**, French zero-shot
 > keywords **0.1330** against **0.20**; only English zero-shot keywords pass (0.2100, bar 0.20). Its
 > control model, trained the same way without the Mimi pretraining, did better on all four sets.
 > The file is published so that the result can be checked and run (owner's decision of 15/11/2026,
@@ -52,7 +52,7 @@ Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
 
 | gate | n | s6-ear-nano | control (no Mimi pretraining, not published) | bar | verdict |
 |---|---:|---:|---:|---:|---|
-| end of turn (`ear:turn_end`) | 31,527 | 0.5681 | 0.7647 | 0.8518 (Smart Turn v3.2 on the same clips) | **fail** |
+| end of turn (`ear:turn_end`) | 31,527 | 0.5681 | 0.7647 | 0.9263 (Smart Turn v3.2 on the same clips, Pipecat's report; the v1 harness read 0.8518) | **fail** |
 | keywords, 12 classes (`ear:keyword`) | 4,890 | 0.8885 | 0.9217 | 0.90 | **fail** |
 | zero-shot keywords, English | 1,000 | 0.2100 | 0.3020 | 0.20 (2 × chance) | pass |
 | zero-shot keywords, French | 1,000 | 0.1330 | 0.1520 | 0.20 (2 × chance) | **fail** |
@@ -71,7 +71,7 @@ Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
 
 - **Keywords:** 0.8885 on the 12 classes of Speech Commands, close to the bar of 0.90 but under
   it, and under its own control (0.9217).
-- **End of turn:** 0.5681, far under Smart Turn v3.2 (0.8518), which has 8M parameters, 5.2
+- **End of turn:** 0.5681, far under Smart Turn v3.2 (0.9263), which has 8M parameters, 5.2
   times more. Do not use it to decide when a speaker has finished.
 - **Words it never trained on:** 0.2100 in English and 0.1330 in French with 10 options, where
   chance is 0.10.

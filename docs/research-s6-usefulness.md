@@ -2,6 +2,8 @@
 
 Research date: 14 November 2026. Three load-bearing sources were opened a second time the same day and match what is written here: the GitHub post of 13 October 2026 (section 1.1), the cbx-secrets-detector-17M model card (section 1.1) and the TinyCast paper (section 5.1). Nothing in this file is a decision: experiments that follow from it get their own pre-registration. Each fact gives its source URL and the date of that source where one is known. Text marked **[Inference]** is my own reasoning, not a claim from a source. "Not verified" means I looked and could not confirm it.
 
+**Correction (16/11/2026).** Sections 0, 4.2 and 6 read as if s6-ear v1 took discrete codec tokens as its input. It did not: v1 reads 80 ms log-mel frames, and Mimi codes were only the **target of its pretraining** (`docs/SPEC-S6.md` §16). What its control shows is that this pretraining hurt (0.7647 without it against 0.5681 with it), not that log-mel input fails. The redesign that follows (log-mel plus prosody, distilled from Smart Turn) stands, for the reasons `docs/s6-ear2-study.md` gives; the sentence "the previous failure has a sourced explanation (no working system uses codec tokens)" does not.
+
 ---
 
 ## 0. Summary

@@ -51,7 +51,7 @@
     "tagline": "Failed three of its four pre-registered gates, published as a result: a 899 KB ternary model that hears the last 10 s of audio and answers typed questions about it.",
     "short_description": "Failed its gates: 899 KB audio model, a result",
     "notes": [
-      "End of turn 0.5681 against 0.8518 for Smart Turn v3.2 on the same clips (fail); 12 Speech Commands keywords 0.8885 against 0.90 (fail); zero-shot keywords 0.2100 in English (pass, bar 0.20) and 0.1330 in French (fail).",
+      "End of turn 0.5681 against 0.9263 for Smart Turn v3.2 on the same clips (fail; Pipecat's report; the v1 harness read 0.8518); 12 Speech Commands keywords 0.8885 against 0.90 (fail); zero-shot keywords 0.2100 in English (pass, bar 0.20) and 0.1330 in French (fail).",
       "Its control, trained the same way without the Mimi pretraining, is more accurate on all four sets: the pretraining did not help in this run. The control is not published.",
       "The demo answers at full depth, where the gates were read; the file keeps the exit thresholds its training run stored (choice 0.5, score 0.9, noul 0.68)."
     ]

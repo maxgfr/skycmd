@@ -214,7 +214,7 @@ These counts include the Parallax probe rows. As trained, without them: s6-nano 
 
 ## 16. s6-ear: an s6 that listens (`configs/s6-ear-nano.json`)
 
-**Trained once, gates failed.** s6-ear-nano was trained without Parallax (§4): 1,532,449 parameters. It failed three of its four gates (end of turn 0.5681 against 0.8518 for Smart Turn v3.2; Speech Commands 0.8885 against 0.90; French zero-shot keywords 0.1330 against 0.20): it failed its gate; its file is published as a result (owner's decision of 15/11/2026). Details: `BENCH.md`, section "s6-ear-nano".
+**Trained once, gates failed.** s6-ear-nano was trained without Parallax (§4): 1,532,449 parameters. It failed three of its four gates (end of turn 0.5681 against 0.9263 for Smart Turn v3.2, which is Pipecat's report on the same 31,527 clips (the v1 harness, `scripts/ear-baseline.py`, read 0.8518 because it padded short clips at the end where Smart Turn pads them at the start; corrected on 16/11/2026, the verdict does not change); Speech Commands 0.8885 against 0.90; French zero-shot keywords 0.1330 against 0.20): it failed its gate; its file is published as a result (owner's decision of 15/11/2026). Details: `BENCH.md`, section "s6-ear-nano".
 
 An s6 whose state stream is **audio** instead of text: it hears 10 s of speech and answers typed questions about it, with the same engine, the same GGUF format, the same early exits and the same WASM build as the game models. The protocol and the gates are in `docs/s6-ear-prereg.md`.
 

@@ -146,7 +146,7 @@ Every entry of `runs/all/incidents.txt`, with what was done (as that file record
 
 | model | gate | measured | verdict | file read |
 |---|---|---|---|---|
-| s6-ear-nano | end of turn ≥ Smart Turn v3.2 on the same clips | 0.5681 (bar 0.8518) | fail | `runs/s6-ear-nano/eval/gate.json` |
+| s6-ear-nano | end of turn ≥ Smart Turn v3.2 on the same clips | 0.5681 (bar 0.9263, Pipecat's report; the v1 harness read 0.8518) | fail | `runs/s6-ear-nano/eval/gate.json` |
 | | keywords (12 classes) ≥ 0.90 | 0.8885 | fail | same |
 | | zero-shot keywords en ≥ 0.20 | 0.2100 | pass | same |
 | | zero-shot keywords fr ≥ 0.20 | 0.1330 | fail | same |

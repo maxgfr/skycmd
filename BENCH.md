@@ -432,12 +432,14 @@ Test split, ternary, full depth:
 
 | gate | n | s6-ear-nano | control (no Mimi pretraining) | bar | verdict |
 |---|---:|---:|---:|---:|---|
-| end of turn (`ear:turn_end`) | 31,527 | 0.5681 | 0.7647 | 0.8518 (Smart Turn v3.2 on the same clips) | **fail** |
+| end of turn (`ear:turn_end`) | 31,527 | 0.5681 | 0.7647 | 0.9263 (Smart Turn v3.2 on the same clips, Pipecat's report; the v1 harness read 0.8518, see the note below) | **fail** |
 | keywords, 12 classes (`ear:keyword`) | 4,890 | 0.8885 | 0.9217 | 0.90 | **fail** |
 | zero-shot keywords, English | 1,000 | 0.2100 | 0.3020 | 0.20 (2 × chance) | pass |
 | zero-shot keywords, French | 1,000 | 0.1330 | 0.1520 | 0.20 (2 × chance) | **fail** |
 
 Three gates of four fail: s6-ear-nano failed its gate; its file is published as a result (owner's decision of 15/11/2026), as evaluated (`site/public/models/s6-ear-nano.gguf`, amendment 5), with the exit thresholds its run stored (choice 0.5, score 0.9, noul 0.68); its control is not published. The verdict does not change. The control, trained the same way without the Mimi pretraining, is more accurate on all four sets, so in this run the pretraining did not help. ECE over all test sources is 0.0081 at full depth. At the CRC thresholds the model uses 3.42 of its 4 passes on average (early exit on 21.1% of the questions), with the same verdicts. Smart Turn v3.2 has a precision of 0.783 and a recall of 0.971 on the end-of-turn clips; the pre-registration asks for the same two numbers for s6-ear, and the run did not compute them.
+
+**Correction of the end-of-turn bar (16/11/2026).** The table first gave 0.8518 for Smart Turn v3.2, as read by `scripts/ear-baseline.py`. That harness pads a short clip at the end; Smart Turn pads it at the start, and Pipecat reports 0.9263 for v3.2 (CPU, int8) on the same 31,527 clips. On 3,000 of them the v1 harness reads 0.8437 where the reference padding reads 0.9243 (`docs/s6-ear2-study.md`). The bar is therefore 0.9263; s6-ear-nano (0.5681) and its control (0.7647) are under both numbers, and the verdict does not change. The harness itself is fixed and checked against that reference in `docs/s6-ear2-prereg.md` §8.1.
 
 ## s6-cast-pico: probabilistic forecasting, pre-registered, gate failed
 

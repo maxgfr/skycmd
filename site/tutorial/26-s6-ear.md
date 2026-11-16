@@ -121,7 +121,7 @@ Trained in November 2026 in a throttled mode, so the budgets count working minut
 
 | gate | s6-ear-nano | control | bar | verdict |
 |---|---:|---:|---:|---|
-| end of turn (31,527 clips) | 0.5681 | 0.7647 | 0.8518, Smart Turn v3.2 | fail |
+| end of turn (31,527 clips) | 0.5681 | 0.7647 | 0.9263, Smart Turn v3.2 (Pipecat's report; the v1 harness read 0.8518) | fail |
 | Speech Commands, 12 classes | 0.8885 | 0.9217 | 0.90 | fail |
 | zero-shot keywords, English | 0.2100 | 0.3020 | 0.20 | pass |
 | zero-shot keywords, French | 0.1330 | 0.1520 | 0.20 | fail |

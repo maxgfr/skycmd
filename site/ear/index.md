@@ -11,7 +11,7 @@ outline: [2, 2]
 - which word was said?
 
 ::: danger Failed its pre-registered gate: published as a result, not for use
-The first s6-ear-nano failed three of its four pre-registered gates: end of turn 0.5681 against 0.8518 for Smart Turn v3.2, keywords 0.8885 against 0.90, French zero-shot keywords 0.1330 against 0.20; its control without the Mimi pretraining did better on all four sets. It failed its gate; its file is published as a result (owner's decision of 15/11/2026), and the demo below loads it so that the result can be heard. It answers at full depth, where the gates were read. The numbers are on the [results page](/results/#s6-ear-nano-failed).
+The first s6-ear-nano failed three of its four pre-registered gates: end of turn 0.5681 against 0.9263 for Smart Turn v3.2 (Pipecat's report; the v1 harness read 0.8518), keywords 0.8885 against 0.90, French zero-shot keywords 0.1330 against 0.20; its control without the Mimi pretraining did better on all four sets. It failed its gate; its file is published as a result (owner's decision of 15/11/2026), and the demo below loads it so that the result can be heard. It answers at full depth, where the gates were read. The numbers are on the [results page](/results/#s6-ear-nano-failed).
 :::
 
 It has 1.5M parameters, about a fifth of Smart Turn v3.2. It runs here in WebAssembly, log-mel front-end included, and the audio never leaves your browser. Below a hand-off threshold (conformal for a model that passes its gates; 0.5 for this one), it says it would hand the clip to a larger model: that is the System 1 of a voice agent ([how it works](/tutorial/26-s6-ear)).
