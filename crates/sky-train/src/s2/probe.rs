@@ -57,6 +57,12 @@ pub struct Episode {
     /// `recall`: (delay bucket, correct) of each ask.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub asks: Vec<(usize, bool)>,
+    /// `recall`: for each ask, the distinct colours its door had been shown with before it (1:
+    /// one colour, 2 or more: a door shown again with another colour), read from the states of
+    /// the episode as the training log reads them (`s2::seq::ask_splits`,
+    /// `docs/s6-sleep3-prereg.md` §4).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub shown: Vec<usize>,
 }
 
 /// The reading of one game at one number of sleep passes.
@@ -235,29 +241,53 @@ fn play_probe(game: &str, seed: u64, pol: &mut MemPolicy<'_>) -> Result<Episode>
     let q = &g.questions()[0];
     let opts = q.canonical_options();
     pol.new_episode();
+    // The state of every frame, by frame index (a frame without a decision keeps an empty one).
+    let mut states: Vec<String> = Vec::new();
     while !g.done() {
+        let frame = g.stats().steps as usize;
         if g.decision_due() {
             pol.observe(&*g);
-            let p = pol.decide(game, q.id, &g.state_text(), &opts);
+            let state = g.state_text();
+            let p = pol.decide(game, q.id, &state, &opts);
+            if states.len() <= frame {
+                states.resize(frame + 1, String::new());
+            }
+            states[frame] = state;
             g.apply(argmax(&p), false);
         } else {
             g.tick();
         }
     }
     let s = g.stats();
-    let asks = g.snapshot_json()["asks"]
+    let snapshot = g.snapshot_json();
+    let mut asks = Vec::new();
+    let mut frames = Vec::new();
+    for x in snapshot["asks"]
         .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| Some((x["bucket"].as_u64()? as usize, x["correct"].as_bool()?)))
-                .collect()
-        })
-        .unwrap_or_default();
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+    {
+        if let (Some(b), Some(c)) = (x["bucket"].as_u64(), x["correct"].as_bool()) {
+            asks.push((b as usize, c));
+            frames.push(x["frame"].as_u64().unwrap_or(0) as usize);
+        }
+    }
+    let shown = if asks.is_empty() {
+        Vec::new()
+    } else {
+        let refs: Vec<&str> = states.iter().map(String::as_str).collect();
+        let (_, per_frame) = crate::s2::seq::ask_splits(&refs);
+        frames
+            .iter()
+            .map(|&f| per_frame.get(f).copied().unwrap_or(0).max(0) as usize)
+            .collect()
+    };
     Ok(Episode {
         seed,
         score: s.score,
         max_score: s.max_score,
         asks,
+        shown,
     })
 }
 
@@ -478,6 +508,41 @@ mod tests {
                 }
                 assert_eq!(t, 8);
             }
+        });
+    }
+
+    #[test]
+    fn a_recall_episode_counts_the_colours_each_asked_door_was_shown_with() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (_d, tok) = s2_tok();
+            let mut cfg = ladder("s6-nano");
+            cfg.memory = true;
+            cfg.vocab_size = 262;
+            let p = golden_params(&cfg, 7).unwrap();
+            let mut pol = MemPolicy::new(&cfg, &p, &tok, "recall", 1).unwrap();
+            // A train-split seed (≡ 0 mod 20): a code check reads no dev or test episode.
+            let seed = 1_000_000_000;
+            let e = play_probe("recall", seed, &mut pol).unwrap();
+            assert!(!e.asks.is_empty());
+            assert_eq!(e.shown.len(), e.asks.len());
+            // Every asked door was shown before its ask.
+            assert!(e.shown.iter().all(|&n| n >= 1), "{:?}", e.shown);
+            // The same counts from the game's own plan, replayed without a model.
+            let mut g = make_game("recall", seed).unwrap();
+            let mut states = Vec::new();
+            while !g.done() {
+                states.push(g.state_text());
+                g.apply(0, false);
+            }
+            let refs: Vec<&str> = states.iter().map(String::as_str).collect();
+            let (_, shown) = crate::s2::seq::ask_splits(&refs);
+            let want: Vec<usize> = shown
+                .iter()
+                .filter(|&&n| n > 0)
+                .map(|&n| n as usize)
+                .collect();
+            assert_eq!(e.shown, want);
         });
     }
 
