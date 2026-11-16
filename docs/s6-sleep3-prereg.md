@@ -58,4 +58,22 @@ C5: two CPU runs of about an hour each at `nice -n 19`. The pilot: about 35 work
 
 ## 7. Amendments
 
-(none)
+**Amendment 1 (16/11/2026, after C5 was read and before any GPU run of v3; no dev2 seed and no test seed has been read). C5 passed on both seeds; the code of this version; where the GPU runs are launched from.**
+
+- **C5: pass.** `scripts/train-sleep3.sh c5`, two CPU runs of 600 steps at `nice -n 19`, read by `scripts/s6-sleep3-report.py` over steps 550 to 600, pooled over the asks, each step's batch before its update (`runs/s6-sleep3/checks/c5.json`, the two logs and commands next to it):
+
+  | | seed 0 | seed 1 | bar |
+  |---|---:|---:|---:|
+  | recall steps / asks read | 45 / 2,880 | 45 / 2,880 | |
+  | ask-frame cross-entropy | 0.0001 | 0.0007 | ≤ 0.30 |
+  | last-exit accuracy on ask frames | 1.0000 | 0.9997 | ≥ 0.90 |
+  | same weights, memory off: steps / asks | 11 / 704 | 11 / 704 | |
+  | same weights, memory off: cross-entropy | 2.0663 | 3.9504 | ≥ 1.30 |
+  | same weights, memory off: accuracy | 0.2386 | 0.2628 | ≤ 0.30 |
+  | auxiliary accuracy | 1.0000 | 0.9997 | ≥ 0.95 |
+  | step at which the answer left chance (reported) | 156 | 240 | |
+
+  As §3 says, this is a reproduction on train sequences with bars set after the diagnosis: it shows that the script of this version trains what the diagnosis trained, and nothing about unseen episodes. On seed 1 the answer left chance at step 240, later than in the diagnosis (159 to 183).
+- **The code of this version, written after the freeze and before any GPU run.** `scripts/train-sleep3.sh` (c5, pilot, report, nano, export, eval, gate), `scripts/s6-sleep3-report.py` with its tests, the memory in `sky-infer` (read, write, sleep passes, memory off) with golden sequences checked against the training code natively and on wasm32, `sky-arena --memory-passes`, and the colours each `recall` ask's door had been shown with in `s2-probe` (for the split of §4). The exported graph has no auxiliary head (a golden test asserts it). Every place where this file or v2's left a choice open is listed in `docs/s6-sleep3-readings.md`, written before any GPU run. Two of them are stated here because they touch a condition: C1 to C3 of v2 are read through v2's `verdict.json` (C2 taken by the stated deviation of v2's amendment 4, C3 as the sanity check of v2's amendment 1), since the raw `c2.json` and `c3.json` say `"pass": false`; and the pilot does not use `--memory-off-eval`, which would spend working minutes of a minutes-budgeted run (the memory zeroed is read by the probe, as v2 §5 wrote).
+- **Where the runs are launched from.** C5 ran in a worktree of the repository, with a trainer built at commit `3470be8` (no training code changed after it); its two runs were paused by the machine's cooling brake (45 minutes of work, 15 of rest), which changes their duration and not their steps. The GPU runs are launched from another worktree at the commit of this amendment, with the inputs of the main checkout linked or named (`runs/s6lr/softmax-adamw-x2/decide/last`, `runs/s6-sleep/seq/`, `data/`, and v2's check files through `V2_CHECKS`), the brake file of the machine, and nothing else on the GPU. A smoke run (`SMOKE=1`, throwaway prefix, seeds outside dev2 and test) comes first; its numbers are not looked at.
+- **A risk, written before the pilot.** Phase A of the pilot has 8 working minutes, batches of 16 and 15% of `rule110`; if the answer has not left chance when phase A ends, v2's stop rule (ask-frame cross-entropy above 1.336 over the last 50 `recall` steps) stops the pilot, and that is reported as the result of the pilot, not retried.

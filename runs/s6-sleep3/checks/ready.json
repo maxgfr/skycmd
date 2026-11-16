@@ -1,0 +1,11 @@
+{
+  "v2_checks": {
+    "c1": true,
+    "c2": true,
+    "c3": true,
+    "c2_deviation": "C2 missed its bar by 0.010 (form frame 0.3900 against 0.40); by amendment 4 of docs/s6-sleep2-prereg.md, a stated deviation, form frame was taken and C4 decided. This is a threshold not applied after it was read, on a readiness check and not on a result."
+  },
+  "v2_pass": true,
+  "c5": true,
+  "pass": true
+}
