@@ -74,18 +74,40 @@ export default defineConfig({
   ],
   themeConfig: {
     logo: { src: '/favicon.svg', alt: '' },
+    // Five entries: the catalogue, the demos, the evidence, the reading and the install guide.
+    // Every page keeps its URL; only the menu groups them.
     nav: [
-      { text: 'Play', link: '/play/' },
-      { text: 'Live', link: '/live/' },
-      { text: 'Router', link: '/router/' },
-      { text: 'Forecast', link: '/forecast/' },
-      { text: 'Tutorial', link: '/tutorial/' },
-      { text: 'Bench', link: '/bench/' },
-      { text: 'Results', link: '/results/' },
-      { text: 'Articles', link: '/articles/' },
-      { text: 'Install', link: '/install/' },
-      { text: 'What we bring', link: '/novelty/' },
-      { text: 'Sources', link: '/sources/' },
+      { text: 'Models', link: '/models/', activeMatch: '^/models/' },
+      {
+        text: 'Demos',
+        activeMatch: '^/(play|live|router|forecast|ear)/',
+        items: [
+          { text: 'Play: four games', link: '/play/' },
+          { text: 'Live: your own questions', link: '/live/' },
+          { text: 'Router: pick a tool', link: '/router/' },
+          { text: 'Forecast: time series', link: '/forecast/' },
+          { text: 'Listen: audio (failed gate)', link: '/ear/' },
+        ],
+      },
+      {
+        text: 'Results',
+        activeMatch: '^/(results|bench|novelty)/',
+        items: [
+          { text: 'Results', link: '/results/' },
+          { text: 'Bench', link: '/bench/' },
+          { text: 'What we bring', link: '/novelty/' },
+        ],
+      },
+      {
+        text: 'Learn',
+        activeMatch: '^/(tutorial|articles|sources)/',
+        items: [
+          { text: 'Tutorial', link: '/tutorial/' },
+          { text: 'Articles', link: '/articles/' },
+          { text: 'Sources', link: '/sources/' },
+        ],
+      },
+      { text: 'Install', link: '/install/', activeMatch: '^/install/' },
     ],
     socialLinks: [{ icon: 'github', link: 'https://github.com/maxgfr/skycmd' }],
     sidebar: {
