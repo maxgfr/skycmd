@@ -24,6 +24,9 @@ hero:
       text: Results
       link: /results/
     - theme: alt
+      text: Articles
+      link: /articles/
+    - theme: alt
       text: Install
       link: /install/
     - theme: alt

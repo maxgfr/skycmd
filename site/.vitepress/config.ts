@@ -82,6 +82,7 @@ export default defineConfig({
       { text: 'Tutorial', link: '/tutorial/' },
       { text: 'Bench', link: '/bench/' },
       { text: 'Results', link: '/results/' },
+      { text: 'Articles', link: '/articles/' },
       { text: 'Install', link: '/install/' },
       { text: 'What we bring', link: '/novelty/' },
       { text: 'Sources', link: '/sources/' },
