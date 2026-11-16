@@ -135,7 +135,7 @@ impl EmbedSpec {
     /// The GGUF file.
     pub fn to_gguf(&self) -> Result<Vec<u8>> {
         let n = self.vocab.len();
-        if self.dim % 2 != 0
+        if !self.dim.is_multiple_of(2)
             || self.codes.len() != n * self.dim / 2
             || self.scales.len() != n
             || self.vocab.iter().any(|t| t.contains('\n'))
@@ -238,7 +238,7 @@ fn ints(g: &Gguf<'_>, key: &str) -> Result<Vec<i64>> {
 }
 
 fn pairs(v: Vec<i64>, key: &str) -> Result<Vec<(u32, u32)>> {
-    if v.len() % 2 != 0 {
+    if !v.len().is_multiple_of(2) {
         return Err(Error::Format(format!("{key}: odd length")));
     }
     Ok(v.chunks(2).map(|p| (p[0] as u32, p[1] as u32)).collect())
@@ -316,7 +316,7 @@ impl StaticEmbedding {
         };
         let dim = u(keys::DIM)? as usize;
         let n_vocab = u(keys::N_VOCAB)? as usize;
-        if u(keys::BITS)? != 4 || dim % 2 != 0 {
+        if u(keys::BITS)? != 4 || !dim.is_multiple_of(2) {
             return Err(Error::Unsupported(
                 "only 4-bit tables of even dimension".into(),
             ));
@@ -358,7 +358,7 @@ impl StaticEmbedding {
             .map(|(t, &i)| (t.to_string(), i as u32))
             .collect();
         // leftmost-longest: at one position, the longer literal first
-        added.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        added.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
         let norm = NormTable {
             starts: ints(&g, keys::NORM_STARTS)?
                 .into_iter()
