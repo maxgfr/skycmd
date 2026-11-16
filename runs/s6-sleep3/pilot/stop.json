@@ -1,0 +1,9 @@
+{
+  "ask_ce_last_50": 0.0014499491858441615,
+  "recall_steps_read": 50,
+  "bar": 1.3362943611198905,
+  "stop": false,
+  "phase_a_sequence_steps": 613,
+  "phase_a_recall_steps": 526,
+  "answer_left_chance_at_step": 167
+}

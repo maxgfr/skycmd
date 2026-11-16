@@ -77,3 +77,25 @@ C5: two CPU runs of about an hour each at `nice -n 19`. The pilot: about 35 work
 - **The code of this version, written after the freeze and before any GPU run.** `scripts/train-sleep3.sh` (c5, pilot, report, nano, export, eval, gate), `scripts/s6-sleep3-report.py` with its tests, the memory in `sky-infer` (read, write, sleep passes, memory off) with golden sequences checked against the training code natively and on wasm32, `sky-arena --memory-passes`, and the colours each `recall` ask's door had been shown with in `s2-probe` (for the split of §4). The exported graph has no auxiliary head (a golden test asserts it). Every place where this file or v2's left a choice open is listed in `docs/s6-sleep3-readings.md`, written before any GPU run. Two of them are stated here because they touch a condition: C1 to C3 of v2 are read through v2's `verdict.json` (C2 taken by the stated deviation of v2's amendment 4, C3 as the sanity check of v2's amendment 1), since the raw `c2.json` and `c3.json` say `"pass": false`; and the pilot does not use `--memory-off-eval`, which would spend working minutes of a minutes-budgeted run (the memory zeroed is read by the probe, as v2 §5 wrote).
 - **Where the runs are launched from.** C5 ran in a worktree of the repository, with a trainer built at commit `3470be8` (no training code changed after it); its two runs were paused by the machine's cooling brake (45 minutes of work, 15 of rest), which changes their duration and not their steps. The GPU runs are launched from another worktree at the commit of this amendment, with the inputs of the main checkout linked or named (`runs/s6lr/softmax-adamw-x2/decide/last`, `runs/s6-sleep/seq/`, `data/`, and v2's check files through `V2_CHECKS`), the brake file of the machine, and nothing else on the GPU. A smoke run (`SMOKE=1`, throwaway prefix, seeds outside dev2 and test) comes first; its numbers are not looked at.
 - **A risk, written before the pilot.** Phase A of the pilot has 8 working minutes, batches of 16 and 15% of `rule110`; if the answer has not left chance when phase A ends, v2's stop rule (ask-frame cross-entropy above 1.336 over the last 50 `recall` steps) stops the pilot, and that is reported as the result of the pilot, not retried.
+
+**Amendment 2 (16/11/2026, after the pilot was read on the dev2 seeds and before any nano run; no test seed has been read). The pilot rule says "works": the nano runs take place.**
+
+- **Phase A did not stop.** Arm M, phase A: 8.0 working minutes, 663 steps, of which 613 sequence steps (526 on `recall`); the ask-frame cross-entropy over its last 50 `recall` steps is **0.0014**, against v2's stop bar of 1.336; the answer left chance at step 167. The risk written in amendment 1 did not occur.
+- **The runs** (`runs/s6-sleep3/pilot.json`, `runs/all/sleep3-pilot.log`): M phase B 12.0 working minutes, 2,051 steps; the control C did M's steps, phase by phase (663 and 2,051). Seed 0, one run each, no restart.
+- **The rule of v2 §5.3, on the dev2 seeds** (500 episodes from seed 2,000,000,000, ternary weights, last exit, closed loop, 4,000 asks):
+
+  | | `recall` score |
+  |---|---:|
+  | M, N = 1 | **1.0000** |
+  | M, N = 2 | 1.0000 |
+  | M, N = 4 | 0.9980 |
+  | M with its memory zeroed, N = 1 | 0.2567 |
+  | control C (no memory) | 0.2542 |
+
+  M at N = 1 minus the control: **+0.7458, 95% bootstrap interval [0.7323, 0.7593]** (needed: at least 0.10 with the lower bound above 0). M with its memory zeroed minus the control: +0.0025 (needed: at most 0.03). **Both conditions hold: the verdict is "works".** By delay (1–4, 5–8, 9–16, 17–32 frames, 1,000 asks each) M is at 1.000 on every bin and the control between 0.246 and 0.270; with one colour to remember or several, M is at 1.000 on both.
+- **What the pilot does not show.** `rule110` is at 0.5443 for every arm and every N, the control included: nothing was learned on it, and it is not part of the rule. Sleep passes add nothing on `recall` at this size (1.0000 at N = 1, 0.9980 at N = 4): H1 reads this on the nano runs. The pilot is the pico size on dev2 seeds; no test seed and no nano model has been read.
+- **Deviations and disclosures.**
+  - The smoke that precedes the pilot (not a result) was killed once at the owner's request, when the machine froze under other work, and started again from scratch; nothing of it is kept.
+  - The trainer was built at the worktree's commit at the launch (`a0305c5`), not at the commit of amendment 1: it adds the router's code (`sky-data route fresh`, the embedding in `sky-infer`) and nothing in `crates/sky-train` (the diff between the two commits is empty there).
+  - The pilot ran in the machine's gentlest brake mode (half duty, 45 minutes of work and 15 of rest; two cooling pauses), with CPU work of other models at the same time; budgets are in working minutes, so this changes the duration and not the steps.
+- **Next, unchanged:** the six nano runs of v2 §6 (the sleep arm with T1 and T2, and the control, seeds 0, 1, 2), the choice of N on dev2, the export, the test seeds read once, the gate.
