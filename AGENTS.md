@@ -17,6 +17,10 @@
   table, with its measurement, its evidence and where to try it. **Update it with every result.**
   `site/results/index.md` holds the numbers. An article does not replace either and does not
   restate them: it tells the story of one line of experiments and links to both.
+- The Models catalogue (`site/models/`, the home page's "What works today") is driven by
+  `site/.vitepress/theme/lib/catalogue.ts`. **Update it with every result, like What we bring**:
+  a new model gets an entry, a verdict moves a card to its group, and every number on a card is
+  copied from Results or a model card. `npm --prefix site test` checks it against the manifest.
 - One Markdown file per article in `site/articles/`, in English like the rest of the site,
   listed on `site/articles/index.md`, newest first.
 - An article is written for a wide technical audience: every term is explained the first time,
