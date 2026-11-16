@@ -3,7 +3,8 @@
 //! head, native numbers (`[NUM]` tokens with value features) and optional ternary weights.
 //! The s3 options of docs/SPEC-S3.md live in the same format: value-fused tokens
 //! (`fuse_numbers`), a looped weight-shared state encoder (`state_loops`), any `head_count` and
-//! the temporal carry of a stream's latent across frames (`temporal_carry`).
+//! the temporal carry of a stream's latent across frames (`temporal_carry`), and the fast-weight
+//! memory of a model that sleeps (`memory`, [`memory`]).
 //!
 //! * [`S2Config`]: hyper-parameters read from the GGUF keys `skycmd-s2.*`.
 //! * [`S2Model`]: weights and the forward pieces (static encoding, state layers, exits, fusion).
@@ -13,6 +14,7 @@
 
 pub mod engine;
 pub mod es;
+pub mod memory;
 pub mod model;
 pub mod prompt;
 pub mod random;
@@ -86,6 +88,9 @@ pub struct S2Config {
     pub temperatures: Vec<(String, f32)>,
     /// `f32`, `f16` or `ternary` (as declared by the file).
     pub weight_format: String,
+    /// The fast-weight memory of a model that sleeps (GGUF `memory`, absent by default;
+    /// docs/s6-sleep-prereg.md §2, docs/s6-sleep2-prereg.md §4, see [`memory`]).
+    pub memory: Option<memory::MemorySpec>,
 }
 
 impl S2Config {
@@ -218,6 +223,20 @@ impl S2Config {
                 fan_in: req("ffn_es_fan_in")?,
             }),
         };
+        let memory = if flag("memory") {
+            Some(memory::MemorySpec::from_keys(
+                g.get_str(&key("memory_qk")),
+                g.get_str(&key("memory_value")),
+                g.get_str(&key("memory_write")),
+            )?)
+        } else {
+            None
+        };
+        if memory.is_some() && temporal_carry {
+            return Err(Error::Unsupported(
+                "a memory and a temporal carry in the same model".into(),
+            ));
+        }
         let audio_frame = match g.get_str(&key("state_kind")) {
             None | Some("text") => 0,
             Some("audio") => req("audio_frame")?,
@@ -275,6 +294,7 @@ impl S2Config {
                 .get_str(&key("weight_format"))
                 .unwrap_or("f32")
                 .to_string(),
+            memory,
         };
         cfg.validate()?;
         Ok(cfg)

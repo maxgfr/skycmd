@@ -12,6 +12,7 @@
 //! * **No allocation per frame.** A state miss reuses the buffers of the evicted state entry
 //!   (token ids, hidden states, exit keys / values).
 
+use super::memory::{MemFrame, SleepOptions};
 use super::model::{S2Model, S2Workspace, StateEnc, StaticEnc, StaticTokens};
 use super::prompt::{self, S2PromptTokens};
 use crate::prompt::{probs_from_logits, temp_bucket, QType};
@@ -104,7 +105,8 @@ pub struct S2Outcome {
 }
 
 /// A stream of frames with a temporal carry (SPEC-S3 §7): the encoding of the current frame and
-/// the final latent of the previous one.
+/// the final latent of the previous one; or with a memory (docs/s6-sleep-prereg.md §2): the
+/// encoding of the current frame, the memory and the frames since the last sleep.
 struct Stream {
     id: u64,
     /// State text of the current frame (`has_cur`).
@@ -114,6 +116,16 @@ struct Stream {
     prev_ids: Vec<u32>,
     prev_h: Vec<f32>,
     has_prev: bool,
+    /// Memory: `[layer][head][hd][hd]`, after the last frame written.
+    mem: Vec<f32>,
+    /// Memory: the frames since the last sleep (the current one once written).
+    chunk: Vec<MemFrame>,
+    /// Memory: the state stream of the current frame, kept for the sleep passes.
+    frame: MemFrame,
+    /// Memory: the next question starts a new frame (see [`S2Engine::new_frame`]), even on the
+    /// same state text; and whether the game paused before it.
+    force_new: bool,
+    pause: bool,
 }
 
 struct CachedStatic {
@@ -147,6 +159,10 @@ pub struct S2Engine {
     logits: Vec<f32>,
     /// s6-ear front-end tables (built on the first audio question).
     logmel: Option<crate::audio::LogMel>,
+    /// How a stream with a memory sleeps.
+    sleep: SleepOptions,
+    /// Buffers of the frames a sleep replays.
+    replay: Option<StateEnc>,
 }
 
 impl S2Engine {
@@ -185,9 +201,60 @@ impl S2Engine {
             has_value: Vec::new(),
             logits: Vec::new(),
             logmel: None,
+            sleep: SleepOptions::default(),
+            replay: None,
             model,
             tok,
         })
+    }
+
+    /// How the streams of a model with a memory sleep: `N` passes (1: no sleep) every `K` frames
+    /// and at each pause, and the "memory off" switch (the memory reset before every frame).
+    pub fn set_sleep(&mut self, sleep: SleepOptions) {
+        self.sleep = SleepOptions {
+            passes: sleep.passes.max(1),
+            every: sleep.every.max(1),
+            ..sleep
+        };
+    }
+
+    pub fn sleep_options(&self) -> SleepOptions {
+        self.sleep
+    }
+
+    /// Memory streams: the next question of `stream` starts a new frame, even if its state text
+    /// is the one of the current frame; `pause` says the game paused before it (a sleep then
+    /// takes place if frames were seen since the last one). A new state text also starts a new
+    /// frame, without a pause.
+    pub fn new_frame(&mut self, stream: u64, pause: bool) {
+        if let Some(st) = self.streams.iter_mut().find(|s| s.id == stream) {
+            st.force_new = true;
+            st.pause |= pause;
+        }
+    }
+
+    /// Memory streams: ends the current frame of `stream` now (written at full depth, kept for
+    /// the next sleep), so that [`S2Engine::stream_memory`] holds it; the next question starts a
+    /// new frame. No effect without a memory or a current frame.
+    pub fn end_frame(&mut self, stream: u64) {
+        if self.model.memory.is_empty() {
+            return;
+        }
+        if let Some(i) = self.streams.iter().position(|s| s.id == stream) {
+            self.close_frame(i);
+        }
+    }
+
+    /// The memory of a stream (`[layer][head][hd][hd]`) after its last written frame, if the
+    /// model has one and the stream exists.
+    pub fn stream_memory(&self, stream: u64) -> Option<&[f32]> {
+        if self.model.memory.is_empty() {
+            return None;
+        }
+        self.streams
+            .iter()
+            .find(|s| s.id == stream)
+            .map(|s| s.mem.as_slice())
     }
 
     pub fn model(&self) -> &S2Model {
@@ -680,7 +747,8 @@ impl S2Engine {
         options: &[S],
         state: &str,
     ) -> Result<S2Outcome> {
-        if !self.model.cfg.temporal_carry {
+        let memory = !self.model.memory.is_empty();
+        if !self.model.cfg.temporal_carry && !memory {
             return self.question(qtype, instructions, options, state);
         }
         let static_hit = self.prepare_static(qtype, instructions, options)?;
@@ -695,10 +763,22 @@ impl S2Engine {
                     prev_ids: Vec::new(),
                     prev_h: Vec::new(),
                     has_prev: false,
+                    mem: if memory {
+                        vec![0.0; super::memory::floats(&self.model.cfg)]
+                    } else {
+                        Vec::new()
+                    },
+                    chunk: Vec::new(),
+                    frame: MemFrame::default(),
+                    force_new: false,
+                    pause: false,
                 });
                 self.streams.len() - 1
             }
         };
+        if memory {
+            return self.question_memory(i, qtype, options.len(), state, static_hit);
+        }
         let d = self.model.cfg.hidden_size;
         let state_hit = self.streams[i].has_cur && self.streams[i].key == state;
         if !state_hit {
@@ -748,6 +828,111 @@ impl S2Engine {
             self.statics.clear();
         }
         Ok(out)
+    }
+
+    /// [`S2Engine::question_stream`] for a model with a memory: a new frame (a new state text,
+    /// or after [`S2Engine::new_frame`]) first writes the current one at full depth, then sleeps
+    /// if `K` frames were seen since the last sleep or the game paused, and reads the memory at
+    /// every block application; the questions of one frame read the same memory, and the frame
+    /// writes once (sky-train `s2-probe`).
+    fn question_memory(
+        &mut self,
+        i: usize,
+        qtype: QType,
+        n_options: usize,
+        state: &str,
+        static_hit: bool,
+    ) -> Result<S2Outcome> {
+        let st = &self.streams[i];
+        let state_hit = st.has_cur && st.key == state && !st.force_new;
+        if !state_hit {
+            self.close_frame(i);
+            let pt = S2PromptTokens {
+                cls: self.cls,
+                sep: self.sep,
+                mask: self.mask,
+                num: self.num,
+                mask_text: &self.mask_text,
+                fuse: self.model.cfg.fuse_numbers,
+            };
+            prompt::build_state(
+                &self.tok,
+                &pt,
+                state,
+                self.model.cfg.max_state_tokens,
+                &mut self.ids,
+                &mut self.values,
+                &mut self.has_value,
+                Some(&mut self.bpe),
+            );
+            let sleep = self.sleep;
+            let st = &mut self.streams[i];
+            if sleep.memory_off {
+                // Nothing carries from one frame to the next: no memory, so no sleep either.
+                st.mem.fill(0.0);
+                st.chunk.clear();
+            }
+            let pause = std::mem::take(&mut st.pause);
+            st.force_new = false;
+            if !st.chunk.is_empty() && (st.chunk.len() >= sleep.every || pause) {
+                self.sleep_stream(i)?;
+            }
+            let st = &mut self.streams[i];
+            st.has_cur = false;
+            self.model
+                .state_reset(&mut st.enc, &self.ids, &self.values, &self.has_value)?;
+            self.model.memory_start(&mut st.enc, &st.mem);
+            st.frame.ids.clone_from(&self.ids);
+            st.frame.values.clone_from(&self.values);
+            st.frame.has_value.clone_from(&st.enc.has_value);
+            st.key.clear();
+            st.key.push_str(state);
+            st.has_cur = true;
+        }
+        let mut out = self.answer(qtype, n_options, Some(i))?;
+        out.static_hit = static_hit;
+        out.state_hit = state_hit;
+        if self.opts.static_cache == 0 {
+            self.statics.clear();
+        }
+        Ok(out)
+    }
+
+    /// Writes the current frame of memory stream `i` (at full depth) and adds it to the frames
+    /// since the last sleep.
+    fn close_frame(&mut self, i: usize) {
+        let st = &mut self.streams[i];
+        if !st.has_cur {
+            return;
+        }
+        self.model
+            .memory_write(&mut st.enc, &mut st.mem, &mut self.ws);
+        st.chunk.push(std::mem::take(&mut st.frame));
+        st.has_cur = false;
+    }
+
+    /// The sleep of memory stream `i`: `N − 1` passes over the frames since the last sleep, in
+    /// order, each replayed frame reading the memory and writing it; then the frames are dropped.
+    fn sleep_stream(&mut self, i: usize) -> Result<()> {
+        let mut enc = self
+            .replay
+            .take()
+            .unwrap_or_else(|| self.model.state_buffers());
+        let st = &mut self.streams[i];
+        let mut res = Ok(());
+        'passes: for _ in 1..self.sleep.passes {
+            for f in &st.chunk {
+                res = self
+                    .model
+                    .memory_replay(&mut enc, f, &mut st.mem, &mut self.ws);
+                if res.is_err() {
+                    break 'passes;
+                }
+            }
+        }
+        st.chunk.clear();
+        self.replay = Some(enc);
+        res
     }
 
     /// Forget the frames of stream `stream`: its next frame starts cold.

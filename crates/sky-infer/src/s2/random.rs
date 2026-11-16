@@ -89,6 +89,7 @@ pub fn ladder_config(name: &str) -> Option<S2Config> {
         exit_thresholds: [DEFAULT_EXIT_THRESHOLD; 3],
         temperatures: Vec::new(),
         weight_format: "f32".into(),
+        memory: None,
     })
 }
 

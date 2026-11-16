@@ -138,6 +138,7 @@ impl CastConfig {
             exit_thresholds: [1.0; 3],
             temperatures: Vec::new(),
             weight_format: self.weight_format.clone(),
+            memory: None,
         }
     }
 

@@ -321,6 +321,8 @@ pub struct S2Model {
     /// s6-ear (SPEC-S6 §16): `audio_proj` `[d, audio_frame]` with bias, the embedding of the
     /// audio state frames (only with `audio_frame > 0`).
     pub audio_proj: Option<Lin>,
+    /// The memory layers, one per state block (empty without `memory`; [`super::memory`]).
+    pub memory: Vec<super::memory::MemLayer>,
     rope: Rope,
 }
 
@@ -394,6 +396,13 @@ pub struct StateEnc {
     pub phi: Vec<f32>,
     /// The stream started from a carried latent (SPEC-S3 §7), not from the plain embeddings.
     pub carried: bool,
+    /// With a memory: every block application reads `mem` (`[layer][head][hd][hd]`, the memory
+    /// of the stream when the frame started). Off: no read, as a zero memory.
+    pub mem_on: bool,
+    pub mem: Vec<f32>,
+    /// Per state block: its output at its last application so far, before its read (`[S][d]`
+    /// each, `[block][max_state_tokens][d]`): what the frame writes to the memory.
+    pub written: Vec<f32>,
 }
 
 /// Scratch buffers (grown on demand, then reused: a decision does not allocate once warm).
@@ -418,6 +427,7 @@ pub struct S2Workspace {
     ab_o: Vec<f32>,
     attn: AttnScratch,
     self_attn: SelfAttnScratch,
+    pub(crate) mem: super::memory::MemScratch,
 }
 
 /// Longest stream attended with [`kernels::attend`] (plain loops) instead of the tiled kernel.
@@ -656,6 +666,13 @@ impl S2Model {
         } else {
             None
         };
+        let memory = if cfg.memory.is_some() {
+            (0..cfg.state_blocks)
+                .map(|l| super::memory::MemLayer::load(&src, &cfg, l))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
         let max_pos = cfg
             .max_state_tokens
             .max(cfg.max_head_tokens.max(8) + 3 + MAX_OPTION_TOKENS + 1);
@@ -678,6 +695,7 @@ impl S2Model {
             cls,
             cls_out,
             audio_proj,
+            memory,
         })
     }
 
@@ -699,6 +717,9 @@ impl S2Model {
         }
         if let Some(a) = &mut self.audio_proj {
             v.push(a);
+        }
+        for m in &mut self.memory {
+            v.extend(m.lins_mut());
         }
         v
     }
@@ -871,6 +892,11 @@ impl S2Model {
                 + f.down.n_params();
         }
         n += self.audio_proj.as_ref().map_or(0, Lin::n_params);
+        n += self
+            .memory
+            .iter()
+            .map(super::memory::MemLayer::n_params)
+            .sum::<usize>();
         n + self.cls_norm.n_params() + self.cls.n_params() + self.cls_out.n_params()
     }
 
@@ -1272,6 +1298,17 @@ impl S2Model {
             has_value: Vec::with_capacity(smax),
             phi: vec![0.0; smax * NUM_FEATURES],
             carried: false,
+            mem_on: false,
+            mem: if self.memory.is_empty() {
+                Vec::new()
+            } else {
+                vec![0.0; super::memory::floats(c)]
+            },
+            written: if self.memory.is_empty() {
+                Vec::new()
+            } else {
+                vec![0.0; c.state_blocks * smax * d]
+            },
         }
     }
 
@@ -1298,6 +1335,7 @@ impl S2Model {
         st.len = s;
         st.layers_done = 0;
         st.carried = false;
+        st.mem_on = false;
         st.exit_ready.fill(false);
         st.kv_ready.fill(false);
         st.ids.clear();
@@ -1342,6 +1380,7 @@ impl S2Model {
         st.len = n;
         st.layers_done = 0;
         st.carried = false;
+        st.mem_on = false;
         st.exit_ready.fill(false);
         st.kv_ready.fill(false);
         st.ids.clear();
@@ -1433,6 +1472,21 @@ impl S2Model {
                 table,
             );
             st.layers_done += 1;
+            if st.mem_on && !self.memory.is_empty() {
+                // docs/s6-sleep-prereg.md §2: the block's output is what the frame writes, then
+                // it reads the memory, before the exit of this application is taken.
+                let smax = c.max_state_tokens;
+                st.written[b * smax * d..b * smax * d + s * d].copy_from_slice(&st.x[..s * d]);
+                let hh = c.num_heads * c.head_dim() * c.head_dim();
+                super::memory::read(
+                    &self.memory[b],
+                    c,
+                    &mut st.x,
+                    s,
+                    &st.mem[b * hh..(b + 1) * hh],
+                    &mut ws.mem,
+                );
+            }
             if let Some(e) = c.exits.iter().position(|&x| x == st.layers_done) {
                 self.exit_norms[e].apply(&st.x[..s * d], d, c.norm_eps, &mut st.exit_h[e][..s * d]);
                 st.exit_ready[e] = true;

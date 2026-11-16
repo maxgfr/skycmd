@@ -861,6 +861,28 @@ impl Engine {
         }
     }
 
+    /// s2 models with a memory (docs/s6-sleep-prereg.md §2): the next question of `stream`
+    /// starts a new frame even on the same state text; `pause` says the game paused before it
+    /// (see [`crate::s2::S2Engine::new_frame`]). No effect on other models.
+    pub fn new_frame(&mut self, stream: u64, pause: bool) {
+        if let Inner::S2(e) = &mut self.inner {
+            e.new_frame(stream, pause);
+        }
+    }
+
+    /// s2 models with a memory: how its streams sleep (see
+    /// [`crate::s2::S2Engine::set_sleep`]). No effect on other models.
+    pub fn set_sleep(&mut self, sleep: crate::s2::memory::SleepOptions) {
+        if let Inner::S2(e) = &mut self.inner {
+            e.set_sleep(sleep);
+        }
+    }
+
+    /// Whether the model keeps a memory across the frames of a stream.
+    pub fn has_memory(&self) -> bool {
+        matches!(&self.inner, Inner::S2(e) if !e.model().memory.is_empty())
+    }
+
     /// Probabilities at every exit without early exit (s2); s1 has a single "exit".
     pub fn probs_per_exit<S: AsRef<str>>(
         &mut self,
