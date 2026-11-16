@@ -35,3 +35,5 @@ On 945 fresh requests about tools never seen in training, **s6-route** picks the
 - **Outside the tool lists of its training families** (MetaTool, CLINC150 intents, MASSIVE held-out scenarios) it stays near its embedding part: 0.5175 against 0.5340, 0.8040 against 0.7855 and 0.5340 against 0.4755.
 
 The pre-registration, with the system, the gate and the reading: [`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md). The engine: `ToolRouter` in `crates/sky-web/src/router.rs`, and natively `sky-route fuse` ([install](/install/)).
+
+The story of the three versions, two failures and then this pass, is told in an article: [A 3.7 MB tool router built on a MacBook](/articles/a-3-7-mb-tool-router).

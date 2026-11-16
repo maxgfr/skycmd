@@ -220,7 +220,7 @@ Nothing is trained. The system takes the s6-route-nano file as it was published 
 - **Announced goals** (not gates). 0.87 on T2-tools: met. 0.95 among the requests it answers at the ask threshold, with coverage ≥ 0.80: not met (0.9433 at coverage 0.8593). The fast mode (the model stopped at its first exit) within 0.015: met (0.8836, 10.5 ms per request).
 - **Latency** (result). Measured on a machine in use by its owner, with a GPU run of another model active: 30.9 ms per request with the tool list cached (SIMD128), 23.5 ms with relaxed SIMD, 10.5 ms in fast mode; the first request on a new tool list 45.3 ms. The 60 ms bar was set after v2 measured 38.9 ms, where its own bar was 2 ms.
 
-Try it on the [Router](/router/) page. Every table is in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s6-route".
+Try it on the [Router](/router/) page. Every table is in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s6-route". The story of the three versions is told in an article: [A 3.7 MB tool router built on a MacBook](/articles/a-3-7-mb-tool-router).
 
 ## LFM3-1.7B: System 1 first, System 2 when needed (November 2026) {#lfm3-s1s2}
 

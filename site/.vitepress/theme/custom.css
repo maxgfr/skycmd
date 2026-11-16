@@ -82,6 +82,17 @@
   border-color: var(--vp-c-brand-1);
 }
 
+/* Figures in articles: an inline SVG that follows the theme, with its caption below. */
+.vp-doc .article-figure {
+  margin: 24px 0;
+}
+.vp-doc .article-figure figcaption {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+
 /* Play and Bench pages use the full width for the canvas and the table. */
 .wide-page .VPDoc .container,
 .wide-page .VPDoc .content,
