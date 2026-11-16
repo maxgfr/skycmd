@@ -94,6 +94,22 @@
     "space": false
   },
   {
+    "model": "s6-route",
+    "kind": "router",
+    "emoji": "🧭",
+    "color_from": "blue",
+    "color_to": "green",
+    "tagline": "A 3.7 MB tool router in two files: the s6-route-nano file fused with potion-base-2M packed to 4 bits. It passed its pre-registered gate on fresh slates, with a system defined after v2's test was read: 0.8868 on requests about tools never seen in training, against 0.8169 for BM25 and 0.9048 for all-MiniLM-L6-v2 (91.6 MB).",
+    "short_description": "3.7 MB tool router; passed on fresh slates",
+    "readme_notice": "**Passed its pre-registered gate on fresh slates; the system was defined after v2's test was read.** v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps. Its parameters come from validation. Its gate is read on requests no system had scored; on T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30 times v2's and was set after v2 was measured. The system needs distinctive tool names.",
+    "notes": [
+      "Disclosure: v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps. Its parameters come from validation. Its gate is read on requests no system had scored; on T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30 times v2's and was set after v2 was measured. The system needs distinctive tool names.",
+      "Every gate held: on 945 fresh requests, 0.8868 against 0.8169 for BM25 (+0.0698 [0.0455, 0.0952]) and 0.9048 for MiniLM (the bar was MiniLM − 0.03); ECE 0.0162; 30.9 ms per request in WASM with the tool list cached (bar 60 ms), 3,692,224 bytes for the two files.",
+      "The advantage over BM25 leans on the three largest clusters of the test: without them +0.0202 [−0.0062, +0.0481], and a bootstrap over clusters gives +0.0698 [−0.0079, +0.1404]; both intervals hold zero.",
+      "With every tool renamed tool_<k> it falls to 0.2497, where BM25 keeps 0.8138. MiniLM is more accurate on every test file, and outside the tool lists of its training families the router is close to its embedding part."
+    ]
+  },
+  {
     "model": "s5-lite",
     "kind": "decision",
     "proofs": true,

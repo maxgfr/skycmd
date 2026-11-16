@@ -8,6 +8,7 @@ import ForecastView from '../.vitepress/theme/components/ForecastView.vue'
 import LiveDecide from '../.vitepress/theme/components/LiveDecide.vue'
 import LiveProof from '../.vitepress/theme/components/LiveProof.vue'
 import PlayGame from '../.vitepress/theme/components/PlayGame.vue'
+import RouterDemo from '../.vitepress/theme/components/RouterDemo.vue'
 import { loadManifest } from '../.vitepress/theme/lib/wasm'
 
 interface SpaceConfig {
@@ -15,8 +16,9 @@ interface SpaceConfig {
   title: string
   tagline: string
   /** `secrets`: the API-key demo of s6-secrets-pico (manifest `task: secrets`). `ear`: the Listen
-   * demo (manifest `task: ear`). `forecast`: the Forecast demo (`models/forecast.json`). */
-  kind: 'decision' | 'game' | 'secrets' | 'ear' | 'forecast'
+   * demo (manifest `task: ear`). `forecast`: the Forecast demo (`models/forecast.json`). `router`:
+   * the tool router of the Router page (manifest `task: router`, two files fused by `ToolRouter`). */
+  kind: 'decision' | 'game' | 'secrets' | 'ear' | 'forecast' | 'router'
   proofs?: boolean
   model_repo: string
   notes?: string[]
@@ -171,6 +173,24 @@ onMounted(async () => {
           </p>
         </section>
       </template>
+      <template v-else-if="cfg.kind === 'router'">
+        <section>
+          <h2>Pick a tool from a list you write</h2>
+          <p>
+            Up to 7 tools, one per line as <code>name: description</code>, and a request. Two parts score every option:
+            the s6-route-nano file (which also reads each tool's BM25 score against the request) and potion-base-2M
+            packed to 4 bits (Minish Lab, MIT). The router multiplies their probabilities option by option, raises the
+            product to 0.81 and renormalises, adds <em>none of these tools fits the request</em>, and asks the user when
+            the top probability is below τ_ask3. The presets were written for this demo, not taken from any dataset, and
+            are kept whatever the router answers.
+          </p>
+          <RouterDemo :prefer="cfg.model" />
+          <p class="space-note">
+            “Mask names” renames every tool <code>tool_&lt;k&gt;</code>: on the fresh test the router fell to 0.2497
+            there, where BM25 kept 0.8138. Use it only on tool lists whose names say what the tools do.
+          </p>
+        </section>
+      </template>
       <template v-else-if="cfg.kind === 'forecast'">
         <section>
           <h2>Forecast a series</h2>
@@ -201,7 +221,7 @@ onMounted(async () => {
 
       <footer>
         Everything runs in your browser: a Rust inference engine compiled to WebAssembly (SIMD128) reads the GGUF
-        file of this Space. Nothing is sent to a server.
+        {{ cfg.kind === 'router' ? 'files' : 'file' }} of this Space. Nothing is sent to a server.
       </footer>
     </template>
     <p v-else class="space-note">Loading…</p>
