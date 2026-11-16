@@ -13,6 +13,10 @@ The test split is refused unless runs/s6-nano2/TEST-OPEN exists (its owner creat
 after training) and the model file holds tau_ask in its metadata; every test file must also
 have the sha256 that runs/s6-nano2/test-files.json records (written by the build, committed
 with the amendment of section 4.6).
+
+The fresh split of s6-nano v3 (docs/s6-nano3-prereg.md, section 4; <build>/fresh/f_*.jsonl) is
+refused unless runs/s6-nano3/FRESH-OPEN exists and every fresh file has the sha256 that
+runs/s6-nano3/test-files.json records.
 """
 
 import hashlib
@@ -30,7 +34,12 @@ TEST_FILES = os.path.join(REPO, "runs", "s6-nano2", "test-files.json")
 TAU_KEY = "skycmd-s2.route.tau_ask"
 NONE_OPTION = "none of these tools fits the request"
 INSTRUCTION = "Which tool should handle the user's request?"
-SPLITS = ("val", "test")
+# s6-nano v3 (docs/s6-nano3-prereg.md, section 4): the fresh files, under <build>/fresh, refused
+# until runs/s6-nano3/FRESH-OPEN exists (its owner creates it after the count amendment) and
+# every file has the sha256 that runs/s6-nano3/test-files.json records.
+FRESH_OPEN = os.path.join(REPO, "runs", "s6-nano3", "FRESH-OPEN")
+FRESH_FILES = os.path.join(REPO, "runs", "s6-nano3", "test-files.json")
+SPLITS = ("val", "test", "fresh")
 
 
 class Refused(Exception):
@@ -174,6 +183,8 @@ def slate_file(split, name, model=None):
         if not name.startswith("v_"):
             raise Refused(f"{name} is not a validation file")
         path = os.path.join(build_root(), "val", f"{name}.jsonl")
+    elif split == "fresh":
+        return fresh_file(name)
     else:
         if not name.startswith("t_"):
             raise Refused(f"{name} is not a test file")
@@ -184,6 +195,36 @@ def slate_file(split, name, model=None):
             raise Refused(f"{path} is not the test file recorded in runs/s6-nano2/test-files.json")
     if not os.path.isfile(path):
         raise Refused(f"no {path}")
+    return path
+
+
+def fresh_hashes():
+    """The sha256 of every fresh file, as runs/s6-nano3/test-files.json records them."""
+    if not os.path.isfile(FRESH_FILES):
+        raise Refused("runs/s6-nano3/test-files.json does not exist: the fresh files are hashed before any scoring")
+    return load_json(FRESH_FILES)["files"]
+
+
+def fresh_is_open():
+    if not os.path.isfile(FRESH_OPEN):
+        raise Refused("the fresh split is closed: runs/s6-nano3/FRESH-OPEN does not exist "
+                      "(its owner creates it after the hashes and the count amendment are committed)")
+
+
+def fresh_file(name):
+    """A fresh file of s6-nano v3 (`f_tools`, `f_tools_masked`, `f_metatool`, `f_clinc`,
+    `f_massive`, `f_tools.clusters`), after its guards: FRESH-OPEN and the recorded sha256."""
+    if not name.startswith("f_"):
+        raise Refused(f"{name} is not a fresh file")
+    fresh_is_open()
+    want = fresh_hashes().get(f"{name}.jsonl")
+    path = os.path.join(build_root(), "fresh", f"{name}.jsonl")
+    if want is None:
+        raise Refused(f"{name}.jsonl is not recorded in runs/s6-nano3/test-files.json")
+    if not os.path.isfile(path):
+        raise Refused(f"no {path}")
+    if sha256_file(path) != want:
+        raise Refused(f"{path} is not the fresh file recorded in runs/s6-nano3/test-files.json")
     return path
 
 

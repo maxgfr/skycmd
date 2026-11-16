@@ -4,6 +4,8 @@ format that scripts/route/scorer.py reads.
 
     route-baselines.py fit   --system S [--budget B]          (validation and training only)
     route-baselines.py score --system S --split val|test [--model GGUF]
+    route-baselines.py score --system S --split fresh [--files f_tools,...]   (s6-nano v3; v2's fitted values)
+    route-baselines.py score --system S --split val --out-root DIR --files v_tools,v_tools_masked   (v3 rehearsal)
 
 Systems: potion-cos, potion-cos-4bit, static-ft, pair-lr, bm25, minilm-cos, toolrouter,
 name-prior. s6-nano v1 is scored by sky-eval (scripts/route-eval.sh).
@@ -44,6 +46,7 @@ import math
 import os
 import re
 import sys
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "route"))
 import common  # noqa: E402
@@ -56,6 +59,8 @@ FILES = {
     "val": ("v_tools", "v_tools_masked", "v_tools_pairs", "v_tools_swapped"),
     "test": ("t_tools", "t_tools_masked", "t_tools_pairs", "t_tools_swapped", "t_metatool", "t_clinc",
              "t_toolrouting", "t_bfcl", "t_when2call", "t_massive"),
+    # s6-nano v3 (docs/s6-nano3-prereg.md, section 4): scored with the values fitted for v2, never refitted
+    "fresh": ("f_tools", "f_tools_masked", "f_metatool", "f_clinc", "f_massive"),
 }
 DEFAULT_BUDGET = 715136  # s6-nano v1's file; the evaluation passes the evaluated file's bytes
 SEED = 0
@@ -541,25 +546,39 @@ def fit_pair_lr_alpha(val, golds, budget, out):
     return best[1]
 
 
-def score(name, split, model):
+def score(name, split, model, out_root=None, files=None):
+    """Dumps of a fitted system on the slate files of a split, in <eval>/<split>/<name>/ (or
+    <out_root>/<name>/). The fresh split and an explicit out_root also write the CPU time per
+    slate of each file (`<file>.time.json`); the fitted values are read, never refitted."""
     p = common.load_json(os.path.join(fitted_dir(name), "params.json"))
     s = System(name, p)
-    out = os.path.join(common.eval_root(), split, name)
-    os.makedirs(out, exist_ok=True)
-    for f in FILES[split]:
+    out = os.path.join(out_root or os.path.join(common.eval_root(), split), name)
+    timed = split == "fresh" or out_root is not None
+    for f in files or FILES[split]:
+        if f not in FILES[split]:
+            raise common.Refused(f"{f} is not a file of the {split} split")
         try:
             path = common.slate_file(split, f, model)
         except common.Refused as e:
-            if split == "test":
+            if split in ("test", "fresh"):
                 raise
             log(f"{name}: {f}: {e}")
             continue
+        os.makedirs(out, exist_ok=True)
         recs = common.read_jsonl(path)
         rows = []
-        for r, pr in zip(recs, s.probs(recs)):
+        t0 = time.process_time()
+        probs = s.probs(recs)
+        cpu = time.process_time() - t0
+        for r, pr in zip(recs, probs):
             rows.append({"src": r["src"], "t": "choice", "k": len(r["opts"]), "probs": [float(x) for x in pr],
                          "target": r["target"], "gold": scorer.argmax(r["target"]), "uid": r["uid"]})
         common.write_jsonl(os.path.join(out, f"{f}.jsonl"), rows)
+        if timed:
+            common.write_json(os.path.join(out, f"{f}.time.json"),
+                              {"system": name, "file": f, "slates": len(rows), "cpu_seconds": cpu,
+                               "cpu_ms_per_slate": 1000 * cpu / max(len(rows), 1),
+                               "note": "process CPU time of the whole file, model loading and caches included"})
         log(f"{name}: {f} ({len(rows)} slates)")
 
 
@@ -570,12 +589,16 @@ def main():
     ap.add_argument("--split", choices=common.SPLITS, default="val")
     ap.add_argument("--model", help="the trained GGUF (the test needs its tau_ask)")
     ap.add_argument("--budget", type=int, default=DEFAULT_BUDGET, help="the byte budget B of static-ft and pair-lr")
+    ap.add_argument("--out-root", help="score: write <out-root>/<system>/<file>.jsonl (the v3 rehearsal on validation)")
+    ap.add_argument("--files", help="score: these files of the split only (comma separated)")
     a = ap.parse_args()
     try:
         if a.action == "fit":
+            if a.split == "fresh":
+                raise common.Refused("the baselines are fitted on validation only; the fresh split reads v2's fitted values")
             fit(a.system, a.budget)
         else:
-            score(a.system, a.split, a.model)
+            score(a.system, a.split, a.model, a.out_root, a.files.split(",") if a.files else None)
     except common.Refused as e:
         print(f"refused: {e}", file=sys.stderr)
         sys.exit(3)

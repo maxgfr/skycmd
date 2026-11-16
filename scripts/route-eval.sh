@@ -4,6 +4,8 @@
 # Everything at `nice -n 19`; the baselines on the CPU, in the pinned uv environment.
 #
 # Usage: scripts/route-eval.sh <val|test> [step ...]
+#        scripts/route-eval.sh <fresh|rehearse3> [step ...]   s6-nano v3 (docs/s6-nano3-prereg.md):
+#                handed to scripts/route-eval3.sh, which documents it
 #   steps (default: all, in this order)
 #     env        the uv environment of scripts/route/env (its lock), in <data>/envs/route
 #     fit        (validation only) every baseline fitted on the training records and the
@@ -38,7 +40,11 @@ export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
 split=${1:-}
 case "$split" in
   val | test) ;;
-  *) echo "usage: scripts/route-eval.sh <val|test> [env fit baselines model v1 wasm gate]" >&2; exit 2 ;;
+  fresh | rehearse3)
+    shift
+    exec scripts/route-eval3.sh "$split" "$@"
+    ;;
+  *) echo "usage: scripts/route-eval.sh <val|test> [env fit baselines model v1 wasm gate]; <fresh|rehearse3> [baselines model gate] (scripts/route-eval3.sh)" >&2; exit 2 ;;
 esac
 shift
 steps=("$@")
