@@ -67,7 +67,7 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
     - [x] Result block (amendment 17), result files under `runs/s6-micro2/`, the two readings of amendment 16 (`scripts/s6-answer-priors.py`).
     - [x] Prepared for publication as `s6-micro`: `site/public/models/s6-micro.gguf` (sha256 `f66d7021…40ff`), manifest (`gate: passed`, with the second-look note), card `hf/cards/s6-micro.md`, a Space entry in `hf/spaces.json`; `s6-micro-v1` stays published as the failed first version.
     - [ ] Upload by the owner: `python3 scripts/hf-publish.py --only s6-micro,s6-micro-v1,s6-nano` (the v1 and nano cards now point to v2), after `scripts/build-wasm.sh` and `(cd site && npm run space:build)`; site build and deploy.
-    - [ ] Not computed yet: the English MASSIVE score of v2 on the 1,794 test utterances not seen in training (amendment 14).
+    - [x] The English MASSIVE score of v2 on the 1,794 test utterances not seen in training (amendment 14): 0.530 (0.539 on the 206 seen ones); pooled ECE without the 206: 0.0594.
   - **s6-cast v2 (s6-cast2-pico): pre-registered, not run yet** (`docs/s6-cast2-prereg.md` with amendments 1 and 2: computed periodicity, a seasonal draft, USCRN sub-hourly series; gates G1 and G2 on GIFT-Eval, G3 dropped and Chronos-ZS reported). No result yet.
   - **What remains:** the s6-cast v2 run, the upload of s6-micro, LFM3 fine-tuned (§6.1), §7, the full test pass.
 - **After the publications of 14/11/2026 (same day).**
