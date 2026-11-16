@@ -161,3 +161,8 @@ it stands.
 45. **SMOKE** trains 5 working minutes on 2,000 clips (pilot arms of 1 minute) and evaluates on
     validation clips in place of the test clips, with no harness check and no eot-bench: no v2 test
     score exists before §8.1 and §8.3 are on file (§13).
+46. **The steps of `scripts/train-turn.sh` (4.5).** "data, teacher" run as one step, shard by
+    shard (the teacher needs the shard on disk, and the shard is removed once its targets are
+    written); "smoke" is `SMOKE=1`, the whole chain under a throwaway prefix, as in
+    `scripts/train-cast2.sh`; the harness check, the latencies and eot-bench are steps of their own
+    so that §13's order is enforced by the script.
