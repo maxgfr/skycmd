@@ -43,6 +43,19 @@
     "file": "s6-nano.gguf"
   },
   {
+    "name": "s6-micro",
+    "arch": "skycmd-s2",
+    "weight_format": "ternary",
+    "task": "general",
+    "full_depth": true,
+    "gate": "passed",
+    "gate_note": "Second version: 0.553 on the typed-decisions bench (gate 0.45) and ECE 0.0588 (guard 0.08). The first version failed the ECE guard at 0.0821, and this one was designed after that reading and judged on the same test records, so its pass is a second look",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s6-s6-nano-s6-micro-general-purpose-decisions-and-games-pre-registered",
+    "params": 5587201,
+    "bytes": 2420032,
+    "file": "s6-micro.gguf"
+  },
+  {
     "name": "s6-secrets-pico",
     "arch": "skycmd-s2",
     "weight_format": "ternary",

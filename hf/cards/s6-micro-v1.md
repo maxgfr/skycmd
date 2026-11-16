@@ -33,14 +33,16 @@ tags:
 **A 2.4 MB ternary model for four games and for typed questions in free text: the larger sibling
 of [s6-nano](https://huggingface.co/{{USER}}/s6-nano).** 5,587,201 parameters. It reads a state
 as text and answers typed questions (`choice`, `score`, `noul`) with probabilities, one forward
-pass per question. It is published as `s6-micro-v1`: the name `s6-micro` stays free for a second
-version, pre-registered in amendment 12, which has not run yet.
+pass per question. It is published as `s6-micro-v1`. The second version pre-registered in
+amendment 12 (360 minutes of decision training instead of 180, the same gate) ran on 15 and
+16/11/2026 and passed, on a second look at the same test records (amendment 17); it is published
+as [s6-micro](https://huggingface.co/{{USER}}/s6-micro). This file's verdict does not change.
 
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-micro-v1](https://huggingface.co/spaces/{{USER}}/s6-micro-v1)
   (the games, and typed questions you can edit)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 - **Pre-registration:** [docs/s6-gen-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)
-  (gates in §6, the reading in amendments 12 to 15)
+  (gates in §6, the reading in amendments 12 to 15, the second version in amendment 17)
 - **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
 
 ## Results
@@ -107,8 +109,9 @@ and AdamW.
 
 ## Limitations
 
-- **Failed its gate.** Recommended for no use. s6-nano, which passed the same gate, is the model to
-  try.
+- **Failed its gate.** Recommended for no use. s6-nano, which passed the same gate, and the second
+  version [s6-micro](https://huggingface.co/{{USER}}/s6-micro), which passed it on a second look,
+  are the models to try.
 - The English MASSIVE score is not strictly zero-shot: 206 of the 2,000 test utterances also
   appear in the training split, 201 of them in a source derived from MASSIVE (0.495 on those 206,
   0.521 on the 1,794 others). None of the 1,000 French ones does.

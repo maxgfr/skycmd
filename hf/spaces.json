@@ -14,6 +14,20 @@
     ]
   },
   {
+    "model": "s6-micro",
+    "kind": "game",
+    "emoji": "🧩",
+    "color_from": "indigo",
+    "color_to": "purple",
+    "tagline": "A 2.4 MB ternary decision model that plays four games at the oracle's level and answers typed questions in free text: 0.553 on the typed-decisions bench. Its second version passed the gate that the first one failed, on the same test records.",
+    "short_description": "2.4 MB model for four games and typed questions",
+    "notes": [
+      "A second look: the first version (s6-micro-v1) failed the ECE guard at 0.0821 against 0.08. This version was designed after that reading (twice the decision-training minutes) and judged on the same test records: 0.553 on the bench (gate 0.45), ECE 0.0588, every game at s3-pico's score (docs/s6-gen-prereg.md, amendment 17).",
+      "Published at full depth: its conformal early-exit thresholds were rejected by the pre-registered arena check (one extra Dodge veto).",
+      "Expect mistakes on questions in free text: 0.401 on When2Call, where it rarely chooses to call a tool, and 0.093 on NOTAM subjects. On 11 of the 20 bench tasks it gives one answer to at least 95% of the items."
+    ]
+  },
+  {
     "model": "s6-secrets-pico",
     "kind": "secrets",
     "emoji": "🔑",
@@ -38,7 +52,7 @@
     "short_description": "Failed its gate: 2.4 MB s6 model, a result",
     "notes": [
       "The gate (docs/s6-gen-prereg.md §6): at least 0.45 on the typed-decisions bench, ECE at most 0.08, no game more than 5% below s3-pico. It reached 0.547 and plays every game at s3-pico's score, but its ECE is 0.0821 at full depth: it failed, and is recommended for no use.",
-      "Published at full depth (its three exit thresholds set to 1). Its four-times-smaller sibling s6-nano passed the same gate.",
+      "Published at full depth (its three exit thresholds set to 1). Its four-times-smaller sibling s6-nano passed the same gate, and so did the second version, s6-micro, on a second look at the same test records.",
       "Expect mistakes on questions in free text: 0.430 on When2Call, 0.052 on NOTAM subjects."
     ]
   },

@@ -104,7 +104,9 @@ adopted none of them, so this model uses softmax attention and AdamW.
   French ones does.
 - One run, one seed. Its larger sibling s6-micro (5.6M) reached 0.547 on the bench but failed the
   ECE guard (0.0821): it failed its gate; its file is published as a result (owner's decision of
-  15/11/2026), as [s6-micro-v1](https://huggingface.co/{{USER}}/s6-micro-v1).
+  15/11/2026), as [s6-micro-v1](https://huggingface.co/{{USER}}/s6-micro-v1). A second version,
+  designed after that reading and trained twice as long on decisions, passed the same gate on the
+  same test records (0.553, ECE 0.0588; a second look): [s6-micro](https://huggingface.co/{{USER}}/s6-micro).
 - The games are civil drone scenarios and a Doom-like shooter drawn with Freedoom art; the model
   only advises and coded rules always keep a veto. This is a demo and a tutorial, not flight
   software.
