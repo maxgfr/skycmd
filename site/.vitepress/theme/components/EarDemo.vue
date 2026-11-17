@@ -274,7 +274,8 @@ onMounted(async () => {
     const dev = params.get('model')
     const found = dev
       ? ({ name: dev.split('/').pop() ?? dev, file: dev, params: 0, bytes: 0, task: 'ear' } as ModelEntry)
-      : list.find((m) => m.task === 'ear') ?? null
+      // v1 only, by name: the manifest also lists s6-ear2-nano (task ear), the TurnDemo's model
+      : list.find((m) => m.task === 'ear' && m.name === 's6-ear-nano') ?? null
     entry.value = found
     if (!found) {
       status.value = ''

@@ -113,6 +113,7 @@ export const CATALOGUE: CatalogueEntry[] = [
       'The right answer on 0.8993 of the 31,527 test clips of Smart Turn v3.2 (bar 0.85; the teacher measured 0.9260 there, s6-ear-nano 0.5681, the silence timer 0.4979), at 2.4 ms per decision in WASM and 632 KB, where its teacher is 8.7 MB and about 32 ms natively.',
     caveat:
       'On real conversations (eot-bench) it and its teacher are far weaker than on the test clips, and at its threshold it answers "finished" on about half of the real ends of turn. It is weakest on Vietnamese, Marathi and Bengali.',
+    try: { link: '/ear/', label: 'the Listen page' },
     get: HF + 's6-ear2-nano',
     read: { link: '/results/#s6-ear2-nano-passed', label: 'its section of Results' },
     source: ['site/results/index.md#s6-ear2-nano-passed', 'hf/cards/s6-ear2-nano.md', 'site/public/models/manifest.json'],

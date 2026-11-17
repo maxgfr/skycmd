@@ -5,6 +5,18 @@ outline: [2, 2]
 
 # Listen: a decision model that hears
 
+## End of turn: s6-ear2-nano (passed its gate)
+
+**s6-ear2-nano** is an end-of-turn detector: it listens through the microphone and, when the speaker pauses, says whether the turn is finished, so that a voice agent knows when to answer. It is right on 0.8993 of the 31,527 test clips of Smart Turn v3.2, against 0.9260 for Smart Turn itself, in a file of 632 KB and about 2.4 ms per decision in WebAssembly. Its limit is real conversations: at the cautious threshold this demo uses by default (the file's τ₈₅, fewer cut-offs) it answers "finished" on about half of the real ends of turn of eot-bench, which is why the demo also runs a fallback timer that ends a turn after 2.5 s of silence whatever the model says. The numbers are in [its section of Results](/results/#s6-ear2-nano-passed), and [the article](/articles/a-632-kb-end-of-turn-detector) tells the story of the run.
+
+<ClientOnly>
+  <TurnDemo />
+</ClientOnly>
+
+## The first version: s6-ear-nano (failed its gate)
+
+The demo below is the first version, which failed its gate: with a microphone it almost never says that the speaker has finished their turn, because its end-of-turn accuracy is 0.5681, barely above the 0.4979 of always answering "finished".
+
 **s6-ear** is an s6 whose state is sound. It listens to the last 10 seconds of audio and answers typed questions about them, every 80 ms:
 
 - has the speaker finished their turn?

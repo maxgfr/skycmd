@@ -372,6 +372,60 @@ export function loadEngine(entry: ModelEntry): Promise<WasmEngine> {
   return p
 }
 
+/** The end-of-turn detector of sky-web (crates/sky-infer/src/wasm.rs, `TurnDetector`): the
+ * s6-ear2-nano model over a stream of 16 kHz mono samples, pushed as it arrives. */
+export interface WasmTurnDetector {
+  /** Appends 16 kHz samples to the stream. */
+  push(pcm: Float32Array): void
+  /** Forgets the stream (a new turn). */
+  reset(): void
+  /** Hops kept by the stream (at most the window's 400). */
+  hopCount(): number
+  /** The calibrated probability that the turn is finished, from the stream's last 4 s. */
+  probEnd(): number
+  /** τ₀.₅ (0.5 on the calibrated probability). */
+  tau50(): number
+  /** τ₈₅: the highest validation threshold with an END recall of at least 0.85. */
+  tau85(): number
+  /** `{name, params, file_bytes, window_hops, hops_per_position, temperature, tau50, tau85}`. */
+  info(): string
+  free(): void
+}
+
+/** The manifest entry of the end-of-turn detector (s6-ear2-nano); null when not published.
+ * The Listen demo of v1 picks `s6-ear-nano` by name, so this entry stays invisible to it. */
+export async function loadTurnEntry(): Promise<ModelEntry | null> {
+  const list = await loadManifest()
+  return list.find((m) => m.task === 'ear' && m.name === 's6-ear2-nano') ?? null
+}
+
+const turnDetectors = new Map<string, Promise<WasmTurnDetector>>()
+
+/** Downloads the GGUF of an end-of-turn entry and loads it in one `TurnDetector` (cached). */
+export function loadTurnDetector(entry: ModelEntry): Promise<WasmTurnDetector> {
+  let p = turnDetectors.get(entry.name)
+  if (!p) {
+    p = (async () => {
+      const mod = (await loadWasm()) as unknown as {
+        TurnDetector: new (gguf: Uint8Array) => WasmTurnDetector
+      }
+      return new mod.TurnDetector(await fetchBytes(entry.file))
+    })()
+    p.catch(() => turnDetectors.delete(entry.name))
+    turnDetectors.set(entry.name, p)
+  }
+  return p
+}
+
+/** The deterministic speech-like test signal of `sky_infer::audio::synth_speech` (not speech:
+ * it only checks that a pipeline and the engine run). */
+export async function turnSynthSpeech(secs: number, seed: bigint, amp: number): Promise<Float32Array> {
+  const mod = (await loadWasm()) as unknown as {
+    turnSynthSpeech(secs: number, seed: bigint, amp: number): Float32Array
+  }
+  return mod.turnSynthSpeech(secs, seed, amp)
+}
+
 /** Small local storage helpers: storage may be unavailable (private mode, sandboxed iframes). */
 export function readNumber(key: string): number {
   try {
