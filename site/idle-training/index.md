@@ -28,7 +28,7 @@ The full guide, with every setting, the guards and what went wrong along the way
 | the Mac is | brake | meaning |
 |---|---|---|
 | too hot, or on battery | `0.5 45:15` | works half the time, and rests 15 minutes in every hour |
-| in use (input in the last 10 minutes, or a video or a call) | `0.5 45:15` | the same |
+| in use (input in the last 10 minutes, a video or a call, or an idle time it could not read) | `0.5 45:15` | the same |
 | left alone | `0.85 50:10` | works 85% of the time, rests 10 minutes in every hour |
 | left alone for 30 minutes at night, nothing else working | `0.95 55:5` | nearly full speed |
 
@@ -57,7 +57,7 @@ it runs at full speed.
 - **One line:** `<duty> [<work>:<rest>]`, as `0.85 50:10`, `0.5 45:15` or `1`.
 - **duty**, in (0, 1], is the share of the time the training works: after each step it rests
   `work × (1 / duty − 1)`, where `work` is the time since its previous rest.
-- **work:rest**, optional, in minutes, each part above 0, rounded to whole seconds: a cycle of long
+- **work:rest**, optional, in minutes, each part rounded to whole seconds and at least one: a cycle of long
   rests on the wall clock. While the Unix time in seconds, modulo `work + rest`, is past `work`, the
   training rests completely.
 - **Writing:** write another file, then rename it over the brake file, so that a reader never sees
@@ -116,7 +116,11 @@ every step:
 - The daemon is macOS only (`ioreg`, `pmset`, `top`); the protocol and the two readers work anywhere.
 - "In use" means keyboard or pointer input, or an application that keeps the display awake.
 - A trainer that does not read the file is not slowed down.
-- The memory guard (13 GB by default) stops the training with `TERM`: the training must resume from
-  its checkpoints.
-- The CPU of the other programs, which gates the night mode, is one rough `ps` reading per tick. Name
-  your trainer in `TRAIN_PROCS_RE`, or its own CPU keeps the night mode off.
+- The memory guard (13 GB by default, read from `top` in any unit) stops with `TERM` only the
+  trainer processes over the limit: the training must resume from its checkpoints.
+- The CPU of the other programs, which gates the night mode, is one rough `ps` reading per tick over
+  the whole command path. Name your trainer in `TRAIN_PROCS_RE` (the default covers `sky-train`,
+  `python3.x` and the framework `Python` that Homebrew installs), or its own CPU keeps the night mode
+  off.
+- A reading that fails takes the careful side: an unknown idle time counts as in use, and no night
+  mode on an unknown hour or CPU reading.

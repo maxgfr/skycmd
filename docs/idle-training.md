@@ -58,8 +58,9 @@ either side.
 - **duty** is the share of the time the training works, a number in (0, 1]. After each step the loop
   rests `work × (1 / duty − 1)`, where `work` is the time since its previous rest: at 0.5 it rests as
   long as it worked; at 1 it does not rest.
-- **work:rest** (optional) is a cycle of long rests, in minutes, each part above 0. Each part is
-  rounded to whole seconds. The cycle follows the wall clock: while the Unix time in seconds, modulo
+- **work:rest** (optional) is a cycle of long rests, in minutes. Each part is rounded to whole
+  seconds and must stay at least one second (`0.001` minutes is refused: a part of 0 seconds would
+  divide by zero, or rest forever). The cycle follows the wall clock: while the Unix time in seconds, modulo
   `work + rest`, is past `work`, the loop rests completely. Following the wall clock keeps the cycle
   across the processes of a pipeline. Without it there are no long rests.
 - **Writing.** Write another file in the same folder, then rename it over the brake file (`mv` is
@@ -68,7 +69,7 @@ either side.
 - **Reading.** A trainer reads the file when it starts, then at most every 5 seconds, between steps
   and between the naps of a long rest (so a new line can end a long rest within about 5 seconds).
 - **Precedence.** A valid line replaces `SKY_DUTY` and `SKY_COOL`. A missing, unreadable or invalid
-  file (empty, not a number, a duty of 0 or above 1, a part of 0 minutes, a third word) changes
+  file (empty, not a number, a duty of 0 or above 1, a part of 0 seconds, a third word) changes
   nothing: the last setting holds, and before any valid line that is `SKY_DUTY` (default 1) and
   `SKY_COOL` (default none). (`experiments/lfm3-s1s2/s1s2.py`, a third reader written for one
   pre-registered experiment and left as it ran, differs: it reads the file at every rest and goes
@@ -89,6 +90,7 @@ The daemon checks these in order at every tick; the first that holds wins.
 | too hot | macOS reports a thermal state of "serious" or worse, or `pmset -g therm` reports a speed limit or a thermal warning | `HOT`, default `IN_USE` | `thermal pressure (state N)` |
 | on battery | the power source is the battery | `HOT` | `on battery` |
 | in use | an application other than `caffeinate` keeps the display awake (a video, a call) | `IN_USE`, `0.5 45:15` | `a video or a call keeps the display awake` |
+| in use | the idle time could not be read (the careful side) | `IN_USE` | `idle time unknown: treated as in use` |
 | in use | a key or the pointer moved in the last `IDLE_MIN` minutes | `IN_USE` | `the Mac is in use` |
 | night | no input for `FULL_IDLE_MIN` minutes, between the hours `FULL_HOURS`, and the other programs below `OTHER_CPU` percent of one core | `FULL`, `0.95 55:5` | `night: no input for 30 min, nothing else works` |
 | left alone | none of the above | `AWAY`, `0.85 50:10` | `no input for 10 min` |
@@ -108,10 +110,10 @@ All are environment variables of `scripts/auto-brake.sh` (or `--set NAME=VALUE` 
 | `FULL_IDLE_MIN` | `30` | minutes with no input before the night mode |
 | `FULL_HOURS` | `23-8` | hours of the night mode, `from-to`: `23-8` is 23:00 to 08:00, `0-24` always, `9-17` 09:00 to 17:00 |
 | `OTHER_CPU` | `60` | the night mode needs the other programs below this percent of one core; once it is on, below twice that, so that a short burst does not switch it off and on |
-| `TRAIN_PROCS_RE` | `(sky-train\|sky-arena\|sky-eval\|python[0-9.]*)$` | awk regular expression over `ps -o comm=`: the processes it matches are not "other programs" |
-| `MEM_STOP_GB` | `13` | memory guard: stop the training when its largest process holds this many GB or more; `0` turns the guard off |
+| `TRAIN_PROCS_RE` | `(sky-train\|sky-arena\|sky-eval\|[Pp]ython[0-9.]*)$` | awk regular expression over the whole command path of `ps -o comm=`, spaces included: the processes it matches are not "other programs" (`[Pp]` covers the framework build of Python, `.../MacOS/Python`) |
+| `MEM_STOP_GB` | `13` | memory guard: stop the trainer processes that hold this many GB or more; `0` turns the guard off |
 | `MEM_STOP_N` | `4` | readings in a row over the limit before the stop (4 ticks: two minutes) |
-| `TRAIN_PROC` | `sky-train` | process name of the trainer, for the memory guard (`pgrep -x`, `pkill -x`) |
+| `TRAIN_PROC` | `sky-train` | process name of the trainer, for the memory guard (`pgrep -x`) |
 | `PERIOD` | `30` | seconds between two ticks |
 
 The trainer side reads three variables:
@@ -134,10 +136,29 @@ freed buffer for reuse on a 16 GB machine.
   six-line Swift helper (`scripts/thermal-state.swift`) that it builds once into `<file>.thermal`
   when `swiftc` is there. A state of 2 ("serious") or 3 ("critical") applies `HOT`.
 - **Battery.** On battery the daemon applies `HOT` whatever else holds.
-- **Memory.** When the largest process named `TRAIN_PROC` holds `MEM_STOP_GB` or more for
-  `MEM_STOP_N` readings in a row, the daemon sends it `TERM` and writes a line in the log. A run that
-  swaps does almost no work and fills the disk; the guard trades it for a restart from the last
-  checkpoint. A peak that lasts less than the window (the loading of a data set) does not count.
+- **Memory.** When a process named `TRAIN_PROC` holds `MEM_STOP_GB` or more for `MEM_STOP_N`
+  readings in a row, the daemon sends `TERM` to the processes of that name over the limit at that
+  tick, and writes a line in the log with their pids (`sky-train holds 14 GB (limit 13): training
+  stopped (TERM to pid 22)`). A run that swaps does almost no work and fills the disk; the guard
+  trades it for a restart from the last checkpoint. A peak that lasts less than the window (the
+  loading of a data set) does not count. The memory comes from one `top` call: every unit it prints
+  (`950K`, `2587M`, `13G`, `16G+`) is converted, then truncated to whole GB of 1,024 MB, so `13500M`
+  reads as 13 GB.
+- **Readings that fail.** A probe that cannot be read takes the careful side: an unknown idle time
+  counts as in use (`idle time unknown: treated as in use`), an unknown hour is not night, and an
+  unknown CPU reading of the other programs is not quiet. The daemon never speeds a training up on
+  a reading it could not make.
+
+## Several trainers at once
+
+The memory guard looks at every process named `TRAIN_PROC` in one `top` call. It counts a reading
+as over the limit when the largest of them holds `MEM_STOP_GB` or more; after `MEM_STOP_N` such
+readings in a row it sends `TERM` only to the processes over the limit at that tick. A second run's
+evaluation or probe under the limit goes on, and the log names the pids it stopped. The count does
+not follow one process: two trainers that take turns over the limit add up to one window. The
+brake file itself is shared: every trainer that reads it gets the same duty and cycle, and each
+counts its own working time. For two runs with different brakes, give each its own brake file (and
+its own daemon: one daemon serves one file).
 
 ## Why budgets count working minutes
 
@@ -206,8 +227,9 @@ every step:
 
 - **Your trainer's name.** `TRAIN_PROC=my-trainer` for the memory guard, and add it to
   `TRAIN_PROCS_RE`, or its CPU counts as "other programs" and keeps the night mode off. Check the
-  names with `ps -A -o comm= | grep -i <name>`: on macOS a framework build of Python (Homebrew's,
-  python.org's) shows as `.../Python`, with a capital P, which the default pattern does not match.
+  names with `ps -A -o comm= | grep -i <name>`. The default pattern covers `python3.12` and the
+  framework build of Python (Homebrew's, python.org's), which shows as `.../MacOS/Python` with a
+  capital P.
 - **Your hours.** `FULL_HOURS=0-24` allows the night mode at any hour; `FULL=""` turns it off.
 - **Your thresholds.** For a day away from the machine, 0.85 whatever the input and the hour, and
   0.5 if it heats: `IN_USE="0.85 50:10" HOT="0.5 45:15" FULL="" scripts/auto-brake.sh`.
@@ -239,18 +261,22 @@ an invalid setting, 3 already running, 4 not macOS.
   `IDLE_MIN` minutes; a program that holds the display awake counts as use (`caffeinate` excepted).
 - **The trainer must cooperate.** The brake is a request in a file. A trainer that does not read it
   is not slowed down, and the daemon does nothing to it but the memory guard.
-- **The memory guard stops, it does not save.** It sends `TERM` to every process named `TRAIN_PROC`,
-  including ones of another run. The training must write checkpoints and resume from them. The
-  memory is read from `top`, which prints small processes in megabytes; those read as 0 GB, so a
-  low `MEM_STOP_GB` may not fire.
+- **The memory guard stops, it does not save.** It sends `TERM` to the trainer processes over the
+  limit; the training must write checkpoints and resume from them. Whole GB are compared, by
+  truncation: 13.9 GB is 13.
 - **The CPU of the other programs is a rough signal.** It is one `ps` reading per tick, summed over
-  every process the pattern does not match; `ps` matches on the first word of the command path, so
-  a trainer in a folder whose path holds a space is not recognized.
-- **A probe that fails reads as quiet.** If `ioreg` gives nothing, the Mac counts as left alone.
+  every process the pattern does not match (the whole command path, spaces included).
+- **The on-battery probe has a theoretical race.** Under `set -o pipefail`, `pmset -g batt | head -n
+  1 | grep -q` could read "not on battery" if `pmset` were cut off by a closed pipe; its output is
+  two short lines, so this has not been seen.
+- **`experiments/lfm3-s1s2/s1s2.py` keeps its own reader.** It belongs to a finished
+  pre-registered experiment and was left as it ran: besides the differences above (no 5-second
+  throttle, back to the environment on an invalid file), it accepts `nan` as a cycle part, which
+  then makes its `time.sleep` fail. `scripts/brake.py` and the Rust brake refuse it.
 
 ## What we learned
 
-All from this repository's records:
+From this repository's records and its runs:
 
 - **A daemon that dies says nothing.** On 13/11/2026, from about 10:10 to 18:18, the daemon was not
   running: it had ended silently, under `set -e`, when a training process ended during one of its
@@ -274,5 +300,23 @@ All from this repository's records:
   205; it was stopped by hand (`docs/big-run-report.md`).
 - **The night mode needs a margin.** Commit `27db95c` made it hold through a short burst of the
   other programs: once it is on, their limit doubles.
+- **A Python trainer is not "another program".** The first pattern of trainer names matched
+  `python3.12` but not the framework build of Python that Homebrew installs, which `ps` names
+  `.../MacOS/Python`. A Python training was then counted as another program, and the daemon fell
+  back to `0.5 45:15` at night until `OTHER_CPU` was raised. The pattern now reads `[Pp]ython`, and
+  it is matched against the whole command path, so that a trainer in a folder with a space in its
+  name is recognized too.
+- **Megabytes are memory too.** `top` prints a process's memory in K, M or G; the first guard read
+  only the G values, so a trainer printed as `13500M` would have read as 0 GB. Every unit is now
+  converted.
+- **One run's guard must not stop another.** The first guard sent `TERM` to every process named
+  `sky-train` when one was over the limit, evaluations and probes of other runs included. It now
+  stops only the processes over the limit.
+- **Unknown is not idle.** A failed idle reading used to count as "left alone", the faster brake;
+  it now counts as in use.
+- **Cycles under a second.** The Rust brake accepted a cycle part that rounds to 0 seconds
+  (`1 0.001:0.001` divided by zero; `0.001:10` never worked again), and after a stretch at duty 1
+  its first rest at a lower duty was in proportion to the whole stretch. Both are fixed, with tests,
+  in `crates/sky-train/src/brake.rs`; `scripts/brake.py` behaves the same.
 - **Battery wins.** From 22:59 on 13/11 to 00:20 on 14/11 the Mac ran on battery (80% down to 47%)
   and the brake stayed at `0.5 45:15` (`docs/big-run-report.md`).
