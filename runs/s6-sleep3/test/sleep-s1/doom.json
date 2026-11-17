@@ -1,0 +1,1 @@
+[{"game":"doom","memory":true,"passes":1,"from_seed":5000,"n_episodes":200,"score":3.369999885559082,"arena":{"game":"doom","episodes":200,"mean_score":3.37,"kill_rate":0.7581552,"rescue_rate":0.0,"completion_rate":1.0,"crashes":0,"vetoes":65,"aborts":0,"safe_aborts":0,"mean_steps":494.28}}]

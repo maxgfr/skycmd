@@ -246,6 +246,26 @@ export const CATALOGUE: CatalogueEntry[] = [
     source: ['site/results/index.md#s6-route-nano-failed', 'site/public/models/manifest.json'],
   },
   {
+    id: 's6-sleep3-nano',
+    name: 's6-sleep3-nano',
+    group: 'results',
+    status: 'failed',
+    statusNote: 'Its memory is used (H0 holds); sleep passes did not help (H1) and two games lose (H2, and the s6-nano gate).',
+    purpose:
+      'An s6-nano with a fast-weight memory that carries a fact from one frame to a later one, and "sleeps" by replaying its last frames.',
+    size: '752 KB',
+    manifest: ['s6-sleep3-nano'],
+    brings:
+      'A ternary model trained to use a fast-weight memory: right on 0.4892 of the recall test questions, against 0.2440 for the same training without a memory. The memory fades with the delay (0.6147 at 1 to 4 frames, 0.3302 at 17 to 32), four sleep passes add +0.0030, and it scores 15.87 at Flappy where the control scores 71.05.',
+    caveat:
+      'A research result, not a part to use: the memory fades with the delay, and the model plays Flappy and Dodge worse than the same training without a memory.',
+    lesson: 'used its memory (recall 0.4892 against 0.2440 without one), but sleep passes added nothing and two games lost.',
+    try: { link: '/memory/', label: 'the Memory page' },
+    get: HF + 's6-sleep3-nano',
+    read: { link: '/results/#s6-sleep3-nano-failed', label: 'its section of Results' },
+    source: ['site/results/index.md#s6-sleep3-nano-failed', 'hf/cards/s6-sleep3-nano.md', 'site/public/models/manifest.json'],
+  },
+  {
     id: 's6-secrets-pico',
     name: 's6-secrets-pico',
     group: 'results',
@@ -356,18 +376,7 @@ export const CATALOGUE: CatalogueEntry[] = [
     source: ['hf/cards/s1-pico.md', 'site/public/models/manifest.json'],
   },
 
-  // In progress: no numbers before a result, except the pilot reading of s6-sleep v3
-  {
-    id: 's6-sleep-v3',
-    name: 's6-sleep v3',
-    group: 'progress',
-    status: 'progress',
-    purpose: 'A fast-weight memory that lets a decision model carry a fact across frames.',
-    brings:
-      'Whether the memory helps a nano model on unseen episodes. Its pilot (pico size, development seeds, no test seed read) says the memory works: recall 1.0000 with the memory, 0.2542 for the control without one and 0.2567 with the memory zeroed. The nano runs come next.',
-    read: { link: DOCS + 's6-sleep3-prereg.md', label: 'its pre-registration and amendment 2' },
-    source: ['docs/s6-sleep3-prereg.md (amendment 2)'],
-  },
+  // In progress: no numbers before a result
   {
     id: 's6-cast-v2',
     name: 's6-cast v2',

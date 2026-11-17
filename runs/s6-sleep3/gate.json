@@ -1,0 +1,19 @@
+{
+  "n": 1,
+  "hypotheses": {
+    "H0": true,
+    "H1": false,
+    "H2": false,
+    "H3": true
+  },
+  "s6_nano_gate": [
+    "flappy 2.10 more than 5% under s3-pico's 200.00",
+    "dodge 6.90 more than 5% under s3-pico's 9.47"
+  ],
+  "parity": {
+    "native": true,
+    "wasm": true
+  },
+  "pass": false,
+  "published_as": null
+}

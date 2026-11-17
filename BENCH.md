@@ -755,6 +755,57 @@ In each memory run the `recall` score is the same at N = 1, 2 and 4, overall and
 - **A fact, not an explanation:** at P1's last step the gradients reaching the memory projections (1.6e-5 to 3.2e-5) are 10 to 20 times smaller than those of the base blocks (about 3e-4).
 - **Not tested:** no unit test checks that a hand-written fact reads back as the right answer through the memory (a show frame, idle frames, then an ask giving the right colour). That test is still to add. There is no rerun.
 
+v2 and v3 follow in the next section.
+
+## s6-sleep3-nano (s6-sleep v3): a fast-weight memory, pre-registered, gate failed
+
+Pre-registrations: [`docs/s6-sleep3-prereg.md`](docs/s6-sleep3-prereg.md) (v3: two changes to v2 and one more check, amendments 1 to 3, all before the reading they concern, and its result block of 17/11), on top of [`docs/s6-sleep2-prereg.md`](docs/s6-sleep2-prereg.md) (the memory, the pilot, the nano runs, the gate) and [`docs/s6-sleep-prereg.md`](docs/s6-sleep-prereg.md) (the probes, H0 to H3, the publication gate); the choices the code made, [`docs/s6-sleep3-readings.md`](docs/s6-sleep3-readings.md). Runs: `scripts/train-sleep3.sh`; logs `runs/all/sleep3-pilot.log`, `sleep3-nano.log`, `sleep3-gate.log`. Results: [`runs/s6-sleep3/REPORT.md`](runs/s6-sleep3/REPORT.md), `verdict.json`, `gate.json`, `n.json`, `pilot.json`, `gate/`, `test/`.
+
+**Failed its gate.** H0 holds: the memory is used, `recall` 0.4892 at N = 1 against 0.2440 for the control without memory, **+0.2452 [+0.2370, +0.2532]** (at least 0.10 asked). H1 is not shown: four sleep passes against one, **+0.0030 [−0.0010, +0.0068]**, where a lower bound above 0 was asked. H2 is not shown: **flappy 15.87 against 71.05 (−77.7%), dodge 5.89 against 7.94 (−25.8%)**, where at most 2% under was asked. H3 holds. The exported seed-0 file fails the s6-nano gate on two games (flappy 2.10 against s3-pico's 200.00, dodge 6.90 against 9.47). `sky-infer` matches the training code natively and in WASM. Nothing is published as a model that sleeps; the file the gate read is published as a result (owner's decision of 15/11/2026), with its control at seed 0, a card and a demo (every published model gets a Space, owner's decision of 17/11/2026): `site/public/models/s6-sleep3-nano.gguf`, 752,416 bytes, sha256 `e59f837cc4ee65f35dbebdab91d6ff3348a4fe5ee9a323fe82457eedf4c23234`; `site/public/models/s6-sleep3-nano-control.gguf`, 715,136 bytes, sha256 `cd1813207b9992270b0f634e34e0104bfc3e6b6f0fe13e07bd06bfdf00c09100`.
+
+**How it got here.** v1's pico pilot found the memory unused (previous section). v2 changed how the memory starts and is first trained (one shared query and key projection, values that carry the frame, ten times the rate, a first phase of `recall`) and ended at its CPU check C4, before any GPU run: three allowed attempts of 300 steps stayed at chance (ask-frame cross-entropy 1.3867 against 1.3873 with the read held at zero; chance is ln 4 = 1.3863; [`docs/s6-sleep2-study.md`](docs/s6-sleep2-study.md), the result block of `docs/s6-sleep2-prereg.md`). A second diagnosis, on train sequences only ([`docs/s6-sleep3-diagnosis.md`](docs/s6-sleep3-diagnosis.md), with the review [`docs/research-fast-weight-memory.md`](docs/research-fast-weight-memory.md)), found that the write gate closes (its mean from 0.96 at step 7 to 3e-7 at step 35) and that a live gradient alone does not train the memory. v3 holds the gates (β = 0.5, α = σ(6) ≈ 0.9975) and adds an auxiliary loss in training only, a linear head that decodes the asked colour from what the last memory layer retrieves at each `recall` question (not exported). Its CPU check C5 passed on both seeds (amendment 1), and its pico pilot read on dev2 `recall` 1.0000 at N = 1 against 0.2542 for the control, +0.7458 [0.7323, 0.7593], with the memory zeroed at 0.2567 (amendment 2).
+
+**The nano runs.** The checkpoint behind s6-nano (`runs/s6-nano-g3/decide/last`) with one memory layer after each of its 2 state blocks: 1,612,657 parameters in training, 1,611,505 exported (the auxiliary head, 1,152 parameters, is dropped); the control has none (1,486,225). Two arms, seeds 0, 1 and 2, with `--sleep-chunk 2` (amendment 3), the night of 16 to 17/11, no stop:
+
+| phase | sleep arm at seed 0 | the five other runs | sequence batches (16 sequences) | sleep passes |
+|---|---|---|---|---|
+| A | 12.0 working minutes, 292 steps; 267 sequence steps, 233 on `recall` | 292 steps | 90%: `recall` 0.85, `rule110` 0.15 | N = 1 |
+| B | 18.0 working minutes, 877 steps | 877 steps | 50%: `recall` 0.40, `rule110` 0.12, each game 0.12 | N drawn in {1, 2, 3, 4} |
+
+The other steps are s6-nano's stateless decision batches (128 questions). Choice of N on dev2, the mean of the three sleep runs (`n.json`): 0.4823 at N = 1, 0.4911 at N = 2, 0.4857 at N = 4, so N = 1 (within 0.01 of the best); the three controls 0.2542, 0.2567, 0.2522.
+
+**Test** (read once: 1,000 `recall` and `rule110` episodes from seed 5,000,000,000 ≡ 19 mod 20; the four games from seed 5000, 200 episodes each; `typed_decisions_bench`; `sky-train s2-probe`, ternary weights, last exit, the mean of the three seeds; `REPORT.md`):
+
+| probe | control | N = 1 | N = 2 | N = 4 |
+|---|---:|---:|---:|---:|
+| `recall` | 0.2440 | 0.4892 | 0.4953 | 0.4922 |
+| `rule110` | 0.5290 | 0.5175 | 0.5175 | 0.5174 |
+
+| `recall` by delay (frames since the asked door was shown), pooled | 1–4 | 5–8 | 9–16 | 17–32 | one colour | several |
+|---|---:|---:|---:|---:|---:|---:|
+| control | 0.2420 | 0.2398 | 0.2518 | 0.2423 | 0.2433 | 0.2446 |
+| N = 1 | 0.6147 | 0.5590 | 0.4530 | 0.3302 | 0.4717 | 0.5052 |
+| N = 2 | 0.6213 | 0.5823 | 0.4693 | 0.3083 | 0.4657 | 0.5224 |
+| N = 4 | 0.6290 | 0.5910 | 0.4620 | 0.2867 | 0.4602 | 0.5214 |
+
+The published file alone (seed 0, `test/sleep-s0/recall.json`): 0.4765 at N = 1 (0.591, 0.5375, 0.438, 0.3395 by delay); its control 0.245125.
+
+**The gate, as read** (`gate.json`):
+
+| condition | measured | bar | verdict |
+|---|---|---|---|
+| H0, `recall` at N = 1 minus the control | +0.2452 [+0.2370, +0.2532] | ≥ 0.10 | holds |
+| H1, `recall` at N = 4 minus N = 1 | +0.0030 [−0.0010, +0.0068] | lower bound above 0 | **not shown** |
+| H1b (no gate), `rule110` at N = 4 minus N = 1 | −0.0001 [−0.0007, +0.0005] | | reported |
+| H2, the games at N = 1 against the control | flappy 15.87 / 71.05 (−77.7%), rescue 3.00 / 3.00 (−0.1%), dodge 5.89 / 7.94 (−25.8%), doom 3.37 / 3.37 (+0.1%) | no game more than 2% under | **not shown** |
+| H3, `typed_decisions_bench` | 0.4897 against 0.4808 | at most 0.01 under | holds |
+| s6-nano gate, the exported seed-0 file (`sky-eval`, `sky-arena`, τ = 1, 30 episodes per game, N = 1) | `typed_decisions_bench` 0.499, ECE 0.0578; flappy 2.10 against s3-pico's 200.00, dodge 6.90 against 9.47, rescue 3.00 / 3.00, doom 3.27 / 3.27 | > 0.398, ECE ≤ 0.08, no game more than 5% under s3-pico | **fails** (flappy, dodge) |
+| parity (golden memory sequences) | native true, WASM true | both | holds |
+
+**What it means** (v2 §11): the memory works and sleep does not help; H2 fails too, so the memory as trained costs two of the four games. The accuracy falls with the delay at every N, where the pico pilot was at 1.0000 at every delay on dev2; the cause is not known. The published file stores the exit thresholds of its calibration (0.5); every reading was made at τ = 1. Disclosure (v3 §5): this is the third version of the same idea on the same games, and its two changes were found by looking at training curves on train sequences; no version had read a dev2 or test seed before.
+
+**In the browser.** The [Memory page](https://maxgfr.github.io/skycmd/memory/) plays `recall` with the two files: the evaluation's episode generator and scoring (`sky_games::make_game("recall", seed)`) in the wasm class `RecallProbe` (`crates/sky-web/src/recall.rs`, tested in `crates/sky-web/tests/recall.rs`), with the memory on, zeroed, or the control, at N = 1, 2 or 4, on validation-split seeds; outside the browser, `node crates/sky-web/bench/recall-node.mjs`. It reports its own numbers next to the test reading and says that they differ by sampling noise.
+
 ## s6-route-nano (s6-nano v2): a tool router, pre-registered, gate failed
 
 Pre-registration: [`docs/s6-nano2-prereg.md`](docs/s6-nano2-prereg.md), gate in §8, amendments 1 and 2 (both before training) and its result block of 16/11; the builder's readings in [`docs/s6-nano2-readings.md`](docs/s6-nano2-readings.md). Results: [`runs/s6-nano2/eval-test/results.md`](runs/s6-nano2/eval-test/results.md) and `gate.json` next to it (the test, opened once), the latency files in `runs/s6-nano2/eval-test/latency/`, the run's report `runs/s6-nano2/report.md`, the pilots `runs/s6-nano2-pilot/summary.json`, and the validation rehearsal of the gate script with potion-cos in the model's seat, `runs/s6-nano2/eval-val/seat-potion-cos/`.

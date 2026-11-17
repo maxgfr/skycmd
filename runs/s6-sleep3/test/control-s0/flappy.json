@@ -1,0 +1,1 @@
+[{"game":"flappy","memory":false,"passes":1,"from_seed":5000,"n_episodes":200,"score":11.694999694824219,"arena":{"game":"flappy","episodes":200,"mean_score":11.695,"kill_rate":0.0,"rescue_rate":0.0,"completion_rate":0.0,"crashes":200,"vetoes":0,"aborts":0,"safe_aborts":0,"mean_steps":1357.12}}]

@@ -1,0 +1,1 @@
+[{"game":"rescue","memory":false,"passes":1,"from_seed":5000,"n_episodes":200,"score":2.994999885559082,"arena":{"game":"rescue","episodes":200,"mean_score":2.995,"kill_rate":0.0,"rescue_rate":0.9983333,"completion_rate":0.995,"crashes":0,"vetoes":0,"aborts":0,"safe_aborts":0,"mean_steps":44.915}}]

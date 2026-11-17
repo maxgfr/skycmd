@@ -1,0 +1,1 @@
+[{"game":"dodge","memory":true,"passes":1,"from_seed":5000,"n_episodes":200,"score":6.235000133514404,"arena":{"game":"dodge","episodes":200,"mean_score":6.235,"kill_rate":0.0,"rescue_rate":0.0,"completion_rate":0.41,"crashes":0,"vetoes":96007,"aborts":27,"safe_aborts":27,"mean_steps":4347.235}}]

@@ -173,6 +173,34 @@
     ]
   },
   {
+    "name": "s6-sleep3-nano",
+    "task": "memory",
+    "gate": "failed",
+    "gate_note": "It failed H1 and H2 and the s6-nano gate: four sleep passes add +0.0030 on the recall test (95% interval −0.0010 to +0.0068, above 0 asked), and it plays two games far worse than the control without memory (flappy 15.87 against 71.05, dodge 5.89 against 7.94); H0 holds: with its memory it is right on 0.4892 of the recall asks against 0.2440 for the control (+0.2452)",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-sleep3-nano-s6-sleep-v3-a-fast-weight-memory-pre-registered-gate-failed",
+    "bytes": 752416,
+    "files": [
+      {
+        "role": "model",
+        "file": "s6-sleep3-nano.gguf",
+        "arch": "skycmd-s2",
+        "weight_format": "ternary",
+        "params": 1611505,
+        "bytes": 752416,
+        "sha256": "e59f837cc4ee65f35dbebdab91d6ff3348a4fe5ee9a323fe82457eedf4c23234"
+      },
+      {
+        "role": "control",
+        "file": "s6-sleep3-nano-control.gguf",
+        "arch": "skycmd-s2",
+        "weight_format": "ternary",
+        "params": 1486225,
+        "bytes": 715136,
+        "sha256": "cd1813207b9992270b0f634e34e0104bfc3e6b6f0fe13e07bd06bfdf00c09100"
+      }
+    ]
+  },
+  {
     "name": "s1-pico",
     "arch": "modern-bert",
     "weight_format": "f16",
