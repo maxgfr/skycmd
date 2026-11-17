@@ -121,7 +121,12 @@ Paired bootstrap (slates): +0.0942 [0.0720, 0.1185] over the model alone, +0.148
   teacher had rewritten, and *none* was never right there, so under `tool_<k>` names the model part
   picks the description that reads most like a rewrite and almost never answers *none*; no number
   above changes
-  ([diagnosis](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-diagnosis.md)).
+  ([diagnosis](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-diagnosis.md)). A count
+  made afterwards on the fresh files, with no model, found a cue that BM25 and the embedding cannot
+  use: the right tool's description is the slate's shortest far more often than chance, and a rule that never
+  reads the request and picks it is right on 0.3633 of the T2-tools slates whose answer is a tool,
+  against 1/7; on validation the pair's advantage over BM25 does not lean on it, on T2-tools that
+  was not measured ([study](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-study.md)).
 - **MiniLM is more accurate on every file.** If 91.6 MB and about 12 ms of CPU per request are
   affordable, all-MiniLM-L6-v2 with cosine is the better router on these tests.
 - **Outside the tool lists of its training families it stays near its embedding part, below it on MetaTool and above it on CLINC150 and MASSIVE:** MetaTool

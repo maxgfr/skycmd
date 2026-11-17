@@ -39,10 +39,15 @@ fact. "Not verified" means looked for and not confirmed.
    (§4.2), **Toucan-1.5M** (Apache-2.0, not gated, 495 real MCP servers, "2,000+ tools", requests
    written by five open-weight models) is the one proposed; MCP-Flow fits the shape better but has
    no licence.
-5. **Odds** (§5): about 85% that the data fix removes the shortcut by the diagnosis's measure;
-   about 10 to 15% that every gate condition holds, the main risk being v3's G1 bar against
+5. **The cue, measured** (§7, no model). A rule that never reads the request and picks the
+   shortest description is right on 0.2550 of the tool-right validation slates, 0.2439 on T-tools
+   and 0.3633 on T2-tools, against 1/7, far beyond its interval. On validation, the published pair's
+   advantage over BM25 is not concentrated where that rule is right (+0.0213 against +0.0248).
+6. **Odds** (§5): about 85% that the data fix removes the shortcut by the diagnosis's measure;
+   about 10 to 15% that every condition of the draft holds, the main risk being v3's G1 bar against
    all-MiniLM-L6-v2 on a family of tools never trained on (on MetaTool, the one such family read so
-   far, the published pair was 0.14 below MiniLM and below its own embedding part).
+   far, the published pair was 0.14 below MiniLM and below its own embedding part). With that bar
+   reported instead of gated (the lead's decision, pre-registration §8), about 20 to 25%.
 
 ## 1. The defect and its evidence (from `docs/s6-route4-diagnosis.md`, read in full)
 
@@ -194,10 +199,12 @@ fact. "Not verified" means looked for and not confirmed.
   final period; ToolACE's are spaced names ("Get Guardian Raids") with full sentences. The
   diagnosis's numbers (0.337 of right tools against 0.575 of options end with a period on the
   masked validation slates) say the gold differs in style from its distractors. A rule that picks
-  the option whose style is the slate's minority would be above chance; it was not measured. The
-  same holds in v2's and v3's test files, built by the same rule. A test drawn from one new
-  catalogue has no such cue. The remedy, if the check of the pre-registration (§4 there) finds the
-  cue: fill from the gold's own source first.
+  the option whose style is the slate's minority would be above chance. **Measured in §7**: the
+  shortest description is right on 0.2550 of the tool-right validation slates, 0.2439 on T-tools
+  and 0.3633 on T2-tools, against 1/7. The same holds in v2's and v3's test files, built by the
+  same rule. A test drawn from one new
+  catalogue has no such cue. Since the cue is real (§7), filling from the gold's own source first is part
+  of v4's build (pre-registration §4.3).
 
 ### 2.6 The rewrite made independent of the answer
 
@@ -390,7 +397,8 @@ use case; a single right tool per request, or a subset where that holds.
 | G1 on Toucan: above each part | ≈ 45% | the embedding part beat the pair on MetaTool |
 | G3, G4 (calibration; 60 ms in WASM under (i)) | ≈ 80% each | ECE 0.0162 in v3; the first-request path measured at 45.2 ms |
 | G5 (T2-tools within 0.02 of v3's pair) | ≈ 70% | the renamed kind was a quarter of the records and taught a cue that never occurs at use; removing it may help or hurt real-name accuracy (not verified) |
-| **every gate condition** | **≈ 10–15%** | dominated by MiniLM − 0.03 on a never-trained family |
+| **every gate condition** (as drafted, MiniLM − 0.03 gated) | **≈ 10–15%** | dominated by MiniLM − 0.03 on a never-trained family |
+| **every gate condition of the frozen pre-registration** (MiniLM reported, not gated; G1 asks for lower bounds above 0 against BM25 and the embedding) | **≈ 20–25%** | the lead's decision of 17/11/2026; dominated by beating the embedding alone beyond noise on a new family (≈ 40%) |
 | the pilot rule stops the run | ≈ 15% | v2's micro pilot was at 0.6390 against an abort bar of 0.5755 |
 
 **Main risks.**
@@ -419,8 +427,9 @@ use case; a single right tool per request, or a subset where that holds.
 - The licence of Kimi-K2, one of Toucan's generators, was not read (it does not bind a user of the
   data set, whose licence is Apache-2.0).
 - How many training tools a Toucan tool matches by v2's cluster rule.
-- The source-style rule of §2.5 and the option-count prior on the built files (predicted from the
-  code, not measured).
+- The option-count prior on the built files (predicted from the code, not measured). Whether the
+  published pair's advantage over BM25 on T2-tools leans on the cue of §7 (checked on validation
+  only).
 - The latency of option (i) with the longer option texts, and the head window it needs.
 - The BPE split of `tool75`, `t1` … `t7` under `tok-s6-4096`.
 - Whether the s2 graph can learn to bind the line through labels (option (ii')).
@@ -428,7 +437,88 @@ use case; a single right tool per request, or a subset where that holds.
 - The count of pool tools without a rewrite exactly (13,448 to 13,691: the pools were read from
   counts, not rebuilt).
 
-## 7. What this study read
+## 7. The cue measured: request-blind rules on the test-like slates (added on 17/11/2026 at the lead's request)
+
+§2.5 predicted, from the code and the diagnosis, that in a test-like slate the right tool's
+description differs in surface from the random fill. It is measured here with no model, by
+`scripts/s6-route4-blind.py` (standard library; the data folder is read, never written).
+
+- **What was read.** (1) The validation slates `v_tools` (1,144). (2) The published test files
+  `build/test/t_tools.jsonl` (T-tools, 2,000) and `build/fresh/f_tools.jsonl` (T2-tools, 945).
+  Both were read once for the published results. Here only their option texts, the position of
+  their target and the source of each option (from `build/stage/requests.jsonl`) are counted, as a
+  property of the files. No system's output on them was read and no score of any system was
+  computed on them.
+- **The rules.** Each picks one tool option from the options alone, never the request: a final
+  period or none; a first word in -s, or imperative; the diagnosis's style rule and its inverse;
+  the most or fewest words, characters, "schema-like" words (api, endpoint, parameter, json, id,
+  specified, given, provided, based on, information, details, data, list) or name characters; each
+  position; the name's case style (snake, camel, Pascal, spaced) in the slate's minority or
+  majority, alone or with the final period and the first word's form; a digit in the name. Two
+  rules (marked S) use the source of each option, which no system sees, as an upper bound of a
+  source cue. A tie counts as 1/|tie| when the right tool is in it. Chance is 1/7 on these slates.
+  The interval is 95%, normal, on the per-slate difference between the rule and chance, over the
+  slates with a tool right.
+
+| rule (slates with a tool right) | `v_tools` (915) | T-tools (1,600) | T2-tools (756) |
+|---|---|---|---|
+| **fewest words** in the description | **0.2550**, +0.1122 [+0.0860, +0.1384] | **0.2439**, +0.1010 [+0.0812, +0.1209] | **0.3633**, +0.2205 [+0.1885, +0.2524] |
+| fewest characters | 0.2158, +0.0730 [+0.0466, +0.0993] | 0.2236, +0.0808 [+0.0606, +0.1010] | **0.3849**, +0.2421 [+0.2078, +0.2763] |
+| inverse of the diagnosis's style rule | 0.2468, +0.1039 [+0.0883, +0.1196] | 0.2396, +0.0967 [+0.0849, +0.1086] | 0.3216, +0.1787 [+0.1608, +0.1966] |
+| no final period | 0.2415, +0.0986 [+0.0839, +0.1134] | 0.2352, +0.0924 [+0.0811, +0.1037] | 0.3070, +0.1642 [+0.1473, +0.1811] |
+| name style, the slate's minority | 0.1936, +0.0507 [+0.0312, +0.0703] | 0.2188, +0.0760 [+0.0602, +0.0917] | 0.1100, −0.0328 [−0.0502, −0.0155] |
+| fewest schema-like words | 0.1987, +0.0559 [+0.0414, +0.0704] | 0.1904, +0.0475 [+0.0366, +0.0585] | 0.2057, +0.0628 [+0.0460, +0.0797] |
+| imperative first word | 0.1866, +0.0437 [+0.0364, +0.0510] | 0.1760, +0.0331 [+0.0275, +0.0388] | 0.2045, +0.0616 [+0.0545, +0.0687] |
+| S: the option of the slate's minority source | 0.2155, +0.0727 [+0.0557, +0.0897] | 0.1881, +0.0453 [+0.0330, +0.0575] | 0.2209, +0.0780 [+0.0596, +0.0965] |
+| position 1 to 7 (the best one) | 0.1672, +0.0244 [+0.0002, +0.0485] (position 1) | 0.1531, +0.0103 [−0.0074, +0.0279] | 0.1574, +0.0146 [−0.0114, +0.0405] |
+| the most words (the inverse) | 0.0801, −0.0627 | 0.0854, −0.0574 | 0.0390, −0.1038 |
+
+The full tables (34 rules per file) are printed by `scripts/s6-route4-blind.py rules`.
+
+- **Reading.** On all three files a rule that never reads the request and picks the option with
+  the shortest description is right on a quarter to more than a third of the slates whose answer
+  is a tool, where chance is 1/7, far beyond its interval. The right tool of a test-like slate is
+  shorter, more often imperative and more often without a final period than its distractors. That
+  is the style of glaive's tools (484 of T2-tools' 945 slates come from glaive), against random
+  fill drawn mostly from Seal-Tools and ToolACE. The cue is stronger on T2-tools than on T-tools or
+  validation. Position carries nothing beyond noise. The source rule (S) is above chance too, but
+  below the text rules: the cue is the descriptions' surface, of which the source is one cause.
+- **On the slates where *none* is right.** The best rule on validation (fewest words) singles out
+  one option on 0.7948 of the 229 *none*-right validation slates, against 0.7650 of the tool-right
+  ones (T-tools: 0.7925 and 0.7900; T2-tools: 0.7672 and 0.7857). It says nothing about *none*:
+  the cue points at a tool whether or not the right one is there.
+- **Does the published advantage over BM25 lean on it? Validation only.** The published per-slate
+  outputs on `v_tools` exist (`runs/s6-nano2/v_tools.dump.jsonl` for the model part,
+  `eval/val/bm25/` and `eval/val/potion-cos-4bit/` for the others); the pair is their fusion at
+  v3's β 0.81 (no model was run). Split by whether the fewest-words rule singles out the right tool
+  (`scripts/s6-route4-blind.py val-split "fewest words"`):
+
+  | `v_tools` slates | n | model part | BM25 | pair | embedding | model − BM25 [95%] | pair − BM25 [95%] |
+  |---|---:|---:|---:|---:|---:|---:|---:|
+  | the rule is right | 188 | 0.9362 | 0.9415 | 0.9628 | 0.7394 | −0.0053 [−0.0430, +0.0324] | +0.0213 [−0.0081, +0.0507] |
+  | the rule is not right | 727 | 0.8803 | 0.9285 | 0.9532 | 0.7950 | −0.0481 [−0.0712, −0.0250] | +0.0248 [+0.0058, +0.0438] |
+  | *none* is right | 229 | 0.6026 | 0.5502 | 0.7467 | 0.4803 | +0.0524 [−0.0296, +0.1344] | +0.1965 [+0.1300, +0.2630] |
+
+  (These rows give back the published validation numbers: model part 0.8339, pair 0.9135.) On
+  validation the pair's advantage over BM25 is **not** concentrated on the slates where the rule is
+  right: +0.0213 there, +0.0248 elsewhere; its largest gain is on the *none*-right slates. The model
+  part alone is at least as close to BM25 where the rule is right as elsewhere (−0.0053 against
+  −0.0481), a hint in the direction of the cue, inside its interval. The same split on T-tools or
+  T2-tools would read a system's outputs on a test file: it was not computed, so whether the
+  advantage leans on the cue there is **not measured**.
+- **What it means for the published reading** (no number changes). BM25 scores each option against
+  the request's words, and the embedding compares each option with the request: neither can prefer
+  an option for its shortness alone (BM25's length normalisation favours a short option only when
+  it holds the request's words). The trained model part sees every option's text in training and
+  could have learned the preference. So the comparison of the pair's 0.8868 with BM25's 0.8169 on
+  T2-tools is made on slates where only the pair could use a request-blind cue that points at the
+  right tool on 0.3633 of the tool-right slates. On validation, where it could be checked, the
+  advantage does not lean on that cue. On T2-tools it was not checked.
+- **What it means for v4.** The cue is real, so the remedy of §2.5 (fill from the right tool's own
+  source first) is part of v4's build, not a fallback, and the new test is built so that the cue
+  cannot be in it (pre-registration §4.3, §6.2).
+
+## 8. What this study read
 
 `AGENTS.md`; `docs/s6-route4-diagnosis.md` and `scripts/s6-route4-diag.py`; `docs/s6-nano2-prereg.md`
 (§4, amendments 1 and 2, the result block); `docs/s6-nano2-readings.md`; `docs/s6-nano3-prereg.md`
