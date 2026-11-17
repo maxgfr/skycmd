@@ -106,6 +106,13 @@ is not known.
   +0.2452 on `recall`, mostly at short delays.
 - **What it does not show:** that sleep passes help (H1), that the memory leaves the games alone
   (H2), or anything outside the `recall` probe and this size.
+- **Limits found after the result:** the runs ended halfway up their learning curve (393 `recall`
+  training steps at seed 0 against the pico pilot's 933, accuracy still rising), the auxiliary
+  loss as implemented has one head per memory layer reading the mean over the frame's tokens,
+  averaged over the two layers (not the last layer at the door token, as described under
+  Training), and the memory was never read zeroed at this size, so H0 rests on the control alone
+  ([docs/s6-sleep4-diagnosis.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-diagnosis.md)
+  and the note of 17/11 at the end of the pre-registration).
 
 ## How to ask it
 
