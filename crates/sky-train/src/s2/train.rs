@@ -2884,8 +2884,11 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     Ok(())
 }
 
+/// Tensors by name with their number of scalars.
+pub type Sizes = Vec<(String, usize)>;
+
 /// With a frozen base, the tensors it holds and the trained ones (name, scalars), in name order.
-pub fn frozen_split(p: &ParamMap, opt: &OptConfig) -> (Vec<(String, usize)>, Vec<(String, usize)>) {
+pub fn frozen_split(p: &ParamMap, opt: &OptConfig) -> (Sizes, Sizes) {
     let mut all: Vec<(String, usize, bool)> = p
         .iter()
         .map(|(k, v)| (k.to_string(), v.size(), opt.trains(k)))
