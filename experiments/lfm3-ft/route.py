@@ -28,6 +28,25 @@ def load_s1s2():
     return mod
 
 
+def alignment_problems(d):
+    """s1s2.py's route keeps only the ids present in both the s1 and the s2 file of a split and drops
+    the others without a word. On the pair, assembled from two models' folders, that would hide a gap:
+    each split's three files must hold the same ids, once each."""
+    sys.path.insert(0, HERE)
+    import common as C
+
+    out = []
+    for split in ("calib", "test"):
+        rows = {m: C.read_jsonl(os.path.join(d, f"{split}.{m}.jsonl")) for m in ("s1", "s2-256", "s2-1024")}
+        if not rows["s1"]:
+            out.append(f"{split}.s1.jsonl: empty or missing")
+            continue
+        ids = [r["id"] for r in rows["s1"]]
+        for m, rs in rows.items():
+            out += C.id_problems(f"{split}.{m}.jsonl", rs, ids, m)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tag", choices=("base", "ft", "pair"), required=True)
@@ -39,6 +58,10 @@ def main():
         sys.exit(f"{meta_path} missing: run `scripts/lfm3-ft.sh eval` first")
     with open(meta_path) as f:
         meta = json.load(f)
+    if a.tag == "pair":
+        problems = alignment_problems(d)
+        if problems:
+            sys.exit("the pair's files do not hold the same questions, nothing is routed:\n  " + "\n  ".join(problems))
     s = load_s1s2()
     s.RUNS = d
     s.MODEL = f"{meta['model']} ({meta.get('weights', 'bf16')}, {meta['engine']})"

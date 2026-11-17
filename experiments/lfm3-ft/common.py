@@ -76,6 +76,57 @@ def append_jsonl(path, rows):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
+def repair_jsonl(path):
+    """Make an append-only jsonl file safe to resume after a stop: a last line cut mid-write (no final
+    newline) is dropped if it does not parse, or given its newline if it does. Returns True when the
+    file was changed. Our writers always end a record with a newline, so nothing else can be cut."""
+    if not os.path.exists(path):
+        return False
+    with open(path, "rb+") as f:
+        data = f.read()
+        if not data or data.endswith(b"\n"):
+            return False
+        keep = data.rfind(b"\n") + 1
+        try:
+            json.loads(data[keep:].decode("utf-8"))
+        except ValueError:
+            f.truncate(keep)
+            return True
+        f.write(b"\n")
+        return True
+
+
+def copy_atomic(src, dst):
+    """Copy src to dst so that a stop never leaves a partial dst behind (temporary file, then rename)."""
+    import shutil
+
+    os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
+    tmp = f"{dst}.tmp"
+    shutil.copyfile(src, tmp)
+    os.replace(tmp, dst)
+
+
+def id_problems(name, rows, expected_ids=None, mode=None):
+    """What makes a generation file unusable as complete: duplicated ids, ids missing from or foreign to
+    `expected_ids`, records of another mode. An empty list when the file is complete and clean."""
+    ids = [r["id"] for r in rows]
+    seen = set(ids)
+    out = []
+    if len(seen) != len(ids):
+        out.append(f"{name}: {len(ids) - len(seen)} duplicated ids")
+    if expected_ids is not None:
+        exp = set(expected_ids)
+        if seen - exp:
+            out.append(f"{name}: {len(seen - exp)} ids not in the split (e.g. {sorted(seen - exp)[0]})")
+        if exp - seen:
+            out.append(f"{name}: {len(exp - seen)} ids of the split missing (e.g. {sorted(exp - seen)[0]})")
+    if mode is not None:
+        bad = sorted({r.get("mode") for r in rows} - {mode}, key=str)
+        if bad:
+            out.append(f"{name}: records of mode {bad}, expected {mode}")
+    return out
+
+
 def qseed(qid):
     """The per-question seed of s1s2.py."""
     return SEED + int.from_bytes(qid.encode()[-6:], "big") % 1_000_000

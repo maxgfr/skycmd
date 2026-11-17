@@ -10,16 +10,19 @@ G3  s1 on MMLU-Pro (500):        acc_ft >= acc_base - 0.02
 "LFM3 improved" = G1 and G3; G2 is reported on its own. The router (H1-H4 of docs/lfm3-s1s2-prereg.md)
 is reported for both models when route.py has run.
 
-Amendment 5 (local mode, on when the pair folder eval/pair exists): System 2 is the base model itself,
+Amendment 5 (local mode: --amendment5, which scripts/lfm3-ft.sh passes, or the pair folder eval/pair
+exists): System 2 is the base model itself,
 so G2 is not read; the H2-H4 of the pair and of the base's own reading (runs/lfm3-s1s2, reported as it
 is) come next to them, with the cascade cost: the mean s1 tokens before and after, 1/rho and w.
 """
 import argparse
 import json
+import math
 import os
 import sys
 
-N = {"test": 1000, "mmlu": 500}
+HERE = os.path.dirname(os.path.abspath(__file__))
+N ={"test": 1000, "mmlu": 500}
 FILES = {"s1": "test.s1.jsonl", "s2": "test.s2-1024.jsonl", "mmlu": "mmlu.s1.jsonl"}
 ALPHA = 0.02  # the router's, docs/lfm3-s1s2-prereg.md
 G2_NOT_READ = "not read (System 2 is the base)"  # amendment 5: the value G2 takes in gate.json and the report
@@ -48,6 +51,9 @@ def check_pairs(base, ft, expected):
     """Both models answered exactly the same questions, all of them."""
     b, f = {r["id"] for r in base}, {r["id"] for r in ft}
     problems = []
+    for name, rows, ids in (("base", base, b), ("ft", ft, f)):
+        if len(rows) != len(ids):  # a record written twice would count twice in the rates
+            problems.append(f"{name}: {len(rows) - len(ids)} duplicated ids")
     if b != f:
         problems.append(f"different ids ({len(b ^ f)} differ)")
     if len(b) != expected or len(f) != expected:
@@ -77,19 +83,46 @@ def gates(base, ft, read_g2=True):
         g2b = sf["s2"]["mean_think_tokens"] <= 0.6 * sb["s2"]["mean_think_tokens"]
         g2 = {"pass": g2a and g2b, "acc": g2a, "think": g2b}
     g.update(G1={"pass": g1a and g1b, "acc": g1a, "length": g1b}, G2=g2, G3={"pass": g3},
-             improved=(g1a and g1b) and g3)
+             improved=None if g["problems"] else (g1a and g1b) and g3)  # incomplete: no verdict (§6)
     g["verdict"] = "incomplete" if g["problems"] else ("LFM3 improved" if g["improved"] else "not improved")
     return g
 
 
-def w_share(summary):
-    """w of the cascade cost (amendment 5): the share of test questions the router sends on to System 2
-    (1 - its s1 share), on the chosen budget's test reading."""
-    if not summary:
+def probe_score(p):
+    """The score of s1s2.py's fit_logistic, rebuilt from the parameters route writes in summary.json."""
+    mu, sd, w, b = p["mu"], p["sd"], p["w"], p["b"]
+
+    def score(x):
+        z = [(x[j] - mu[j]) / sd[j] for j in range(len(mu))]
+        return 1 / (1 + math.exp(-max(-30, min(30, b + sum(wj * zj for wj, zj in zip(w, z))))))
+
+    return score
+
+
+def w_share(summary, test_s1):
+    """w of the cascade cost (amendment 5): the share of test questions the router sends on to System 2,
+    that is whose probe score is under tau (chosen budget), System 2 being paid for each of them.
+
+    Not 1 - s1_share: s1s2.py's route_one keeps the s1 answer when System 2 gave none, and counts it in
+    s1_share, but it has paid System 2's tokens for that question (s1 + s2 in router_tokens)."""
+    if not summary or not test_s1:
         return None
     b = summary.get("chosen_budget")
-    e = ((summary.get("budgets") or {}).get(str(b)) or {}).get("test")
-    return 1 - e["all"]["s1_share"] if e else None
+    e = (summary.get("budgets") or {}).get(str(b)) or {}
+    if not e.get("test") or "probe" not in e:
+        return None
+    features = load_s1s2().features
+    score, tau = probe_score(e["probe"]), e["tau"]
+    return sum(score(features(r)) < tau for r in test_s1) / len(test_s1)
+
+
+def load_s1s2():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("s1s2", os.path.join(HERE, "..", "lfm3-s1s2", "s1s2.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def cascade(ft_s1_tokens, base_s2_tokens, w, base_s1_tokens=None):
@@ -175,8 +208,11 @@ def report_md(g):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--runs", default="runs/lfm3-ft")
+    ap.add_argument("--amendment5", action="store_true",
+                    help="the local plan of amendment 5 (scripts/lfm3-ft.sh passes it in MODE=local): G2 not read, "
+                         "even before the pair exists")
     a = ap.parse_args()
-    read_g2 = not pair_mode(a.runs)
+    read_g2 = not (a.amendment5 or pair_mode(a.runs))
     load = lambda tag: {k: read_jsonl(os.path.join(a.runs, "eval", tag, f)) for k, f in FILES.items()}
     base, ft = load("base"), load("ft")
     if not any(base.values()) or not any(ft.values()):
@@ -192,8 +228,9 @@ def main():
         g["router"]["pair"] = router(summ)
         q = os.path.join(os.path.dirname(a.runs.rstrip("/") or "."), "lfm3-s1s2", "summary.json")
         g["router"]["base_s1s2"] = router(json.load(open(q))) if os.path.exists(q) else None
+        pair_s1 = read_jsonl(os.path.join(a.runs, "eval", "pair", "test.s1.jsonl"))
         g["cascade"] = cascade((g["ft"]["s1"] or {}).get("mean_tokens"), (g["base"]["s2"] or {}).get("mean_tokens"),
-                               w_share(summ), (g["base"]["s1"] or {}).get("mean_tokens"))
+                               w_share(summ, pair_s1), (g["base"]["s1"] or {}).get("mean_tokens"))
     with open(os.path.join(a.runs, "gate.json"), "w") as f:
         json.dump(g, f, indent=2)
     md = report_md(g)

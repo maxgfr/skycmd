@@ -281,7 +281,9 @@ for s in "$@"; do
       ;;
     gate)
       echo "== gates G1-G3 -> $RUNS/gate.json, $RUNS/report.md"
-      run_local python3 "$EXP/gate.py" --runs "$RUNS"
+      # Local: amendment 5, G2 is not read (also before the pair exists). hf: G1-G3 as §6 wrote them.
+      case "$MODE" in local) a5=(--amendment5) ;; *) a5=() ;; esac
+      run_local python3 "$EXP/gate.py" --runs "$RUNS" ${a5[@]+"${a5[@]}"}
       ;;
     *) echo "unknown step $s (smoke, gen, sft, eval, pull, route, gate)" >&2; exit 2 ;;
   esac

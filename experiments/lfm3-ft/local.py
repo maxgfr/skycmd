@@ -43,7 +43,8 @@ MERGED = f"{MODELS}/merged"
 SMOKE = f"{RUNS}/smoke"
 S1S2_RUNS = "runs/lfm3-s1s2"
 SMOKE_N = 20
-SAVE_EVERY = 100  # optimizer steps between two technical checkpoints
+SFT_RESULT = f"{RUNS}/sft/result.json"  # written last by `sft`: its presence means the merged model is complete
+SAVE_EVERY = 20  # optimizer steps between two technical checkpoints (about 188 steps in all: a stop loses < 20)
 
 
 def load_s1s2():
@@ -144,7 +145,19 @@ def lora_settings():
     return rep["per_device"], rep["grad_accum"]
 
 
+def replace_dir(tmp, dst):
+    """Put a finished directory in place of dst (dst only ever holds a complete output)."""
+    if os.path.exists(dst):
+        shutil.rmtree(dst)
+    os.replace(tmp, dst)
+
+
 def cmd_sft(a):
+    if os.path.exists(SFT_RESULT) and os.path.exists(os.path.join(MERGED, "config.json")):
+        # Done: a second run would resume from the last checkpoint, train nothing, and overwrite the
+        # record of the real run (its metrics, its time) with those of an empty one.
+        print(f"sft: done ({SFT_RESULT}), kept; remove it to train again", flush=True)
+        return
     from transformers.trainer_utils import get_last_checkpoint
 
     per_device, grad_accum = lora_settings()
@@ -176,30 +189,40 @@ def cmd_sft(a):
     out = trainer.train(resume_from_checkpoint=last)
     adapter = f"{RUNS}/sft/adapter"
     trainer.save_model(adapter)
-    C.merge_and_save(C.BASE, a.revision, adapter, MERGED, epochs="1 epoch (amendment 5)", distillation=False)
+    tmp = f"{MERGED}.tmp"
+    if os.path.exists(tmp):
+        shutil.rmtree(tmp)
+    C.merge_and_save(C.BASE, a.revision, adapter, tmp, epochs="1 epoch (amendment 5)", distillation=False)
+    replace_dir(tmp, MERGED)
     result = {"base": C.BASE, "base_revision": a.revision, "steps": total, "train_seconds_with_rests": time.time() - t0,
               "resumed_from": last, "train_metrics": out.metrics, "log_history": trainer.state.log_history, "mix": stats,
               "merged": MERGED, "versions": C.versions()}
-    with open(f"{RUNS}/sft/result.json", "w") as f:
+    with open(f"{SFT_RESULT}.tmp", "w") as f:
         json.dump(result, f, indent=2)
+    os.replace(f"{SFT_RESULT}.tmp", SFT_RESULT)
     print(json.dumps({k: v for k, v in result.items() if k != "log_history"}, indent=2))
 
 
-def convert(src, dst, revision=None):
-    """The MLX 4-bit conversion of amendment 1 (the same command for the base and the fine-tuned model)."""
+def convert(src, dst, revision=None, run=subprocess.run):
+    """The MLX 4-bit conversion of amendment 1 (the same command for the base and the fine-tuned model).
+    It writes to dst.tmp and renames at the end: a conversion cut by a stop is never taken as done."""
     if os.path.exists(os.path.join(dst, "config.json")):
         print(f"{dst} exists, kept", flush=True)
         return
-    cmd = [sys.executable, "-m", "mlx_vlm.convert", "--hf-path", src, "--mlx-path", dst, "-q", "--q-bits", "4",
+    tmp = f"{dst}.tmp"
+    if os.path.exists(tmp):
+        shutil.rmtree(tmp)
+    cmd = [sys.executable, "-m", "mlx_vlm.convert", "--hf-path", src, "--mlx-path", tmp, "-q", "--q-bits", "4",
            "--q-mode", "affine", "--trust-remote-code"] + (["--revision", revision] if revision else [])
     print(" ".join(cmd), flush=True)
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    subprocess.run(cmd, check=True)
+    os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
+    run(cmd, check=True)
+    replace_dir(tmp, dst)
 
 
 def cmd_convert(_):
-    if not os.path.exists(os.path.join(MERGED, "config.json")):
-        raise SystemExit(f"{MERGED} missing: run `scripts/lfm3-ft.sh sft` first")
+    if not os.path.exists(SFT_RESULT) or not os.path.exists(os.path.join(MERGED, "config.json")):
+        raise SystemExit(f"{SFT_RESULT} missing: `scripts/lfm3-ft.sh sft` has not finished")
     convert(MERGED, FT_MLX)
 
 
@@ -208,17 +231,20 @@ def base_source():
         return json.load(f)["base_source"]
 
 
-def copy_base_generations(d):
-    """The router's run is the base model's evaluation (amendment 1): same prompts, seeds and engine."""
+def copy_base_generations(d, src=None):
+    """The router's run is the base model's evaluation (amendment 1): same prompts, seeds and engine.
+    Each file is copied whole (temporary file, then rename) unless an identical-size copy is there: a
+    copy cut by a stop is redone, never kept as if complete."""
+    src = src or S1S2_RUNS
     names = [f"{s}.{m}.jsonl" for s in ("calib", "test") for m in ("s1", "s2-256", "s2-1024")]
-    missing = [n for n in names if not os.path.exists(f"{S1S2_RUNS}/{n}")]
+    missing = [n for n in names if not os.path.exists(f"{src}/{n}")]
     if missing:
-        raise SystemExit(f"{S1S2_RUNS} lacks {missing}: run scripts/lfm3-s1s2.sh first")
+        raise SystemExit(f"{src} lacks {missing}: run scripts/lfm3-s1s2.sh first")
     os.makedirs(d, exist_ok=True)
     for n in names:
-        if not os.path.exists(f"{d}/{n}"):
-            shutil.copy(f"{S1S2_RUNS}/{n}", f"{d}/{n}")
-    print(f"base: the generations of {S1S2_RUNS} are copied into {d}", flush=True)
+        if not os.path.exists(f"{d}/{n}") or os.path.getsize(f"{d}/{n}") != os.path.getsize(f"{src}/{n}"):
+            C.copy_atomic(f"{src}/{n}", f"{d}/{n}")
+    print(f"base: the generations of {src} are copied into {d}", flush=True)
     return names
 
 
@@ -244,6 +270,8 @@ def cmd_eval(a):
             "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "files": {}}
     for split, mode in jobs:
         out = f"{d}/{split}.{mode}.jsonl"
+        if C.repair_jsonl(out):  # a record cut by a stop: dropped, so it is generated again
+            print(f"{out}: its last line was cut mid-write, repaired", flush=True)
         done = {r["id"] for r in C.read_jsonl(out)}
         todo = [it for it in data[split] if it["id"] not in done]
         print(f"{a.tag} {mode} on {split}: {len(todo)} to generate ({len(done)} done)", flush=True)
@@ -276,28 +304,40 @@ PAIR_FILES = (  # (split, mode, tag): the pair's s1 comes from the fine-tuned mo
 )
 
 
-def build_pair(runs=RUNS):
+def build_pair(runs=None, data=None):
     """The pair of amendment 5: the fine-tuned model answers in s1 (System 1) and the base model in
     s2-256 and s2-1024 (System 2, untouched). eval/pair holds the fine-tuned s1 files and the base's s2
     files, copied, never generated; meta.json says where each file came from, and `route --tag pair`
-    reads the folder like any model directory (s1s2.py's cmd_route, unchanged)."""
+    reads the folder like any model directory (s1s2.py's cmd_route, unchanged).
+
+    s1s2.py's route pairs s1 and s2 records by id and silently drops an id missing from either file, so
+    every file is checked first against its split (data/lfm3/<split>.jsonl): exactly its ids, once each,
+    records of the file's mode. Any gap is an error and no pair is written. meta.json, the marker that
+    `route` and `gate` look for, is removed first and written last."""
+    runs, data = runs or RUNS, data or C_DATA
     d = os.path.join(runs, "eval", "pair")
     meta = {"pair": True, "amendment": 5, "model": "pair: ft in s1, base in s2", "weights": "MLX 4-bit",
             "engine": "mlx-vlm", "revision": "local", "s1": "ft (the adapter is System 1)",
             "s2": "base (System 2, untouched)", "sources": {}}
-    files = []
+    if os.path.exists(os.path.join(d, "meta.json")):
+        os.remove(os.path.join(d, "meta.json"))
+    expected = {s: [r["id"] for r in C.load_shipped(os.path.join(data, f"{s}.jsonl"))] for s in ("calib", "test")}
+    files, problems = [], []
     for split, mode, tag in PAIR_FILES:
         name = f"{split}.{mode}.jsonl"
         src = os.path.join(runs, "eval", tag, name)
         if not os.path.exists(src):
             raise SystemExit(f"{src} missing: run `scripts/lfm3-ft.sh eval` first")
+        problems += C.id_problems(f"eval/{tag}/{name}", C.read_jsonl(src), expected[split], mode)
         files.append((name, src, tag))
-    os.makedirs(d, exist_ok=True)
+    if problems:
+        raise SystemExit("the pair is not written, its files do not hold the same questions:\n  " + "\n  ".join(problems))
     for name, src, tag in files:
-        shutil.copy(src, os.path.join(d, name))
+        C.copy_atomic(src, os.path.join(d, name))
         meta["sources"][name] = f"eval/{tag}"
-    with open(os.path.join(d, "meta.json"), "w") as f:
+    with open(os.path.join(d, "meta.json.tmp"), "w") as f:
         json.dump(meta, f, indent=2)
+    os.replace(os.path.join(d, "meta.json.tmp"), os.path.join(d, "meta.json"))
     return meta
 
 
