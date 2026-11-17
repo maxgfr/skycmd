@@ -32,16 +32,24 @@
 #   Owner away for a day, 0.85 whatever the input and the hour, 0.5 if the machine heats:
 #     IN_USE="0.85 50:10" HOT="0.5 45:15" FULL="" scripts/auto-brake.sh
 #
-# Out of memory: the training is stopped (TERM to every process named TRAIN_PROC) when the largest
-# of them holds MEM_STOP_GB of memory or more (13; 0 turns the guard off) MEM_STOP_N times in a row
-# (4, two minutes): a run that swaps does almost no work and fills the disk. It resumes from its
-# last checkpoint at the next launch. The loading of the decision sets peaks for about a minute and
-# does not count. The memory is read with `top`, which prints small processes in megabytes: those
-# read as 0 GB.
+# A reading that could not be made takes the careful side: an unknown idle time counts as in use
+# ("idle time unknown: treated as in use"), an unknown hour is not night, and an unknown CPU reading
+# of the other programs is not quiet (no night mode).
+#
+# Out of memory: when a process named TRAIN_PROC holds MEM_STOP_GB of memory or more (13; 0 turns the
+# guard off) MEM_STOP_N readings in a row (4, two minutes), TERM goes to the TRAIN_PROC processes
+# over the limit at that tick, and only to them (an evaluation or a probe under the limit goes on);
+# the log names their pids. A run that swaps does almost no work and fills the disk. It resumes from
+# its last checkpoint at the next launch. The loading of the decision sets peaks for about a minute
+# and does not count. The memory is read with one `top` call; every unit it prints (K, M, G, with an
+# optional + or -) is converted, then truncated to whole GB of 1024 MB (13500M reads as 13).
 #
 # Other settings: PERIOD (30) seconds between two ticks; TRAIN_PROC (sky-train) the trainer's
-# process name for the memory guard; TRAIN_PROCS_RE (`(sky-train|sky-arena|sky-eval|python[0-9.]*)$`)
-# an awk regular expression over `ps -o comm=`: the processes it matches are not "other programs".
+# process name for the memory guard; TRAIN_PROCS_RE (`(sky-train|sky-arena|sky-eval|[Pp]ython[0-9.]*)$`)
+# an awk regular expression over the whole command path of `ps -o comm=` (spaces included): the
+# processes it matches are not "other programs". It matches `Python` too, the framework build that
+# Homebrew installs (`.../MacOS/Python`): without it a Python trainer counted as another program and
+# kept the night mode off.
 #
 # Every change is a line in <file>.log, with the reason. The pre-registered budgets count working
 # time only, so the brake changes how long a run takes, not what it computes.
@@ -72,14 +80,14 @@ ab_settings() {
   mem_stop_n=${MEM_STOP_N:-4}
   period=${PERIOD:-30}
   train_proc=${TRAIN_PROC:-sky-train}
-  train_procs_re=${TRAIN_PROCS_RE:-(sky-train|sky-arena|sky-eval|python[0-9.]*)\$}
+  train_procs_re=${TRAIN_PROCS_RE:-(sky-train|sky-arena|sky-eval|[Pp]ython[0-9.]*)\$}
 }
 ab_settings
 ab_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # ----------------------------------------------------------------------------- probes
-# Each prints a reading and never fails the caller: a probe that cannot run reads as its quiet
-# value (0, empty), as it always did.
+# Each prints a reading and never fails the caller. A probe that cannot run prints nothing (or 0
+# for a yes/no reading), and `decide` takes the careful side for it.
 
 # Seconds since the last key press or pointer move (empty when ioreg gives nothing).
 idle_secs() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ { print int($NF / 1000000000); exit }'; }
@@ -104,24 +112,42 @@ pmset_hot() {
     /Thermal Warning Level/ && $2 + 0 > 0 { hot = 1 }
     END { exit !hot }'
 }
-# Percent of one core used by the programs that TRAIN_PROCS_RE does not match (printed exactly, so
-# that `decide` compares the same number the daemon always compared).
+# Percent of one core used by the programs that TRAIN_PROCS_RE does not match, matched against the
+# whole command path (everything after the %cpu field, spaces included). Printed exactly, so that
+# `decide` compares the number the daemon always compared; nothing when `ps` gives nothing.
 others_cpu() {
   LC_ALL=C ps -A -o %cpu=,comm= | AB_RE=$train_procs_re LC_ALL=C awk '
-    $2 !~ ENVIRON["AB_RE"] { sum += $1 }
-    END { printf "%.17g\n", sum + 0 }'
+    NF { n++; cpu = $1; sub(/^[ \t]*[^ \t]+[ \t]+/, ""); if ($0 !~ ENVIRON["AB_RE"]) sum += cpu }
+    END { if (n) printf "%.17g\n", sum + 0 }'
 }
-# Memory of the largest TRAIN_PROC process, in GB (0 when none runs, or when one ends during the
-# reading: `top` then leaves it out).
+# Memory of the TRAIN_PROC processes from one `top` call: prints `<GB of the largest> [<pid>...]`,
+# the pids being those that hold MEM_STOP_GB or more. `top` prints K, M or G (1G = 1024M), with an
+# optional trailing + or - and a decimal point; each value is converted, then truncated to whole GB
+# (13500M is 13). 0 when none runs, or when one ends during the reading (`top` leaves it out).
 train_gb() {
   local pids p args=()
   pids=$(pgrep -x "$train_proc") || true
   [ -n "$pids" ] || { echo 0; return; }
   for p in $pids; do args+=(-pid "$p"); done
-  top -l 1 "${args[@]}" -stats pid,mem 2>/dev/null | awk '
+  top -l 1 "${args[@]}" -stats pid,mem 2>/dev/null | LC_ALL=C awk -v lim="$mem_stop_gb" '
     $1 == "PID" { rows = 1; next }
-    rows && NF >= 2 { v = ($2 ~ /G/) ? int($2) : 0; if (v > max) max = v }
-    END { print max + 0 }'
+    rows && NF >= 2 && $1 ~ /^[0-9]+$/ {
+      v = $2
+      sub(/[+-]$/, "", v)
+      unit = substr(v, length(v))
+      n = substr(v, 1, length(v) - 1)
+      if (n !~ /^[0-9]+([.][0-9]+)?$/) next
+      if (unit == "B") gb = n / 1073741824
+      else if (unit == "K") gb = n / 1048576
+      else if (unit == "M") gb = n / 1024
+      else if (unit == "G") gb = n + 0
+      else if (unit == "T") gb = n * 1024
+      else next
+      gb = int(gb)
+      if (gb > max) max = gb
+      if (lim + 0 > 0 && gb >= lim + 0) over = over " " $1
+    }
+    END { print (max + 0) over }'
 }
 
 # Every reading of one tick, into p_* variables. None of them can stop the daemon under `set -e`.
@@ -140,6 +166,8 @@ read_probes() {
 }
 
 # ----------------------------------------------------------------------------- decision
+# True when <value> is a whole number of zero or more.
+is_count() { case $1 in '' | *[!0-9]*) return 1 ;; esac; }
 # True when <hour> (00 to 23) is between the hours of FULL_HOURS (`23-8`: from 23:00 to 08:00,
 # `0-24`: always, `9-17`: from 09:00 to 17:00).
 night() { # <hour>
@@ -154,13 +182,16 @@ night() { # <hour>
 }
 # True when the other programs use less than OTHER_CPU percent of one core (twice that when the
 # brake file already holds the night mode, so that a short burst does not switch it off and on).
+# A reading that is not a number (`ps` gave nothing) is not quiet: no night mode on it.
 others_quiet() { # <percent of one core> <current brake>
-  local max=$other_cpu
+  local max=$other_cpu re='^[0-9]+([.][0-9]*)?([eE][-+]?[0-9]+)?$'
+  [[ $1 =~ $re ]] || return 1
   [ "$2" = "$full" ] && max=$((other_cpu * 2))
   LC_ALL=C awk -v sum="$1" -v max="$max" 'BEGIN { exit !(sum + 0 < max) }'
 }
 # The brake for these readings, and why: prints `<brake>\t<reason>`. Pure: it reads only its
-# arguments and the settings.
+# arguments and the settings. An idle time that could not be read counts as in use: the daemon
+# never speeds a training up on a reading it could not make.
 #   decide <pmset hot 0|1> <thermal state 0-3> <on battery 0|1> <display held 0|1> <idle seconds>
 #          <hour> <other programs, percent of one core> <current brake>
 decide() {
@@ -172,6 +203,8 @@ decide() {
     echo "$hot_brake${t}on battery"
   elif [ "$display" = 1 ]; then
     echo "$in_use${t}a video or a call keeps the display awake"
+  elif ! is_count "$idle"; then
+    echo "$in_use${t}idle time unknown: treated as in use"
   elif [ "$idle" -lt $((idle_min * 60)) ] 2>/dev/null; then
     echo "$in_use${t}the Mac is in use"
   elif [ -n "$full" ] && [ "$idle" -ge $((full_idle_min * 60)) ] 2>/dev/null &&
@@ -193,6 +226,32 @@ set_brake() { # <value> <reason>
     # A full disk or a removed folder: the next tick tries again (this used to end the daemon).
     rm -f "$file.tmp" 2>/dev/null || true
     log_line "could not write $file: $1 ($2) not applied"
+  fi
+}
+
+# One tick of the memory guard. After MEM_STOP_N readings in a row with a TRAIN_PROC process at
+# MEM_STOP_GB or more, TERM goes to the processes over the limit at that tick, and only to them: an
+# evaluation or a probe of another run, under the limit, goes on. ab_over counts the readings.
+ab_over=0
+mem_guard() {
+  local out gb pids
+  # A training that ends between the two commands of train_gb makes `top` fail: that reading is 0,
+  # and the daemon goes on (it used to end there, silently, under `set -e`).
+  out=$(train_gb) || out=0
+  gb=${out%% *}
+  pids=${out#"$gb"}
+  pids=${pids# }
+  is_count "$gb" || gb=0
+  if [ "$gb" -ge "$mem_stop_gb" ] && [ -n "$pids" ]; then
+    ab_over=$((ab_over + 1))
+    if [ "$ab_over" -ge "$mem_stop_n" ]; then
+      log_line "$train_proc holds $gb GB (limit $mem_stop_gb): training stopped (TERM to pid $pids)"
+      # shellcheck disable=SC2086 # one word per pid
+      kill -TERM $pids 2>/dev/null || true
+      ab_over=0
+    fi
+  else
+    ab_over=0
   fi
 }
 
@@ -254,7 +313,7 @@ environment, with their defaults:
   IN_USE="0.5 45:15"  AWAY="0.85 50:10"  FULL="0.95 55:5" (FULL="" turns the night mode off)
   HOT=$IN_USE  IDLE_MIN=10  FULL_IDLE_MIN=30  FULL_HOURS=23-8  OTHER_CPU=60
   MEM_STOP_GB=13 (0: off)  MEM_STOP_N=4  PERIOD=30  TRAIN_PROC=sky-train
-  TRAIN_PROCS_RE='(sky-train|sky-arena|sky-eval|python[0-9.]*)$'
+  TRAIN_PROCS_RE='(sky-train|sky-arena|sky-eval|[Pp]ython[0-9.]*)$'
 One daemon per brake file (<file>.pid). macOS only. Exit status: 0 stopped, 2 usage, 3 already
 running for this file, 4 not macOS. Guide: docs/idle-training.md.
 EOF
@@ -273,7 +332,7 @@ EOF
 
 # --once: every reading, the decision, and what a tick would do; nothing is written or built.
 ab_once() {
-  local out value reason pid gb hours
+  local out value reason pid gb hours others over
   read_probes
   out=$(decide "$p_pmset_hot" "$p_state" "$p_battery" "$p_display" "$p_idle" "$p_hour" \
     "$p_others" "$p_current")
@@ -290,10 +349,16 @@ ab_once() {
   hours="night hours $full_hours"
   [ -n "$full" ] || hours='night mode off: FULL=""'
   printf '%-16s %s\n' "hour" "${p_hour:-unknown} ($hours)"
-  printf '%-16s %s\n' "other programs" "$(LC_ALL=C awk -v s="${p_others:-0}" 'BEGIN { printf "%.1f", s }') % of one core (quiet below $other_cpu, $((other_cpu * 2)) once the night mode is on)"
+  if [ -n "$p_others" ]; then
+    others="$(LC_ALL=C awk -v s="$p_others" 'BEGIN { printf "%.1f", s }') % of one core"
+  else
+    others="unknown (not quiet: no night mode)"
+  fi
+  printf '%-16s %s\n' "other programs" "$others (quiet below $other_cpu, $((other_cpu * 2)) once the night mode is on)"
   if [ "$mem_stop_gb" -gt 0 ] 2>/dev/null; then
     gb=$(train_gb 2>/dev/null) || gb=0
-    printf '%-16s %s\n' "trainer memory" "${gb:-0} GB, largest $train_proc (stopped at $mem_stop_gb GB, $mem_stop_n readings in a row)"
+    over=${gb#"${gb%% *}"}
+    printf '%-16s %s\n' "trainer memory" "${gb%% *} GB, largest $train_proc${over:+; over the limit: pid$over} (stopped at $mem_stop_gb GB, $mem_stop_n readings in a row)"
   else
     printf '%-16s %s\n' "trainer memory" "not watched (MEM_STOP_GB=0)"
   fi
@@ -369,7 +434,7 @@ ab_cleanup() {
 }
 
 ab_main() {
-  local once=0 out over=0 gb
+  local once=0 out
   case ${1:-} in
     -h | --help) ab_usage; exit 0 ;;
     --once) once=1; shift ;;
@@ -412,19 +477,7 @@ ab_main() {
       "$p_others" "$p_current") || out=
     [ -z "$out" ] || set_brake "${out%%$'\t'*}" "${out#*$'\t'}"
     if [ "$mem_stop_gb" -gt 0 ] 2>/dev/null; then
-      # A training that ends between the two commands of train_gb makes `top` fail: that reading
-      # is 0, and the daemon goes on (it used to end there, silently, under `set -e`).
-      gb=$(train_gb) || gb=0
-      if [ "${gb:-0}" -ge "$mem_stop_gb" ] 2>/dev/null; then
-        over=$((over + 1))
-        if [ "$over" -ge "$mem_stop_n" ]; then
-          log_line "$train_proc holds $gb GB (limit $mem_stop_gb): training stopped"
-          pkill -TERM -x "$train_proc" || true
-          over=0
-        fi
-      else
-        over=0
-      fi
+      mem_guard
     fi
     # In the background, so that TERM ends the daemon at once and not at the end of the sleep.
     sleep "$period" &

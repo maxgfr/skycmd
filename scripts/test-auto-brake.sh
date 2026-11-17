@@ -6,7 +6,7 @@
 # folder, with the memory guard off (MEM_STOP_GB=0) and a trainer name that matches no process, so
 # they cannot touch a training that runs on the machine. On Linux they run with AUTO_BRAKE_OS=Darwin:
 # their probes find no ioreg or pmset and read as quiet, which is all the tests need.
-# shellcheck disable=SC2016,SC2153 # single quotes for the child shells; variables set per call
+# shellcheck disable=SC2016,SC2153,SC2329 # single quotes for child shells; variables set per call; stubs called by the sourced functions
 set -uo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source-path=SCRIPTDIR source=auto-brake.sh
@@ -94,8 +94,19 @@ check "hysteresis: in night mode, 120 % ends it" "$AWAY_${T}no input for 10 min"
   "$(decide 0 0 0 0 1800 3 120 "$NIGHT")"
 check "hysteresis only from the night mode" "$AWAY_${T}no input for 10 min" \
   "$(decide 0 0 0 0 1800 3 100 "$AWAY_")"
-check "an idle reading that failed counts as left alone (as before)" \
-  "$AWAY_${T}no input for 10 min" "$(decide 0 0 0 0 "" 3 0 "")"
+check "an idle time that could not be read counts as in use" \
+  "$IN${T}idle time unknown: treated as in use" "$(decide 0 0 0 0 "" 3 0 "")"
+check "an idle time that is not a number counts as in use" \
+  "$IN${T}idle time unknown: treated as in use" "$(decide 0 0 0 0 "12x" 3 0 "")"
+check "an unknown idle time still yields to heat, battery and display" \
+  "$IN${T}on battery|$IN${T}a video or a call keeps the display awake" \
+  "$(decide 0 0 1 0 "" 3 0 "")|$(decide 0 0 0 1 "" 3 0 "")"
+check "an unknown hour is not night" "$AWAY_${T}no input for 10 min" \
+  "$(decide 0 0 0 0 1800 "" 0 "")"
+check "an unknown CPU reading of the other programs is not quiet" "$AWAY_${T}no input for 10 min" \
+  "$(decide 0 0 0 0 1800 3 "" "")"
+check "an unknown CPU reading ends the night mode too" "$AWAY_${T}no input for 10 min" \
+  "$(decide 0 0 0 0 1800 3 "" "$NIGHT")"
 
 settings FULL=
 check "FULL=\"\" turns the night mode off" "$AWAY_${T}no input for 10 min" \
@@ -150,13 +161,17 @@ others_with() { # <ps output>: others_cpu over that output
 ps_out=' 50.0 /usr/bin/foo
  30.0 /Users/x/target/release/sky-train
  20.5 /usr/bin/python3.12
- 10.0 /opt/Python.framework/Versions/3.15/Resources/Python.app/Contents/MacOS/Python'
-check "others: the trainer and python3.12 are left out, a framework Python is not" "60" \
+ 10.0 /opt/Python.framework/Versions/3.15/Resources/Python.app/Contents/MacOS/Python
+  7.5 /Users/x/My Projects/target/release/sky-train
+  2.0 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome Helper (Renderer)'
+check "others: the trainers, python3.12 and a framework Python are left out" "52" \
   "$(others_with "$ps_out")"
-settings TRAIN_PROCS_RE='(sky-train|[Pp]ython[0-9.]*)$'
-check "others: TRAIN_PROCS_RE replaces the pattern" "50" "$(others_with "$ps_out")"
+settings TRAIN_PROCS_RE='(sky-train)$'
+check "others: TRAIN_PROCS_RE replaces the pattern" "82.5" "$(others_with "$ps_out")"
 settings
-check "others: no ps output reads as 0" "0" "$(others_with "")"
+check "others: a trainer in a path with spaces is still the trainer" "0" \
+  "$(others_with '  7.5 /Users/x/My Projects/target/release/sky-train')"
+check "others: no ps output reads as unknown" "" "$(others_with "")"
 
 gb_with() { # <pgrep output> <top output>: train_gb over them
   pgrep() { [ -n "$PG_OUT" ] && printf '%s\n' "$PG_OUT"; }
@@ -164,21 +179,62 @@ gb_with() { # <pgrep output> <top output>: train_gb over them
   PG_OUT=$1 TOP_OUT=$2 train_gb
   unset -f pgrep top
 }
-top_out='Processes: 700 total
-PhysMem: 15G used (2000M wired), 900M unused.
-
-PID    MEM
-22     14G
-11     2587M'
-check "memory: the largest trainer, not the first" "14" "$(gb_with $'11\n22' "$top_out")"
-check "memory: a value in megabytes reads as 0 GB" "0" \
-  "$(gb_with 11 $'PhysMem: 15G used\n\nPID MEM\n11 2587M')"
-check "memory: no trainer reads as 0" "0" "$(gb_with "" "$top_out")"
-check "memory: a trainer that ended during the reading reads as 0" "0" \
-  "$(gb_with 11 $'PhysMem: 15G used\n\nPID MEM')"
+top_rows() { printf 'Processes: 700 total\nPhysMem: 15G used (2000M wired), 900M unused.\n\nPID    MEM\n'; printf '%s\n' "$@"; }
+check "memory: 2587M is 2 GB" "2" "$(gb_with 11 "$(top_rows '11  2587M')")"
+check "memory: 13G is 13 GB, over the limit of 13" "13 11" "$(gb_with 11 "$(top_rows '11  13G')")"
+check "memory: 13500M is 13 GB" "13 11" "$(gb_with 11 "$(top_rows '11  13500M')")"
+check "memory: 16G+ is 16 GB" "16 11" "$(gb_with 11 "$(top_rows '11  16G+')")"
+check "memory: 12G- is 12 GB, under the limit" "12" "$(gb_with 11 "$(top_rows '11  12G-')")"
+check "memory: 950K is 0 GB" "0" "$(gb_with 11 "$(top_rows '11  950K')")"
+check "memory: 13.9G is 13 GB (truncated)" "13 11" "$(gb_with 11 "$(top_rows '11  13.9G')")"
+check "memory: the largest of several, and every pid over the limit" "16 22 33" \
+  "$(gb_with $'11\n22\n33\n44' "$(top_rows '11  2587M' '22  16G+' '33  13500M' '44  950K')")"
+check "memory: the PhysMem line before the table is not a process" "0" \
+  "$(gb_with 11 "$(top_rows '11  900M')")"
+check "memory: no trainer reads as 0" "0" "$(gb_with "" "$(top_rows '22  14G')")"
+check "memory: a trainer that ended during the reading reads as 0" "0" "$(gb_with 11 "$(top_rows)")"
+settings MEM_STOP_GB=20
+check "memory: MEM_STOP_GB sets which pids are over" "16" \
+  "$(gb_with $'22\n33' "$(top_rows '22  16G' '33  13500M')")"
 settings TRAIN_PROC=my-trainer
 check "memory: TRAIN_PROC names the process" "my-trainer" \
   "$(pgrep() { echo "$2"; }; top() { :; }; train_gb >/dev/null; pgrep -x "$train_proc")"
+settings
+
+# ----------------------------------------------------------------------------- memory guard
+# mem_guard with `pgrep`, `top` and `kill` stubbed: the kills are recorded, never sent.
+log=$tmp/guard.log
+guard() { # <ticks> <pgrep output> <top rows...>: runs the guard, prints the kill calls
+  local ticks=$1 i=0
+  GUARD_PG=$2
+  shift 2
+  GUARD_TOP=$(top_rows "$@")
+  pgrep() { printf '%s\n' "$GUARD_PG"; }
+  top() { printf '%s\n' "$GUARD_TOP"; }
+  kill() { echo "kill $*"; }
+  while [ "$i" -lt "$ticks" ]; do
+    mem_guard
+    i=$((i + 1))
+  done
+  unset -f pgrep top kill
+}
+ab_over=0
+check "guard: three readings over the limit stop nothing" "" \
+  "$(guard 3 $'11\n22' '11  2587M' '22  14G')"
+ab_over=0
+check "guard: the fourth stops only the process over the limit" "kill -TERM 22" \
+  "$(guard 4 $'11\n22' '11  2587M' '22  14G')"
+check "guard: the log names the pids stopped" "yes" \
+  "$(grep -q 'sky-train holds 14 GB (limit 13): training stopped (TERM to pid 22)$' "$log" && echo yes)"
+ab_over=0
+check "guard: every process over the limit, none under it" "kill -TERM 22 33" \
+  "$(guard 4 $'11\n22\n33' '11  950K' '22  16G+' '33  13500M')"
+ab_over=0
+check "guard: a reading under the limit starts the count again" "" \
+  "$(guard 3 22 '22  14G'; guard 1 22 '22  12G'; guard 3 22 '22  14G')"
+ab_over=0
+check "guard: the count restarts after a stop" "kill -TERM 22" \
+  "$(guard 7 22 '22  14G')"
 settings
 
 # ----------------------------------------------------------------------------- set_brake
