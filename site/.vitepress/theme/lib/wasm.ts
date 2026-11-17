@@ -62,8 +62,9 @@ export interface ModelEntry {
   /** `generic`: a decision model for free-text questions (s4, s5: the Live page), not for the games.
    * `general`: both, the games and free-text questions (s6-nano, s6-micro, s6-micro-v1). `secrets`: the four
    * questions of the API-key jev only (s6-secrets-pico, its own demo). `secrets-verify`: one rule
-   * candidate judged in its context (s6-secrets-verify-pico; no demo). `route`: a tool picked
-   * from a run-time list, with a BM25 line in the state (s6-route-nano; no demo). `router`: two
+   * candidate judged in its context (s6-secrets-verify-pico, run by `SecretVerifier` with its word
+   * list `dictionary`: the Secrets verifier page). `route`: a tool picked from a run-time list, with
+   * a BM25 line in the state (s6-route-nano; its Space runs it through s6-route's router). `router`: two
    * files fused by `ToolRouter` (s6-route: the s6-route-nano file and a static embedding, the
    * Router page); such an entry has `files` and no `file`, so `loadManifest` leaves it out and only
    * `loadRouters` lists it. `ear`: an audio state
@@ -84,6 +85,9 @@ export interface ModelEntry {
   route?: Record<string, number>
   /** The games the model was trained and measured on (`sky-arena`); absent = every game. */
   games?: string[]
+  /** `secrets-verify`: the word list the verifier reads (`dictionary.txt` of the engine), a file of
+   * public/models/ next to the model. */
+  dictionary?: string
 }
 
 /** Whether a game model knows `game` (a model never trained on a game plays it at random). */
@@ -424,6 +428,50 @@ export async function turnSynthSpeech(secs: number, seed: bigint, amp: number): 
     turnSynthSpeech(secs: number, seed: bigint, amp: number): Float32Array
   }
   return mod.turnSynthSpeech(secs, seed, amp)
+}
+
+/** The secrets verifier of sky-web (crates/sky-web/src/verify.rs, `SecretVerifier`):
+ * s6-secrets-verify-pico judging candidate records (`sg-cand-1`) at full depth. */
+export interface WasmSecretVerifier {
+  /** One candidate (JSON) -> `{p_real, state_tokens, truncated, micros}` as JSON. */
+  judge(candidateJson: string): string
+  /** A JSON array of candidates -> a JSON array of answers, in the same order. */
+  judgeMany(candidatesJson: string): string
+  /** `{tau_f1, tau_f05, tau_f2}` as JSON: a candidate is accepted when `p_real >= tau`. */
+  thresholds(): string
+  /** The state text the model reads for a candidate (JSON). */
+  state(candidateJson: string): string
+  /** `{name, n_params, file_bytes, window, words}` as JSON. */
+  info(): string
+  free(): void
+}
+
+/** The manifest entry of the secrets verifier (`task: secrets-verify`, with its word list); null
+ * when not published. */
+export async function loadVerifierEntry(): Promise<(ModelEntry & { dictionary: string }) | null> {
+  const list = await loadManifest()
+  const e = list.find((m) => m.task === 'secrets-verify' && m.dictionary)
+  return e ? (e as ModelEntry & { dictionary: string }) : null
+}
+
+const verifiers = new Map<string, Promise<WasmSecretVerifier>>()
+
+/** Downloads the GGUF and the word list of a verifier entry and loads them in one
+ * `SecretVerifier` (cached). */
+export function loadSecretVerifier(entry: ModelEntry & { dictionary: string }): Promise<WasmSecretVerifier> {
+  let p = verifiers.get(entry.name)
+  if (!p) {
+    p = (async () => {
+      const mod = (await loadWasm()) as unknown as {
+        SecretVerifier: new (gguf: Uint8Array, words: Uint8Array) => WasmSecretVerifier
+      }
+      const [gguf, words] = await Promise.all([fetchBytes(entry.file), fetchBytes(entry.dictionary)])
+      return new mod.SecretVerifier(gguf, words)
+    })()
+    p.catch(() => verifiers.delete(entry.name))
+    verifiers.set(entry.name, p)
+  }
+  return p
 }
 
 /** Small local storage helpers: storage may be unavailable (private mode, sandboxed iframes). */

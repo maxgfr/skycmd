@@ -222,7 +222,8 @@ export const CATALOGUE: CatalogueEntry[] = [
     brings:
       'Line F1 0.8561 on 221 real test repositories of CredData, above every rule scanner tested (the best, Betterleaks, 0.7332), with 0.35% of clean real files flagged; its gate asked for 0.8832.',
     caveat:
-      'secretgate 1.9.0 offers it as an experimental option, off by default, where it can only add redactions. It has no demo: its input comes from secretgate\'s rules, which the browser does not run.',
+      'secretgate 1.9.0 offers it as an experimental option, off by default, where it can only add redactions. Its input comes from secretgate\'s rules, which the browser does not run: the demo proposes candidates with one simple rule instead.',
+    try: { link: '/secrets-verify/', label: 'the Secrets verifier page, with a simplified proposer' },
     get: HF + 's6-secrets-verify-pico',
     read: { link: '/articles/a-250-kb-secrets-verifier', label: 'the article on the secrets verifier' },
     source: ['site/results/index.md#s6-secrets-verify-pico-failed', 'site/articles/index.md', 'site/public/models/manifest.json'],

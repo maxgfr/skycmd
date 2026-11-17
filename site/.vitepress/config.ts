@@ -80,13 +80,14 @@ export default defineConfig({
       { text: 'Models', link: '/models/', activeMatch: '^/models/' },
       {
         text: 'Demos',
-        activeMatch: '^/(play|live|router|forecast|ear)/',
+        activeMatch: '^/(play|live|router|forecast|ear|secrets-verify)/',
         items: [
           { text: 'Play: four games', link: '/play/' },
           { text: 'Live: your own questions', link: '/live/' },
           { text: 'Router: pick a tool', link: '/router/' },
           { text: 'Forecast: time series', link: '/forecast/' },
           { text: 'Listen: audio (failed gate)', link: '/ear/' },
+          { text: 'Secrets verifier (failed gate)', link: '/secrets-verify/' },
         ],
       },
       {

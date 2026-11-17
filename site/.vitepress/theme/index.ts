@@ -13,6 +13,7 @@ import ForecastView from './components/ForecastView.vue'
 import EarDemo from './components/EarDemo.vue'
 import RouterDemo from './components/RouterDemo.vue'
 import TurnDemo from './components/TurnDemo.vue'
+import SecretsVerifyDemo from './components/SecretsVerifyDemo.vue'
 import './custom.css'
 
 export default {
@@ -34,5 +35,6 @@ export default {
     app.component('EarDemo', EarDemo)
     app.component('RouterDemo', RouterDemo)
     app.component('TurnDemo', TurnDemo)
+    app.component('SecretsVerifyDemo', SecretsVerifyDemo)
   },
 } satisfies Theme

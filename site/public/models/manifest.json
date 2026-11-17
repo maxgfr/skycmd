@@ -126,7 +126,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-secrets-verify-pico-s6-secrets-v2-a-verifier-of-rule-candidates-pre-registered-gate-failed",
     "params": 445345,
     "bytes": 249984,
-    "file": "s6-secrets-verify-pico.gguf"
+    "file": "s6-secrets-verify-pico.gguf",
+    "dictionary": "s6-secrets-verify-dictionary.txt"
   },
   {
     "name": "s6-route-nano",
