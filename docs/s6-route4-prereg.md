@@ -384,7 +384,7 @@ The latency bar was set after v2 was measured.
 **The bar against MiniLM is relaxed.** v3's G1 asked the pair to stay within 0.03 of
 all-MiniLM-L6-v2 (91.6 MB). In v4 that condition is not a gate: it is a reported number, which the
 report's sentence states in both directions, and an announced goal. The reason: on v3's own
-T2-metatool reading, the one family outside its training families that v3 read, the pair was far
+T2-metatool reading, the one tool family outside its training families that v3 read, the pair was far
 below MiniLM (0.5175 against 0.6570) and below its own embedding part (0.5340), and v4 is read on
 tools of a family it never saw. The claim v4 tests is "the best choice under 4 MB": above BM25,
 which costs no byte, and above its own 1 MB embedding, both beyond noise, on tool families it never
