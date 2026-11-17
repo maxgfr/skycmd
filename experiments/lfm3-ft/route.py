@@ -9,7 +9,10 @@ Runs `route --split calib` (probe and tau on the calibration split) then `route 
 single read of the test split for this model). Writes report-calib.md, report.md and summary.json in
 the eval directory. --tag pair is amendment 5 (local mode): eval/pair holds the fine-tuned model's s1
 files and the base model's s2 files; the base itself is not read again, its reading stays the one of
-runs/lfm3-s1s2.
+runs/lfm3-s1s2. Amendment 6: the pair's s2 files are always the published base's generations of
+runs/lfm3-s1s2, even when the base's s1 was evaluated again with the local conversion (eval/base then
+holds s1 files only, and --tag base has nothing to route in local mode). The budget the pair's router
+chooses on its calibration (chosen_budget in summary.json) is the budget of 1/rho in gate.py.
 """
 import argparse
 import importlib.util

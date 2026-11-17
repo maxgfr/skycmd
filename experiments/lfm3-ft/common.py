@@ -39,6 +39,9 @@ HF_FALLBACK_PER_TASK = 1000  # gen: train questions per task when the engine is 
 SFT_CAP_PER_TASK = 3000  # amendment 5: part (a) only, at most 3,000 train questions per task
 SFT_EPOCHS = 1  # amendment 5 (make_trainer keeps the 2 epochs of §4 as its default: the hf mode uses them)
 MAX_LEN = 2048  # SFT: longer examples are dropped (counted), never truncated
+# Amendment 6: which MLX 4-bit weights a number comes from, as meta.json, gate.json and the report say it.
+PUBLISHED_4BIT = "published 4-bit file"  # LiquidAI/LFM3-1.7B-MLX-4bit, the base of runs/lfm3-s1s2
+LOCAL_CONVERSION = "local conversion"  # mlx_vlm.convert of the bf16 weights on the M5 (amendment 1)
 PROMPT = "{q}\n\nSolve the problem. Put the final answer in \\boxed{{}}."
 MC_PROMPT = "{q}\n\nOptions:\n{options}\n\nChoose the correct option. Put the letter of the final answer in \\boxed{{}}."
 LETTERS = "ABCDEFGHIJ"
@@ -125,6 +128,12 @@ def id_problems(name, rows, expected_ids=None, mode=None):
         if bad:
             out.append(f"{name}: records of mode {bad}, expected {mode}")
     return out
+
+
+def conversion_of(base_source):
+    """The weights the base's s1 files were generated with (amendment 6): the published 4-bit file when
+    the smoke's conversion check holds, the local conversion when it says "converted"."""
+    return {"published": PUBLISHED_4BIT, "converted": LOCAL_CONVERSION}.get(base_source)
 
 
 def qseed(qid):

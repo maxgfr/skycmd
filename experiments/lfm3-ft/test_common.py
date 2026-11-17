@@ -370,33 +370,39 @@ class Amendment5(unittest.TestCase):
 
         split_ids = {"calib": ["gsm8k-train-1", "math-train-2"], "test": ["gsm8k-test-3", "math500-x"]}
         with tempfile.TemporaryDirectory() as runs:
-            data = os.path.join(runs, "data")
+            data, s1s2 = os.path.join(runs, "data"), os.path.join(runs, "s1s2")
             for s, ids in split_ids.items():
                 C.write_jsonl(os.path.join(data, f"{s}.jsonl"), [{"id": i} for i in ids])
-            for tag, names in (("ft", ["calib.s1.jsonl", "test.s1.jsonl", "mmlu.s1.jsonl"]),
-                               ("base", ["calib.s1.jsonl", "calib.s2-256.jsonl", "calib.s2-1024.jsonl",
-                                         "test.s1.jsonl", "test.s2-256.jsonl", "test.s2-1024.jsonl", "mmlu.s1.jsonl"])):
-                d = os.path.join(runs, "eval", tag)
+            all_six = ["calib.s1.jsonl", "calib.s2-256.jsonl", "calib.s2-1024.jsonl",
+                       "test.s1.jsonl", "test.s2-256.jsonl", "test.s2-1024.jsonl"]
+            for tag, d, names in (("ft", os.path.join(runs, "eval", "ft"), ["calib.s1.jsonl", "test.s1.jsonl", "mmlu.s1.jsonl"]),
+                                  ("base", os.path.join(runs, "eval", "base"), all_six + ["mmlu.s1.jsonl"]),
+                                  ("s1s2", s1s2, all_six)):
                 os.makedirs(d)
                 for n in names:
                     split, mode = n.split(".")[:2]
                     C.write_jsonl(os.path.join(d, n), [row(i, mode, tag) for i in split_ids.get(split, ["mmlupro-1"])])
-            meta = L.build_pair(runs, data)
+            meta = L.build_pair(runs, data, s1s2)
             self.assertEqual(meta["sources"], {"calib.s1.jsonl": "eval/ft", "test.s1.jsonl": "eval/ft",
-                                               "calib.s2-256.jsonl": "eval/base", "calib.s2-1024.jsonl": "eval/base",
-                                               "test.s2-256.jsonl": "eval/base", "test.s2-1024.jsonl": "eval/base"})
+                                               "calib.s2-256.jsonl": s1s2, "calib.s2-1024.jsonl": s1s2,
+                                               "test.s2-256.jsonl": s1s2, "test.s2-1024.jsonl": s1s2})
+            self.assertEqual(meta["conversions"], {
+                "calib.s1.jsonl": "local conversion", "test.s1.jsonl": "local conversion",
+                "calib.s2-256.jsonl": "published 4-bit file", "calib.s2-1024.jsonl": "published 4-bit file",
+                "test.s2-256.jsonl": "published 4-bit file", "test.s2-1024.jsonl": "published 4-bit file"})
             d = os.path.join(runs, "eval", "pair")
             self.assertEqual(json.load(open(os.path.join(d, "meta.json")))["sources"], meta["sources"])
             self.assertEqual({r["src"] for r in C.read_jsonl(os.path.join(d, "calib.s1.jsonl"))}, {"ft"})
             self.assertEqual({r["src"] for r in C.read_jsonl(os.path.join(d, "test.s1.jsonl"))}, {"ft"})
             self.assertEqual([r["id"] for r in C.read_jsonl(os.path.join(d, "test.s2-1024.jsonl"))], split_ids["test"])
-            self.assertEqual({r["src"] for r in C.read_jsonl(os.path.join(d, "test.s2-1024.jsonl"))}, {"base"})
+            # System 2 is runs/lfm3-s1s2, never eval/base (amendment 6: also when eval/base holds s2 copies)
+            self.assertEqual({r["src"] for r in C.read_jsonl(os.path.join(d, "test.s2-1024.jsonl"))}, {"s1s2"})
             self.assertEqual(sorted(os.listdir(d)),  # no mmlu in the pair: the router reads calib and test only
                              ["calib.s1.jsonl", "calib.s2-1024.jsonl", "calib.s2-256.jsonl", "meta.json",
                               "test.s1.jsonl", "test.s2-1024.jsonl", "test.s2-256.jsonl"])
-            os.remove(os.path.join(runs, "eval", "base", "test.s2-256.jsonl"))
+            os.remove(os.path.join(s1s2, "test.s2-256.jsonl"))
             with self.assertRaises(SystemExit):
-                L.build_pair(runs, data)
+                L.build_pair(runs, data, s1s2)
             self.assertFalse(os.path.exists(os.path.join(d, "meta.json")))  # the stale pair is not left for route
 
     def test_build_pair_refuses_misaligned_files(self):
@@ -410,15 +416,16 @@ class Amendment5(unittest.TestCase):
             data = os.path.join(runs, "data")
             for s, xs in ids.items():
                 C.write_jsonl(os.path.join(data, f"{s}.jsonl"), [{"id": i} for i in xs])
-            for split, mode, tag in L.PAIR_FILES:
+            for split, mode, origin in L.PAIR_FILES:
                 rows = [{"id": i, "mode": mode} for i in ids[split]]
-                rows = edit(split, mode, tag, rows)
-                C.write_jsonl(os.path.join(runs, "eval", tag, f"{split}.{mode}.jsonl"), rows)
+                rows = edit(split, mode, origin, rows)
+                folder = os.path.join(runs, "s1s2") if origin == "s1s2" else os.path.join(runs, "eval", origin)
+                C.write_jsonl(os.path.join(folder, f"{split}.{mode}.jsonl"), rows)
             return data
 
         cases = {
             "ft test s1 missing one": lambda s, m, t, r: r[:-1] if (s, m) == ("test", "s1") else r,
-            "base calib s2-256 one extra": lambda s, m, t, r: r + [{"id": "gsm8k-test-0", "mode": m}]
+            "runs/lfm3-s1s2 calib s2-256 one extra": lambda s, m, t, r: r + [{"id": "gsm8k-test-0", "mode": m}]
             if (s, m) == ("calib", "s2-256") else r,
             "duplicate in ft calib s1": lambda s, m, t, r: r + r[:1] if (s, m) == ("calib", "s1") else r,
             "calib and test swapped": lambda s, m, t, r: [{"id": i, "mode": m} for i in ids["calib"]]
@@ -429,10 +436,10 @@ class Amendment5(unittest.TestCase):
             with self.subTest(label), tempfile.TemporaryDirectory() as runs:
                 data = setup(runs, edit)
                 with self.assertRaises(SystemExit):
-                    L.build_pair(runs, data)
+                    L.build_pair(runs, data, os.path.join(runs, "s1s2"))
                 self.assertFalse(os.path.exists(os.path.join(runs, "eval", "pair", "meta.json")))
         with tempfile.TemporaryDirectory() as runs:  # the clean case passes
-            L.build_pair(runs, setup(runs, lambda s, m, t, r: r))
+            L.build_pair(runs, setup(runs, lambda s, m, t, r: r), os.path.join(runs, "s1s2"))
 
     def test_gates_g2_not_read(self):
         base, ft = model(0.60, 0.10, 0.70, 500, 0.40), model(0.70, 0.0, 0.70, 300, 0.40)
@@ -501,6 +508,78 @@ class Amendment5(unittest.TestCase):
         self.assertLess(1 - s1_share, 10 / 40)  # what the first version reported
 
 
+class Amendment6(unittest.TestCase):
+    """Amendment 6: the plan of `eval` in each case of the conversion check, and the budget of 1/rho."""
+
+    def test_eval_plan_never_runs_the_base_in_s2(self):
+        import local as L
+
+        s1_only = [("calib", "s1"), ("test", "s1"), ("mmlu", "s1")]
+        self.assertEqual(L.eval_plan("ft", 0), (s1_only, L.FT_MLX, f"{C.FT_REPO} (local)", "local conversion", False))
+        self.assertEqual(L.eval_plan("base", 0, "converted")[::3], (s1_only, "local conversion"))
+        self.assertEqual(L.eval_plan("base", 0, "converted")[1], L.BASE_MLX)
+        self.assertEqual(L.eval_plan("base", 0, "published"),  # unchanged: copy, MMLU-Pro with the published file
+                         ([("mmlu", "s1")], None, L.S.MODEL, "published 4-bit file", True))
+        for tag, source in (("ft", None), ("base", "published"), ("base", "converted")):
+            for limit in (0, 5):
+                jobs = L.eval_plan(tag, limit, source)[0]
+                self.assertEqual({m for _, m in jobs}, {"s1"}, (tag, source, limit))
+        with self.assertRaises(SystemExit):
+            L.eval_plan("base", 0, None)  # a smoke report without its conversion check: no guess
+
+    def test_conversion_of(self):
+        self.assertEqual(C.conversion_of("published"), "published 4-bit file")
+        self.assertEqual(C.conversion_of("converted"), "local conversion")
+        self.assertIsNone(C.conversion_of(None))
+
+    def pair_folder(self, runs, s2_tokens):
+        d = os.path.join(runs, "eval", "pair")
+        C.write_jsonl(os.path.join(d, "test.s1.jsonl"), [ev(f"t{i}", tokens=100) for i in range(4)])
+        for b, t in s2_tokens.items():
+            C.write_jsonl(os.path.join(d, f"test.s2-{b}.jsonl"), [ev(f"t{i}", tokens=t) for i in range(4)])
+
+    def test_the_budget_of_one_over_rho_is_the_pairs(self):
+        """1/rho divides by the base's tokens at the pair's chosen budget, read from its own files."""
+        with tempfile.TemporaryDirectory() as runs:
+            self.pair_folder(runs, {256: 400, 1024: 1000})
+            for b, s2 in ((256, 400), (1024, 1000)):
+                summ = {"chosen_budget": b, "budgets": {str(b): {"test": {"all": {}}}}}
+                c = G.pair_cascade(runs, summ, 100, 500)
+                self.assertEqual((c["budget"], c["base_s2_tokens"]), (b, s2))
+                self.assertAlmostEqual(c["one_over_rho"], 100 / s2)
+                self.assertIsNone(c["w"])  # no probe in this summary
+                md = G.report_md({"base": {"s1": None, "s2": None, "mmlu": None},
+                                  "ft": {"s1": None, "s2": None, "mmlu": None}, "problems": [], "G1": None,
+                                  "cascade": c, "router": {}})
+                self.assertIn(f"s2-{b} of the base {s2}", md)
+                self.assertIn(f"at s2-{b}, the budget the pair's router chose on its calibration", md)
+                self.assertNotIn(f"s2-{1280 - b} ", md)
+
+    def test_not_routed_yet(self):
+        with tempfile.TemporaryDirectory() as runs:
+            self.pair_folder(runs, {256: 400, 1024: 1000})
+            for summ in (None, {"budgets": {}}):
+                c = G.pair_cascade(runs, summ, 100, 500)
+                self.assertEqual((c["routed"], c["budget"], c["one_over_rho"], c["w"]), (False, None, None, None))
+                self.assertEqual((c["ft_s1_tokens"], c["base_s1_tokens"]), (100, 500))
+                md = G.report_md({"base": {"s1": None, "s2": None, "mmlu": None},
+                                  "ft": {"s1": None, "s2": None, "mmlu": None}, "problems": [], "G1": None,
+                                  "cascade": c, "router": {}})
+                self.assertIn("1/rho and w: the pair has not been routed yet (`route`)", md)
+                self.assertNotIn("1/rho =", md)
+
+    def test_provenance_before_eval(self):
+        """gate.json says the base's conversion from the smoke's check when eval/base has no meta yet."""
+        with tempfile.TemporaryDirectory() as runs:
+            self.assertEqual(G.provenance(runs)["base_s1"], "unknown")
+            os.makedirs(os.path.join(runs, "smoke"))
+            with open(os.path.join(runs, "smoke", "report.json"), "w") as f:
+                json.dump({"base_source": "converted"}, f)
+            pv = G.provenance(runs)
+            self.assertEqual((pv["base_s1"], pv["ft_s1"], pv["system2"]),
+                             ("local conversion", "local conversion", "published 4-bit file"))
+
+
 class Stop(Exception):
     """A stop of the Mac in the middle of a step."""
 
@@ -534,9 +613,16 @@ class Resume(unittest.TestCase):
         self.assertEqual(len(C.id_problems("f", rows, ["a"], "s1")), 1)
         self.assertEqual(len(C.id_problems("f", rows, ["a", "b"], "s2-256")), 1)
 
-    def fake_world(self, root, L, n_calib=24, n_test=30, n_mmlu=8):
-        """data/lfm3, the smoke's report, the base's runs/lfm3-s1s2 and a fake mlx-vlm, under root."""
+    def fake_world(self, root, L, n_calib=24, n_test=30, n_mmlu=8, base_source="published"):
+        """data/lfm3, the smoke's report, the base's runs/lfm3-s1s2 and a fake mlx-vlm, under root. The fake
+        model answers by its path: ft-mlx (the fine-tuned model), base-mlx (the local conversion of the
+        base: its records carry "src": "converted") or None (the published 4-bit file)."""
         data, runs, s1s2 = (os.path.join(root, x) for x in ("data", "runs", "s1s2"))
+        ft_mlx, base_mlx = os.path.join(root, "ft-mlx"), os.path.join(root, "base-mlx")
+        for d in (ft_mlx, base_mlx):
+            os.makedirs(d)
+            with open(os.path.join(d, "config.json"), "w") as f:
+                f.write("{}")
         rng = random.Random(3)
         calib = [{"id": f"{t}-train-{i}", "task": t, "question": f"c{i}?", "answer": "1"}
                  for i in range(n_calib) for t in (("gsm8k",) if i % 2 else ("math",))]
@@ -548,7 +634,7 @@ class Resume(unittest.TestCase):
         C.write_jsonl(os.path.join(data, "test.jsonl"), test)
         os.makedirs(os.path.join(runs, "smoke"))
         with open(os.path.join(runs, "smoke", "report.json"), "w") as f:
-            json.dump({"base_source": "published"}, f)
+            json.dump({"base_source": base_source}, f)
 
         def s1_row(it, base):
             lp = -rng.random() * (3 if base else 2)
@@ -566,6 +652,8 @@ class Resume(unittest.TestCase):
                      "pred": None if k % 5 == 0 else "1", "correct": k % 5 != 0, "seconds": 1.0}
                     for k, it in enumerate(items)])
         ft_rows = {it["id"]: s1_row(it, False) for it in calib + test + mmlu}
+        conv_rows = {it["id"]: dict(s1_row(it, True), src="converted", tokens=2000 + k)
+                     for k, it in enumerate(calib + test + mmlu)}  # far from the published s1 (<= 1,024)
         calls = []
 
         class FakeModel:
@@ -577,13 +665,14 @@ class Resume(unittest.TestCase):
             if fake_gen_s1.stop_after is not None and len(calls) > fake_gen_s1.stop_after:
                 raise Stop()
             qid = next(k for k, it in fake_gen_s1.by_prompt.items() if it == item["question"])
-            r = dict(ft_rows[qid]) if m.path else s1_row({"id": qid, "task": "x"}, True)
-            return {k: r[k] for k in ("text", "tokens", "think_tokens", "finish", "mean_lp", "min_lp", "answer_lp")}
+            r = {ft_mlx: ft_rows, base_mlx: conv_rows}.get(m.path, {}).get(qid) or s1_row({"id": qid, "task": "x"}, True)
+            keys = ("text", "tokens", "think_tokens", "finish", "mean_lp", "min_lp", "answer_lp")
+            return {k: r[k] for k in keys + (("src",) if "src" in r else ())}
 
         fake_gen_s1.stop_after = None
         fake_gen_s1.by_prompt = {it["id"]: C.user_prompt(it) for it in calib + test + mmlu}
         patches = {(L, "RUNS"): runs, (L, "SMOKE"): os.path.join(runs, "smoke"), (L, "S1S2_RUNS"): s1s2,
-                   (L, "C_DATA"): data, (L, "FT_MLX"): os.path.join(root, "ft-mlx"), (L, "LocalModel"): FakeModel,
+                   (L, "C_DATA"): data, (L, "FT_MLX"): ft_mlx, (L, "BASE_MLX"): base_mlx, (L, "LocalModel"): FakeModel,
                    (L.S, "gen_s1"): fake_gen_s1, (L.S, "rest"): lambda s: None, (L.C, "mmlu_items"): lambda: list(mmlu)}
         saved = {k: getattr(*k) for k in patches}
         for (mod, name), v in patches.items():
@@ -634,58 +723,133 @@ class Resume(unittest.TestCase):
                 with open(os.path.join(L.S1S2_RUNS, n)) as f, open(os.path.join(d, n)) as g:
                     self.assertEqual(f.read(), g.read(), n)
 
-    def test_the_local_chain_on_fakes(self):
-        """eval base (copied + MMLU-Pro), eval ft (s1 only), the pair, route and gate, end to end."""
+    def run_chain(self, root, L, base_source):
+        """eval base, eval ft (s1 only), the pair, route and gate on the fakes; checks what holds in both
+        cases of the conversion check and returns what each test checks on its own."""
         import argparse
         import subprocess
 
+        runs, data, calls, gen, items = self.fake_world(root, L, base_source=base_source)
+        L.cmd_eval(argparse.Namespace(tag="base", limit=0))
+        base_calls = list(calls)
+        L.cmd_eval(argparse.Namespace(tag="ft", limit=0))
+        L.build_pair(runs, data)
+        pair = os.path.join(runs, "eval", "pair")
+        for s in ("calib", "test"):
+            for b in (256, 1024):  # System 2 is the published base of runs/lfm3-s1s2, untouched, in both cases
+                with open(os.path.join(L.S1S2_RUNS, f"{s}.s2-{b}.jsonl")) as f, \
+                        open(os.path.join(pair, f"{s}.s2-{b}.jsonl")) as g:
+                    self.assertEqual(f.read(), g.read())
+            with open(os.path.join(runs, "eval", "ft", f"{s}.s1.jsonl")) as f, \
+                    open(os.path.join(pair, f"{s}.s1.jsonl")) as g:
+                self.assertEqual(f.read(), g.read())  # the fine-tuned s1
+        pmeta = json.load(open(os.path.join(pair, "meta.json")))
+        self.assertEqual(pmeta["base_source"], base_source)
+        self.assertEqual({k: v for k, v in pmeta["conversions"].items() if ".s2-" in k},
+                         {f"{s}.s2-{b}.jsonl": "published 4-bit file" for s in ("calib", "test") for b in (256, 1024)})
+        env = dict(os.environ, SKY_DUTY="1", SKY_COOL="", SKY_BRAKE_FILE="")
+        route = [sys.executable, "-I", os.path.join(HERE, "route.py"), "--tag", "pair", "--runs", runs]
+        gate = [sys.executable, "-I", os.path.join(HERE, "gate.py"), "--runs", runs, "--amendment5"]
+        subprocess.run(gate, check=True, env=env, stdout=subprocess.DEVNULL)  # before route: no budget yet
+        g = json.load(open(os.path.join(runs, "gate.json")))
+        self.assertEqual((g["cascade"]["routed"], g["cascade"]["one_over_rho"], g["cascade"]["w"]), (False, None, None))
+        self.assertIn("the pair has not been routed yet", open(os.path.join(runs, "report.md")).read())
+        subprocess.run(route, check=True, env=env, stdout=subprocess.DEVNULL)
+        summ = json.load(open(os.path.join(pair, "summary.json")))
+        subprocess.run(gate, check=True, env=env, stdout=subprocess.DEVNULL)
+        g = json.load(open(os.path.join(runs, "gate.json")))
+        md = open(os.path.join(runs, "report.md")).read()
+        self.assertEqual(g["G2"], G.G2_NOT_READ)
+        self.assertEqual(g["verdict"], "incomplete")  # 30 test questions, not 1,000
+        self.assertIsNone(g["improved"])
+        # H2-H4 of the pair are those of route's summary, with s1s2.py's bars
+        b = summ["chosen_budget"]
+        e = summ["budgets"][str(b)]["test"]["all"]
+        self.assertEqual(g["router"]["pair"]["H2"], e["router_acc"] >= e["s2_acc"] - 0.02)
+        self.assertEqual(g["router"]["pair"]["H3"], e["router_tokens"] <= 0.5 * e["s2_tokens"])
+        # the cascade: 1/rho at the budget the pair's router chose (the fakes tie on calibration, so
+        # s1s2.py keeps the first budget, 256: not the 1,024 the first version hard-coded)
+        c = g["cascade"]
+        self.assertEqual((b, c["budget"], c["routed"]), (256, 256, True))
+        s2 = C.read_jsonl(os.path.join(L.S1S2_RUNS, f"test.s2-{b}.jsonl"))
+        self.assertAlmostEqual(c["base_s2_tokens"], sum(r["tokens"] for r in s2) / len(s2))
+        self.assertAlmostEqual(c["one_over_rho"], e["s1_tokens"] / e["s2_tokens"])
+        self.assertIn(f"at s2-{b}, the budget the pair's router chose", md)
+        cal = S.read_jsonl(os.path.join(pair, "calib.s1.jsonl"))
+        score, _ = S.fit_logistic([S.features(r) for r in cal], [int(r["correct"]) for r in cal])
+        tau = summ["budgets"][str(b)]["tau"]
+        test = S.read_jsonl(os.path.join(pair, "test.s1.jsonl"))
+        self.assertAlmostEqual(c["w"], sum(score(S.features(r)) < tau for r in test) / len(test))
+        self.assertEqual(g["provenance"]["system2"], "published 4-bit file")
+        self.assertEqual(g["provenance"]["ft_s1"], "local conversion")
+        self.assertIn("System 2 of the pair (the base in s2-256 and s2-1024, runs/lfm3-s1s2): published 4-bit file", md)
+        self.assertIn("- the fine-tuned model in s1: local conversion", md)
+        # a pair file edited after the fact is refused by route, not silently intersected
+        rows = C.read_jsonl(os.path.join(pair, "test.s2-256.jsonl"))
+        C.write_jsonl(os.path.join(pair, "test.s2-256.jsonl"), rows[1:])
+        p = subprocess.run(route, env=env, capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("missing", p.stderr)
+        return runs, items, base_calls, g, md
+
+    def test_the_local_chain_on_fakes(self):
+        """The published case (the conversion check holds), unchanged: eval base copies runs/lfm3-s1s2 and
+        generates MMLU-Pro only, with the published file; then ft, the pair, route and gate."""
         import local as L
 
         with tempfile.TemporaryDirectory() as root:
-            runs, data, calls, gen, items = self.fake_world(root, L)
-            L.cmd_eval(argparse.Namespace(tag="base", limit=0))
-            self.assertEqual({p for p, _ in calls}, {None})  # the published base, MMLU-Pro only
-            self.assertEqual(len(calls), len(items["mmlu"]))
-            L.cmd_eval(argparse.Namespace(tag="ft", limit=0))
-            L.build_pair(runs, data)
-            pair = os.path.join(runs, "eval", "pair")
-            for s in ("calib", "test"):
-                with open(os.path.join(L.S1S2_RUNS, f"{s}.s2-1024.jsonl")) as f, \
-                        open(os.path.join(pair, f"{s}.s2-1024.jsonl")) as g:
-                    self.assertEqual(f.read(), g.read())  # the base's s2, untouched
-                with open(os.path.join(runs, "eval", "ft", f"{s}.s1.jsonl")) as f, \
-                        open(os.path.join(pair, f"{s}.s1.jsonl")) as g:
-                    self.assertEqual(f.read(), g.read())  # the fine-tuned s1
-            env = dict(os.environ, SKY_DUTY="1", SKY_COOL="", SKY_BRAKE_FILE="")
-            subprocess.run([sys.executable, "-I", os.path.join(HERE, "route.py"), "--tag", "pair", "--runs", runs],
-                           check=True, env=env, stdout=subprocess.DEVNULL)
-            summ = json.load(open(os.path.join(pair, "summary.json")))
-            subprocess.run([sys.executable, "-I", os.path.join(HERE, "gate.py"), "--runs", runs, "--amendment5"],
-                           check=True, env=env, stdout=subprocess.DEVNULL)
-            g = json.load(open(os.path.join(runs, "gate.json")))
-            self.assertEqual(g["G2"], G.G2_NOT_READ)
-            self.assertEqual(g["verdict"], "incomplete")  # 30 test questions, not 1,000
-            self.assertIsNone(g["improved"])
-            # H2-H4 of the pair are those of route's summary, with s1s2.py's bars
-            e = summ["budgets"][str(summ["chosen_budget"])]["test"]["all"]
-            self.assertEqual(g["router"]["pair"]["H2"], e["router_acc"] >= e["s2_acc"] - 0.02)
-            self.assertEqual(g["router"]["pair"]["H3"], e["router_tokens"] <= 0.5 * e["s2_tokens"])
-            # the cascade: 1/rho from s1s2.py's token counts, w from the probe and tau fitted on the pair
-            c = g["cascade"]
-            self.assertAlmostEqual(c["one_over_rho"], summ["budgets"]["1024"]["test"]["all"]["s1_tokens"]
-                                   / summ["budgets"]["1024"]["test"]["all"]["s2_tokens"])
-            cal = S.read_jsonl(os.path.join(pair, "calib.s1.jsonl"))
-            score, _ = S.fit_logistic([S.features(r) for r in cal], [int(r["correct"]) for r in cal])
-            tau = summ["budgets"][str(summ["chosen_budget"])]["tau"]
-            test = S.read_jsonl(os.path.join(pair, "test.s1.jsonl"))
-            self.assertAlmostEqual(c["w"], sum(score(S.features(r)) < tau for r in test) / len(test))
-            # a pair file edited after the fact is refused by route, not silently intersected
-            rows = C.read_jsonl(os.path.join(pair, "test.s2-256.jsonl"))
-            C.write_jsonl(os.path.join(pair, "test.s2-256.jsonl"), rows[1:])
-            p = subprocess.run([sys.executable, "-I", os.path.join(HERE, "route.py"), "--tag", "pair", "--runs", runs],
-                               env=env, capture_output=True, text=True)
-            self.assertNotEqual(p.returncode, 0)
-            self.assertIn("missing", p.stderr)
+            runs, items, base_calls, g, md = self.run_chain(root, L, "published")
+            self.assertEqual({p for p, _ in base_calls}, {None})  # the published base, MMLU-Pro only
+            self.assertEqual(len(base_calls), len(items["mmlu"]))
+            d = os.path.join(runs, "eval", "base")
+            for n in os.listdir(L.S1S2_RUNS):  # the six files of runs/lfm3-s1s2, copied as they are
+                with open(os.path.join(L.S1S2_RUNS, n)) as f, open(os.path.join(d, n)) as h:
+                    self.assertEqual(f.read(), h.read(), n)
+            meta = json.load(open(os.path.join(d, "meta.json")))
+            self.assertEqual((meta["base_source"], meta["conversion"]), ("published", "published 4-bit file"))
+            self.assertEqual({v["conversion"] for v in meta["files"].values()}, {"published 4-bit file"})
+            self.assertEqual(meta["files"]["test.s1.jsonl"]["from"], L.S1S2_RUNS)
+            self.assertEqual(meta["files"]["mmlu.s1.jsonl"]["from"], "generated here")
+            base_s1 = C.read_jsonl(os.path.join(L.S1S2_RUNS, "test.s1.jsonl"))
+            self.assertAlmostEqual(g["base"]["s1"]["mean_tokens"], sum(r["tokens"] for r in base_s1) / len(base_s1))
+            self.assertEqual(g["provenance"]["base_s1"], "published 4-bit file")
+            self.assertIn("- the base in s1 (G1 and G3, calibration, test and MMLU-Pro): published 4-bit file", md)
+
+    def test_the_local_chain_converted(self):
+        """Amendment 6, the conversion check says "converted": eval base generates s1 only, with the local
+        conversion, on calib, test and MMLU-Pro; nothing runs the base in s2; G1 and G3 read those s1
+        files; System 2 of the pair is still runs/lfm3-s1s2; every number says its conversion."""
+        import local as L
+
+        with tempfile.TemporaryDirectory() as root:
+            runs, items, base_calls, g, md = self.run_chain(root, L, "converted")
+            self.assertEqual({p for p, _ in base_calls}, {L.BASE_MLX})  # the local conversion only
+            self.assertEqual(len(base_calls), sum(len(v) for v in items.values()))  # each question once, in s1
+            d = os.path.join(runs, "eval", "base")
+            self.assertEqual(sorted(f for f in os.listdir(d) if f.endswith(".jsonl")),
+                             ["calib.s1.jsonl", "mmlu.s1.jsonl", "test.s1.jsonl"])  # no s2 file, nothing copied
+            for split in ("calib", "test", "mmlu"):
+                rows = C.read_jsonl(os.path.join(d, f"{split}.s1.jsonl"))
+                self.assertEqual(C.id_problems(split, rows, [it["id"] for it in items[split]], "s1"), [])
+                self.assertEqual({r["src"] for r in rows}, {"converted"})
+            meta = json.load(open(os.path.join(d, "meta.json")))
+            self.assertEqual((meta["base_source"], meta["conversion"], meta["revision"]),
+                             ("converted", "local conversion", "local"))
+            self.assertEqual({n: v["conversion"] for n, v in meta["files"].items()},
+                             {n: "local conversion" for n in ("calib.s1.jsonl", "mmlu.s1.jsonl", "test.s1.jsonl")})
+            self.assertIn("published 4-bit file", meta["system2"])
+            # G1 and G3 compare the fine-tuned model with the base on the same conversion
+            conv = C.read_jsonl(os.path.join(d, "test.s1.jsonl"))
+            self.assertAlmostEqual(g["base"]["s1"]["mean_tokens"], sum(r["tokens"] for r in conv) / len(conv))
+            self.assertGreater(g["base"]["s1"]["mean_tokens"], 2000)  # not the published s1 of runs/lfm3-s1s2
+            self.assertEqual(g["base"]["mmlu"]["n"], len(items["mmlu"]))
+            self.assertAlmostEqual(g["cascade"]["base_s1_tokens"], g["base"]["s1"]["mean_tokens"])
+            self.assertIsNone(g["base"]["s2"])
+            self.assertEqual((g["provenance"]["base_source"], g["provenance"]["base_s1"]), ("converted", "local conversion"))
+            self.assertIn("- the base in s1 (G1 and G3, calibration, test and MMLU-Pro): local conversion", md)
+            self.assertIn("| test s1 | base (local conversion) |", md)
+            self.assertIn("| MMLU-Pro s1 | base (local conversion) |", md)
+            self.assertIn("s2-256 of the base (published 4-bit file)", md)
 
     def test_gate_reads_no_g2_in_local_mode_before_the_pair(self):
         import subprocess

@@ -14,6 +14,13 @@ Amendment 5 (local mode: --amendment5, which scripts/lfm3-ft.sh passes, or the p
 exists): System 2 is the base model itself,
 so G2 is not read; the H2-H4 of the pair and of the base's own reading (runs/lfm3-s1s2, reported as it
 is) come next to them, with the cascade cost: the mean s1 tokens before and after, 1/rho and w.
+
+Amendment 6: G1 and G3 compare the fine-tuned model with the s1 files of eval/base, which are those of
+the published 4-bit file or, when the smoke's conversion check said "converted", of the local
+conversion; System 2 is always the published base (the pair's s2 files, from runs/lfm3-s1s2). 1/rho
+divides by the base's mean tokens at the budget the pair's router chose on its calibration (summary.json
+of eval/pair), not a fixed 1,024; before `route` it is not computed. gate.json and the report say which
+conversion each number comes from.
 """
 import argparse
 import json
@@ -22,7 +29,10 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-N ={"test": 1000, "mmlu": 500}
+sys.path.insert(0, HERE)
+import common as C  # noqa: E402  (its pure parts only: standard library)
+
+N = {"test": 1000, "mmlu": 500}
 FILES = {"s1": "test.s1.jsonl", "s2": "test.s2-1024.jsonl", "mmlu": "mmlu.s1.jsonl"}
 ALPHA = 0.02  # the router's, docs/lfm3-s1s2-prereg.md
 G2_NOT_READ = "not read (System 2 is the base)"  # amendment 5: the value G2 takes in gate.json and the report
@@ -100,8 +110,9 @@ def probe_score(p):
 
 
 def w_share(summary, test_s1):
-    """w of the cascade cost (amendment 5): the share of test questions the router sends on to System 2,
-    that is whose probe score is under tau (chosen budget), System 2 being paid for each of them.
+    """w of the cascade cost (amendment 6's wording): the share of the test questions whose probe score
+    is under tau (at the chosen budget), whether System 2 then answers or not, System 2 being paid for
+    each of them.
 
     Not 1 - s1_share: s1s2.py's route_one keeps the s1 answer when System 2 gave none, and counts it in
     s1_share, but it has paid System 2's tokens for that question (s1 + s2 in router_tokens)."""
@@ -125,14 +136,50 @@ def load_s1s2():
     return mod
 
 
-def cascade(ft_s1_tokens, base_s2_tokens, w, base_s1_tokens=None):
-    """The two terms of the cascade cost (amendment 5): 1/rho, the fine-tuned model's mean s1 tokens over
-    the base's mean s2-1024 tokens on the test, and w, the share sent to System 2. A cascade pays
-    1/rho + w against always thinking (the small model is paid on every question)."""
+def cascade(ft_s1_tokens, base_s2_tokens, w, base_s1_tokens=None, budget=None):
+    """The two terms of the cascade cost (amendments 5 and 6): 1/rho, the fine-tuned model's mean s1
+    tokens over the base's mean tokens at `budget`, the budget the pair's router chose on its calibration,
+    on the test; and w, the share sent to System 2. A cascade pays 1/rho + w against always thinking (the
+    small model is paid on every question)."""
     if not ft_s1_tokens or not base_s2_tokens:
         return None
-    return {"one_over_rho": ft_s1_tokens / base_s2_tokens, "w": w,
+    return {"routed": True, "budget": budget, "one_over_rho": ft_s1_tokens / base_s2_tokens, "w": w,
             "ft_s1_tokens": ft_s1_tokens, "base_s1_tokens": base_s1_tokens, "base_s2_tokens": base_s2_tokens}
+
+
+def pair_cascade(runs, summary, ft_s1_tokens, base_s1_tokens):
+    """The cascade of the pair (amendment 6). Its budget is the pair's chosen_budget (summary.json of
+    eval/pair) and its System 2 tokens are the mean of the pair's test.s2-<budget>.jsonl, the published
+    base's generations. Before `route --tag pair` no budget is chosen: 1/rho and w are not computed."""
+    pair = os.path.join(runs, "eval", "pair")
+    b = (summary or {}).get("chosen_budget")
+    if b is None:
+        return {"routed": False, "budget": None, "one_over_rho": None, "w": None, "ft_s1_tokens": ft_s1_tokens,
+                "base_s1_tokens": base_s1_tokens, "base_s2_tokens": None}
+    s2 = stats(read_jsonl(os.path.join(pair, f"test.s2-{b}.jsonl")))
+    return cascade(ft_s1_tokens, (s2 or {}).get("mean_tokens"),
+                   w_share(summary, read_jsonl(os.path.join(pair, "test.s1.jsonl"))), base_s1_tokens, budget=b)
+
+
+def read_json(path):
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def provenance(runs):
+    """Which weights each number comes from (amendment 6): the base's s1 files (eval/base/meta.json, or
+    the smoke's conversion check when the meta is not written yet), the fine-tuned model (always its local
+    conversion) and System 2 of the pair (eval/pair/meta.json: the published base of runs/lfm3-s1s2)."""
+    meta = read_json(os.path.join(runs, "eval", "base", "meta.json")) or {}
+    smoke = read_json(os.path.join(runs, "smoke", "report.json")) or {}
+    source = meta.get("base_source") or smoke.get("base_source")
+    base = meta.get("conversion") or C.conversion_of(source) or "unknown"
+    pair = read_json(os.path.join(runs, "eval", "pair", "meta.json")) or {}
+    s2 = sorted({v for k, v in (pair.get("conversions") or {}).items() if ".s2-" in k}) or [C.PUBLISHED_4BIT]
+    return {"base_source": source, "base_s1": base, "ft_s1": C.LOCAL_CONVERSION, "system2": ", ".join(s2),
+            "base_s1s2_router": C.PUBLISHED_4BIT}
 
 
 def pair_mode(runs):
@@ -162,14 +209,23 @@ def router(summary):
 def report_md(g):
     yn = lambda x: "—" if x is None else ("**yes**" if x else "**no**")
     sb, sf = g["base"], g["ft"]
+    pv = g.get("provenance")
     L = ["# LFM3-1.7B fine-tuned against base (docs/lfm3-ft-prereg.md)", ""]
     if g["problems"]:
         L += ["**Problems:** " + "; ".join(g["problems"]), ""]
+    if pv:
+        L += ["## Which weights each number comes from (amendment 6)", "",
+              f"- the base in s1 (G1 and G3, calibration, test and MMLU-Pro): {pv['base_s1']}",
+              f"- the fine-tuned model in s1: {pv['ft_s1']}",
+              f"- System 2 of the pair (the base in s2-256 and s2-1024, runs/lfm3-s1s2): {pv['system2']}",
+              f"- the base's own router reading (runs/lfm3-s1s2): {pv['base_s1s2_router']}", ""]
+    names = {"base": f"base ({pv['base_s1']})", "ft": f"ft ({pv['ft_s1']})"} if pv else {}
     L += ["| set | model | n | acc | length stops | mean think tok | mean tok |", "|---|---|---:|---:|---:|---:|---:|"]
     for k, label in (("s1", "test s1"), ("s2", "test s2-1024"), ("mmlu", "MMLU-Pro s1")):
         for name, s in (("base", sb[k]), ("ft", sf[k])):
             if s:
-                L.append(f"| {label} | {name} | {s['n']} | {s['acc']:.3f} | {s['length_rate']:.3f} | "
+                shown = f"base ({pv['system2']})" if pv and k == "s2" and name == "base" else names.get(name, name)
+                L.append(f"| {label} | {shown} | {s['n']} | {s['acc']:.3f} | {s['length_rate']:.3f} | "
                          f"{s['mean_think_tokens']:.0f} | {s['mean_tokens']:.0f} |")
     L.append("")
     if g["G1"] is not None:
@@ -182,22 +238,32 @@ def report_md(g):
               f"- verdict: **{g['verdict']}**", ""]
     c = g.get("cascade")
     if c:
-        L += ["## Cascade cost (amendment 5)", "",
-              f"- mean tokens on the test: s1 of the fine-tuned model {c['ft_s1_tokens']:.0f}"
-              + (f", s1 of the base {c['base_s1_tokens']:.0f}" if c.get("base_s1_tokens") else "")
-              + f", s2-1024 of the base {c['base_s2_tokens']:.0f}",
-              f"- 1/rho = {c['one_over_rho']:.3f} ({c['ft_s1_tokens']:.0f} / {c['base_s2_tokens']:.0f})"]
-        if c["w"] is None:
-            L.append("- w: the pair has not been routed yet (`route`)")
+        conv = (lambda k: f" ({pv[k]})") if pv else (lambda k: "")
+        after = f"- mean tokens on the test: s1 of the fine-tuned model{conv('ft_s1')} {c['ft_s1_tokens']:.0f}"
+        before = f", s1 of the base{conv('base_s1')} {c['base_s1_tokens']:.0f}" if c.get("base_s1_tokens") else ""
+        L += ["## Cascade cost (amendments 5 and 6)", ""]
+        if c.get("one_over_rho") is None:
+            L += [after + before,
+                  "- 1/rho and w: the pair has not been routed yet (`route`); the budget of System 2 in 1/rho is the "
+                  "one the pair's router chooses on its calibration", ""]
         else:
-            L.append(f"- w = {c['w']:.3f} of the test questions sent to System 2 (the cascade pays "
-                     f"1/rho + w = {c['one_over_rho'] + c['w']:.3f} against always thinking)")
-        L.append("")
+            b = c["budget"]
+            L += [after + before + f", s2-{b} of the base{conv('system2')} {c['base_s2_tokens']:.0f}",
+                  f"- 1/rho = {c['one_over_rho']:.3f} ({c['ft_s1_tokens']:.0f} / {c['base_s2_tokens']:.0f}, at s2-{b}, "
+                  "the budget the pair's router chose on its calibration)"]
+            if c["w"] is None:
+                L.append("- w: not computed (the pair's summary holds no probe or no test reading at its budget)")
+            else:
+                L.append(f"- w = {c['w']:.3f} of the test questions sent to System 2 (the cascade pays "
+                         f"1/rho + w = {c['one_over_rho'] + c['w']:.3f} against always thinking)")
+            L.append("")
     for name in ("pair", "base_s1s2", "base", "ft"):
         r = g.get("router", {}).get(name)
         if r:
-            label = {"pair": "the pair (fine-tuned in s1, base in s2)",
-                     "base_s1s2": "base, as read in runs/lfm3-s1s2"}.get(name, name)
+            label = {"pair": "the pair (fine-tuned in s1, base in s2)"
+                     + (f": s1 {pv['ft_s1']}, s2 {pv['system2']}" if pv else ""),
+                     "base_s1s2": "base, as read in runs/lfm3-s1s2" + (f" ({pv['base_s1s2_router']})" if pv else ""),
+                     }.get(name, name)
             L += [f"## Router S1/S2, {label} (s2-{r['budget']})", "",
                   f"- s1 {r['s1_acc']:.3f}, s2 {r['s2_acc']:.3f}, router {r['router_acc']:.3f} "
                   f"({r['router_tokens']:.0f} tokens against {r['s2_tokens']:.0f})",
@@ -223,14 +289,13 @@ def main():
         p = os.path.join(a.runs, "eval", tag, "summary.json")
         g["router"][tag] = router(json.load(open(p))) if os.path.exists(p) else None
     if not read_g2:  # amendment 5: the pair's reading, with the base's own (runs/lfm3-s1s2) next to it
-        p = os.path.join(a.runs, "eval", "pair", "summary.json")
-        summ = json.load(open(p)) if os.path.exists(p) else None
+        summ = read_json(os.path.join(a.runs, "eval", "pair", "summary.json"))
         g["router"]["pair"] = router(summ)
         q = os.path.join(os.path.dirname(a.runs.rstrip("/") or "."), "lfm3-s1s2", "summary.json")
-        g["router"]["base_s1s2"] = router(json.load(open(q))) if os.path.exists(q) else None
-        pair_s1 = read_jsonl(os.path.join(a.runs, "eval", "pair", "test.s1.jsonl"))
-        g["cascade"] = cascade((g["ft"]["s1"] or {}).get("mean_tokens"), (g["base"]["s2"] or {}).get("mean_tokens"),
-                               w_share(summ, pair_s1), (g["base"]["s1"] or {}).get("mean_tokens"))
+        g["router"]["base_s1s2"] = router(read_json(q))
+        g["provenance"] = provenance(a.runs)  # amendment 6
+        g["cascade"] = pair_cascade(a.runs, summ, (g["ft"]["s1"] or {}).get("mean_tokens"),
+                                    (g["base"]["s1"] or {}).get("mean_tokens"))
     with open(os.path.join(a.runs, "gate.json"), "w") as f:
         json.dump(g, f, indent=2)
     md = report_md(g)

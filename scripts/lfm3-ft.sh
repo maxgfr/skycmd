@@ -19,9 +19,12 @@
 # nothing, with SKY_DUTY=0.5 and SKY_COOL=45:15 unless set. Amendment 5 (a shorter plan: the adapter
 # is System 1, the base stays System 2) changes the local steps only: `gen` is not run (it writes its
 # marker), `sft` trains on part (a) only (3,000 questions per task, seed 1234, one epoch), `eval` runs
-# the fine-tuned model in s1 only and copies the base's generations of runs/lfm3-s1s2, then assembles
-# the pair (eval/pair: the fine-tuned s1, the base's s2), `route` reads the pair only, and `gate` does
-# not read G2. MODE=hf keeps the Hugging Face Jobs above, unchanged (§3-§6 as first written).
+# the fine-tuned model in s1 only and copies the base's generations of runs/lfm3-s1s2 (or, when the
+# smoke's conversion check says "converted", runs the base again in s1 only with the local conversion:
+# amendment 6), then assembles the pair (eval/pair: the fine-tuned s1, the published base's s2 of
+# runs/lfm3-s1s2 in both cases), `route` reads the pair only, and `gate` does not read G2 and takes
+# the budget of 1/rho from the pair's router. MODE=hf keeps the Hugging Face Jobs above, unchanged
+# (§3-§6 as first written).
 #
 # DRY_RUN=1 prints the commands and launches nothing. With MODE=hf and without DRY_RUN, each paid job
 # prints its flavor, estimated and maximum cost, and waits for "y" (YES=1 answers for you: only once the
@@ -152,7 +155,7 @@ ft_rev() { # the model repo commit written by sft.py (pulled), or $FT_REV
   fi
 }
 
-[ $# -eq 0 ] && { sed -n '2,28p' "$0"; exit 2; }
+[ $# -eq 0 ] && { sed -n '2,31p' "$0"; exit 2; }
 
 # ----------------------------------------------------------------------------- the M5 (amendment 1)
 # Two environments: mlx-vlm generates (as scripts/lfm3-s1s2.sh), the torch stack trains the LoRA.
@@ -204,7 +207,7 @@ local_step() {
       need_data
       need_rev
       for tag in $EVAL_MODELS; do py_mlx eval --tag "$tag"; done
-      py_cpu pair # amendment 5: eval/pair, the ft s1 files + the base s2 files, copied
+      py_cpu pair # amendments 5 and 6: eval/pair, the ft s1 files + the s2 files of runs/lfm3-s1s2, copied
       ;;
     pull) echo "== pull: nothing to do on the M5, everything is already in $RUNS" ;;
   esac

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The LFM3-1.7B fine-tuning experiment on the M5 (docs/lfm3-ft-prereg.md, amendments 1 and 5).
+"""The LFM3-1.7B fine-tuning experiment on the M5 (docs/lfm3-ft-prereg.md, amendments 1, 5 and 6).
 
 scripts/lfm3-ft.sh runs each sub-command in its own uv environment: mlx-vlm for generation, the torch
 stack for the LoRA (they cannot share one). Generation reuses experiments/lfm3-s1s2/s1s2.py (Model,
@@ -11,9 +11,11 @@ the mix and the trainer come from common.py. Everything stays under runs/lfm3-ft
   gen          not run: amendment 5 drops part (b) of §3, the marker gen/not-run.json is written
   sft          the LoRA on part (a) only (3,000 questions per task, seed 1234, one epoch), merged (torch)
   convert      the merged model to MLX 4 bits                                               (mlx)
-  eval         base: the runs/lfm3-s1s2 generations copied, s1 on MMLU-Pro-500; ft: s1 only on calib,
-               test and MMLU-Pro-500 (amendment 5)                                          (mlx)
-  pair         eval/pair: the ft s1 files and the base s2 files, copied, for `route`     (nothing)
+  eval         base: the runs/lfm3-s1s2 generations copied, s1 on MMLU-Pro-500 (the smoke says
+               "published"), or s1 only on calib, test and MMLU-Pro-500 with the local conversion
+               (it says "converted", amendment 6); ft: s1 only on the three (amendment 5)   (mlx)
+  pair         eval/pair: the ft s1 files and the published base's s2 files of runs/lfm3-s1s2,
+               copied, for `route`, in both cases (amendment 6)                          (nothing)
 
 SKY_DUTY and SKY_COOL are honoured after every sample and every LoRA step (s1s2.py's rest). Generation
 appends and skips what is there; the LoRA resumes from its last technical checkpoint, never read to
@@ -248,26 +250,45 @@ def copy_base_generations(d, src=None):
     return names
 
 
+def eval_plan(tag, limit, source=None):
+    """What `eval --tag <tag>` does (amendments 5 and 6): (jobs to generate, weights path or None for the
+    published file, model label, conversion of the generated files, copy the runs/lfm3-s1s2 files?).
+
+    No step evaluates the base again in the three modes (amendment 6 replaces amendment 1's full
+    re-evaluation): System 2 of the pair is always the published base of runs/lfm3-s1s2.
+      ft                   s1 on calib, test and MMLU-Pro, the local conversion of the merged model
+      base, "published"    the six files of runs/lfm3-s1s2 copied, s1 on MMLU-Pro with the published file
+      base, "converted"    s1 on calib, test and MMLU-Pro with the local conversion of the base
+    With --limit (a check of the engine, never the run) nothing is copied and only s1 is generated."""
+    s1_only = [(s, "s1") for s in ("calib", "test", "mmlu")]
+    if tag == "ft":
+        return s1_only, FT_MLX, f"{C.FT_REPO} (local)", C.LOCAL_CONVERSION, False
+    if source == "converted":
+        return s1_only, BASE_MLX, f"{C.BASE} (converted locally)", C.LOCAL_CONVERSION, False
+    if source != "published":
+        raise SystemExit(f"{SMOKE}/report.json: base_source is {source!r}, not 'published' or 'converted'")
+    if limit:
+        return s1_only, None, S.MODEL, C.PUBLISHED_4BIT, False
+    return [("mmlu", "s1")], None, S.MODEL, C.PUBLISHED_4BIT, True
+
+
 def cmd_eval(a):
     d = f"{RUNS}/eval/{a.tag}" + ("-limit" if a.limit else "")
     data = splits(a.limit)
     data["mmlu"] = C.mmlu_items()[: a.limit] if a.limit else C.mmlu_items()
-    jobs = [(s, m) for s in ("calib", "test") for m in ("s1", "s2-256", "s2-1024")] + [("mmlu", "s1")]
-    source, path, label = None, None, S.MODEL
-    if a.tag == "ft":
-        path, label = FT_MLX, f"{C.FT_REPO} (local)"
-        jobs = [(s, "s1") for s in ("calib", "test", "mmlu")]  # amendment 5: the adapter answers in s1 only
-    else:
-        source = base_source()
-        if source == "published" and not a.limit:
-            copy_base_generations(d)
-            jobs = [("mmlu", "s1")]
-        elif source == "converted":
-            path, label = BASE_MLX, f"{C.BASE} (converted locally)"
+    source = base_source() if a.tag == "base" else None
+    jobs, path, label, conversion, copy = eval_plan(a.tag, a.limit, source)
+    if path is not None and not os.path.exists(os.path.join(path, "config.json")):
+        raise SystemExit(f"{path} missing: run `scripts/lfm3-ft.sh "
+                         + ("smoke` (it converts the base)" if a.tag == "base" else "sft` (it converts the merged model)"))
+    copied = copy_base_generations(d) if copy else []
     m = None
     meta = {"model": label, "revision": S.MODEL_REV if path is None else "local", "tag": a.tag, "engine": "mlx-vlm",
-            "weights": "MLX 4-bit", "base_source": source, "versions": C.versions(),
+            "weights": "MLX 4-bit", "base_source": source, "conversion": conversion, "versions": C.versions(),
             "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "files": {}}
+    if a.tag == "base":
+        meta["system2"] = (f"not generated here: the pair's System 2 is the published base, {S1S2_RUNS} "
+                           f"({C.PUBLISHED_4BIT}), in both cases (amendment 6)")
     for split, mode in jobs:
         out = f"{d}/{split}.{mode}.jsonl"
         if C.repair_jsonl(out):  # a record cut by a stop: dropped, so it is generated again
@@ -287,54 +308,68 @@ def cmd_eval(a):
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 f.flush()
                 S.rest(r["seconds"])
+    generated = {f"{split}.{mode}.jsonl" for split, mode in jobs}
     for name in sorted(os.listdir(d)):
         if name.endswith(".jsonl"):
             rows = C.read_jsonl(f"{d}/{name}")
-            meta["files"][name] = {"n": len(rows), "acc": sum(bool(r["correct"]) for r in rows) / max(1, len(rows))}
+            meta["files"][name] = {"n": len(rows), "acc": sum(bool(r["correct"]) for r in rows) / max(1, len(rows)),
+                                   "conversion": conversion if name in generated or name in copied else "unknown",
+                                   "from": S1S2_RUNS if name in copied else "generated here"}
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with open(f"{d}/meta.json", "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta, indent=2))
 
 
-PAIR_FILES = (  # (split, mode, tag): the pair's s1 comes from the fine-tuned model, its s2 from the base
-    ("calib", "s1", "ft"), ("test", "s1", "ft"),
-    ("calib", "s2-256", "base"), ("calib", "s2-1024", "base"),
-    ("test", "s2-256", "base"), ("test", "s2-1024", "base"),
+PAIR_FILES = (  # (split, mode, origin): the pair's s1 comes from the fine-tuned model, its s2 from the
+    ("calib", "s1", "ft"), ("test", "s1", "ft"),  # published base's generations of runs/lfm3-s1s2
+    ("calib", "s2-256", "s1s2"), ("calib", "s2-1024", "s1s2"),
+    ("test", "s2-256", "s1s2"), ("test", "s2-1024", "s1s2"),
 )
 
 
-def build_pair(runs=None, data=None):
+def build_pair(runs=None, data=None, s1s2=None):
     """The pair of amendment 5: the fine-tuned model answers in s1 (System 1) and the base model in
-    s2-256 and s2-1024 (System 2, untouched). eval/pair holds the fine-tuned s1 files and the base's s2
-    files, copied, never generated; meta.json says where each file came from, and `route --tag pair`
-    reads the folder like any model directory (s1s2.py's cmd_route, unchanged).
+    s2-256 and s2-1024 (System 2, untouched). eval/pair holds the fine-tuned s1 files (eval/ft) and the
+    published base's s2 files (runs/lfm3-s1s2), copied, never generated; meta.json says where each file
+    came from and which conversion it was generated with, and `route --tag pair` reads the folder like
+    any model directory (s1s2.py's cmd_route, unchanged).
+
+    System 2 is read from runs/lfm3-s1s2 whatever the smoke's conversion check said (amendment 6): it is
+    the untouched published model, and eval/base holds no s2 file when the base was converted locally.
 
     s1s2.py's route pairs s1 and s2 records by id and silently drops an id missing from either file, so
     every file is checked first against its split (data/lfm3/<split>.jsonl): exactly its ids, once each,
     records of the file's mode. Any gap is an error and no pair is written. meta.json, the marker that
     `route` and `gate` look for, is removed first and written last."""
-    runs, data = runs or RUNS, data or C_DATA
+    runs, data, s1s2 = runs or RUNS, data or C_DATA, s1s2 or S1S2_RUNS
     d = os.path.join(runs, "eval", "pair")
-    meta = {"pair": True, "amendment": 5, "model": "pair: ft in s1, base in s2", "weights": "MLX 4-bit",
-            "engine": "mlx-vlm", "revision": "local", "s1": "ft (the adapter is System 1)",
-            "s2": "base (System 2, untouched)", "sources": {}}
+    smoke = os.path.join(runs, "smoke", "report.json")
+    source = json.load(open(smoke)).get("base_source") if os.path.exists(smoke) else None
+    meta = {"pair": True, "amendment": 6, "model": "pair: ft in s1, base in s2", "weights": "MLX 4-bit",
+            "engine": "mlx-vlm", "revision": "local", "s1": f"ft (the adapter is System 1, {C.LOCAL_CONVERSION})",
+            "s2": f"the published base, {s1s2} (System 2, untouched, {C.PUBLISHED_4BIT})",
+            "base_source": source, "sources": {}, "conversions": {}}
     if os.path.exists(os.path.join(d, "meta.json")):
         os.remove(os.path.join(d, "meta.json"))
     expected = {s: [r["id"] for r in C.load_shipped(os.path.join(data, f"{s}.jsonl"))] for s in ("calib", "test")}
+    origins = {"ft": (os.path.join(runs, "eval", "ft"), "eval/ft", C.LOCAL_CONVERSION, "`scripts/lfm3-ft.sh eval`"),
+               "s1s2": (s1s2, s1s2, C.PUBLISHED_4BIT, "scripts/lfm3-s1s2.sh")}
     files, problems = [], []
-    for split, mode, tag in PAIR_FILES:
+    for split, mode, origin in PAIR_FILES:
         name = f"{split}.{mode}.jsonl"
-        src = os.path.join(runs, "eval", tag, name)
+        folder, label, conversion, step = origins[origin]
+        src = os.path.join(folder, name)
         if not os.path.exists(src):
-            raise SystemExit(f"{src} missing: run `scripts/lfm3-ft.sh eval` first")
-        problems += C.id_problems(f"eval/{tag}/{name}", C.read_jsonl(src), expected[split], mode)
-        files.append((name, src, tag))
+            raise SystemExit(f"{src} missing: run {step} first")
+        problems += C.id_problems(f"{label}/{name}", C.read_jsonl(src), expected[split], mode)
+        files.append((name, src, label, conversion))
     if problems:
         raise SystemExit("the pair is not written, its files do not hold the same questions:\n  " + "\n  ".join(problems))
-    for name, src, tag in files:
+    for name, src, label, conversion in files:
         C.copy_atomic(src, os.path.join(d, name))
-        meta["sources"][name] = f"eval/{tag}"
+        meta["sources"][name] = label
+        meta["conversions"][name] = conversion
     with open(os.path.join(d, "meta.json.tmp"), "w") as f:
         json.dump(meta, f, indent=2)
     os.replace(os.path.join(d, "meta.json.tmp"), os.path.join(d, "meta.json"))
