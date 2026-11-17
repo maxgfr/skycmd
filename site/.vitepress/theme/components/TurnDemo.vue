@@ -20,11 +20,12 @@ import {
 } from '../lib/wasm'
 import {
   EnergyVad,
-  FRAME_SAMPLES,
+  Framer,
   RATE_16K,
   TurnPolicy,
   TURN_DEFAULTS,
   makeResampler16k,
+  validMs,
   type TurnEvent,
   type TurnState,
 } from '../lib/turn'
@@ -68,14 +69,19 @@ const tauChoice = ref<'tau85' | 'tau50'>('tau85')
 const stopMs = ref(TURN_DEFAULTS.stopMs)
 const fallbackMs = ref(TURN_DEFAULTS.fallbackMs)
 const tau = computed(() => (tauChoice.value === 'tau85' ? tau85.value : tau50.value))
+// A field being edited holds '' (or a negative number): the policy keeps the default meanwhile
+const stopMsOk = computed(() => validMs(stopMs.value, TURN_DEFAULTS.stopMs))
+const fallbackMsOk = computed(() => validMs(fallbackMs.value, TURN_DEFAULTS.fallbackMs))
+/** The silence the timer waited for, kept with the outcome it produced. */
+const doneAfterMs = ref(0)
 watch(tau, (v) => {
   if (policy) policy.tau = Math.max(0, v)
 })
-watch(stopMs, (v) => {
-  if (policy) policy.stopMs = Math.max(0, v)
+watch(stopMsOk, (v) => {
+  if (policy) policy.stopMs = v
 })
-watch(fallbackMs, (v) => {
-  if (policy) policy.fallbackMs = Math.max(0, v)
+watch(fallbackMsOk, (v) => {
+  if (policy) policy.fallbackMs = v
 })
 
 /** The live status line, announced by screen readers as it changes. */
@@ -85,7 +91,7 @@ const phaseText = computed(() => {
     return `Pause: the model says not finished (p = ${p2(lastP.value)}), still listening`
   if (phase.value === 'finished')
     return doneBy.value === 'timer'
-      ? `Finished by the fallback timer after ${(fallbackMs.value / 1000).toFixed(1)} s of silence`
+      ? `Finished by the fallback timer after ${(doneAfterMs.value / 1000).toFixed(1)} s of silence`
       : `Finished (p = ${p2(lastP.value)}): an agent would answer now`
   return 'Waiting for speech'
 })
@@ -106,16 +112,16 @@ let node: AudioWorkletNode | ScriptProcessorNode | null = null
 let mute: GainNode | null = null
 let src: AudioNode | null = null
 let resample: ((x: Float32Array) => Float32Array) | null = null
-const frameBuf = new Float32Array(FRAME_SAMPLES)
-let frameLen = 0
+let framer: Framer | null = null
 
-/** One resampled chunk: into the detector whole, then into the VAD and the policy in 10 ms
- * frames. Errors land in the UI; the run stops, it does not throw. */
+/** One resampled chunk, cut into 10 ms frames: each frame's samples go into the detector, then
+ * the frame into the VAD and the policy, so a decision reads the audio up to its own frame and the
+ * reset at a finished turn keeps what follows it for the next turn. Errors land in the UI; the run
+ * stops, it does not throw. */
 function onChunk(x: Float32Array, g: number) {
-  if (g !== gen || !policy || !vad || !det.value) return
+  if (g !== gen || !policy || !vad || !framer || !det.value) return
   try {
     const y = resample ? resample(x) : x
-    det.value.push(y)
     heardMs.value += (y.length * 1000) / RATE_16K
     let peak = 0
     for (let i = 0; i < y.length; i++) {
@@ -123,17 +129,7 @@ function onChunk(x: Float32Array, g: number) {
       if (a > peak) peak = a
     }
     level.value = Math.max(peak, level.value * 0.85)
-    let i = 0
-    while (i < y.length) {
-      const take = Math.min(FRAME_SAMPLES - frameLen, y.length - i)
-      frameBuf.set(y.subarray(i, i + take), frameLen)
-      frameLen += take
-      i += take
-      if (frameLen === FRAME_SAMPLES) {
-        policy.feed(vad.isSpeech(frameBuf))
-        frameLen = 0
-      }
-    }
+    framer.feed(y)
   } catch (err) {
     error.value = `The detector failed: ${(err as Error).message ?? err}`
     stop()
@@ -152,11 +148,20 @@ async function addTap(c: AudioContext): Promise<AudioWorkletNode | ScriptProcess
   const g = gen
   if (c.audioWorklet) {
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }))
-    await c.audioWorklet.addModule(url)
-    URL.revokeObjectURL(url)
-    const w = new AudioWorkletNode(c, 'turn-tap')
-    w.port.onmessage = (ev) => onChunk(ev.data as Float32Array, g)
-    return w
+    let loaded = false
+    try {
+      await c.audioWorklet.addModule(url)
+      loaded = true
+    } catch {
+      // a blob: module refused (a content security policy, an older engine): the fallback below
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+    if (loaded) {
+      const w = new AudioWorkletNode(c, 'turn-tap')
+      w.port.onmessage = (ev) => onChunk(ev.data as Float32Array, g)
+      return w
+    }
   }
   const sp = c.createScriptProcessor(4096, 1, 1)
   sp.onaudioprocess = (ev) => onChunk(new Float32Array(ev.inputBuffer.getChannelData(0)), g)
@@ -165,17 +170,25 @@ async function addTap(c: AudioContext): Promise<AudioWorkletNode | ScriptProcess
 
 /** A new run: the VAD and the policy, and the readouts back to their start. */
 function beginPipeline() {
-  vad = new EnergyVad()
-  policy = new TurnPolicy({
-    probEnd: () => det.value!.probEnd(),
+  const d = det.value!
+  // a new stream: the audio of an earlier run (stopped mid-turn) must not enter this one's window
+  d.reset()
+  const v = new EnergyVad()
+  const p = new TurnPolicy({
+    probEnd: () => d.probEnd(),
     tau: Math.max(0, tau.value),
-    stopMs: Math.max(0, stopMs.value),
+    stopMs: stopMsOk.value,
     recheckMs: RECHECK,
-    fallbackMs: Math.max(0, fallbackMs.value),
+    fallbackMs: fallbackMsOk.value,
     minSpeechMs: MIN_SPEECH,
     onEvent: handleEvent,
   })
-  frameLen = 0
+  vad = v
+  policy = p
+  framer = new Framer(
+    (samples) => d.push(samples),
+    (frame) => p.feed(v.isSpeech(frame)),
+  )
   log.value = []
   lastP.value = null
   lastDecisionMs.value = null
@@ -193,7 +206,7 @@ function handleEvent(e: TurnEvent) {
   } else if (e.type === 'decision') {
     lastP.value = e.p ?? null
     lastDecisionMs.value = e.decisionMs ?? null
-    if ((e.p ?? 0) < tau.value) {
+    if ((e.p ?? 0) < (policy?.tau ?? tau.value)) {
       phase.value = 'holding'
       pushLog('the model says not finished: still listening', e.p, e.decisionMs)
     }
@@ -202,6 +215,7 @@ function handleEvent(e: TurnEvent) {
     det.value?.reset() // the caller resets the detector: the next speech starts a new turn
     phase.value = 'finished'
     doneBy.value = e.by ?? 'model'
+    doneAfterMs.value = policy?.fallbackMs ?? fallbackMsOk.value
     if (e.by === 'timer') pushLog('the fallback timer ends the turn')
     else pushLog('the model says finished: an agent would answer now', e.p, lastDecisionMs.value)
   }
@@ -216,14 +230,24 @@ async function startMic() {
     error.value = 'This browser exposes no microphone API: navigator.mediaDevices is missing.'
     return
   }
+  // This start's run. A stop (the Stop button, leaving the page) or another start while a promise
+  // below is pending bumps `gen`: this start then releases what it holds and goes no further, so
+  // no microphone or audio context outlives the run it was opened for.
+  const g = gen
+  let s: MediaStream
   try {
-    stream = await md.getUserMedia({
+    s = await md.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     })
   } catch (err) {
-    error.value = `Microphone unavailable or refused: ${(err as Error).message ?? err}`
+    if (g === gen) error.value = `Microphone unavailable or refused: ${(err as Error).message ?? err}`
     return
   }
+  if (g !== gen) {
+    s.getTracks().forEach((t) => t.stop())
+    return
+  }
+  stream = s
   try {
     // a 16 kHz context resamples the microphone itself where the browser allows it
     let c: AudioContext
@@ -232,21 +256,29 @@ async function startMic() {
     } catch {
       c = new AudioContext()
     }
-    resample = c.sampleRate === RATE_16K ? null : makeResampler16k(c.sampleRate)
+    ctx = c // from here a stop() closes it
+    let tap: AudioWorkletNode | ScriptProcessorNode
+    let source: MediaStreamAudioSourceNode
     try {
-      node = await addTap(c)
-      src = c.createMediaStreamSource(stream)
+      tap = await addTap(c)
+      if (g !== gen) return
+      source = c.createMediaStreamSource(s)
     } catch {
+      if (g !== gen) return
       // Firefox refuses a microphone in a context at another rate: the default rate, resampled
       await c.close().catch(() => {})
+      if (g !== gen) return
       c = new AudioContext()
-      resample = c.sampleRate === RATE_16K ? null : makeResampler16k(c.sampleRate)
-      node = await addTap(c)
-      src = c.createMediaStreamSource(stream)
+      ctx = c
+      tap = await addTap(c)
+      if (g !== gen) return
+      source = c.createMediaStreamSource(s)
     }
-    ctx = c
+    resample = c.sampleRate === RATE_16K ? null : makeResampler16k(c.sampleRate)
+    node = tap
+    src = source
     src.connect(node)
-    if (node instanceof ScriptProcessorNode) {
+    if (!('port' in node)) {
       // a ScriptProcessorNode only runs when it drains to the destination: through a muted gain
       mute = c.createGain()
       mute.gain.value = 0
@@ -270,8 +302,10 @@ async function runSelfTest() {
   error.value = ''
   stop() // also clears `resample`: the signal is already 16 kHz, nothing to resample
   if (!det.value) return
+  const g = gen
   try {
     const speech = await turnSynthSpeech(3, 1n, 1)
+    if (g !== gen) return // a start or a stop came in meanwhile: this test is no longer the run
     const clip = new Float32Array(speech.length + Math.round(3 * RATE_16K)) // the tail is zeros, longer than the fallback timer
     clip.set(speech)
     beginPipeline()
@@ -301,8 +335,9 @@ function stop() {
     mute = null
   }
   if (node) {
-    if (node instanceof ScriptProcessorNode) node.onaudioprocess = null
-    else node.port.close()
+    // duck-typed: a browser without one of the two classes must still reach the teardown below
+    if ('port' in node) node.port.close()
+    else node.onaudioprocess = null
     try {
       node.disconnect()
     } catch {
@@ -317,7 +352,7 @@ function stop() {
   resample = null
   policy = null
   vad = null
-  frameLen = 0
+  framer = null
   running.value = ''
   level.value = 0
   heardMs.value = 0
@@ -370,7 +405,7 @@ onBeforeUnmount(() => {
     <p v-if="missing" class="turn-note">The end-of-turn model (s6-ear2-nano) is not published on this site.</p>
     <template v-if="det">
       <div class="turn-controls">
-        <button :disabled="running === 'mic'" @click="running === 'mic' ? stop() : startMic()">
+        <button @click="running === 'mic' ? stop() : startMic()">
           {{ running === 'mic' ? 'Stop the microphone' : 'Use the microphone' }}
         </button>
         <button :disabled="running === 'mic'" @click="runSelfTest()">Self-test without a microphone</button>
@@ -385,12 +420,20 @@ onBeforeUnmount(() => {
         <label>ask after <input v-model.number="stopMs" type="number" min="0" step="50" /> ms of pause</label>
         <label>end after <input v-model.number="fallbackMs" type="number" min="0" step="250" /> ms of silence</label>
       </div>
-      <div class="turn-meter" aria-label="input level">
+      <div
+        class="turn-meter"
+        role="meter"
+        aria-label="input level"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="Math.round(Math.min(100, level * 140))"
+      >
         <div class="turn-meter-bar" :style="{ width: Math.min(100, level * 140) + '%' }" />
         <span class="turn-meter-text">{{ (heardMs / 1000).toFixed(1) }} s heard</span>
       </div>
       <p class="turn-phase" :class="phase" aria-live="polite">{{ phaseText }}</p>
-      <div class="turn-bar" aria-label="probability that the turn is finished">
+      <!-- drawn only: the line below states p and the threshold in words -->
+      <div class="turn-bar" aria-hidden="true">
         <div class="turn-bar-fill" :style="{ width: (lastP ?? 0) * 100 + '%' }" />
         <div class="turn-bar-tau" :style="{ left: tau * 100 + '%' }" :title="`threshold τ = ${tau.toFixed(3)}`" />
       </div>

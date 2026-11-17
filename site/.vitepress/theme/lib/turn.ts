@@ -34,33 +34,84 @@ export const TURN_DEFAULTS = {
   ratio: 3.5,
 } as const
 
-/** Linear resampling to 16 kHz: the sample at output k interpolates the input at k·rate/16000.
- * At 16 kHz the identity (the input array itself, no copy). */
+/** Linear resampling to 16 kHz: the sample at output k interpolates the input at k·rate/16000,
+ * for every such position up to the last input sample. At 16 kHz the identity (the input array
+ * itself, no copy). */
 export function resampleTo16k(input: Float32Array, inputRate: number): Float32Array {
   if (inputRate === RATE_16K) return input
   return makeResampler16k(inputRate)(input)
 }
 
-/** A resampler that carries its interpolation phase across chunks, so a chunk boundary does not
- * click: the position left over at the end of a chunk is where the next chunk starts. At 16 kHz
- * it passes chunks through untouched. */
+/** A resampler that gives, chunk by chunk, exactly the samples the one-shot resampler gives on the
+ * concatenated input: output k sits at input position k·rate/16000, computed from integer counts
+ * (no drift however long the stream), and a position between the last sample of a chunk and the
+ * first of the next waits for that next sample instead of holding the last one. At 16 kHz it
+ * passes chunks through untouched. */
 export function makeResampler16k(inputRate: number): (chunk: Float32Array) => Float32Array {
   if (inputRate === RATE_16K) return (chunk) => chunk
-  const step = inputRate / RATE_16K
-  let pos = 0 // where the next output lands, in the current chunk
+  if (!(inputRate > 0)) throw new Error(`a sample rate must be positive, not ${inputRate}`)
+  let k = 0 // index of the next output sample
+  let base = 0 // input samples before the current chunk
+  let prev = 0 // the last sample of the previous chunk
   return (chunk) => {
-    const out = new Float32Array(Math.ceil(chunk.length / step) + 1)
+    const len = chunk.length
+    const end = base + len - 1 // the last input position this chunk can serve
+    const out = new Float32Array(Math.max(0, Math.ceil(((len + 1) * RATE_16K) / inputRate) + 1))
     let n = 0
-    while (pos < chunk.length) {
+    for (;;) {
+      const pos = (k * inputRate) / RATE_16K // exact up to the last bit: k * rate is an integer
+      if (pos > end) break
       const i = Math.floor(pos)
       const f = pos - i
-      const b = i + 1 < chunk.length ? chunk[i + 1] : chunk[i]
-      out[n++] = chunk[i] + (b - chunk[i]) * f
-      pos += step
+      const a = i < base ? prev : chunk[i - base] // i is base - 1 at most once per chunk
+      out[n++] = f === 0 ? a : a + (chunk[i - base + 1] - a) * f
+      k++
     }
-    pos -= chunk.length // the phase, carried to the next chunk (always in [0, step))
+    if (len > 0) prev = chunk[len - 1]
+    base += len
     return out.subarray(0, n)
   }
+}
+
+/** Cuts a stream of 16 kHz chunks into 10 ms frames for the VAD and the policy, and hands every
+ * sample to `push` (the detector's stream) exactly once and in order, as it arrives: the tail of a
+ * chunk that does not fill a frame is pushed at once and completed by the next chunk. `onFrame`
+ * runs on each frame right after its last sample was pushed, so a decision taken there reads the
+ * stream up to that frame's end, never past it, and a `reset` of the detector there drops nothing
+ * that comes after it. */
+export class Framer {
+  private readonly buf = new Float32Array(FRAME_SAMPLES)
+  private len = 0
+  private readonly push: (samples: Float32Array) => void
+  private readonly onFrame: (frame: Float32Array) => void
+
+  constructor(push: (samples: Float32Array) => void, onFrame: (frame: Float32Array) => void) {
+    this.push = push
+    this.onFrame = onFrame
+  }
+
+  feed(chunk: Float32Array): void {
+    let i = 0
+    while (i < chunk.length) {
+      const take = Math.min(FRAME_SAMPLES - this.len, chunk.length - i)
+      const seg = chunk.subarray(i, i + take)
+      this.push(seg)
+      this.buf.set(seg, this.len)
+      this.len += take
+      i += take
+      if (this.len === FRAME_SAMPLES) {
+        this.len = 0
+        this.onFrame(this.buf)
+      }
+    }
+  }
+}
+
+/** A duration typed in a number field: a finite value of at least 0, else `fallback`. Vue's
+ * `v-model.number` hands over '' while the field is being edited (and a negative number can be
+ * typed despite `min`): taken as 0, it would end every pause on its first silent frame. */
+export function validMs(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback
 }
 
 /** An energy voice-activity detector over 10 ms frames: the RMS of each frame against a noise

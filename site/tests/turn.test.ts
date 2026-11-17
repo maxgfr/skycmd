@@ -9,9 +9,12 @@ import {
   FRAME_SAMPLES,
   RATE_16K,
   EnergyVad,
+  Framer,
   TurnPolicy,
+  TURN_DEFAULTS,
   makeResampler16k,
   resampleTo16k,
+  validMs,
   type TurnEvent,
 } from '../.vitepress/theme/lib/turn.ts'
 
@@ -62,6 +65,153 @@ test('the stateful resampler keeps the rate across many chunks at a fractional r
   let n = 0
   for (let i = 0; i < x.length; i += 128) n += r(x.subarray(i, i + 128)).length
   assert.equal(n, Math.ceil(x.length / (44100 / RATE_16K)))
+})
+
+/** A deterministic generator of chunk sizes (0 and 1 included), as an audio callback might give. */
+function chunkSizes(seed: number, n: number, max: number): number[] {
+  let s = seed
+  const out: number[] = []
+  for (let i = 0; i < n; i++) {
+    s = (s * 1103515245 + 12345) % 2147483648
+    out.push(s % (max + 1))
+  }
+  return out
+}
+
+/** Linear interpolation at input position k * rate / 16000, written out: the reference. */
+function reference(x: Float32Array, rate: number): number[] {
+  const out: number[] = []
+  for (let k = 0; ; k++) {
+    const pos = (k * rate) / RATE_16K
+    if (pos > x.length - 1) break
+    const i = Math.floor(pos)
+    const f = pos - i
+    out.push(f === 0 ? x[i] : x[i] + (x[i + 1] - x[i]) * f)
+  }
+  return out
+}
+
+test('chunk by chunk, the resampler gives exactly the reference samples, boundaries included', () => {
+  for (const rate of [44100, 48000, 22050, 8000, 96000]) {
+    const x = sine(0.7, 137, 0.9)
+    const ref = reference(x, rate)
+    const whole = resampleTo16k(x, rate)
+    assert.equal(whole.length, ref.length, `${rate}: one-shot length`)
+    for (const sizes of [[128], [4096], chunkSizes(rate, 400, 300)]) {
+      const r = makeResampler16k(rate)
+      const got: number[] = []
+      let at = 0
+      for (let c = 0; at < x.length; c++) {
+        const n = sizes[c % sizes.length]
+        for (const v of r(x.subarray(at, at + n))) got.push(v)
+        at += n
+      }
+      assert.equal(got.length, ref.length, `${rate}: no sample dropped or duplicated`)
+      for (let k = 0; k < ref.length; k++) {
+        // Float32 storage of the same arithmetic: equal to the reference rounded to f32
+        assert.equal(got[k], Math.fround(ref[k]), `${rate}, chunks ${sizes.length}: sample ${k}`)
+        assert.equal(whole[k], Math.fround(ref[k]))
+      }
+    }
+  }
+})
+
+test('the resampler does not drift over a long stream: the count is the exact one', () => {
+  const rate = 44100
+  const r = makeResampler16k(rate)
+  const chunk = new Float32Array(441_000) // 10 s per chunk, 10 minutes in all
+  let n = 0
+  for (let c = 0; c < 60; c++) n += r(chunk).length
+  const total = 60 * chunk.length
+  assert.equal(n, Math.floor(((total - 1) * RATE_16K) / rate) + 1)
+})
+
+// ------------------------------------------------------------------------------------------
+// The framer: every sample to the detector once and in order, a frame decided at its own end.
+
+test('the framer pushes every sample once and in order, the tail of a chunk included', () => {
+  const x = sine(1.3, 311, 0.5)
+  const pushed: number[] = []
+  const atFrame: number[] = []
+  const f = new Framer(
+    (s) => {
+      for (const v of s) pushed.push(v)
+    },
+    (frame) => {
+      atFrame.push(pushed.length) // what the detector holds when the frame is decided
+      assert.equal(frame.length, FRAME_SAMPLES)
+      const start = pushed.length - FRAME_SAMPLES
+      for (let j = 0; j < FRAME_SAMPLES; j++) assert.equal(frame[j], x[start + j])
+    },
+  )
+  let at = 0
+  for (const n of chunkSizes(5, 10_000, 700)) {
+    if (at >= x.length) break
+    f.feed(x.subarray(at, at + n))
+    at += n
+  }
+  assert.deepEqual(pushed, Array.from(x.subarray(0, at)))
+  assert.equal(atFrame.length, Math.floor(at / FRAME_SAMPLES))
+  atFrame.forEach((n, i) => assert.equal(n, (i + 1) * FRAME_SAMPLES, `frame ${i} decided at its end`))
+})
+
+/** A fake detector: the samples pushed since the last reset, and what each decision read. */
+function fakeDetector(p: number) {
+  const det = { held: 0, total: 0, resets: 0, reads: [] as number[] }
+  return {
+    det,
+    push: (s: Float32Array) => {
+      det.held += s.length
+      det.total += s.length
+    },
+    probEnd: () => {
+      det.reads.push(det.held)
+      return p
+    },
+    reset: () => {
+      det.held = 0
+      det.resets++
+    },
+  }
+}
+
+test('one chunk holding a whole clip (the self-test): each decision reads up to its own frame', () => {
+  // 1 s of speech then 3 s of zeros, in ONE chunk: the first version pushed the whole chunk before
+  // feeding its frames, so the decision at 1.2 s read the stream up to 4 s, mostly silence
+  const clip = new Float32Array(4 * RATE_16K)
+  clip.set(sine(1, 220, 0.3))
+  const d = fakeDetector(0.2)
+  const events: TurnEvent[] = []
+  const vad = new EnergyVad()
+  const policy = new TurnPolicy({
+    probEnd: d.probEnd,
+    onEvent: (e) => {
+      events.push(e)
+      if (e.type === 'finished') d.reset()
+    },
+  })
+  const f = new Framer(d.push, (frame) => policy.feed(vad.isSpeech(frame)))
+  f.feed(clip)
+  const decisions = events.filter((e) => e.type === 'decision')
+  assert.ok(decisions.length > 0)
+  decisions.forEach((e, i) =>
+    assert.equal(d.det.reads[i], e.atMs * (RATE_16K / 1000), `decision at ${e.atMs} ms reads ${d.det.reads[i]} samples`),
+  )
+  assert.equal(decisions[0].atMs, 1000 + TURN_DEFAULTS.stopMs)
+  const fin = events.find((e) => e.type === 'finished')!
+  assert.equal(fin.by, 'timer')
+  // the reset at the finished turn keeps what follows it for the next turn, nothing before it
+  assert.equal(d.det.held, clip.length - fin.atMs * (RATE_16K / 1000))
+  assert.equal(d.det.total, clip.length)
+})
+
+test('a duration field being edited keeps the default instead of zero', () => {
+  assert.equal(validMs(300, 200), 300)
+  assert.equal(validMs(0, 200), 0)
+  assert.equal(validMs('', 200), 200, "Vue's v-model.number hands '' over while the field is empty")
+  assert.equal(validMs(-50, 200), 200)
+  assert.equal(validMs(Number.NaN, 200), 200)
+  assert.equal(validMs(Number.POSITIVE_INFINITY, 2500), 2500)
 })
 
 // ------------------------------------------------------------------------------------------
@@ -235,4 +385,35 @@ test('reset clears the timeline and the state', () => {
   assert.equal(events.length, n + 3, 'the new turn starts over')
   assert.equal(events[n].type, 'speech-start')
   assert.equal(events[n].atMs, 150, 'the timeline restarted')
+})
+
+test('speech resuming on the very frame a recheck was due: resumed, not asked', () => {
+  const { policy, events, calls } = script([0.2])
+  speak(policy, 16)
+  hush(policy, 20) // the decision at 200 ms of silence: holding
+  hush(policy, 19) // the recheck is due on the next silent frame
+  speak(policy, 1) // speech comes instead
+  assert.equal(calls.length, 1, 'not asked on a speech frame')
+  assert.equal(events.at(-1)!.type, 'resumed')
+  hush(policy, 19)
+  assert.equal(calls.length, 1, 'the next pause waits stopMs again')
+  hush(policy, 1)
+  assert.equal(calls.length, 2)
+})
+
+test('settings changed mid-run apply from the next frame', () => {
+  const { policy, events, calls } = script([0.6], 0.7)
+  speak(policy, 16)
+  hush(policy, 20) // p 0.6 under tau 0.7: holding
+  assert.equal(policy.state, 'holding')
+  policy.tau = 0.5 // the threshold control
+  hush(policy, 20) // the recheck now finishes the turn
+  assert.equal(events.at(-1)!.type, 'finished')
+  assert.equal(events.at(-1)!.by, 'model')
+  speak(policy, 16)
+  policy.fallbackMs = 300 // lowered under the pause already under way
+  policy.stopMs = 10000
+  hush(policy, 30)
+  assert.equal(events.at(-1)!.by, 'timer')
+  assert.equal(calls.length, 2)
 })
