@@ -100,7 +100,7 @@ fn parse_cool(v: &str) -> Result<(u64, u64)> {
 
 /// `secs` in minutes, as the brake file writes them: `45`, `0.5`, `0.02` (two decimals at most).
 fn minutes(secs: u64) -> String {
-    if secs % 60 == 0 {
+    if secs.is_multiple_of(60) {
         return (secs / 60).to_string();
     }
     let m = format!("{:.2}", secs as f64 / 60.0);
