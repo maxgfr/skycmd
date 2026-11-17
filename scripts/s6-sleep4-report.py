@@ -519,7 +519,10 @@ def typed_parity(memory_path, base_path, what):
     """Section 4.1 and H3 on the frozen route: typed_decisions_bench with an empty memory equals
     the base's exactly. s2-eval writes no per-question answer, so the check is the strongest the
     report allows: every line of the report (each exit and source: accuracy, NLL, ECE, the early
-    exit, the permutation and coherence checks), for the float and the ternary rows, equal."""
+    exit, the permutation and coherence checks), for the float and the ternary rows, equal. This
+    line-by-line comparison is accepted by the lead as the language parity check for now (to be
+    recorded in an amendment before stage 2): a necessary condition; a per-answer dump would be
+    the exact check."""
     a, b = typed_body(memory_path), typed_body(base_path)
     if a != b:
         diff = next(i for i, (x, y) in enumerate(zip(a + [""], b + [""])) if x != y)
@@ -671,7 +674,7 @@ def hypotheses(root, chosen, smoke=False):
     seen = ", ".join("%s: %d episodes" % (k, v["episodes"]) for k, v in zeroed.items())
     lines += ["", "## Parity checks (section 4.1)", "",
               f"- **Z, the memory zeroed** (recall at N = 1, `--memory-off`): equal to the base's reading, answer for answer, on every seed ({seen}).",
-              f"- **typed_decisions_bench with an empty memory**: every line of the s2-eval report equal to the base's, on every seed (accuracy {typed['seed0']['accuracy']:.4f}). s2-eval writes no per-question answers: the check compares every number of its report.",
+              f"- **typed_decisions_bench with an empty memory**: every line of the s2-eval report equal to the base's, on every seed (accuracy {typed['seed0']['accuracy']:.4f}). s2-eval writes no per-question answers: the check compares every number of its report (a necessary condition; a per-answer dump would be the exact check).",
               "", "## Hypotheses (section 6)", ""]
     d, lo, hi = v1.paired_bootstrap(pairs_with_base(root, "recall", 1))
     verdict["H0"] = d >= v1.MEMORY_GAIN
