@@ -356,7 +356,9 @@ evaluation set). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-s
 [skycmd-text](https://huggingface.co/datasets/maxgfr/skycmd-text) (MLM text and tokenizers),
 [skycmd-ear](https://huggingface.co/datasets/maxgfr/skycmd-ear) (s6-ear questions, clip index, Mimi
 codes), [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math) (LFM3 router
-questions), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) (a fixed sample of
+questions), [skycmd-route](https://huggingface.co/datasets/maxgfr/skycmd-route) (the slates of
+s6-route-nano and s6-route and the teacher's descriptions, each row under its sources' licences;
+assembled, not uploaded yet), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) (a fixed sample of
 our four synthetic series generators, Apache-2.0), [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals) (our hand-written
 evaluation material: demo cases, s5 zero-shot definitions and paraphrases, Apache-2.0), [skycmd-trajectories](https://huggingface.co/datasets/maxgfr/skycmd-trajectories) (complete game episodes played by
 our models and the oracle, Apache-2.0), [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
@@ -375,7 +377,24 @@ reward and the events until the next decision. 1,033,412 decisions and 2,100 epi
 Downloaded by `scripts/build-route-data.sh fetch` at the commits of `scripts/route/pins.json`,
 each file checked against the hash its host publishes; every file (URL, commit, bytes, sha256,
 licence) is listed in `<data>/MANIFEST.json` of the data folder (`../skycmd-data/s6-route`,
-outside the repository; 584,935,409 bytes in all, 15/11/2026). Nothing is redistributed. Requests
+outside the repository; 584,935,409 bytes in all, 15/11/2026). Since 17/11/2026, by the owner's
+decision to publish the data under each source's licence, the dataset `skycmd-route`
+(`scripts/hf-publish-data.py --only route`; assembled, not uploaded yet) holds: the training and
+validation records the models read (`build/records/*/train.jsonl`, `val.jsonl`); the validation
+slate files (`build/val/v_tools*.jsonl`); the test files built from the sources of this table
+except tool-routing-data (`build/test/`: T-tools and its three reading-check copies, T-metatool,
+T-clinc, the MASSIVE held-out test, the When2Call test, BFCL); the fresh files of s6-nano v3
+(`build/fresh/f_*.jsonl`); every row with its `source` (the request's) and `option_sources` (the
+sources that hold its option texts); the teacher's intent descriptions and description rewrites,
+marked as machine-generated; and, as files, `scripts/route/pins.json`, `MANIFEST.json`,
+`BUILD.json`, `FRESH.json` and the cluster of each T2-tools slate. It leaves out the raw upstream
+files (`src/`, `hf-cache/`), the models, embeddings, environment and evaluation outputs, the 100
+test slates of tool-routing-data (its card asks users to review the generating model's terms;
+`scripts/build-route-data.sh` rebuilds them), the model's copies of the validation files (`sky-data
+route render` rebuilds them) and the items and answers of the false-negative filter. Every string
+of it was scanned at assembly with the builder's key rule (`sky_data::route::looks_like_key`): none
+is left, apart from five tool names and six repository paths that match the rule without being
+keys (listed by hash in the script). Requests
 are counted after the clusters' split, the cross-split deduplication and the caps of §4.2 (30 per
 cluster in training, 10 on the validation and test sides).
 

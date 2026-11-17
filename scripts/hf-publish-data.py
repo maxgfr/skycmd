@@ -12,6 +12,7 @@ commit (TODO.md §1.2).
     hf auth login                       # a token with write access
     uv run scripts/hf-publish-data.py [--dry-run] [--only decisions,games] [--user NAME]
                                       [--data data] [--private] [--glm MIXDIR]
+                                      [--route-data ../skycmd-data/s6-route]
 
 Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) before upload; with
 --dry-run nothing is uploaded. Publication rules:
@@ -25,13 +26,20 @@ Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) befor
     questions with their clip index and Mimi codes;
   * the audio itself (31 GB of log-mel features and test WAVs) is not: `sky-data fetch-audio`
     rebuilds it from the upstream sets; nor GIFT-Eval, which is an evaluation set never
-    redistributed.
+    redistributed;
+  * `skycmd-route` (`--only route`, data folder `--route-data`, outside the repository): the slates
+    of s6-route-nano and s6-route, every row with its source, and the teacher's descriptions;
+    refused if a file has no licence entry or a string looks like a key (the builder's rule).
 """
 import argparse
 import hashlib
 import json
+import math
+import os
+import re
 import shutil
 import subprocess
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -212,6 +220,92 @@ EAR_SCHEMA = """- the question configs (`turn_end`, `keyword`, `keyword_zs`) hav
 **The audio is not in this repository** (31 GB of log-mel features and 16 kHz test WAVs): it is
 rebuilt from the upstream sets by `sky-data fetch-audio`, deterministically, with the same paths.
 """
+
+# skycmd-route (docs/s6-nano2-prereg.md §4, docs/s6-nano3-prereg.md §4). The data folder is
+# outside the repository (scripts/build-route-data.sh); it is only read.
+ROUTE_DATA = Path(os.environ.get("ROUTE_DATA", ROOT.parent / "skycmd-data" / "s6-route"))
+# request source (the prefix of `request`) -> (upstream, licence, pinned commit, role)
+ROUTE_SOURCES = {
+    "glaive": ("glaiveai/glaive-function-calling-v2", "apache-2.0", "e7f4b645", "train / val / T-tools / T2-tools: the first user turn answered by a call"),
+    "hermes": ("NousResearch/hermes-function-calling-v1 (`func-calling-singleturn`, `func-calling`, `glaive-function-calling-5k`)", "apache-2.0", "dae3e1d2", "same; a request whose normalised text is a glaive request's is dropped"),
+    "toolace": ("Team-ACE/ToolACE (`data.json`)", "apache-2.0", "6bda777c", "same"),
+    "seal-tools": ("fairyshine/Seal-Tools on GitHub (`Seal-Tools_Dataset/train.jsonl`, `tool.jsonl`)", "apache-2.0 (LICENSE of the repository)", "ce753ecd", "same; its training file only"),
+    "api-bank": ("liminghao1630/API-Bank (`training-data/lv1-api-train.json`, `lv2-api-train.json`)", "mit (dataset card)", "12e8158b", "same; `ToolSearcher` calls dropped"),
+    "when2call": ("nvidia/When2Call (`train/*`, through `data/decisions/when2call.jsonl`)", "cc-by-4.0", "0582f774", "train / val: a call to the called tool, no call to *none*"),
+    "when2call-mcq": ("nvidia/When2Call (`test/when2call_test_mcq.jsonl`)", "cc-by-4.0", "0582f774", "test only: the first 2,000 records reformatted"),
+    "massive": ("MASSIVE (FitzGerald et al., 2022) through mteb/amazon_massive_intent, en and fr (`data/commands/massive.jsonl`)", "cc-by-4.0", "not pinned (`sky-data fetch-commands`)", "train / val: 14 of 18 scenarios; each intent a tool described by the teacher"),
+    "massive-heldout": ("MASSIVE, the 4 held-out scenarios (datetime, email, play, recommendation), en and fr", "cc-by-4.0", "not pinned (`sky-data fetch-commands`)", "test: their test partition; fresh: their train and validation partitions"),
+    "banking77": ("PolyAI/banking77 (`data/decisions/banking77.jsonl`)", "cc-by-4.0", "not pinned (`sky-data fetch-decisions`)", "train / val only; each intent a tool described by the teacher"),
+    "clinc": ("clinc/clinc_oos (`plus`)", "cc-by-3.0", "155b9c71", "test only (T-clinc, T2-clinc); its 150 intent names described by the teacher"),
+    "metatool": ("HowieHwong/MetaTool on GitHub (`all_clean_data.csv`, `plugin_des.json`, `Task2-Subtask1.json`)", "mit (LICENSE); its queries were written by ChatGPT / GPT-4 upstream", "35e81bb7", "test only (T-metatool, T2-metatool)"),
+    "bfcl-multiple": ("gorilla-llm/Berkeley-Function-Calling-Leaderboard (`BFCL_v3_multiple`)", "apache-2.0", "61fc0608", "test only"),
+    "bfcl-irrelevance": ("gorilla-llm/Berkeley-Function-Calling-Leaderboard (`BFCL_v3_irrelevance`)", "apache-2.0", "61fc0608", "test only"),
+}
+ROUTE_TEACHER = "GLM-5.3-Flash ([zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash), open weights, MIT)"
+# config -> (file in the data folder, split, what it is)
+ROUTE_FILES = {
+    "tools_train": ("build/records/tools/train.jsonl", "train", "training records of the tool sources: four slates per request (natural, hard, removed, renamed)"),
+    "intents_train": ("build/records/intents/train.jsonl", "train", "training records of MASSIVE and Banking77, the same four kinds"),
+    "when2call_train": ("build/records/when2call/train.jsonl", "train", "training records of When2Call (natural, hard, renamed)"),
+    "tools_val": ("build/records/tools/val.jsonl", "val", "the four kinds on the validation side"),
+    "intents_val": ("build/records/intents/val.jsonl", "val", "same"),
+    "when2call_val": ("build/records/when2call/val.jsonl", "val", "same"),
+    "v_tools": ("build/val/v_tools.jsonl", "val", "validation slates built like T-tools (8 options); the pilots, the baselines' fit, the ask threshold"),
+    "v_tools_masked": ("build/val/v_tools_masked.jsonl", "val", "v_tools with every tool renamed `tool_<k>`"),
+    "v_tools_pairs": ("build/val/v_tools_pairs.jsonl", "val", "500 requests twice: gold present, gold removed"),
+    "v_tools_swapped": ("build/val/v_tools_swapped.jsonl", "val", "the descriptions of the gold and of one distractor swapped"),
+    "t_tools": ("build/test/t_tools.jsonl", "test", "T-tools: tools of held-out clusters, the gated test of s6-route-nano"),
+    "t_tools_masked": ("build/test/t_tools_masked.jsonl", "test", "T-tools with every tool renamed"),
+    "t_tools_pairs": ("build/test/t_tools_pairs.jsonl", "test", "T-tools gold present / gold removed pairs"),
+    "t_tools_swapped": ("build/test/t_tools_swapped.jsonl", "test", "T-tools with two descriptions swapped"),
+    "t_metatool": ("build/test/t_metatool.jsonl", "test", "T-metatool"),
+    "t_clinc": ("build/test/t_clinc.jsonl", "test", "T-clinc (in scope and out of scope)"),
+    "t_massive": ("build/test/t_massive.jsonl", "test", "MASSIVE held-out scenarios, test partition"),
+    "t_when2call": ("build/test/t_when2call.jsonl", "test", "When2Call `test/mcq` reformatted"),
+    "t_bfcl": ("build/test/t_bfcl.jsonl", "test", "BFCL `multiple` and `irrelevance`"),
+    "f_tools": ("build/fresh/f_tools.jsonl", "fresh", "T2-tools: fresh requests about T-tools' held-out tools, the gated test of s6-route"),
+    "f_tools_masked": ("build/fresh/f_tools_masked.jsonl", "fresh", "T2-tools with every tool renamed"),
+    "f_metatool": ("build/fresh/f_metatool.jsonl", "fresh", "T2-metatool"),
+    "f_clinc": ("build/fresh/f_clinc.jsonl", "fresh", "T2-clinc"),
+    "f_massive": ("build/fresh/f_massive.jsonl", "fresh", "T2-massive"),
+}
+ROUTE_TEACHER_FILES = {
+    "teacher_describe_intent": ("build/teacher/describe-intent.jsonl", "one description per intent, written from its name alone"),
+    "teacher_rewrite_description": ("build/teacher/rewrite-description.jsonl", "one rewrite of each gold tool's description of the training and validation requests"),
+}
+# copied as they are: the record of every download and of the build
+ROUTE_EXTRA = ["scripts/route/pins.json", "MANIFEST.json", "build/BUILD.json", "build/fresh/FRESH.json", "build/fresh/f_tools.clusters.jsonl"]
+# files of the slate and teacher folders that are not published, and why
+ROUTE_EXCLUDED = {
+    "build/test/t_toolrouting.jsonl": "the 100 test slates of stanley-nv/tool-routing-data, whose card asks users to review the generating model's terms before training other models; `scripts/build-route-data.sh` rebuilds them",
+    "build/val/v_tools.model.jsonl": "the model's copy of `v_tools` (the BM25 line added to each state); `sky-data route render` rebuilds it",
+    "build/val/v_tools_masked.model.jsonl": "same, for `v_tools_masked`",
+    "build/val/v_tools_pairs.model.jsonl": "same, for `v_tools_pairs`",
+    "build/val/v_tools_swapped.model.jsonl": "same, for `v_tools_swapped`",
+    "build/teacher/describe-intent.items.jsonl": "the items sent to the teacher (the intent names, also in the `id` of each description)",
+    "build/teacher/false-negatives.items.jsonl": "the items of the false-negative filter (training and validation hard slates before filtering); `sky-data route split` rebuilds them",
+    "build/teacher/false-negatives.jsonl": "the teacher's answers of the false-negative filter (option indices into the items above); their effect is in the hard slates",
+    "build/teacher/rewrite-description.items.jsonl": "the items sent to the teacher (the tools' own descriptions, given in `original`)",
+    "build/teacher/describe-intent.refused.jsonl": "items refused by the endpoint's moderation (empty)",
+    "build/teacher/false-negatives.refused.jsonl": "items refused by the endpoint's moderation",
+    "build/teacher/rewrite-description.refused.jsonl": "items refused by the endpoint's moderation (empty)",
+}
+# Tokens that the builder's key rule flags but that are not keys, by sha256 so that none is
+# printed: tool names (the builder masks requests and descriptions, never names, Tool::new) and
+# repository paths in URLs. Reviewed by shape (A capital, a lower-case, 9 digit, runs counted).
+ROUTE_NOT_KEYS = {
+    "818c8019286d10e7": "tool name, ToolACE (`/a9/a7/a9Aa4Aa3Aa4`)",
+    "0be4005c5ddaee7d": "tool name, ToolACE (`a9Aa2Aa3Aa9Aa5`)",
+    "79f19705af35fd38": "tool name, ToolACE (`/a9/a9Aa11Aa4`)",
+    "64ad8f3153b030d8": "tool name, When2Call test (`Aa6_9_Aa5Aa5Aa5`)",
+    "db88572027160fb0": "tool name, When2Call test (`Aa6_9_Aa5Aa8Aa6`)",
+    "c819d63786f59207": "URL path of a pinned dataset repository",
+    "ebaf5fb28362ff2e": "URL path of a pinned dataset repository",
+    "320160d3beb3b298": "file path of a pinned dataset repository",
+    "4e1c552e6c6d1b66": "URL path of a pinned model repository",
+    "f87e0a2e258f7f02": "name of a pinned dataset repository",
+    "e9e2c8815f70dad4": "name of a pinned model repository",
+}
 
 SETS = {
     "decisions": {
@@ -623,6 +717,358 @@ generated by GLM-5.3-flash, an open-weight model under the MIT licence.
     print(f"  uploaded: https://huggingface.co/datasets/{repo_id}")
 
 
+KEY_PREFIXES = ("sk-", "sk_live_", "sk_test_", "pk_live_", "rk_live_", "AKIA", "ASIA", "ghp_", "gho_",
+                "github_pat_", "xoxb-", "xoxp-", "AIza", "glpat-")
+KEY_TOKEN = re.compile(r"[A-Za-z0-9\-_+/]+")
+
+
+def looks_like_key(t: str) -> bool:
+    """`sky_data::route::looks_like_key` (crates/sky-data/src/route/mod.rs), the rule the builder
+    masks requests and descriptions with, on one token of KEY_TOKEN: a provider prefix followed by
+    at least 12 more characters, or at least 24 characters with digits, both cases of letters and
+    at least 4 bits of entropy per character."""
+    if len(t) < 15:  # the shortest prefix (3) + 12; below 24 for the second case too
+        return False
+    if any(t.startswith(p) and len(t) >= len(p) + 12 for p in KEY_PREFIXES):
+        return True
+    if len(t) < 24 or not (any(c.isdigit() for c in t) and any(c.islower() for c in t) and any(c.isupper() for c in t)):
+        return False
+    n = len(t)
+    return -sum(k / n * math.log2(k / n) for k in Counter(t).values()) >= 4.0
+
+
+def key_scan(cfg: str, rows, found: list, reviewed: Counter) -> None:
+    """Every string of `rows` through looks_like_key. A token listed in ROUTE_NOT_KEYS is counted
+    in `reviewed`; any other goes to `found` as (config, row index, field), never as a string."""
+
+    def strings(v, field):
+        if isinstance(v, str):
+            yield field, v
+        elif isinstance(v, list):
+            for x in v:
+                yield from strings(x, field)
+        elif isinstance(v, dict):
+            for k, x in v.items():
+                yield from strings(x, f"{field}.{k}" if field else k)
+
+    for i, r in enumerate(rows):
+        for field, s in strings(r, ""):
+            for t in KEY_TOKEN.findall(s):
+                if looks_like_key(t):
+                    if hashlib.sha256(t.encode()).hexdigest()[:16] in ROUTE_NOT_KEYS:
+                        reviewed[(cfg, field)] += 1
+                    else:
+                        found.append((cfg, i, field))
+
+
+def route_schema():
+    """Explicit types of the slate rows: `follow` exists in the swapped files only."""
+    import pyarrow as pa
+
+    s = pa.string()
+    strs = pa.list_(s)
+    return pa.schema([
+        ("src", s), ("t", s), ("ins", s), ("opts", strs), ("state", s), ("target", pa.list_(pa.float32())),
+        ("split", s), ("uid", s), ("kind", s), ("lang", s), ("request", s), ("tools", strs),
+        ("follow", pa.int64()), ("source", s), ("option_sources", strs),
+    ])
+
+
+def publish_route(a, api, user: str, sha: str) -> None:
+    """skycmd-route: the slates of s6-route-nano and s6-route, and the teacher's descriptions."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    data = Path(a.route_data)
+    if not (data / "build").is_dir():
+        print(f"route: no build folder under {data}, skipped")
+        return
+    # every file of the slate and teacher folders has a licence entry or a reason to be left out
+    listed = {p for p, *_ in ROUTE_FILES.values()} | {p for p, _ in ROUTE_TEACHER_FILES.values()} | set(ROUTE_EXTRA)
+    present = {str(f.relative_to(data)) for d in ("records", "val", "test", "fresh", "teacher")
+               for f in (data / "build" / d).rglob("*.jsonl")}
+    unknown = sorted(present - listed - set(ROUTE_EXCLUDED))
+    if unknown:
+        raise SystemExit(f"route: no licence entry for {unknown}: add them to ROUTE_FILES or ROUTE_EXCLUDED")
+    # the sources that hold each tool text, and the tools' own names and descriptions
+    owners = {}
+    for r in map(json.loads, open(data / "build" / "stage" / "requests.jsonl")):
+        for t in r.get("tools", []) + [r["gold"]] * bool(r.get("gold")) + r.get("exclude", []):
+            owners.setdefault(t, set()).add(r["source"])
+    tools = {t["id"]: t for t in map(json.loads, open(data / "build" / "stage" / "tools.jsonl"))}
+
+    out = OUT / "skycmd-route"
+    shutil.rmtree(out, ignore_errors=True)
+    (out / "data").mkdir(parents=True)
+    schema = route_schema()
+    rows, manifest, nolicence, found, reviewed = {}, {}, [], [], Counter()
+    by_source = Counter()  # (source, split) -> rows
+    requests = {}  # (source, split) -> request ids
+    lang = Counter()
+    for cfg, (rel, split, _) in ROUTE_FILES.items():
+        recs = []
+        for i, r in enumerate(map(json.loads, open(data / rel))):
+            if not set(r) <= set(schema.names) or r["split"] != split:
+                raise SystemExit(f"route: {rel} row {i}: unexpected fields or split")
+            r["source"] = r["request"].split(":", 1)[0]
+            r["option_sources"] = sorted(set().union(*(owners.get(t, {"?"}) for t in r["tools"])))
+            if r["source"] not in ROUTE_SOURCES or not set(r["option_sources"]) <= set(ROUTE_SOURCES):
+                nolicence.append((cfg, i))
+            by_source[(r["source"], split)] += 1
+            requests.setdefault((r["source"], split), set()).add(r["request"])
+            lang[r["lang"]] += 1
+            recs.append(r)
+        key_scan(cfg, recs, found, reviewed)
+        pq.write_table(pa.Table.from_pylist(recs, schema), out / "data" / f"{cfg}.parquet", compression="zstd")
+        rows[cfg] = len(recs)
+        manifest[rel] = {"sha256": sha256(data / rel), "rows": len(recs)}
+    for cfg, (rel, _) in ROUTE_TEACHER_FILES.items():
+        recs = []
+        for i, r in enumerate(map(json.loads, open(data / rel))):
+            if cfg == "teacher_describe_intent":
+                src, intent = r["id"].split(":", 1)
+                r = {"id": r["id"], "source": src, "intent": intent, "description": r["description"]}
+                ok = src in ROUTE_SOURCES
+            else:
+                t = tools.get(r["id"], {})
+                r = {"id": r["id"], "name": t.get("name"), "original": t.get("desc"), "rewrite": r["description"],
+                     "sources": sorted(owners.get(r["id"], {"?"}))}
+                ok = bool(t) and set(r["sources"]) <= set(ROUTE_SOURCES)
+            if not ok:
+                nolicence.append((cfg, i))
+            recs.append(r)
+        key_scan(cfg, recs, found, reviewed)
+        pq.write_table(pa.Table.from_pylist(recs), out / "data" / f"{cfg}.parquet", compression="zstd")
+        rows[cfg] = len(recs)
+        manifest[rel] = {"sha256": sha256(data / rel), "rows": len(recs)}
+    (out / "files").mkdir()
+    for rel in ROUTE_EXTRA:
+        f = ROOT / rel if rel.startswith("scripts/") else data / rel
+        recs = list(map(json.loads, open(f))) if f.suffix == ".jsonl" else [json.load(open(f))]
+        key_scan(f.name, recs, found, reviewed)
+        shutil.copy(f, out / "files" / f.name)
+        manifest[rel] = {"sha256": sha256(f)}
+    print(f"route: key-like strings: {len(found)} left; {sum(reviewed.values())} matches of the {len(ROUTE_NOT_KEYS)} "
+          f"reviewed tokens (ROUTE_NOT_KEYS), by config and field: {dict(sorted(reviewed.items()))}")
+    if found or nolicence:
+        shutil.rmtree(out)
+        for cfg, i, field in found[:50]:
+            print(f"  key-like: {cfg} row {i} field {field}")
+        for cfg, i in nolicence[:50]:
+            print(f"  no licence entry for a source: {cfg} row {i}")
+        raise SystemExit(f"route: refused ({len(found)} key-like strings, {len(nolicence)} rows without a licence entry)")
+    (out / "MANIFEST.json").write_text(json.dumps({"commit": sha, "data": "s6-route", "source_files": manifest}, indent=2) + "\n")
+    counts = json.load(open(data / "build" / "counts" / "slates.json"))["counts"]
+    assigned = json.load(open(data / "build" / "counts" / "split.json"))["requests by group, split and source"]
+    read = json.load(open(data / "build" / "BUILD.json"))["counts"]["requests"]
+    keys = (read["read"]["keys masked in requests"], read["tools whose schema or description holds a key-like string"])
+    (out / "README.md").write_text(route_card(user, sha, rows, by_source, requests, lang, counts, assigned, keys, out))
+    size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
+    print(f"route: {user}/skycmd-route, {len(rows)} configs, {sum(rows.values()):,} rows, {size / 1e6:.1f} MB")
+    if a.dry_run:
+        return
+    repo_id = f"{user}/skycmd-route"
+    api.create_repo(repo_id, repo_type="dataset", private=a.private, exist_ok=True)
+    api.upload_folder(repo_id=repo_id, repo_type="dataset", folder_path=str(out),
+                      commit_message=f"skycmd {sha[:8]}: tool-routing slates (s6-route-nano, s6-route)")
+    print(f"  uploaded: https://huggingface.co/datasets/{repo_id}")
+
+
+def route_card(user, sha, rows, by_source, requests, lang, counts, assigned, keys, out) -> str:
+    splits = ("train", "val", "test", "fresh")
+    keys_req, keys_tools = keys
+    cfgs = "\n".join(
+        f"- config_name: {c}\n  data_files: data/{c}.parquet" + ("\n  default: true" if c == "tools_train" else "")
+        for c in rows
+    )
+    lic = "\n".join(f"| `{s}` | {u} | {l} | {c if c.startswith('not') else f'`{c}`'} | {r} |"
+                    for s, (u, l, c, r) in ROUTE_SOURCES.items())
+
+    def n(s, sp):
+        return f"{by_source[(s, sp)]:,}" if by_source[(s, sp)] else "—"
+
+    def q(s, sp):
+        return f"{len(requests.get((s, sp), ())):,}" if requests.get((s, sp)) else "—"
+
+    def dl(s):
+        g = {k.split(" ")[1]: v for k, v in assigned.items() if s in v}
+        return " / ".join(f"{g[sp][s]:,}" if sp in g else "—" for sp in ("train", "val", "test"))
+
+    per = "\n".join(
+        f"| `{s}` | " + " | ".join(n(s, sp) for sp in splits) + " | " + " / ".join(q(s, sp) for sp in splits)
+        + f" | {dl(s)} |"
+        for s in ROUTE_SOURCES
+    )
+    tot = " | ".join(f"**{sum(v for (s, sp), v in by_source.items() if sp == x):,}**" for x in splits)
+    fn = {g: counts.get(f"{g}: dropped, the teacher says the gold cannot", 0)
+          for g in ("tools train", "tools val", "intents train", "intents val", "when2call train", "when2call val")}
+    t_side = sum(assigned["tools test"].values())
+    files = "\n".join(
+        f"| `data/{c}.parquet` | {ROUTE_FILES[c][1] if c in ROUTE_FILES else 'teacher'} | "
+        f"{ROUTE_FILES[c][2] if c in ROUTE_FILES else ROUTE_TEACHER_FILES[c][1]} | {k:,} | "
+        f"{(out / 'data' / f'{c}.parquet').stat().st_size:,} |"
+        for c, k in rows.items()
+    )
+    files += "".join(f"\n| `files/{Path(x).name}` | — | the {'repository' if x.startswith('scripts/') else 'data folder'}'s "
+                     f"`{x}`, copied | — | {(out / 'files' / Path(x).name).stat().st_size:,} |" for x in ROUTE_EXTRA)
+    excl = "\n".join(f"- `{k}`: {v}." for k, v in ROUTE_EXCLUDED.items())
+    fr = lang["fr"]
+    return f"""---
+license: other
+license_name: per-source
+license_link: {REPO_URL}/blob/main/DATA_LICENSES.md
+language:
+- en
+- fr
+pretty_name: skycmd tool-routing slates (s6-route-nano, s6-route)
+task_categories:
+- text-classification
+tags:
+- skycmd
+- tool-routing
+- function-calling
+- ai-generated
+configs:
+{cfgs}
+---
+
+# skycmd tool-routing slates (s6-route-nano, s6-route)
+
+The training, validation and test records of the skycmd tool router: a user request, a list of up
+to 7 tools (each a name and one sentence) plus the option *none of these tools fits the request*,
+and the right option. Built from public tool-calling and intent sets under their own licences, and
+the descriptions the teacher wrote. The two models trained and tested on it:
+
+- [s6-route-nano](https://huggingface.co/{user}/s6-route-nano), a 2.4 MB ternary decision model:
+  **failed its gate** (on T-tools 0.8395 against BM25's 0.8500, and 38.9 ms per request in WASM
+  against a bar of 2 ms; `docs/s6-nano2-prereg.md`, result block);
+- [s6-route](https://huggingface.co/{user}/s6-route), the same file fused with a 4-bit
+  potion-base-2M embedding: **passed its gate** on fresh slates (0.8868 on T2-tools against BM25's
+  0.8169; `docs/s6-nano3-prereg.md`, result block).
+
+Part of [skycmd]({REPO_URL}). Built by `scripts/build-route-data.sh` (the slates;
+`docs/s6-nano2-prereg.md` §4), `scripts/route-teacher.sh` (the teacher's jobs) and
+`sky-data --seed 1235 route fresh` (the fresh slates; `docs/s6-nano3-prereg.md` §4), assembled by
+`scripts/hf-publish-data.py --only route` at commit [`{sha[:8]}`]({REPO_URL}/commit/{sha}).
+Licences of every set: [DATA_LICENSES.md]({REPO_URL}/blob/main/DATA_LICENSES.md).
+
+> **Machine-generated text.** The teacher, {ROUTE_TEACHER}, called through a hosted endpoint,
+> wrote: the description of every intent option (MASSIVE, Banking77 and CLINC150 intents, written
+> from the intent name alone: the configs `intents_*`, `t_clinc`, `f_clinc`, `t_massive`,
+> `f_massive` and `teacher_describe_intent`), and the right tool's description in every `renamed`
+> slate (`teacher_rewrite_description`). It also chose which hard distractors were replaced (the
+> false-negative filter). It wrote no request, no label and no target, and it never saw a test
+> request or a test slate. Upstream, MetaTool's queries were written by ChatGPT / GPT-4, and several
+> tool-calling sets were generated with language models (see their cards).
+
+## Configs and splits
+
+One config per file. `split` says what a file is for: `train` (the records the models were
+trained on), `val` (validation: the pilots, the calibration, the baselines' fit, the thresholds),
+`test` (s6-route-nano's tests, read once on 16/11/2026), `fresh` (s6-route's tests, built after
+that reading from requests no earlier file used, read once on 16/11/2026).
+
+| file | split | what it is | rows | bytes |
+|---|---|---|---:|---:|
+{files}
+
+## Record schema
+
+The slate configs share one schema (the typed-decision format of skycmd, `docs/SPEC.md`):
+
+| field | type | meaning |
+|---|---|---|
+| `src` | string | the group and source (`tools:<source>`, `intents:<source>`, `when2call:when2call`) in the training and validation records; the file (`v-tools`, `t-clinc`, `f-massive-fr`, ...) in the slate files |
+| `t` | string | always `choice` |
+| `ins` | string | the instruction, word for word: "Which tool should handle the user's request?" |
+| `opts` | list of strings | the options: `name: description` for each tool (the description cut to its first sentence and at most 30 words), then `none of these tools fits the request`, always last |
+| `state` | string | `User: <request>` (one user turn). In the training and validation records (`*_train`, `*_val`) a second line follows, `BM25: <name> score <s> rank <r>; ...`, the lexical score of each tool option against the request that the model reads; the slate files (`v_*`, `t_*`, `f_*`) carry no such line, and `sky-data route render` adds it, as the evaluation did |
+| `target` | list of floats | one-hot: 1 on the right option |
+| `split` | string | `train`, `val`, `test` or `fresh` |
+| `uid` | string | the slate's identifier: the request's, with `/<kind>` in the training and validation records |
+| `kind` | string | training and validation records: `natural` (the request's own tools, then random tools of its split), `hard` (the nearest tools by potion-base-2M, cleaned by the teacher), `removed` (the right tool taken out: the answer is *none*), `renamed` (every tool named `tool_<k>`); slate files: `test` (drawn by the test rule), `removed`, `masked` (every tool renamed), `swapped` (two descriptions swapped) |
+| `lang` | string | `en` or `fr` |
+| `request` | string | the request's identifier, `<source>:<row>` |
+| `tools` | list of strings | the identifier of each tool option before *none*: `t` and 16 hex digits of the sha256 of its `name: description` as the source gives it |
+| `follow` | int | `swapped` slates only: the index of the option that carries the right tool's description |
+| `source` | string | the source of the request text (the prefix of `request`); its licence is the row's |
+| `option_sources` | list of strings | every source whose data hold the text of one of the tool options (a distractor comes from another request of the same split, often of another source; one text can be in several sources) |
+
+`teacher_describe_intent`: `id` (`<source>:<intent>`), `source`, `intent`, `description` (the
+teacher's). `teacher_rewrite_description`: `id` (the tool identifier), `name` and `original` (the
+tool's name and description as the source gives them, the description cut and its key-like strings
+masked), `rewrite` (the teacher's, same meaning in other words; a `renamed` slate shows it cut to
+its first sentence and 30 words), `sources` (the sources that hold the tool).
+
+## Sources and licences
+
+Each row keeps **the licence of its sources**: the request text is `source`'s, the option texts are
+`option_sources`'; the teacher's descriptions are the outputs of an open-weight model under the
+MIT licence. Attribution goes to the upstream authors; the conversion is ours.
+
+| source | upstream | licence | commit | role |
+|---|---|---|---|---|
+{lic}
+
+Rows and requests per split, counted from the files above, and the requests the build kept for
+each side (`build/counts/split.json`; DATA_LICENSES.md gives these for training and validation and
+for the test side of the tool sources, and slates for the test-only sources):
+
+| source | rows train | rows val | rows test | rows fresh | requests train / val / test / fresh | requests kept by the build (train / val / test) |
+|---|---:|---:|---:|---:|---:|---:|
+{per}
+| all | {tot} | | |
+
+Why the requests in the files are fewer than those kept by the build: a training or validation
+request is dropped when the teacher does not name its right tool as able in its hard slate (training
+/ validation: tools {fn['tools train']:,} / {fn['tools val']:,}, intents {fn['intents train']:,} / {fn['intents val']:,}, When2Call {fn['when2call train']:,} / {fn['when2call val']:,};
+`docs/s6-nano2-prereg.md` amendment 2); When2Call's no-call slates are thinned at random to the
+20% share of *none* (amendment 1; {counts.get('when2call train: no-call slates dropped', 0):,} training and {counts.get('when2call val: no-call slates dropped', 0):,} validation slates dropped),
+which leaves some requests with no slate; T-tools draws 2,000 slates from the {t_side:,} test-side requests, and the
+fresh T2-tools file uses the others and those over the cluster cap; T-clinc and T-metatool draw
+2,000 slates each from their sources; 137 of the 2,000 When2Call test items list no tool, so no
+slate (`docs/s6-nano2-readings.md`, item 34). A request is in up to four training slates and in
+several reading-check files.
+
+Not in this repository:
+{excl}
+- the raw upstream files (`src/`, `hf-cache/`), the models (`models/`, `embed/`), the Python
+  environment (`envs/`), the embeddings, stage files and evaluation outputs of the data folder:
+  `scripts/build-route-data.sh` downloads every source at the commit of `files/pins.json`, checks
+  each file against the hash its host publishes (`files/MANIFEST.json`: URL, commit, bytes,
+  sha256, licence) and rebuilds every file here byte for byte (`files/BUILD.json`,
+  `files/FRESH.json`: the hashes and counts of the build).
+
+## Limits
+
+- **English mostly**: {fr:,} of the {sum(lang.values()):,} slate rows are French, all from MASSIVE
+  (requests in French, intent names and descriptions in English).
+- **Synthetic upstream data**: several tool-calling sets and MetaTool's queries were written by
+  language models upstream; the build filters and deduplicates, it does not check them by hand.
+  The share of validation slates that hold a second valid tool (the label-noise estimate of
+  `docs/s6-nano2-prereg.md` §4.5) is not in the result files.
+- **Test sets partly in distribution**: T-tools holds tools of clusters never trained on
+  ("fresh, tool-disjoint: no test tool cluster in training"), but from the same five sources as
+  the training tools; "the clustering that defines 'unseen tool' uses all-MiniLM-L6-v2, which is
+  also a reported baseline". "The When2Call test and MASSIVE test utterances were read in v1's
+  evaluation" (`docs/s6-nano2-prereg.md` §10); When2Call and the other MASSIVE scenarios are in
+  training. On T2-tools "these requests are about the same held-out tools as v2's test", and 107
+  of its 945 slates repeat the normalised request of an earlier slate (`docs/s6-nano3-prereg.md`
+  §7 and amendment 1). MetaTool, CLINC150 and BFCL are never trained.
+- **Keys**: the builder masks key-like strings in requests and descriptions as `<KEY>`
+  (`sky_data::route::mask_keys`; {keys_req:,} in requests, and {keys_tools:,} tools held one in their
+  schema or description). Every string of `data/` and `files/` was scanned with the same rule at
+  assembly, and none is left. The builder does not mask tool names: five tool names, and six
+  repository paths in `files/`, match the rule without being keys; they are listed by hash in
+  `scripts/hf-publish-data.py` (`ROUTE_NOT_KEYS`).
+
+```python
+from datasets import load_dataset
+ds = load_dataset("{user}/skycmd-route", "tools_train")
+```
+"""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--data", default=str(ROOT / "data"))
@@ -633,6 +1079,7 @@ def main() -> None:
     ap.add_argument("--glm", default="", help="dir of `sky-data teacher mix-labels --alpha 0`: publish skycmd-glm-labels")
     ap.add_argument("--glm-date", default="", help="date of the release, shown in the card")
     ap.add_argument("--glm-final", action="store_true", help="the labelling is finished: a complete release")
+    ap.add_argument("--route-data", default=str(ROUTE_DATA), help="the s6-route data folder (skycmd-route, `--only route`)")
     a = ap.parse_args()
 
     data = Path(a.data)
@@ -648,6 +1095,8 @@ def main() -> None:
     user = user or "USER"
     if a.glm:
         publish_glm(a, api, user, commit)
+    if "route" in only or not (only or a.glm):
+        publish_route(a, api, user, commit)
     for name, s in SETS.items():
         if (only or a.glm) and name not in only:
             continue
