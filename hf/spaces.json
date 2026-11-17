@@ -101,12 +101,37 @@
   },
   {
     "model": "s6-secrets-verify-pico",
-    "space": false,
-    "engine": true
+    "engine": true,
+    "kind": "secrets-verify",
+    "emoji": "🔐",
+    "color_from": "gray",
+    "color_to": "yellow",
+    "tagline": "Failed its pre-registered gate G1 by 0.027, published as a result: a 250 KB ternary verifier that judges whether a value found by a secret-scanning rule is a real credential. Line F1 0.8561 on 221 real CredData test repositories, where the gate asked for 0.7332 + 0.15 = 0.8832; the six other gates held.",
+    "short_description": "Failed its gate: 250 KB secrets verifier, a result",
+    "notes": [
+      "The gate (docs/s6-secrets2-prereg.md §8): G1 asked for a line F1 at least 0.15 above the best rule scanner on the CredData test, on every repository and without the largest one. On every repository it reached 0.8561 against Betterleaks 0.7332 + 0.15 = 0.8832: it failed G1. Without the largest repository it holds (0.8114 against 0.6867), and the six other gates held.",
+      "What it does well: above every rule scanner tested on CredData (Betterleaks 0.7332, Gitleaks 0.7037), calibrated on real candidates (ECE 0.0073), and an accepted candidate in 0.35% of 8,825 clean real files. Its weakest category is API keys (line F1 0.541). Since version 1.9.0, secretgate offers it as an experimental option, off by default, where it can only add redactions.",
+      "It judges the candidates of secretgate's rule engine (frozen as sg-cand-1). This demo does not run those rules: it proposes with one simple rule (a value of at least 8 characters assigned to a name with a credential word) so that the model's judgement can be seen in a browser.",
+      "The presets were written for this demo and every value in them is fake. Everything runs in your browser: nothing you paste is sent anywhere. Do not paste real credentials into any web page."
+    ]
   },
   {
     "model": "s6-route-nano",
-    "space": false
+    "kind": "router-v2",
+    "extra_models": [
+      "s6-route"
+    ],
+    "emoji": "🧪",
+    "color_from": "gray",
+    "color_to": "blue",
+    "tagline": "Failed its pre-registered gate, published as a result: a 2.4 MB ternary tool router that tied BM25, the score it reads in its input (0.8395 against 0.8500 on 2,000 slates of tools never seen in training), at 38.9 ms per request in WASM against a bar of 2 ms. This Space runs the file alone; the pair that passed is the Space s6-route.",
+    "short_description": "Failed its gate: 2.4 MB tool router, a result",
+    "notes": [
+      "The gate (docs/s6-nano2-prereg.md §8 and amendment 1) asked it to beat BM25 on T-tools, 2,000 slates of tools that no training item contains: 0.8395 against 0.8500 (difference −0.0105, 95% interval [−0.0265, +0.0055]), so it failed G1. It also failed G4: 38.9 ms per request in WASM with the tool list cached, where the bar is 2 ms. G2 and G3 held (ECE 0.0244).",
+      "It is above potion-base-2M with cosine + 0.03 (0.6975) and above both trained baselines of its size (0.6735 and 0.4500), but outside its training families it is below potion-cos on every other source.",
+      "With every tool renamed tool_<k> it is at chance (0.1050), below the name-prior (0.1180), where BM25 keeps 0.8445 on the same slates.",
+      "The demo shows this file alone, with no ask decision: the file stores its own ask threshold (τ_ask 0.72938, fixed on validation), which the browser engine does not expose. The Space also carries the embedding file of s6-route, because the engine's router needs both files; the pair, this file unchanged fused with potion-base-2M packed to 4 bits, passed its own gate on fresh slates."
+    ]
   },
   {
     "model": "s6-route",

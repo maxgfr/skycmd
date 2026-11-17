@@ -9,6 +9,7 @@ import LiveDecide from '../.vitepress/theme/components/LiveDecide.vue'
 import LiveProof from '../.vitepress/theme/components/LiveProof.vue'
 import PlayGame from '../.vitepress/theme/components/PlayGame.vue'
 import RouterDemo from '../.vitepress/theme/components/RouterDemo.vue'
+import SecretsVerifyDemo from '../.vitepress/theme/components/SecretsVerifyDemo.vue'
 import TurnDemo from '../.vitepress/theme/components/TurnDemo.vue'
 import { loadManifest } from '../.vitepress/theme/lib/wasm'
 
@@ -19,8 +20,11 @@ interface SpaceConfig {
   /** `secrets`: the API-key demo of s6-secrets-pico (manifest `task: secrets`). `ear`: the Listen
    * demo (manifest `task: ear`). `forecast`: the Forecast demo (`models/forecast.json`). `router`:
    * the tool router of the Router page (manifest `task: router`, two files fused by `ToolRouter`).
-   * `turn`: the end-of-turn demo of the Listen page (s6-ear2-nano through `TurnDetector`). */
-  kind: 'decision' | 'game' | 'secrets' | 'ear' | 'forecast' | 'router' | 'turn'
+   * `turn`: the end-of-turn demo of the Listen page (s6-ear2-nano through `TurnDetector`).
+   * `router-v2`: the same router demo showing the s6-route-nano file alone (it failed its gate; the
+   * Space also carries s6-route's two files, which `ToolRouter` needs). `secrets-verify`: the
+   * Secrets verifier demo (s6-secrets-verify-pico through `SecretVerifier`, with its word list). */
+  kind: 'decision' | 'game' | 'secrets' | 'secrets-verify' | 'ear' | 'forecast' | 'router' | 'router-v2' | 'turn'
   proofs?: boolean
   model_repo: string
   notes?: string[]
@@ -158,6 +162,30 @@ onMounted(async () => {
           </p>
         </section>
       </template>
+      <template v-else-if="cfg.kind === 'secrets-verify'">
+        <section>
+          <h2>Is this value a real credential?</h2>
+          <p>
+            s6-secrets-verify-pico failed gate G1: on the CredData test, 221 real repositories, its line F1 is 0.8561,
+            where the gate asked for the best rule scanner plus 0.15, 0.7332 + 0.15 = 0.8832 (Betterleaks). The six
+            other gates held. It is above every rule scanner tested, calibrated on real candidates (ECE 0.0073), and it
+            accepts a candidate in 0.35% of 8,825 clean real files; since version 1.9.0, secretgate offers it as an
+            experimental option, off by default, where it can only add redactions.
+          </p>
+          <p>
+            A rule proposes a candidate, a value with its name, its line, the lines around it and its file, and the
+            model judges that one value. This demo does not run secretgate's rule engine: the real generator is
+            secretgate's, frozen as sg-cand-1, and this demo proposes with one simple rule so that the model's
+            judgement can be seen in a browser. The presets were written for this demo, and every value in them is
+            fake.
+          </p>
+          <SecretsVerifyDemo />
+          <p class="space-note">
+            The three thresholds are stored in the file, fixed on 1,589 CredData validation candidates before the test
+            was opened: τ_f1 (F1-optimal, every test reading used it), τ_f05 (fewer alarms) and τ_f2 (fewer misses).
+          </p>
+        </section>
+      </template>
       <template v-else-if="cfg.kind === 'ear'">
         <section>
           <h2>Has the speaker finished? Which word was said?</h2>
@@ -210,6 +238,30 @@ onMounted(async () => {
           </p>
         </section>
       </template>
+      <template v-else-if="cfg.kind === 'router-v2'">
+        <section>
+          <h2>The s6-route-nano file alone, which failed its gate</h2>
+          <p>
+            This Space runs the s6-route-nano file alone. It failed its pre-registered gate: 0.8395 against 0.8500
+            for BM25 on 2,000 slates of tools never seen in training, and 38.9 ms per request in WebAssembly against
+            a bar of 2 ms. The pair that passed, this file fused with a static embedding, is the Space
+            <a href="https://huggingface.co/spaces/maxgfr/s6-route">s6-route</a>.
+          </p>
+          <p>
+            Up to 7 tools, one per line as <code>name: description</code>, and a request. The bars are the
+            probabilities of the s6-route-nano file alone, which also reads each tool's BM25 score against the
+            request. The engine's router loads the two files of s6-route, so under each bar are the pair's fused
+            probability and the embedding part's, and the line under the answer says what the pair answers. The
+            presets were written for this demo, not taken from any dataset, and are kept whatever the model answers:
+            on them the file alone is often wrong where the pair is right.
+          </p>
+          <RouterDemo prefer="s6-route" part="model" />
+          <p class="space-note">
+            “Mask names” renames every tool <code>tool_&lt;k&gt;</code>: on its test the file alone was at chance
+            there (0.1050), where BM25 kept 0.8445.
+          </p>
+        </section>
+      </template>
       <template v-else-if="cfg.kind === 'forecast'">
         <section>
           <h2>Forecast a series</h2>
@@ -240,7 +292,9 @@ onMounted(async () => {
 
       <footer>
         Everything runs in your browser: a Rust inference engine compiled to WebAssembly (SIMD128) reads the GGUF
-        {{ cfg.kind === 'router' ? 'files' : 'file' }} of this Space. Nothing is sent to a server.
+        {{ cfg.kind === 'router' || cfg.kind === 'router-v2' ? 'files' : 'file' }} of this Space{{
+          cfg.kind === 'secrets-verify' ? ', with its word list' : ''
+        }}. Nothing is sent to a server.
       </footer>
     </template>
     <p v-else class="space-note">Loading…</p>

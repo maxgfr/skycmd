@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Publish every skycmd model to Hugging Face: one model repo (card + GGUF) and one static Space
 (demo running in the browser) per model. An entry of hf/spaces.json with `"space": false` publishes
-the model repo only, for a model with no faithful demo (s6-secrets-verify-pico) or none published
-(s6-route-nano, whose playground waited on a gate it failed).
+the model repo only.
 
     pip install -U huggingface_hub && hf auth login        # a token with write access
     scripts/build-wasm.sh && (cd site && npm run space:build)
-    python3 scripts/hf-publish.py [--dry-run] [--only s5-lite,s3-pico] [--user NAME]
+    python3 scripts/hf-publish.py [--dry-run] [--only s5-lite,s3-pico] [--user NAME] [--space-only]
+
+`--space-only` assembles and uploads the Space of each selected entry and nothing else: the model
+repo (card, GGUF and, for an entry with `"engine": true`, its engine/ folder) is neither assembled
+nor uploaded. s6-secrets-verify-pico's Space is published that way, because the engine/ folder of
+its model repo must never be re-uploaded: another project pins its files by sha256.
 
 Inputs: hf/cards/<model>.md (model cards, `{{USER}}` replaced by the namespace), hf/spaces.json
 (one entry per model), site/public/models/ (GGUF files and manifest), site/public/pkg/ (the wasm
@@ -19,7 +23,10 @@ before upload; with --dry-run nothing is uploaded.
 
 A manifest entry with `files` instead of `file` (s6-route: the s6-route-nano file and the
 embedding file, fused by `ToolRouter`) puts every one of its files in the model repo and in the
-Space; its Space is of kind `router`. An entry of hf/spaces.json may carry `readme_notice`, a
+Space; its Space is of kind `router`. s6-route-nano's Space (kind `router-v2`) lists s6-route in
+`extra_models`, so it carries both files too and shows the s6-route-nano file alone. A manifest
+entry with `dictionary` (s6-secrets-verify-pico: the verifier's word list) puts that file in the
+Space's models/ folder as well. An entry of hf/spaces.json may carry `readme_notice`, a
 paragraph the Space's README prints first (s6-route: its disclosure).
 
 A model whose manifest entry has `"gate": "failed"` failed its pre-registered gate and is
@@ -63,7 +70,7 @@ models:
 {failed}{s["tagline"]}
 
 Everything runs in your browser: a Rust inference engine compiled to WebAssembly (relaxed SIMD
-where the browser supports it, else SIMD128) reads the GGUF {"files" if len(model_files(entry)) > 1 else "file"} shipped with this Space. Nothing
+where the browser supports it, else SIMD128) reads the GGUF {"files" if len(model_files(entry)) > 1 or s["kind"] == "router-v2" else "file"} shipped with this Space. Nothing
 is sent to a server.
 
 - Model card: [{user}/{m}](https://huggingface.co/{user}/{m})
@@ -76,31 +83,38 @@ def model_files(entry: dict) -> list[str]:
     return [f["file"] for f in entry["files"]] if entry.get("files") else [entry["file"]]
 
 
-def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path | None]:
+def assemble(user: str, s: dict, manifest: list, space_only: bool = False) -> tuple[Path | None, Path | None]:
+    """Assembles target/hf/<model>/model and target/hf/<model>/space. With `space_only` the model
+    repo (card, GGUF, engine/) is not assembled and the first path is None."""
     m = s["model"]
     base = OUT / m
     if base.exists():
         shutil.rmtree(base)
     model_dir, space_dir = base / "model", base / "space"
-    model_dir.mkdir(parents=True)
     card = (ROOT / "hf" / "cards" / f"{m}.md").read_text().replace("{{USER}}", user)
     entry = next(e for e in manifest if e["name"] == m)
     # a failed model's card opens with the notice: the first lines after the title
     if entry.get("gate") == "failed" and "Failed its pre-registered gate" not in card.split(f"\n# {m}\n", 1)[-1][:300]:
         raise SystemExit(f"hf/cards/{m}.md: a failed model's card must open with its failure notice")
-    (model_dir / "README.md").write_text(card)
-    if entry.get("files"):
-        for f in model_files(entry):
-            shutil.copy2(PUBLIC / "models" / f, model_dir / f)
+    if space_only:
+        if not s.get("space", True):
+            return None, None
+        base.mkdir(parents=True)
     else:
-        shutil.copy2(PUBLIC / "models" / f"{m}.gguf", model_dir / f"{m}.gguf")
-    if s.get("engine"):
-        # the engine assets of scripts/build-verify-assets.sh, under engine/
-        if not (ENGINE / "MANIFEST.json").exists():
-            raise SystemExit(f"missing {ENGINE / 'MANIFEST.json'}: run scripts/build-verify-assets.sh")
-        shutil.copytree(ENGINE, model_dir / "engine")
-    if not s.get("space", True):
-        return model_dir, None
+        model_dir.mkdir(parents=True)
+        (model_dir / "README.md").write_text(card)
+        if entry.get("files"):
+            for f in model_files(entry):
+                shutil.copy2(PUBLIC / "models" / f, model_dir / f)
+        else:
+            shutil.copy2(PUBLIC / "models" / f"{m}.gguf", model_dir / f"{m}.gguf")
+        if s.get("engine"):
+            # the engine assets of scripts/build-verify-assets.sh, under engine/
+            if not (ENGINE / "MANIFEST.json").exists():
+                raise SystemExit(f"missing {ENGINE / 'MANIFEST.json'}: run scripts/build-verify-assets.sh")
+            shutil.copytree(ENGINE, model_dir / "engine")
+        if not s.get("space", True):
+            return model_dir, None
 
     shutil.copytree(APP, space_dir)
     shutil.copytree(PUBLIC / "pkg", space_dir / "pkg", ignore=shutil.ignore_patterns(".gitignore", "package.json", "README.md"))
@@ -108,7 +122,7 @@ def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path | None]:
     names = [m] + s.get("extra_models", [])
     entries = [e for e in manifest if e["name"] in names]
     for e in entries:
-        for f in model_files(e):
+        for f in model_files(e) + ([e["dictionary"]] if e.get("dictionary") else []):
             shutil.copy2(PUBLIC / "models" / f, space_dir / "models" / f)
     (space_dir / "models" / "manifest.json").write_text(json.dumps(entries, indent=2) + "\n")
     if s["kind"] == "game":
@@ -143,7 +157,7 @@ def assemble(user: str, s: dict, manifest: list) -> tuple[Path, Path | None]:
     }
     (space_dir / "space.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
     (space_dir / "README.md").write_text(space_readme(user, s, entry))
-    return model_dir, space_dir
+    return (None if space_only else model_dir), space_dir
 
 
 def main() -> None:
@@ -151,6 +165,8 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="assemble under target/hf, upload nothing")
     ap.add_argument("--only", default="", help="comma-separated model names")
     ap.add_argument("--user", default="", help="namespace (default: the logged-in user)")
+    ap.add_argument("--space-only", action="store_true",
+                    help="assemble and upload the Space only: the model repo (and its engine/ folder) is left untouched")
     a = ap.parse_args()
 
     for need in [APP / "index.html", PUBLIC / "pkg" / "sky_web_bg.wasm", PUBLIC / "pkg" / "sky_web_relaxed_bg.wasm"]:
@@ -171,21 +187,29 @@ def main() -> None:
     for s in spaces:
         if only and s["model"] not in only:
             continue
-        model_dir, space_dir = assemble(user, s, manifest)
-        print(f"assembled {s['model']}: {model_dir}" + (f" and {space_dir}" if space_dir else " (model only, no Space)"))
+        model_dir, space_dir = assemble(user, s, manifest, space_only=a.space_only)
+        if model_dir is None and space_dir is None:
+            print(f"skipped {s['model']}: no Space, and --space-only leaves the model repo alone")
+            continue
+        if model_dir is None:
+            print(f"assembled {s['model']}: {space_dir} (Space only)")
+        else:
+            print(f"assembled {s['model']}: {model_dir}" + (f" and {space_dir}" if space_dir else " (model only, no Space)"))
         if api is None:
             continue
         repo = f"{user}/{s['model']}"
-        api.create_repo(repo, repo_type="model", exist_ok=True)
-        api.upload_folder(repo_id=repo, repo_type="model", folder_path=model_dir,
-                          commit_message=f"Publish {s['model']}")
+        if model_dir is not None:
+            api.create_repo(repo, repo_type="model", exist_ok=True)
+            api.upload_folder(repo_id=repo, repo_type="model", folder_path=model_dir,
+                              commit_message=f"Publish {s['model']}")
         if space_dir is None:
             print(f"published https://huggingface.co/{repo}")
             continue
         api.create_repo(repo, repo_type="space", space_sdk="static", exist_ok=True)
         api.upload_folder(repo_id=repo, repo_type="space", folder_path=space_dir,
                           commit_message=f"Publish the {s['model']} demo", delete_patterns=["assets/*"])
-        print(f"published https://huggingface.co/{repo} and https://huggingface.co/spaces/{repo}")
+        print(f"published https://huggingface.co/spaces/{repo}" if model_dir is None
+              else f"published https://huggingface.co/{repo} and https://huggingface.co/spaces/{repo}")
 
 
 if __name__ == "__main__":
