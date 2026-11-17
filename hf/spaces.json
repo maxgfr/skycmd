@@ -72,7 +72,18 @@
   },
   {
     "model": "s6-ear2-nano",
-    "space": false
+    "kind": "turn",
+    "emoji": "🎙️",
+    "color_from": "green",
+    "color_to": "blue",
+    "tagline": "A 632 KB ternary end-of-turn detector: from the last 4 s of audio it says whether the speaker has finished. It passed its pre-registered gate: 0.8993 on the 31,527 test clips of Smart Turn v3.2, where Smart Turn itself is at 0.9260.",
+    "short_description": "632 KB end-of-turn detector; passed its gate",
+    "notes": [
+      "The gate: accuracy 0.8993 (bars 0.85 and Smart Turn's 0.9260 minus 0.08); at its cautious threshold a false cut-off on 0.0847 of the not-finished clips (bar 0.20) with an END recall of 0.8627 (bar 0.80); 2.39 ms per decision in WASM (bar 5 ms) from 631,936 bytes.",
+      "It is a student of Smart Turn v3.2 (Pipecat, BSD-2-Clause, 8.7 MB, about 32 ms per decision), trained on Smart Turn's public training set; it cannot be more right than the labels it imitates.",
+      "On real conversations it is far weaker, like its teacher: on eot-bench its AUC is 0.7299 (Smart Turn 0.7838), and at its cautious threshold it catches about half of the real ends of turn (0.5253). Use it with a fallback timer, as this demo does.",
+      "Weakest languages on the test: Vietnamese 0.7749, Marathi 0.7907, Bengali 0.7950. Most test clips are synthetic speech. The official test was partly in-sample for design choices (the 4 s window), never for the weights."
+    ]
   },
   {
     "model": "s6-cast-pico",
@@ -117,7 +128,9 @@
     "model": "s5-lite",
     "kind": "decision",
     "proofs": true,
-    "extra_models": ["s4-micro"],
+    "extra_models": [
+      "s4-micro"
+    ],
     "emoji": "🧭",
     "color_from": "indigo",
     "color_to": "blue",

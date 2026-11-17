@@ -9,6 +9,7 @@ import LiveDecide from '../.vitepress/theme/components/LiveDecide.vue'
 import LiveProof from '../.vitepress/theme/components/LiveProof.vue'
 import PlayGame from '../.vitepress/theme/components/PlayGame.vue'
 import RouterDemo from '../.vitepress/theme/components/RouterDemo.vue'
+import TurnDemo from '../.vitepress/theme/components/TurnDemo.vue'
 import { loadManifest } from '../.vitepress/theme/lib/wasm'
 
 interface SpaceConfig {
@@ -17,8 +18,9 @@ interface SpaceConfig {
   tagline: string
   /** `secrets`: the API-key demo of s6-secrets-pico (manifest `task: secrets`). `ear`: the Listen
    * demo (manifest `task: ear`). `forecast`: the Forecast demo (`models/forecast.json`). `router`:
-   * the tool router of the Router page (manifest `task: router`, two files fused by `ToolRouter`). */
-  kind: 'decision' | 'game' | 'secrets' | 'ear' | 'forecast' | 'router'
+   * the tool router of the Router page (manifest `task: router`, two files fused by `ToolRouter`).
+   * `turn`: the end-of-turn demo of the Listen page (s6-ear2-nano through `TurnDetector`). */
+  kind: 'decision' | 'game' | 'secrets' | 'ear' | 'forecast' | 'router' | 'turn'
   proofs?: boolean
   model_repo: string
   notes?: string[]
@@ -170,6 +172,23 @@ onMounted(async () => {
             Sample clips, CC-BY-4.0: “yes” from Speech Commands v0.02 (Warden, 2018), test split; the two French clips
             from <code>pipecat-ai/smart-turn-data-v3.2-test</code> (Pipecat), test split. The model never trains on
             either split.
+          </p>
+        </section>
+      </template>
+      <template v-else-if="cfg.kind === 'turn'">
+        <section>
+          <h2>Has the speaker finished their turn?</h2>
+          <p>
+            Use the microphone: an energy detector finds each pause, and at 0.2 s of silence the model reads the
+            last 4 s of audio and says whether the turn is finished, in about 2.4 ms. While it answers "not
+            finished" it is asked again every 0.2 s, and a fallback timer ends the turn after 2.5 s of silence
+            whatever it says. The log-mel front end runs in the same WebAssembly module, and the audio never
+            leaves your browser.
+          </p>
+          <TurnDemo />
+          <p class="space-note">
+            On real conversations (eot-bench) the model catches about half of the real ends of turn at its
+            cautious threshold: the fallback timer is part of how it should be used.
           </p>
         </section>
       </template>
