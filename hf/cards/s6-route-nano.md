@@ -120,7 +120,13 @@ among answered requests at τ_ask with coverage ≥ 0.70 is not met (0.9433 at c
   ms natively. **With every tool renamed `tool_<k>` it is at chance (0.1050)**, below the
   name-prior (0.1180), where BM25 keeps 0.8445 and potion-cos 0.7015 on the same slates; one
   reading, not tested, is that it ties each BM25 entry of its input to an option through a
-  distinctive name. With the descriptions of the right tool and of a distractor swapped, it
+  distinctive name. A diagnosis made after the gate, on validation files only, found otherwise: in
+  training the right tool of every renamed slate was the only option whose description the teacher
+  had rewritten, and *none* was never right there, so under `tool_<k>` names the model picks the
+  description that reads most like a rewrite, does not read the BM25 line and almost never answers
+  *none*; no number above changes
+  ([diagnosis](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-diagnosis.md)). With the
+  descriptions of the right tool and of a distractor swapped, it
   follows the description on 0.6700 and the name on 0.0780. Outside its training families it is
   weak: below potion-cos on every other source (MetaTool, CLINC150, tool-routing-data, When2Call,
   the held-out MASSIVE scenarios, and BFCL by little, 0.7205 against 0.7250, where BM25 is at

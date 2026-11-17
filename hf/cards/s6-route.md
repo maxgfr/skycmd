@@ -116,7 +116,12 @@ Paired bootstrap (slates): +0.0942 [0.0720, 0.1185] over the model alone, +0.148
 - **It needs distinctive tool names.** With every tool renamed `tool_<k>` it falls to 0.2497; the
   model part is then at 0.0720, and the fusion drags the embedding part (0.7280 alone) down with
   it. BM25 keeps 0.8138 and MiniLM 0.9005 on the same slates. Do not use it on tool lists with
-  generic or numbered names.
+  generic or numbered names. A diagnosis made after the gate, on validation files only, found why:
+  in training the right tool of every renamed slate was the only option whose description the
+  teacher had rewritten, and *none* was never right there, so under `tool_<k>` names the model part
+  picks the description that reads most like a rewrite and almost never answers *none*; no number
+  above changes
+  ([diagnosis](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-diagnosis.md)).
 - **MiniLM is more accurate on every file.** If 91.6 MB and about 12 ms of CPU per request are
   affordable, all-MiniLM-L6-v2 with cosine is the better router on these tests.
 - **Outside the tool lists of its training families it stays near its embedding part, below it on MetaTool and above it on CLINC150 and MASSIVE:** MetaTool
