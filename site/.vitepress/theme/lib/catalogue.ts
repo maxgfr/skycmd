@@ -102,6 +102,22 @@ const DOCS = 'https://github.com/maxgfr/skycmd/blob/main/docs/'
 export const CATALOGUE: CatalogueEntry[] = [
   // Works: use it
   {
+    id: 's6-ear2-nano',
+    name: 's6-ear2-nano',
+    group: 'works',
+    status: 'passed',
+    purpose: "Detects the end of a speaker's turn for a voice agent: give it the audio, ask it once when the VAD reports a pause.",
+    size: '632 KB',
+    manifest: ['s6-ear2-nano'],
+    brings:
+      'The right answer on 0.8993 of the 31,527 test clips of Smart Turn v3.2 (bar 0.85; the teacher measured 0.9260 there, s6-ear-nano 0.5681, the silence timer 0.4979), at 2.4 ms per decision in WASM and 632 KB, where its teacher is 8.7 MB and about 32 ms natively.',
+    caveat:
+      'On real conversations (eot-bench) it and its teacher are far weaker than on the test clips, and at its threshold it answers "finished" on about half of the real ends of turn. It is weakest on Vietnamese, Marathi and Bengali.',
+    get: HF + 's6-ear2-nano',
+    read: { link: '/results/#s6-ear2-nano-passed', label: 'its section of Results' },
+    source: ['site/results/index.md#s6-ear2-nano-passed', 'hf/cards/s6-ear2-nano.md', 'site/public/models/manifest.json'],
+  },
+  {
     id: 's6-route',
     name: 's6-route',
     group: 'works',
@@ -339,17 +355,6 @@ export const CATALOGUE: CatalogueEntry[] = [
   },
 
   // In progress: no numbers before a result, except the pilot reading of s6-sleep v3
-  {
-    id: 's6-ear-v2',
-    name: 's6-ear v2',
-    group: 'progress',
-    status: 'progress',
-    purpose: 'Detects the end of a speaker\'s turn for a voice agent, from the last seconds of audio.',
-    brings:
-      'Whether a small ternary student distilled from Smart Turn v3.2, with pitch and energy in its input and trained on this one task, reaches a fixed accuracy bar on the test clips where s6-ear-nano failed.',
-    read: { link: DOCS + 's6-ear2-prereg.md', label: 'its pre-registration' },
-    source: ['docs/s6-ear2-prereg.md'],
-  },
   {
     id: 's6-sleep-v3',
     name: 's6-sleep v3',

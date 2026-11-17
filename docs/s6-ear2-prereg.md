@@ -423,6 +423,49 @@ v2 passes if all of these hold:
 - **Where the run happens.** From the worktree of the session, on the code of `origin/main`, with the data outside the repository (`skycmd-data/s6-ear2`) and v1's `data/ear` read through a link from the main checkout. The brake is the automatic one (`scripts/auto-brake.sh`). CPU work of other models (write-ups, evaluations on dumps) may run during the pilot and the training; budgets are in working minutes, so this can only lower the number of steps, and the steps are reported. The latencies of §8.3 are measured with no training running.
 - **What does not change:** everything else, in particular the pilot and its stop rule (0.82), the budget (240 working minutes, seed 1, once), the checkpoint rule, the thresholds from validation, the gate.
 
+**Result (17/11/2026, after the test was read once). The gate passed, every condition. v2 is published as passed, with the sentence of §9.**
+
+- **What was run, in which order** (`scripts/train-turn.sh`; its logs `runs/all/ear2-pilot.log` and `runs/all/ear2-train.log`). The probe had fixed the rung R4 (amendment 1). Then, in one chain: the pilot, the main training, the export, the calibration, and — with no training running — the latency and WASM benches, the test read, the eot-bench read and the gate. Results: `runs/s6-ear2-nano/GATE.md` and `GATE.json`, the calibration `runs/s6-ear2-nano/calib.json`, the latency files in `runs/s6-ear2-nano/latency/`, the parity in `runs/s6-ear2-nano/parity/`, the pilot `runs/s6-ear2-pilot/choice.json`.
+- **The pilot** (§6.4–6.5; validation accuracy at τ 0.5 on f32 weights, `runs/s6-ear2-pilot/choice.json`). Four arms of 12 working minutes each: the rate ×0.5 (lr 0.0007745) 0.8715, ×1 (lr 0.001549) 0.8657, ×2 (lr 0.003098) 0.8003; hard labels at the best rate 0.8437. The hard-label arm is below the distillation arms, so the rule kept distillation; the best arm is above 0.82, so the stop rule did not fire.
+- **The training** (`runs/s6-ear2-nano/args.json`, `runs/all/ear2-train.log`). 240.0 working minutes, 305,736 steps by the trainer's log (the gate report prints 305,700, its last logged step; about 152 epochs), batch 128, seed 1, once, no restart. Ternary QAT over the last 15 %, from step 258,128; the validation accuracy (f32) rose from 0.7940 at step 2,000 to about 0.89 in the last third of the run. Checkpoint: **the EMA**, its ternary validation BCE 0.2899 against 0.2910 for `last` (final ternary validation accuracy 0.8964). Temperature 1.4948, fitted on validation; **τ₀.₅ = 0.5 and τ₈₅ = 0.7244, both from validation** (`runs/s6-ear2-nano/calib.json`: on the 13,593 validation clips, END recall 0.8501 and false cut-off 0.0856 at τ₈₅). The brake ran in its automatic modes (duty 0.5 with 45 min of work and 15 of rest, duty 0.95 with 55 and 5, cooling pauses of 300–900 s recorded in the log).
+- **The gate** (`GATE.md`; ternary GGUF as exported; 95 % bootstrap intervals, 1,000 resamples by clip):
+
+  | term | measured | bar | verdict |
+  |---|---|---|---|
+  | G1, accuracy at τ₀.₅ | **0.8993** [0.8962, 0.9027] | ≥ 0.85 and ≥ T − 0.08 (T = 0.9260) | holds |
+  | G2, false cut-off at τ₈₅ | **0.0847** [0.0800, 0.0888] | ≤ 0.20 | holds |
+  | G2, END recall at τ₈₅ | **0.8627** [0.8577, 0.8680] | ≥ 0.80 | holds |
+  | G3, WASM median | **2.39 ms** (p95 2.41 ms) | ≤ 5.0 ms | holds |
+  | G3, front end per 10 ms hop | **0.0186 ms** | ≤ 0.10 ms | holds |
+  | G3, GGUF size | **631,936 bytes** | ≤ 3 MB | holds |
+  | G3, WASM parity, 20 test clips | **max \|Δp\| 1.2e-7, same decision 20 of 20** | ≤ 1e-4, same decision | holds |
+
+  At τ₀.₅ on the same 31,527 clips: precision 0.8776, recall 0.9271, F1 0.9017; Pipecat's error rates as shares of all clips: false positives 0.0644, false negatives 0.0363. AUC 0.9600 [0.9581, 0.9621], ECE 0.0160 [0.0138, 0.0191]. Teacher–student agreement (§10): validation 0.9139 (13,593 clips), test 0.9181 (31,527 clips).
+- **The same clips, every model**:
+
+  | model | accuracy |
+  |---|---|
+  | silence timer (always "finished") | 0.4979 |
+  | s6-ear-nano (v1) | 0.5681 |
+  | v1's control (no Mimi pretraining) | 0.7647 |
+  | v1's wrong harness number (right padding), marked as such | 0.8518 |
+  | Smart Turn v3.2 CPU, as checked (§8.1) | 0.9260 |
+  | Smart Turn v3.2 GPU (Pipecat's published) | 0.9371 |
+  | **s6-ear2-nano** | **0.8993** [0.8962, 0.9027] |
+- **Weak spots.** Weakest languages: Vietnamese 0.7749 [0.7490, 0.8018], Marathi 0.7907 [0.7623, 0.8178], Bengali 0.7950 [0.7690, 0.8200]; weakest dataset: mundo_1 0.7843 [0.7500, 0.8206]. English overall 0.9056 [0.8987, 0.9127]; the English human subsets 0.9187 [0.8923, 0.9431]. The per-language and per-dataset tables are in `GATE.md`.
+- **eot-bench** (§8.4, reported, not gated; real conversational speech, LiveKit's set, which the design never read; one decision per labelled pause, cut at its start; 17,934 cuts):
+
+  | model | AUC | false cut-off | eot recall |
+  |---|---:|---:|---:|
+  | v2 (at τ₈₅) | 0.7299 | 0.2230 | 0.5253 |
+  | Smart Turn v3.2 CPU (at 0.5) | 0.7838 | 0.3678 | 0.7998 |
+  | timer | 0.5000 | 1.0000 | 1.0000 |
+
+  §8.4 fixed the reading: "does not carry over" is said only if v2's AUC is more than 0.10 below Smart Turn's. It is 0.054 below (0.7299 against 0.7838), so that sentence does not apply. What is said instead, plainly: **both models are far weaker on these real conversational cuts than on the test clips, and at τ₈₅ v2 answers "finished" on 0.5253 of the real ends of turn — about half pass.** These numbers are not comparable with LiveKit's FC@300 / FC@600, which come from a policy sweep.
+- **Latency and size** (`runs/s6-ear2-nano/latency/`, measured 17/11 at 03:26, Apple M5, one thread, 1,000 decisions on a full 4 s window, features already computed, **no training running**): WASM median 2.39 ms (p95 2.41 ms), native median 1.40 ms, front end 0.0186 ms per 10 ms hop in WASM; GGUF 631,936 bytes. In the same session, Smart Turn v3.2 CPU through onnxruntime, one thread: median 31.7 ms per decision (its file, 8.7 MB).
+- **Disclosure** (§11). v2 was designed after v1's test results. Its design study read measurements made on 3,000 clips of the same test set: v1's two models per source, Smart Turn per source, Smart Turn with 8, 4, 3, 2 and 1 s of context, and the trailing silence of 1,500 clips. The 4 s window was chosen from Smart Turn's accuracy on those test clips, and the data change was motivated by per-source test results. The official test set is therefore partly in-sample for v2's design choices, though never for its weights: no test clip is trained on, and no threshold is chosen on test. eot-bench, which the design never read, is the cleaner check, and it is reported above. **The conditions of the run:** it happened in the session's worktree, on the code of `origin/main`, under the automatic brake, and CPU work of other models (write-ups, evaluations on dumps) ran during the pilot and part of the training, which amendment 1 allows and which can only lower the number of steps done in the budget. The trainer of the main training was built at a commit that also holds an unrelated option (`--sleep-chunk`, off by default) added on 16/11, after the pilot had started: the pilot and the training therefore did not use the same binary, and nothing in the end-of-turn training path changed between them. The latencies were measured with no training running.
+- **What it means, by §12.** The last case applies: **v2 passes. It is published as passed, with the sentence of §9** — "Take v2 when size and speed matter: it gives up 2.7 points of accuracy against Smart Turn for a file of 0.63 MB instead of 8.7 MB and about 2.4 ms per decision in WASM instead of about 32 ms natively; take Smart Turn's file when those points matter more." The pass is what G1 to G3 say and no more: both v2 and its teacher are weaker on real conversations than on the test clips, the weakest languages are named above, and the test is partly in-sample for the design (§11). v1's verdict does not change: `s6-ear-nano` stays a failed gate.
+
 ## 15. Choices (the first value of each line is the one taken at the freeze; the alternative is recorded)
 
 | | choice | recommended | alternatives | why the recommendation |

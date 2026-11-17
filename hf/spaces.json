@@ -71,6 +71,10 @@
     ]
   },
   {
+    "model": "s6-ear2-nano",
+    "space": false
+  },
+  {
     "model": "s6-cast-pico",
     "kind": "forecast",
     "emoji": "📉",

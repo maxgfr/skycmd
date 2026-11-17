@@ -1,0 +1,25 @@
+{
+  "measured": "2026-11-17T03:26:10+0100",
+  "host": "Apple M5",
+  "native": {
+    "median_ms": 1.404125,
+    "p95_ms": 1.422333,
+    "frontend_ms_per_hop": 0.013422165548098436,
+    "decisions": 1000
+  },
+  "wasm": {
+    "median_ms": 2.3903329999999983,
+    "p95_ms": 2.412667000000056,
+    "frontend_ms_per_hop": 0.018573266219239375,
+    "decisions": 1000
+  },
+  "smart_turn_cpu_native": {
+    "model": "pipecat-ai/smart-turn-v3/smart-turn-v3.2-cpu.onnx",
+    "revision": "f766f81d3cfdf7737ac64aad813d91bbfd56bf93",
+    "runs": 1000,
+    "threads": 1,
+    "median_ms": 31.748584005981684,
+    "p95_ms": 31.908417004160583
+  },
+  "gguf_bytes": 631936
+}

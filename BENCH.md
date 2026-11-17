@@ -448,7 +448,45 @@ Test split, ternary, full depth:
 
 Three gates of four fail: s6-ear-nano failed its gate; its file is published as a result (owner's decision of 15/11/2026), as evaluated (`site/public/models/s6-ear-nano.gguf`, amendment 5), with the exit thresholds its run stored (choice 0.5, score 0.9, noul 0.68); its control is not published. The verdict does not change. The control, trained the same way without the Mimi pretraining, is more accurate on all four sets, so in this run the pretraining did not help. ECE over all test sources is 0.0081 at full depth. At the CRC thresholds the model uses 3.42 of its 4 passes on average (early exit on 21.1% of the questions), with the same verdicts. Smart Turn v3.2 has a precision of 0.783 and a recall of 0.971 on the end-of-turn clips; the pre-registration asks for the same two numbers for s6-ear, and the run did not compute them.
 
-**Correction of the end-of-turn bar (16/11/2026).** The table first gave 0.8518 for Smart Turn v3.2, as read by `scripts/ear-baseline.py`. That harness pads a short clip at the end; Smart Turn pads it at the start, and Pipecat reports 0.9263 for v3.2 (CPU, int8) on the same 31,527 clips. On 3,000 of them the v1 harness reads 0.8437 where the reference padding reads 0.9243 (`docs/s6-ear2-study.md`). The bar is therefore 0.9263; s6-ear-nano (0.5681) and its control (0.7647) are under both numbers, and the verdict does not change. The harness itself is fixed and checked against that reference in `docs/s6-ear2-prereg.md` §8.1.
+**Correction of the end-of-turn bar (16/11/2026).** The table first gave 0.8518 for Smart Turn v3.2, as read by `scripts/ear-baseline.py`. That harness pads a short clip at the end; Smart Turn pads it at the start, and Pipecat reports 0.9263 for v3.2 (CPU, int8) on the same 31,527 clips. On 3,000 of them the v1 harness reads 0.8437 where the reference padding reads 0.9243 (`docs/s6-ear2-study.md`). The bar is therefore 0.9263; s6-ear-nano (0.5681) and its control (0.7647) are under both numbers, and the verdict does not change. The harness itself is fixed and checked against that reference in `docs/s6-ear2-prereg.md` §8.1. **Its second version**, a dedicated end-of-turn student of Smart Turn trained on this one task ([`docs/s6-ear2-prereg.md`](docs/s6-ear2-prereg.md)), passed its own gate on 17/11/2026 with 0.8993 on the same test clips ([below](#s6-ear2-nano-s6-ear-v2-an-end-of-turn-student-of-smart-turn-pre-registered-gate-passed)); this model's verdict does not change.
+
+## s6-ear2-nano (s6-ear v2): an end-of-turn student of Smart Turn, pre-registered, gate passed
+
+Pre-registration: [`docs/s6-ear2-prereg.md`](docs/s6-ear2-prereg.md), the gate in §9, amendment 1 (the probe, the data build, the harness check, all before any v2 training) and its result block of 17/11. Results: [`runs/s6-ear2-nano/GATE.md`](runs/s6-ear2-nano/GATE.md) and `GATE.json` next to it, the calibration `runs/s6-ear2-nano/calib.json`, the pilot `runs/s6-ear2-pilot/choice.json`, the probe `runs/s6-ear2-probe/rung.json`, the harness check `runs/s6-ear2-harness/check.json`, the latency files in `runs/s6-ear2-nano/latency/`, the parity `runs/s6-ear2-nano/parity/parity.json`; run logs `runs/all/ear2-pilot.log` and `runs/all/ear2-train.log`.
+
+**Passed, every condition, on the 31,527 test clips of `smart-turn-data-v3.2-test`.** Accuracy at τ₀.₅ **0.8993** [0.8962, 0.9027], where G1 asks for ≥ 0.85 and ≥ T − 0.08 with T = 0.9260, Smart Turn v3.2 CPU through the same harness (§8.1); at the validation threshold τ₈₅ = 0.7244, false cut-off **0.0847** [0.0800, 0.0888] (bar ≤ 0.20) and END recall **0.8627** [0.8577, 0.8680] (bar ≥ 0.80), G2; WASM median **2.39 ms** per decision (bar 5.0), front end **0.0186 ms** per 10 ms hop (bar 0.10), GGUF **631,936 bytes** (bar 3 MB), WASM parity on 20 test clips at max |Δp| 1.2e-7 with the same decision on 20 of 20, G3. AUC 0.9600 [0.9581, 0.9621], ECE 0.0160 [0.0138, 0.0191]. Published as `s6-ear2-nano`, with a card and no browser demo. **The sentence of §9:** "Take v2 when size and speed matter: it gives up 2.7 points of accuracy against Smart Turn for a file of 0.63 MB instead of 8.7 MB and about 2.4 ms per decision in WASM instead of about 32 ms natively; take Smart Turn's file when those points matter more."
+
+**The model** (§4). 1,306,178 ternary parameters, the rung R4 the probe fixed (d 160, ff 640, 4 s2 encoder blocks, one position per 80 ms, 50 positions): `patch_proj`, the blocks, Smart Turn's attention pooling and a 2-layer head. The front end computes 40 log-mel bands plus 3 prosody channels (log f0, voicing, energy) per 10 ms hop, normalises each window by Whisper's rule, and reads the last 4 s of 16 kHz audio. The file stores the temperature (1.4948) and the two validation thresholds, τ₀.₅ = 0.5 for the accuracy reading and τ₈₅ = 0.7244, the highest threshold whose validation END recall reaches 0.85. No codec pretraining (v1's control beat v1's pretrained model), no keywords, one task.
+
+**The same clips, every model:**
+
+| model | accuracy |
+|---|---|
+| silence timer (always "finished") | 0.4979 |
+| s6-ear-nano (v1) | 0.5681 |
+| v1's control (no Mimi pretraining) | 0.7647 |
+| v1's wrong harness number (right padding), marked as such | 0.8518 |
+| Smart Turn v3.2 CPU, as checked (§8.1) | 0.9260 |
+| Smart Turn v3.2 GPU (Pipecat's published) | 0.9371 |
+| **s6-ear2-nano** | **0.8993** [0.8962, 0.9027] |
+
+**The run.** Probe: R4 chosen by the pre-registered rule (first rung whose WASM median is ≤ 4.0 ms; amendment 1). Pilot: four arms of 12 working minutes, validation accuracy at τ 0.5 on f32 weights — rate ×0.5 (lr 0.0007745) 0.8715, ×1 (lr 0.001549) 0.8657, ×2 (lr 0.003098) 0.8003, hard labels at the best rate 0.8437; the rule kept distillation and the stop rule (0.82) did not fire. Training: 240.0 working minutes, 305,700 steps (about 152 epochs), batch 128, seed 1, once, no restart; ternary QAT from step 258,128; the EMA checkpoint taken (ternary validation BCE 0.2899 against 0.2910 for `last`). The run happened in the session's worktree under the automatic brake (the modes recorded in the log: duty 0.5 with 45 minutes of work and 15 of rest, duty 0.95 with 55 and 5, and cooling pauses of 300–900 s); CPU work of other models ran during the pilot and part of the training, which amendment 1 allows. The trainer of the main training was built at a commit that also holds an unrelated option (`--sleep-chunk`, off by default) added on 16/11, after the pilot had started: the pilot and the training did not use the same binary, and nothing in the end-of-turn training path changed between them.
+
+**Weak spots** (per language and per dataset, `GATE.md`). Vietnamese 0.7749 [0.7490, 0.8018], Marathi 0.7907 [0.7623, 0.8178], Bengali 0.7950 [0.7690, 0.8200]; dataset mundo_1 0.7843 [0.7500, 0.8206]. English overall 0.9056 [0.8987, 0.9127]; the English human subsets 0.9187 [0.8923, 0.9431].
+
+**eot-bench** (§8.4, reported, not gated). Real conversational speech (LiveKit's set, which the design never read), one decision per labelled pause cut at its start, 17,934 cuts; not comparable with LiveKit's FC@300 / FC@600, which come from a policy sweep:
+
+| model | AUC | false cut-off | eot recall |
+|---|---:|---:|---:|
+| v2 (at τ₈₅) | 0.7299 | 0.2230 | 0.5253 |
+| Smart Turn v3.2 CPU (at 0.5) | 0.7838 | 0.3678 | 0.7998 |
+| timer | 0.5000 | 1.0000 | 1.0000 |
+
+§8.4 fixed the reading before the run: "does not carry over" is said only if v2's AUC is more than 0.10 below Smart Turn's. It is 0.054 below, so that sentence does not apply. Said plainly instead: both models are far weaker on these real conversational cuts than on the test clips, and at τ₈₅ v2 answers "finished" on 0.5253 of the real ends of turn — about half pass.
+
+**Latency and size** (`runs/s6-ear2-nano/latency/`, Apple M5, one thread, 1,000 decisions on a full 4 s window, features already computed, no training running): WASM median 2.39 ms, p95 2.41 ms; native median 1.40 ms; front end 0.0186 ms per 10 ms hop in WASM; GGUF 631,936 bytes. In the same session, Smart Turn v3.2 CPU through onnxruntime, one thread: median 31.7 ms per decision; its file is 8.7 MB.
+
+**Disclosure** (§11). v2 was designed after v1's test results, and its design study read measurements made on 3,000 clips of the same test set (v1's two models per source, Smart Turn per source, Smart Turn with 8, 4, 3, 2 and 1 s of context, the trailing silence of 1,500 clips): the 4 s window and the data change came from those readings. The official test set is therefore partly in-sample for v2's design choices, though never for its weights; eot-bench, which the design never read, is the cleaner check. Details and the run's conditions: the result block of `docs/s6-ear2-prereg.md`.
 
 ## s6-cast-pico: probabilistic forecasting, pre-registered, gate failed
 

@@ -1,0 +1,35 @@
+{
+  "lr": 0.0007745,
+  "rate_multiplier": 0.5,
+  "base_rate": 0.001549,
+  "distil": true,
+  "stop": false,
+  "best_val_acc": 0.8714779666004561,
+  "arms": {
+    "lr0.5": {
+      "val_acc_f32": 0.8714779666004561,
+      "lr": 0.0007745,
+      "distil": true
+    },
+    "lr1": {
+      "val_acc_f32": 0.8656661516957257,
+      "lr": 0.001549,
+      "distil": true
+    },
+    "lr2": {
+      "val_acc_f32": 0.8003384094754653,
+      "lr": 0.003098,
+      "distil": true
+    },
+    "hard": {
+      "val_acc_f32": 0.8437431030677555,
+      "lr": 0.0007745,
+      "distil": false
+    }
+  },
+  "rules": {
+    "choice": "validation accuracy at tau 0.5 on f32 weights (\u00a76.4)",
+    "distil": "distil unless the hard-label arm is higher by more than 0.005",
+    "stop": "the best arm below 0.82 stops v2 (\u00a76.5)"
+  }
+}

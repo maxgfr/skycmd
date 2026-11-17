@@ -16,7 +16,7 @@ Every model skycmd publishes, one card each: what it is for, its file size, how 
 
 ## Works: use it {#works}
 
-These models do what their card says, on the tests their card names. Three passed a pre-registered gate. Two, s3-pico and s5-lite, were measured without one, and their status says so.
+These models do what their card says, on the tests their card names. Four passed a pre-registered gate. Two, s3-pico and s5-lite, were measured without one, and their status says so.
 
 <ModelCatalogue group="works" />
 

@@ -1,0 +1,14 @@
+{
+  "temperature": 1.494785470484989,
+  "tau50": 0.5,
+  "tau85": 0.7243981397923976,
+  "val": {
+    "n": 13593,
+    "nll_t1": 0.29021541035405657,
+    "nll": 0.26259008637358383,
+    "accuracy@0.5": 0.896123004487604,
+    "end_recall@tau85": 0.8501257582482615,
+    "false_cutoff@tau85": 0.08560140474100088
+  },
+  "rules": "temperature by validation NLL; tau50 = 0.5 on the calibrated probability; tau85 = the highest threshold whose validation END recall is >= 0.85 (\u00a77); neither ever from test"
+}

@@ -31,6 +31,11 @@ tags:
 > The file is published so that the result can be checked and run (owner's decision of 15/11/2026,
 > amendment 5 of the pre-registration); the verdict does not change. Numbers:
 > [BENCH.md, section s6-ear-nano](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear-nano-first-run-gates-failed).
+>
+> **The follow-up:** a dedicated end-of-turn student of Smart Turn,
+> [s6-ear2-nano](https://huggingface.co/maxgfr/s6-ear2-nano), trained on this one task without the
+> pretraining, passed its own gate on 17/11/2026 (0.8993 on the same 31,527 test clips, against
+> 0.5681 here); this model's verdict does not change.
 
 **A 899 KB ternary decision model that hears.** 1,532,449 parameters. Its state is the last
 10.24 s of 16 kHz audio, as 80 ms log-mel frames; its questions and options are text. It answers

@@ -92,6 +92,18 @@
     "file": "s6-ear-nano.gguf"
   },
   {
+    "name": "s6-ear2-nano",
+    "arch": "skycmd-turn",
+    "weight_format": "ternary",
+    "task": "ear",
+    "gate": "passed",
+    "gate_note": "An end-of-turn detector (the last 4 s of audio): 0.8993 on the 31,527 test clips of Smart Turn v3.2 (bar 0.85; the teacher measured 0.9260 on the same clips), false cut-off 0.0847 and END recall 0.8627 at the validation threshold tau85, 2.39 ms per decision in WASM and 631,936 bytes. On real conversations (eot-bench) it and its teacher are far weaker, and at tau85 it answers \"finished\" on 0.5253 of the real ends of turn",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear2-nano-s6-ear-v2-an-end-of-turn-student-of-smart-turn-pre-registered-gate-passed",
+    "params": 1306178,
+    "bytes": 631936,
+    "file": "s6-ear2-nano.gguf"
+  },
+  {
     "name": "s6-cast-pico",
     "arch": "skycmd-cast",
     "weight_format": "ternary",
