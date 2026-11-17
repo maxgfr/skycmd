@@ -48,7 +48,10 @@ tags:
 > turn — about half pass. Its weakest languages are Vietnamese (0.7749), Marathi (0.7907) and
 > Bengali (0.7950). It is a student of Smart Turn: it cannot be better than its teacher's
 > labels. Most of its test set is synthetic speech. The official test set is partly in-sample
-> for the design choices, though never for the weights. **There is no browser demo yet.**
+> for the design choices, though never for the weights. **Try it with your microphone** on the
+> site's [Listen page](https://maxgfr.github.io/skycmd/ear/) or in the
+> [Space](https://huggingface.co/spaces/maxgfr/s6-ear2-nano); the demo runs a fallback timer
+> next to the model, for the reason above ([How to use it](#how-to-use-it)).
 
 **A dedicated model, not a shared one.** The first version, [s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano),
 shared one ternary model between end of turn and keywords on top of a codec pretraining, and
@@ -58,7 +61,11 @@ attention pooling, a 2-layer head; 1,306,178 ternary parameters), and a front en
 job — 40 log-mel bands plus 3 prosody channels (log f0, voicing, energy) per 10 ms hop. It was
 trained for 240 working minutes on one Apple M5 as a student of Smart Turn v3.2, once, seed 1.
 
-- **No demo:** the engine API exists (below), and the browser demo waits on a microphone check by the owner.
+- **Demo:** in the browser, with the microphone or a self-test without one: the site's
+  [Listen page](https://maxgfr.github.io/skycmd/ear/) and the Space
+  [maxgfr/s6-ear2-nano](https://huggingface.co/spaces/maxgfr/s6-ear2-nano). The owner checked the
+  microphone path on the site in Chrome on 17/11/2026; Safari, and the microphone inside the Hugging
+  Face frame, are not checked yet. How the demo decides is in [How to use it](#how-to-use-it).
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust; the model is `sky_infer::turn`, the front end `crates/sky-infer/src/audio.rs`)
 - **Pre-registration:** [docs/s6-ear2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear2-prereg.md) (the design in §2, the gate in §9, amendment 1, the result block)
 - **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
@@ -168,6 +175,17 @@ answer "finished" when the probability is at least the threshold (τ₀.₅ for 
 END recall on validation), else keep listening; a fallback timer ends the turn after a longer
 silence (Pipecat's `SmartTurnParams.stop_secs`); if speech resumes, the turn's audio is kept and
 the model runs again at the next pause.
+
+**How the demo decides** (the [Listen page](https://maxgfr.github.io/skycmd/ear/) and the
+[Space](https://huggingface.co/spaces/maxgfr/s6-ear2-nano) run the same code). An energy VAD
+over 10 ms frames finds the speech and the pauses; the model is asked once after 0.2 s of silence
+following speech, then again every 0.2 s while the pause lasts; it answers "finished" at or above
+the threshold, τ₈₅ by default (τ₀.₅ can be chosen); and a fallback timer ends the turn after
+2.5 s of silence whatever the model says. The timer is there because of eot-bench: on real
+conversations, at τ₈₅ the model catches only 0.5253 of the real ends of turn, about half
+([`runs/s6-ear2-nano/GATE.md`](https://github.com/maxgfr/skycmd/blob/main/runs/s6-ear2-nano/GATE.md),
+eot-bench), so without the timer a finished speaker could wait for an answer that never comes.
+The pause length and the timer can be changed on the page.
 
 ## Latency and size
 
