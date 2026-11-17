@@ -69,7 +69,10 @@ export interface ModelEntry {
    * Router page); such an entry has `files` and no `file`, so `loadManifest` leaves it out and only
    * `loadRouters` lists it. `ear`: an audio state
    * (s6-ear, the Listen page). `forecast`: a forecaster, not a decision engine (s6-cast, the
-   * Forecast page; `forecast.json` lists it there). Absent: the games only. */
+   * Forecast page; `forecast.json` lists it there). `memory`: a model with a fast-weight memory and
+   * its control, two `files` played on the `recall` probe by `RecallProbe` (s6-sleep3-nano, the
+   * Memory page); such an entry has no `file`, so `loadManifest` leaves it out and only
+   * `loadMemoryEntry` reads it. Absent: the games only. */
   task?: string
   /** Published at full depth: the file's exit thresholds are 1, so early exit is off. */
   full_depth?: boolean
@@ -470,6 +473,98 @@ export function loadSecretVerifier(entry: ModelEntry & { dictionary: string }): 
     })()
     p.catch(() => verifiers.delete(entry.name))
     verifiers.set(entry.name, p)
+  }
+  return p
+}
+
+/** One file of a memory entry (`task: memory`): the model with its memory, or its control. */
+export interface MemoryFile {
+  /** `model` (the file with the memory) or `control` (the same training without a memory). */
+  role: 'model' | 'control'
+  file: string
+  bytes: number
+  params?: number
+  sha256?: string
+}
+
+/** A manifest entry played by `RecallProbe` (s6-sleep3-nano): no `file`, two `files`. */
+export interface MemoryEntry {
+  name: string
+  task: 'memory'
+  bytes: number
+  files: MemoryFile[]
+  gate?: 'passed' | 'failed'
+  gate_note?: string
+  gate_url?: string
+}
+
+/** The `recall` memory probe of sky-web (`crates/sky-web/src/recall.rs`, `RecallProbe`): the
+ * evaluation's episode generator and scoring, played by one model at its last exit. */
+export interface WasmRecallProbe {
+  /** Whether the model keeps a memory across frames (false for the control). */
+  hasMemory(): boolean
+  /** `on`, or `zeroed` (the memory reset before every frame); from the next episode. */
+  setMemory(mode: 'on' | 'zeroed'): void
+  /** `N`, the passes of each sleep, the wake pass included; from the next episode. */
+  setSleepPasses(n: number): void
+  /** `{name, n_params, file_bytes, memory, memory_mode, sleep_passes, sleep_every, frames, buckets,
+   * instructions, options, keys, exit_threshold}`. */
+  info(): string
+  /** Starts the episode of `seed` from a zero memory: `{seed, frames: [{frame, state, kind, door,
+   * colour, answer, delay, bucket}], memory, memory_mode, sleep_passes}`. */
+  start(seed: number): string
+  /** The next frame: `{frame, state, kind, door, colour, answer, delay, bucket, probs, choice,
+   * correct, micros, done}`. */
+  step(): string
+  done(): boolean
+  /** A whole episode from a zero memory: `{seed, asks: [{frame, delay, bucket, correct}],
+   * decisions, micros}`. */
+  runEpisode(seed: number): string
+  free(): void
+}
+
+let memoryPromise: Promise<MemoryEntry | null> | null = null
+
+/** The memory entry of public/models/manifest.json (`task: memory`, a `model` and a `control`
+ * file); null when not published. */
+export function loadMemoryEntry(): Promise<MemoryEntry | null> {
+  if (!memoryPromise) {
+    memoryPromise = fetch(withBase('/models/manifest.json'))
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => {
+        if (!Array.isArray(list)) return null
+        const e = (list as MemoryEntry[]).find(
+          (m) =>
+            m &&
+            m.name &&
+            m.task === 'memory' &&
+            Array.isArray(m.files) &&
+            m.files.some((f) => f.role === 'model') &&
+            m.files.some((f) => f.role === 'control'),
+        )
+        return e ?? null
+      })
+      .catch(() => null)
+  }
+  return memoryPromise
+}
+
+const recallProbes = new Map<string, Promise<WasmRecallProbe>>()
+
+/** Downloads one file of a memory entry and loads it in a `RecallProbe` (cached per file). */
+export function loadRecallProbe(entry: MemoryEntry, role: MemoryFile['role']): Promise<WasmRecallProbe> {
+  const f = entry.files.find((x) => x.role === role)
+  if (!f) return Promise.reject(new Error(`${entry.name} has no ${role} file`))
+  let p = recallProbes.get(f.file)
+  if (!p) {
+    p = (async () => {
+      const mod = (await loadWasm()) as unknown as {
+        RecallProbe: new (gguf: Uint8Array) => WasmRecallProbe
+      }
+      return new mod.RecallProbe(await fetchBytes(f.file))
+    })()
+    p.catch(() => recallProbes.delete(f.file))
+    recallProbes.set(f.file, p)
   }
   return p
 }
