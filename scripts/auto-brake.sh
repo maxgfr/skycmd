@@ -47,9 +47,9 @@
 # Other settings: PERIOD (30) seconds between two ticks; TRAIN_PROC (sky-train) the trainer's
 # process name for the memory guard; TRAIN_PROCS_RE (`(sky-train|sky-arena|sky-eval|[Pp]ython[0-9.]*)$`)
 # an awk regular expression over the whole command path of `ps -o comm=` (spaces included): the
-# processes it matches are not "other programs". It matches `Python` too, the framework build that
-# Homebrew installs (`.../MacOS/Python`): without it a Python trainer counted as another program and
-# kept the night mode off.
+# processes it matches are not "other programs". It matches `Python` too: `ps` names the framework
+# build that Homebrew installs `.../MacOS/Python`, which the first pattern (`python[0-9.]*`) missed,
+# so a Python trainer would have counted as another program and kept the night mode off.
 #
 # Every change is a line in <file>.log, with the reason. The pre-registered budgets count working
 # time only, so the brake changes how long a run takes, not what it computes.

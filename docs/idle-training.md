@@ -276,7 +276,8 @@ an invalid setting, 3 already running, 4 not macOS.
 
 ## What we learned
 
-From this repository's records and its runs:
+Each entry says where it comes from: an incident in the project's records, or a defect found when
+the code was reviewed to make it reusable (November 2026), which no run is recorded to have hit.
 
 - **A daemon that dies says nothing.** On 13/11/2026, from about 10:10 to 18:18, the daemon was not
   running: it had ended silently, under `set -e`, when a training process ended during one of its
@@ -300,21 +301,25 @@ From this repository's records and its runs:
   205; it was stopped by hand (`docs/big-run-report.md`).
 - **The night mode needs a margin.** Commit `27db95c` made it hold through a short burst of the
   other programs: once it is on, their limit doubles.
-- **A Python trainer is not "another program".** The first pattern of trainer names matched
-  `python3.12` but not the framework build of Python that Homebrew installs, which `ps` names
-  `.../MacOS/Python`. A Python training was then counted as another program, and the daemon fell
-  back to `0.5 45:15` at night until `OTHER_CPU` was raised. The pattern now reads `[Pp]ython`, and
-  it is matched against the whole command path, so that a trainer in a folder with a space in its
-  name is recognized too.
-- **Megabytes are memory too.** `top` prints a process's memory in K, M or G; the first guard read
-  only the G values, so a trainer printed as `13500M` would have read as 0 GB. Every unit is now
-  converted.
-- **One run's guard must not stop another.** The first guard sent `TERM` to every process named
-  `sky-train` when one was over the limit, evaluations and probes of other runs included. It now
-  stops only the processes over the limit.
-- **Unknown is not idle.** A failed idle reading used to count as "left alone", the faster brake;
-  it now counts as in use.
-- **Cycles under a second.** The Rust brake accepted a cycle part that rounds to 0 seconds
+- **The project's own work counts as "other programs".** Incident: on the night of 16 to 17/11/2026
+  the daemon left the night mode while other work of the project ran on the CPU (evaluations and
+  builds counted as "other programs"), until it was restarted with `OTHER_CPU=250`. The brake log
+  of that night is not in the repository. For such nights, raise `OTHER_CPU` or name those
+  programs in `TRAIN_PROCS_RE`.
+- **A framework Python is named `Python`.** Review: `ps -o comm=` names the framework build of
+  Python that Homebrew installs `.../MacOS/Python`, with a capital P, which the first pattern
+  (`python[0-9.]*`) did not match, so a Python trainer would have counted as another program. The
+  pattern now reads `[Pp]ython`, and it is matched against the whole command path, so that a
+  trainer in a folder with a space in its name is recognized too.
+- **Megabytes are memory too.** Review: `top` prints a process's memory in K, M or G; the first
+  guard read only the G values, so a trainer printed as `13500M` would have read as 0 GB. Every unit
+  is now converted.
+- **One run's guard must not stop another.** Review: the first guard sent `TERM` to every process
+  named `sky-train` when one was over the limit, evaluations and probes of other runs included. It
+  now stops only the processes over the limit.
+- **Unknown is not idle.** Review: a failed idle reading used to count as "left alone", the faster
+  brake; it now counts as in use.
+- **Cycles under a second.** Review: the Rust brake accepted a cycle part that rounds to 0 seconds
   (`1 0.001:0.001` divided by zero; `0.001:10` never worked again), and after a stretch at duty 1
   its first rest at a lower duty was in proportion to the whole stretch. Both are fixed, with tests,
   in `crates/sky-train/src/brake.rs`; `scripts/brake.py` behaves the same.
