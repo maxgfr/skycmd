@@ -98,6 +98,14 @@ pub struct OptConfig {
     /// No weight decay on the memory matrices (`mem.*`). Off by default, and then not written.
     #[serde(default, skip_serializing_if = "is_false")]
     pub mem_no_decay: bool,
+    /// A frozen base (`docs/s6-sleep4-prereg.md` §3.2, K3): only the memory trains (every
+    /// parameter whose name starts with `mem.`: its norm, projections, read-out, gates and
+    /// auxiliary heads), and every other parameter, the base's, keeps its value. A frozen
+    /// parameter gets no update, no weight decay and no optimizer state, and the global gradient
+    /// norm (and so the clip) is taken over the trained parameters alone ([`OptConfig::trains`]).
+    /// Off by default, and then not written.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub freeze_base: bool,
     /// Recipe that wrote this config ([`OPT_RECIPE`]); a config saved before the
     /// field existed reads as recipe 1.
     #[serde(default = "legacy_recipe")]
@@ -166,8 +174,17 @@ impl Default for OptConfig {
             mem_in_lr_mult: 1.0,
             mem_gate_lr_mult: 1.0,
             mem_no_decay: false,
+            freeze_base: false,
             recipe: OPT_RECIPE,
         }
+    }
+}
+
+impl OptConfig {
+    /// True for a parameter this configuration trains: every one, or with
+    /// [`OptConfig::freeze_base`] the memory's alone (`mem.*`).
+    pub fn trains(&self, name: &str) -> bool {
+        !self.freeze_base || name.starts_with("mem.")
     }
 }
 
@@ -268,11 +285,17 @@ impl Optimizer {
 
     /// Applies one update with both learning rates multiplied by `lr_scale`.
     /// Returns the (pre-clipping) global gradient norm as a lazy scalar.
+    ///
+    /// Only the parameters the config trains ([`OptConfig::trains`]) are read: with a frozen
+    /// base, a gradient given for a base parameter is ignored (it neither counts in the norm nor
+    /// moves the parameter), so the clip is the one of the trained parameters alone.
     pub fn update(&mut self, params: &mut ParamMap, grads: &ParamMap, lr_scale: f32) -> R<Array> {
         let c = self.cfg.clone();
         let mut sq = Array::from_f32(0.0);
-        for g in grads.values() {
-            sq = sq.add(g.square()?.sum(None)?)?;
+        for (name, g) in grads {
+            if c.trains(name) {
+                sq = sq.add(g.square()?.sum(None)?)?;
+            }
         }
         let gnorm = sq.sqrt()?;
         let clip = if c.clip_norm > 0.0 {
@@ -292,6 +315,9 @@ impl Optimizer {
         let muon_lr = c.muon_lr * lr_scale;
         for (name, p) in params.iter_mut() {
             let Some(g) = grads.get(name) else { continue };
+            if !c.trains(name) {
+                continue;
+            }
             let g = match &clip {
                 Some(s) => g.multiply(s)?,
                 None => g.clone(),
@@ -634,6 +660,86 @@ mod tests {
             let back: OptConfig = serde_json::from_value(j).unwrap();
             assert!(back.mem_in_lr_mult == 1.0 && back.mem_gate_lr_mult == 1.0);
             assert!(!back.mem_no_decay);
+        });
+    }
+
+    /// `freeze_base` (docs/s6-sleep4-prereg.md §3.2, K3): a base parameter keeps its exact value
+    /// even when it is given a gradient, has no optimizer state, and its gradient counts neither
+    /// in the returned norm nor in the clip, which is the one of the `mem.*` parameters alone.
+    #[test]
+    fn a_frozen_base_is_held_and_clipped_out() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let (lr, clip, beta1) = (0.01f32, 1.0f32, 0.9f32);
+            let mem = ["mem.0.out.weight", "mem.0.aux.weight"];
+            let base = ["blk.0.attn_qkv.weight", "cls.weight", "token_embd.weight"];
+            let mut params = ParamMap::new();
+            let mut grads = ParamMap::new();
+            for (i, n) in mem.iter().chain(&base).enumerate() {
+                let key = random::key(10 + i as u64).unwrap();
+                params.insert(
+                    (*n).into(),
+                    random::normal::<f32>(&[4, 4][..], 0.0, 1.0, &key).unwrap(),
+                );
+                // The base's gradients are large: counted, they would set the clip.
+                let scale = if n.starts_with("mem.") { 1.0 } else { 100.0 };
+                let g = ops::ones::<f32>(&[4, 4]).unwrap();
+                grads.insert((*n).into(), g.multiply(Array::from_f32(scale)).unwrap());
+            }
+            let before: std::collections::BTreeMap<String, Vec<f32>> = params
+                .iter()
+                .map(|(k, v)| (k.to_string(), crate::model::host_f32(v).unwrap()))
+                .collect();
+            let cfg = OptConfig {
+                adam_lr: lr,
+                weight_decay: 0.5,
+                clip_norm: clip,
+                muon: true,
+                beta1,
+                freeze_base: true,
+                ..Default::default()
+            };
+            assert!(cfg.trains("mem.1.qk.weight") && !cfg.trains("blk.0.attn_qkv.weight"));
+            assert!(OptConfig::default().trains("blk.0.attn_qkv.weight"));
+            let mut o = Optimizer::new(cfg);
+            for _ in 0..3 {
+                let gnorm = o.update(&mut params, &grads, 1.0).unwrap();
+                // The norm of the two mem.* gradients of ones: sqrt(2 * 16).
+                assert!((gnorm.item_exact::<f32>() - 32f32.sqrt()).abs() < 1e-5);
+            }
+            for n in base {
+                let after = crate::model::host_f32(&params[n]).unwrap();
+                assert!(
+                    after
+                        .iter()
+                        .zip(&before[n])
+                        .all(|(a, b)| a.to_bits() == b.to_bits()),
+                    "{n} moved"
+                );
+            }
+            for n in mem {
+                let after = crate::model::host_f32(&params[n]).unwrap();
+                assert!(after != before[n], "{n} did not move");
+            }
+            let state = o.state_arrays();
+            assert!(
+                state.keys().all(|k| k.contains("mem.")),
+                "{:?}",
+                state.keys()
+            );
+            // The first moment after three steps holds (1 − β1³) times the clipped gradient:
+            // clipped by the norm of the trained gradients (scale 1/sqrt(32)), not by the norm of
+            // every gradient (about 1/800).
+            let m = crate::model::host_f32(&state["adam.m.mem.0.out.weight"]).unwrap();
+            let want = (1.0 - beta1.powi(3)) * clip / 32f32.sqrt();
+            assert!(m.iter().all(|x| (x - want).abs() < 1e-6), "{m:?} vs {want}");
+            // Off by default, and then not written: earlier configs are unchanged.
+            let j = serde_json::to_value(OptConfig::default()).unwrap();
+            assert!(j.get("freeze_base").is_none());
+            let back: OptConfig = serde_json::from_value(j).unwrap();
+            assert!(!back.freeze_base);
+            let j = serde_json::to_value(&o.cfg).unwrap();
+            assert_eq!(j["freeze_base"], true);
         });
     }
 

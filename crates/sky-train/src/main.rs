@@ -504,6 +504,22 @@ enum Cmd {
         /// No weight decay on the memory matrices mem.*.
         #[arg(long)]
         mem_no_decay: bool,
+        /// A frozen base (docs/s6-sleep4-prereg.md §3.2, K3): only the memory trains (every
+        /// mem.* tensor: its norm, projections, read-out, gates and auxiliary heads); every other
+        /// tensor keeps the value --init gives it, bit for bit, gets no update and no optimizer
+        /// state, and the gradient norm and its clip are taken over the trained tensors alone.
+        /// The gradients of the frozen tensors are not computed. Needs a memory config.
+        #[arg(long)]
+        freeze_base: bool,
+        /// With --seq-log: the run ends (last saved, the final validation, a final line with
+        /// stopped_by_rule) at the first recall step at which the last-exit accuracy pooled over
+        /// the asks of the last --stop-recall-window recall steps reaches this
+        /// (docs/s6-sleep4-prereg.md §4.2); otherwise at the end of its budget.
+        #[arg(long, requires = "seq_log")]
+        stop_recall_acc: Option<f64>,
+        /// The recall steps of --stop-recall-acc's window.
+        #[arg(long, default_value_t = 100)]
+        stop_recall_window: usize,
         #[arg(long, default_value_t = 20)]
         log_every: u64,
         #[arg(long, default_value_t = 1000)]
@@ -537,6 +553,19 @@ enum Cmd {
         /// f32, f16 or ternary.
         #[arg(long, default_value = "f32")]
         format: String,
+    },
+    /// s2: the parity check of a frozen base (docs/s6-sleep4-prereg.md §3.2, §4.1): every
+    /// tensor of --base is in --model unchanged (two GGUF files: the same type, shape and bytes;
+    /// two checkpoint directories: the same values, bit for bit), and every other tensor of
+    /// --model is the memory's (mem.*). Fails, naming the first tensor that differs, otherwise.
+    S2SameBase {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        base: PathBuf,
+        /// Also write the finding (or the difference) to this JSON file.
+        #[arg(long)]
+        json: Option<PathBuf>,
     },
     /// s2: per-source / per-exit metrics, early exit, permutation invariance, coherence -> report.md.
     S2Eval {
@@ -980,6 +1009,9 @@ fn main() -> Result<()> {
             mem_in_lr_mult,
             mem_gate_lr_mult,
             mem_no_decay,
+            freeze_base,
+            stop_recall_acc,
+            stop_recall_window,
             log_every,
             eval_every,
             checkpoint_minutes,
@@ -1003,6 +1035,7 @@ fn main() -> Result<()> {
                 mem_in_lr_mult,
                 mem_gate_lr_mult,
                 mem_no_decay,
+                freeze_base,
                 ..opt.build(1e-3)
             },
             seed,
@@ -1048,6 +1081,9 @@ fn main() -> Result<()> {
             qat_grad_a,
             length_pool,
             step_mem_gb,
+            stop_recall: stop_recall_acc
+                .map(|acc| s2::train::RecallStop::new(acc, stop_recall_window))
+                .transpose()?,
         })?,
         Cmd::S2Calibrate {
             run,
@@ -1059,6 +1095,41 @@ fn main() -> Result<()> {
         }
         Cmd::S2Export { run, out, format } => {
             s2::eval::export(&run, &out, WeightFormat::parse(&format)?)?
+        }
+        Cmd::S2SameBase { model, base, json } => {
+            let found = if model.is_dir() && base.is_dir() {
+                let load =
+                    |d: &std::path::Path| sky_train::params::load(&d.join("model.safetensors"));
+                s2::gguf::same_base_params(&load(&model)?, &load(&base)?).map(|f| ("checkpoint", f))
+            } else if model.is_file() && base.is_file() {
+                let (mb, bb) = (std::fs::read(&model)?, std::fs::read(&base)?);
+                let (mg, bg) = (sky_gguf::Gguf::parse(&mb)?, sky_gguf::Gguf::parse(&bb)?);
+                s2::gguf::same_base(&mg, &bg).map(|f| ("gguf", f))
+            } else {
+                anyhow::bail!(
+                    "--model and --base must be two GGUF files or two checkpoint directories"
+                );
+            };
+            let record = match &found {
+                Ok((kind, f)) => serde_json::json!({"model": model, "base": base, "kind": kind,
+                    "same": true, "shared": f.shared, "extra": f.extra}),
+                Err(e) => serde_json::json!({"model": model, "base": base, "same": false,
+                    "error": e.to_string()}),
+            };
+            if let Some(path) = &json {
+                if let Some(d) = path.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                std::fs::write(path, serde_json::to_string_pretty(&record)?)?;
+            }
+            let (kind, f) = found?;
+            println!(
+                "same base ({kind}): the {} tensors of {} are in {} unchanged; its {} other tensors are the memory's",
+                f.shared,
+                base.display(),
+                model.display(),
+                f.extra.len()
+            );
         }
         Cmd::S2Eval {
             run,

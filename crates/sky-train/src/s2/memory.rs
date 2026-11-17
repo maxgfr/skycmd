@@ -763,8 +763,11 @@ pub fn centres(p: &ParamMap, cfg: &S2Config, frames: &[S2Batch], qat: bool) -> R
 /// [`seq_loss`] and, for the training log of `docs/s6-sleep2-prereg.md` §2 (M5), the
 /// cross-entropy of the ask frames apart. Returns `[loss, Σ deep-supervision CE over the asks,
 /// Σ last-exit CE over the asks, asks, Σ auxiliary CE over the asks, asks the auxiliary head
-/// decodes right, the splits of [`ask_splits`], the centres of the batch]`; only the loss
-/// carries a gradient. The centres are those of [`centres`] measured on this batch as it is
+/// decodes right, the splits of [`ask_splits`], the centres of the batch, the auxiliary readings
+/// per memory layer]`; only the loss carries a gradient. The last output is `[2 · layers]`: the
+/// Σ auxiliary CE over the asks of each memory layer, then the asks each layer's head decodes
+/// right (`docs/s6-sleep4-prereg.md` §11 item 2; zeros without an auxiliary loss); the fifth and
+/// sixth outputs are their sums over the layers. The centres are those of [`centres`] measured on this batch as it is
 /// played (every layer of a slot memory one after the other, `[layers · loops · d]`; a single
 /// zero for any other form): what `--memory-centre-ema` moves `mem.{l}.centre` towards.
 ///
@@ -822,6 +825,7 @@ pub fn seq_loss_asks_part(
         out.aux_right,
         splits,
         centre,
+        ops::concatenate(&[out.aux_layers.0, out.aux_layers.1].concat(), 0)?,
     ])
 }
 
@@ -835,6 +839,9 @@ struct SeqOut {
     /// number of them the auxiliary head decodes right; zeros without an auxiliary head.
     aux_ce: Array,
     aux_right: Array,
+    /// The same two per memory layer (`[1]` each, no gradient): `aux_ce` and `aux_right` are
+    /// their sums over the layers.
+    aux_layers: (Vec<Array>, Vec<Array>),
     /// With `asks` and a slot memory: per memory layer, the centre measured on the batch
     /// ([`centre_rows`]); empty otherwise.
     centre: Vec<Array>,
@@ -898,6 +905,12 @@ fn seq_frames(
     let n_exits = cfg.n_exits();
     let aux = asks.filter(|_| cfg.memory && cfg.memory_aux && cfg.memory_run.aux_weight > 0.0);
     let (mut aux_ce, mut aux_right) = (Array::from_f32(0.0), Array::from_f32(0.0));
+    let zeros = || -> R<Vec<Array>> {
+        (0..cfg.state_layers)
+            .map(|_| ops::zeros::<f32>(&[1]))
+            .collect()
+    };
+    let mut aux_layers = (zeros()?, zeros()?);
     let track = cfg.memory && cfg.memory_write == MemoryWrite::Slot && asks.is_some();
     let mut norm_sum: Vec<Array> = Vec::new();
     let mut total: Option<Array> = None;
@@ -934,8 +947,12 @@ fn seq_frames(
                 for (l, x) in written.iter().enumerate() {
                     let Some(x) = x else { continue };
                     let (ce, right) = aux_rows(p, cfg, l, x, &b.valid, &mem.0[l], &colour)?;
-                    aux_ce = aux_ce.add(ce.multiply(&on)?.sum(None)?)?;
-                    aux_right = aux_right.add(stop_gradient(&right.multiply(&on)?.sum(None)?)?)?;
+                    let ce = ce.multiply(&on)?.sum(None)?;
+                    let right = stop_gradient(&right.multiply(&on)?.sum(None)?)?;
+                    aux_layers.0[l] = aux_layers.0[l].add(stop_gradient(&ce)?.reshape(&[1])?)?;
+                    aux_layers.1[l] = aux_layers.1[l].add(right.reshape(&[1])?)?;
+                    aux_ce = aux_ce.add(ce)?;
+                    aux_right = aux_right.add(right)?;
                 }
             }
             let next = after_writes(p, cfg, &written, &b.valid, &mem)?;
@@ -987,6 +1004,7 @@ fn seq_frames(
         logits: seen,
         aux_ce,
         aux_right,
+        aux_layers,
         centre,
     })
 }

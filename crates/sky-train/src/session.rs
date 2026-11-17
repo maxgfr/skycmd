@@ -212,6 +212,8 @@ thread_local! {
 /// Compiled loss + gradient over a fixed parameter order.
 pub(crate) struct CompiledGrad {
     names: Vec<Rc<str>>,
+    /// The parameters whose gradients are computed and returned, in the order of `names`.
+    trained: Vec<Rc<str>>,
     f: CompiledFn,
     /// The batch shapes compiled since the cache was last emptied (`epoch`).
     seen: HashSet<Vec<i32>>,
@@ -224,21 +226,43 @@ impl CompiledGrad {
         names: Vec<Rc<str>>,
         loss: impl Fn(&ParamMap, &[Array]) -> R<Array> + 'static,
     ) -> Self {
+        Self::trained(names, |_| true, loss)
+    }
+
+    /// [`CompiledGrad::new`] that differentiates only the parameters for which `trains` holds
+    /// (`OptConfig::trains`): every parameter is still an input of the graph, but the others
+    /// enter the loss without a gradient, so the backward pass that only they need is not
+    /// computed, and [`CompiledGrad::call`] returns the gradients of the trained ones alone.
+    pub(crate) fn trained(
+        names: Vec<Rc<str>>,
+        trains: impl Fn(&str) -> bool,
+        loss: impl Fn(&ParamMap, &[Array]) -> R<Array> + 'static,
+    ) -> Self {
         let keys = names.clone();
+        let trained: Vec<Rc<str>> = names.iter().filter(|k| trains(k)).cloned().collect();
+        let grad_keys: HashSet<Rc<str>> = trained.iter().cloned().collect();
         let step = move |args: &[Array]| -> R<Vec<Array>> {
             let (pv, bv) = args.split_at(keys.len());
-            let params: ParamMap = keys.iter().cloned().zip(pv.iter().cloned()).collect();
+            let (mut on, mut fixed) = (ParamMap::new(), ParamMap::new());
+            for (k, v) in keys.iter().zip(pv) {
+                if grad_keys.contains(k) {
+                    on.insert(k.clone(), v.clone());
+                } else {
+                    fixed.insert(k.clone(), v.clone());
+                }
+            }
             let f = |p: HashMap<Rc<str>, Array>, b: &[Array]| -> R<Vec<Array>> {
-                Ok(vec![loss(&p, b)?])
+                Ok(vec![loss(&with_fixed(p, &fixed), b)?])
             };
-            let (mut values, grads) = keyed_value_and_grad(f)(params, bv)?;
-            for k in &keys {
+            let (mut values, grads) = keyed_value_and_grad(f)(on, bv)?;
+            for k in keys.iter().filter(|k| grad_keys.contains(*k)) {
                 values.push(grads[k].clone());
             }
             Ok(values)
         };
         Self {
             names,
+            trained,
             f: Box::new(mlx_rs::transforms::compile::compile(step, false)),
             seen: HashSet::new(),
             epoch: 0,
@@ -297,9 +321,17 @@ impl CompiledGrad {
         args.extend(batch);
         let mut out = (self.f)(&args)?.into_iter();
         let loss = out.next().expect("loss output");
-        let grads = self.names.iter().cloned().zip(out).collect();
+        let grads = self.trained.iter().cloned().zip(out).collect();
         Ok((loss, grads))
     }
+}
+
+/// `trained` with the parameters of `fixed` added, as one map for a loss.
+fn with_fixed(mut trained: HashMap<Rc<str>, Array>, fixed: &ParamMap) -> ParamMap {
+    for (k, v) in fixed {
+        trained.insert(k.clone(), v.clone());
+    }
+    trained
 }
 
 fn all_valid(ids: &Array, key_valid: &Option<Array>) -> Array {
@@ -355,10 +387,47 @@ pub(crate) fn loss_and_grads<B>(
     batch: &B,
     loss: impl Fn(&ParamMap, &B) -> R<Array>,
 ) -> Result<(Array, ParamMap)> {
-    let f = |p: HashMap<Rc<str>, Array>, b: &B| -> R<Vec<Array>> { Ok(vec![loss(&p, b)?]) };
-    let mut vg = keyed_value_and_grad(f);
-    let (values, grads) = vg(params.clone(), batch)?;
+    loss_and_grads_of(params, |_| true, batch, loss)
+}
+
+/// [`loss_and_grads`] with respect to the parameters for which `trains` holds
+/// (`OptConfig::trains`) alone: the others enter the loss without a gradient, so the backward pass
+/// that only they need is not computed, and the map holds the gradients of the trained ones.
+pub(crate) fn loss_and_grads_of<B>(
+    params: &ParamMap,
+    trains: impl Fn(&str) -> bool,
+    batch: &B,
+    loss: impl Fn(&ParamMap, &B) -> R<Array>,
+) -> Result<(Array, ParamMap)> {
+    let (values, grads) = values_and_grads_of(params, trains, batch, |p, b| Ok(vec![loss(p, b)?]))?;
     Ok((values.into_iter().next().expect("loss output"), grads))
+}
+
+/// The outputs of `f` and the gradient of its first output with respect to the parameters for
+/// which `trains` holds (see [`loss_and_grads_of`]).
+pub(crate) fn values_and_grads_of<B>(
+    params: &ParamMap,
+    trains: impl Fn(&str) -> bool,
+    batch: &B,
+    f: impl Fn(&ParamMap, &B) -> R<Vec<Array>>,
+) -> Result<(Vec<Array>, ParamMap)> {
+    if params.keys().all(|k| trains(k)) {
+        // Every parameter trains: the map as it is (its order, and so the graph, unchanged).
+        let g = |p: HashMap<Rc<str>, Array>, b: &B| -> R<Vec<Array>> { f(&p, b) };
+        let out = keyed_value_and_grad(g)(params.clone(), batch)?;
+        return Ok(out);
+    }
+    let (mut on, mut fixed) = (ParamMap::new(), ParamMap::new());
+    for (k, v) in params {
+        if trains(k) {
+            on.insert(k.clone(), v.clone());
+        } else {
+            fixed.insert(k.clone(), v.clone());
+        }
+    }
+    let g = |p: HashMap<Rc<str>, Array>, b: &B| -> R<Vec<Array>> { f(&with_fixed(p, &fixed), b) };
+    let out = keyed_value_and_grad(g)(on, batch)?;
+    Ok(out)
 }
 
 impl Session {

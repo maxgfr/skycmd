@@ -694,6 +694,88 @@ pub fn params_from_gguf(g: &Gguf<'_>, cfg: &S2Config) -> Result<ParamMap> {
     Ok(map)
 }
 
+// ----------------------------------------------------------------------------- same base
+
+/// What [`same_base`] and [`same_base_params`] found: the tensors of the base that the model
+/// holds unchanged, and the model's own tensors (its memory), by name.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SameBase {
+    pub shared: usize,
+    pub extra: Vec<String>,
+}
+
+/// The parity check of a frozen base on two exported files (`docs/s6-sleep4-prereg.md` §3.2,
+/// §4.1): every tensor of `base` is in `model` with the same type, shape and bytes, and every
+/// other tensor of `model` is a memory tensor (`mem.*`). An error names the first tensor that
+/// differs. The keys (names, calibration, the memory's own keys) are not compared.
+pub fn same_base(model: &Gguf<'_>, base: &Gguf<'_>) -> Result<SameBase> {
+    let mut names: Vec<&str> = base.tensors.iter().map(|t| t.name).collect();
+    names.sort_unstable();
+    for name in &names {
+        let b = base.tensor(name).expect("a tensor of the base");
+        let m = model
+            .tensor(name)
+            .ok_or_else(|| anyhow!("the model has no tensor {name}"))?;
+        if m.dtype != b.dtype || m.dims != b.dims {
+            bail!(
+                "{name}: {:?} {:?} in the model, {:?} {:?} in the base",
+                m.dtype,
+                m.dims,
+                b.dtype,
+                b.dims
+            );
+        }
+        if model.tensor_bytes(m) != base.tensor_bytes(b) {
+            bail!("{name}: its bytes differ from the base's");
+        }
+    }
+    extra_memory(model.tensors.iter().map(|t| t.name), &names)
+}
+
+/// [`same_base`] on two checkpoints' parameters: every tensor of `base` is in `model`, bit for
+/// bit, and every other tensor of `model` is a memory tensor.
+pub fn same_base_params(model: &ParamMap, base: &ParamMap) -> Result<SameBase> {
+    let mut names: Vec<&str> = base.keys().map(|k| k.as_ref()).collect();
+    names.sort_unstable();
+    for name in &names {
+        let b = &base[*name];
+        let m = model
+            .get(*name)
+            .ok_or_else(|| anyhow!("the model has no tensor {name}"))?;
+        if m.shape() != b.shape() || m.dtype() != b.dtype() {
+            bail!(
+                "{name}: {:?} {:?} in the model, {:?} {:?} in the base",
+                m.dtype(),
+                m.shape(),
+                b.dtype(),
+                b.shape()
+            );
+        }
+        let bits = |a: &Array| -> Result<Vec<u32>> {
+            Ok(host_f32(a)?.iter().map(|x| x.to_bits()).collect())
+        };
+        if bits(m)? != bits(b)? {
+            bail!("{name}: its values differ from the base's");
+        }
+    }
+    extra_memory(model.keys().map(|k| k.as_ref()), &names)
+}
+
+fn extra_memory<'a>(model: impl Iterator<Item = &'a str>, base: &[&str]) -> Result<SameBase> {
+    let mut extra: Vec<String> = model
+        .filter(|n| !base.contains(n))
+        .map(str::to_string)
+        .collect();
+    extra.sort();
+    if let Some(n) = extra.iter().find(|n| !n.starts_with("mem.")) {
+        bail!("the model has a tensor {n} that the base has not and that is not the memory's");
+    }
+    Ok(SameBase {
+        shared: base.len(),
+        extra,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -701,6 +783,67 @@ mod tests {
         s2::{data::tests::s2_tokenizer_json, model::init},
         test_util,
     };
+
+    /// The parity check of a frozen base: a memory model that holds its base's tensors exports
+    /// them byte for byte, its other tensors are the memory's (no auxiliary head), and a base
+    /// tensor moved by one unit of the last place is caught, in the file and in the checkpoint.
+    #[test]
+    fn same_base_finds_the_base_in_a_memory_model_and_catches_a_moved_tensor() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let tok = s2_tokenizer_json();
+            let base_cfg = S2Config::tiny(262);
+            let mem_cfg = S2Config {
+                memory: true,
+                memory_qk: crate::s2::config::MemoryQk::Shared,
+                memory_value: crate::s2::config::MemoryValue::Frame,
+                memory_aux: true,
+                ..base_cfg.clone()
+            };
+            let base = init(&base_cfg, S2Parts::DECISION, 1).unwrap();
+            let mut model = init(&mem_cfg, S2Parts::DECISION, 2).unwrap();
+            for (k, v) in &base {
+                model.insert(k.clone(), v.deep_clone());
+            }
+            let file = |p: &ParamMap, c: &S2Config| {
+                to_gguf(p, c, &tok, WeightFormat::Ternary, "x").unwrap()
+            };
+            let (mb, bb) = (file(&model, &mem_cfg), file(&base, &base_cfg));
+            let (mg, bg) = (Gguf::parse(&mb).unwrap(), Gguf::parse(&bb).unwrap());
+            let found = same_base(&mg, &bg).unwrap();
+            assert_eq!(found.shared, bg.tensors.len());
+            assert!(!found.extra.is_empty());
+            assert!(found
+                .extra
+                .iter()
+                .all(|n| n.starts_with("mem.") && !n.contains(".aux")));
+            let found = same_base_params(&model, &base).unwrap();
+            assert_eq!(found.shared, base.len());
+            assert!(found.extra.iter().any(|n| n.ends_with(".aux.weight")));
+            // One float of one base tensor moved by one unit of the last place.
+            let name = "fusion.0.attn_q.weight";
+            let mut v = host_f32(&model[name]).unwrap();
+            v[3] = f32::from_bits(v[3].to_bits() + 1);
+            let shape = model[name].shape().to_vec();
+            model.insert(name.into(), Array::from_slice(&v, &shape));
+            let err = same_base_params(&model, &base).unwrap_err();
+            assert!(err.to_string().contains(name), "{err}");
+            // In the file a ternary matrix may hide it (its codes and f16 scale can stay the
+            // same), a norm, stored as f32, cannot.
+            model.insert(name.into(), base[name].deep_clone());
+            let norm = "fusion.0.q_norm.weight";
+            let mut v = host_f32(&model[norm]).unwrap();
+            v[0] = f32::from_bits(v[0].to_bits() + 1);
+            model.insert(norm.into(), Array::from_slice(&v, &[v.len() as i32]));
+            let mb = file(&model, &mem_cfg);
+            let err = same_base(&Gguf::parse(&mb).unwrap(), &bg).unwrap_err();
+            assert!(err.to_string().contains(norm), "{err}");
+            // A tensor the base has not and that is not the memory's.
+            let mut odd = base.clone();
+            odd.insert("extra.weight".into(), Array::from_slice(&[1.0f32], &[1]));
+            assert!(same_base_params(&odd, &base).is_err());
+        });
+    }
 
     #[test]
     fn ternary_packing_round_trip() {

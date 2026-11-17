@@ -30,8 +30,8 @@ use crate::{
     },
     sequence::{Tok, QTYPES},
     session::{
-        apply_update, keep_going, loss_and_grads, qat_due, replace_params, sorted_names, stop_step,
-        train_step, Brake, CompiledGrad, Progress,
+        apply_update, keep_going, loss_and_grads_of, qat_due, replace_params, sorted_names,
+        stop_step, train_step, values_and_grads_of, Brake, CompiledGrad, Progress,
     },
     train::{source_weights, JsonLog},
 };
@@ -58,6 +58,68 @@ pub struct S2State {
     pub qat: bool,
     #[serde(default)]
     pub extra: serde_json::Value,
+    /// With `--stop-recall-acc` ([`RecallStop`]): the readings (asks the last exit answers right,
+    /// asks) of the last `recall` steps, oldest first, at most the rule's window, and the number
+    /// of `recall` steps so far, so that a resumed run reads the same window. Empty and 0
+    /// otherwise, and then not written.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recall_window: Vec<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub recall_steps: u64,
+}
+
+fn is_zero(x: &u64) -> bool {
+    *x == 0
+}
+
+/// The stop rule of phase A (`docs/s6-sleep4-prereg.md` §4.2, §11 item 5, `--stop-recall-acc`
+/// and `--stop-recall-window`): the run ends at the first `recall` step (a sequence step on
+/// `recall` with asks) at which the accuracy of the last exit, pooled over the asks of the last
+/// `window` `recall` steps (that step included), is at least `acc`. The window must be full: no
+/// run ends before its `window`-th `recall` step. Each step is read on its own batch before its
+/// update, as the training log reads it (`ask_acc`, `ask_splits[0]`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RecallStop {
+    pub acc: f64,
+    pub window: usize,
+}
+
+impl RecallStop {
+    pub fn new(acc: f64, window: usize) -> Result<Self> {
+        if !(acc > 0.0 && acc <= 1.0) {
+            bail!("--stop-recall-acc must be in (0, 1], not {acc}");
+        }
+        if window == 0 {
+            bail!("--stop-recall-window must be at least 1");
+        }
+        Ok(Self { acc, window })
+    }
+
+    /// Adds the reading of one `recall` step (`right` asks answered right of `asks`) to `seen`,
+    /// the last steps of the run (oldest first; the oldest is dropped past the window), and
+    /// returns the pooled accuracy of the window when the window is full and it reaches the bar:
+    /// the run then ends at this step.
+    pub fn push(&self, seen: &mut Vec<[f64; 2]>, right: f64, asks: f64) -> Option<f64> {
+        seen.push([right, asks]);
+        if seen.len() > self.window {
+            let extra = seen.len() - self.window;
+            seen.drain(..extra);
+        }
+        let pooled = Self::pooled(seen);
+        (seen.len() == self.window && pooled >= self.acc).then_some(pooled)
+    }
+
+    /// Σ right over Σ asks of `seen` (NaN when it holds no ask).
+    pub fn pooled(seen: &[[f64; 2]]) -> f64 {
+        let (right, asks) = seen
+            .iter()
+            .fold((0.0, 0.0), |(r, a), [x, y]| (r + x, a + y));
+        if asks > 0.0 {
+            right / asks
+        } else {
+            f64::NAN
+        }
+    }
 }
 
 /// Loss and throughput of one step.
@@ -81,6 +143,10 @@ pub struct SeqReport {
     /// cross-entropy, and the asks its head decodes right.
     pub aux_ce_sum: f64,
     pub aux_right: f64,
+    /// The same two per memory layer (`docs/s6-sleep4-prereg.md` §11 item 2): `aux_ce_sum` and
+    /// `aux_right` are their sums over the layers.
+    pub aux_ce_layers: Vec<f64>,
+    pub aux_right_layers: Vec<f64>,
     /// The asks the last exit answers right, split by delay and by the colours the door was
     /// shown with (`s2::memory::ask_splits`).
     pub splits: Vec<f64>,
@@ -350,6 +416,8 @@ impl S2Session {
             opt: opt.clone(),
             qat: false,
             extra: serde_json::Value::Null,
+            recall_window: Vec::new(),
+            recall_steps: 0,
         };
         Self {
             cfg,
@@ -487,24 +555,35 @@ impl S2Session {
         n: usize,
     ) -> Result<(Array, ParamMap)> {
         let wv = model::exit_weight_vec(&self.cfg, Some(n));
+        let opt = &self.opt.cfg;
         if self.compile {
             let names = sorted_names(&self.params);
             let cfg = self.cfg.clone();
             let dis = self.dis_beta.is_some();
             let kd = self.exit_kd;
             let f = self.dec_fn.entry(qat).or_insert_with(|| {
-                CompiledGrad::new(names, move |p, b| {
-                    if let Some(kd) = kd {
-                        let beta = dis.then(|| &b[DEC_ARRAYS + 1]);
-                        let w = &b[DEC_ARRAYS];
-                        model::decision_loss_kd(p, &cfg, &dec_from(b), qat, w, beta, kd)
-                    } else if dis {
-                        let (w, beta) = (&b[DEC_ARRAYS], &b[DEC_ARRAYS + 1]);
-                        model::decision_loss_dis(p, &cfg, &dec_from(b), qat, w, beta)
-                    } else {
-                        model::decision_loss_weighted(p, &cfg, &dec_from(b), qat, &b[DEC_ARRAYS])
-                    }
-                })
+                CompiledGrad::trained(
+                    names,
+                    |n| opt.trains(n),
+                    move |p, b| {
+                        if let Some(kd) = kd {
+                            let beta = dis.then(|| &b[DEC_ARRAYS + 1]);
+                            let w = &b[DEC_ARRAYS];
+                            model::decision_loss_kd(p, &cfg, &dec_from(b), qat, w, beta, kd)
+                        } else if dis {
+                            let (w, beta) = (&b[DEC_ARRAYS], &b[DEC_ARRAYS + 1]);
+                            model::decision_loss_dis(p, &cfg, &dec_from(b), qat, w, beta)
+                        } else {
+                            model::decision_loss_weighted(
+                                p,
+                                &cfg,
+                                &dec_from(b),
+                                qat,
+                                &b[DEC_ARRAYS],
+                            )
+                        }
+                    },
+                )
             });
             let mut inputs = dec_arrays(batch);
             inputs.push(Array::from_slice(&wv, &[wv.len() as i32]));
@@ -519,21 +598,30 @@ impl S2Session {
                 .dis_beta
                 .as_ref()
                 .map(|b| Array::from_slice(b, &[b.len() as i32]));
-            loss_and_grads(&self.params, batch, |p, b| {
-                model::decision_loss_kd(p, cfg, b, qat, &wts, beta.as_ref(), kd)
-            })
+            loss_and_grads_of(
+                &self.params,
+                |n| opt.trains(n),
+                batch,
+                |p, b| model::decision_loss_kd(p, cfg, b, qat, &wts, beta.as_ref(), kd),
+            )
         } else if let Some(beta) = &self.dis_beta {
             let cfg = &self.cfg;
             let wts = Array::from_slice(&wv, &[wv.len() as i32]);
             let beta = Array::from_slice(beta, &[beta.len() as i32]);
-            loss_and_grads(&self.params, batch, |p, b| {
-                model::decision_loss_dis(p, cfg, b, qat, &wts, &beta)
-            })
+            loss_and_grads_of(
+                &self.params,
+                |n| opt.trains(n),
+                batch,
+                |p, b| model::decision_loss_dis(p, cfg, b, qat, &wts, &beta),
+            )
         } else {
             let cfg = &self.cfg;
-            loss_and_grads(&self.params, batch, |p, b| {
-                model::decision_loss_exits(p, cfg, b, qat, Some(n))
-            })
+            loss_and_grads_of(
+                &self.params,
+                |n| opt.trains(n),
+                batch,
+                |p, b| model::decision_loss_exits(p, cfg, b, qat, Some(n)),
+            )
         }
     }
 
@@ -607,15 +695,16 @@ impl S2Session {
         let wv = model::exit_weight_vec(&self.cfg, None);
         let wts = Array::from_slice(&wv, &[wv.len() as i32]);
         let cfg = &self.cfg;
+        let trains = |n: &str| self.opt.cfg.trains(n);
         let Some((parts, whole)) = self.sleep_parts(batch)? else {
-            return loss_and_grads(&self.params, batch, |p, b| {
+            return loss_and_grads_of(&self.params, trains, batch, |p, b| {
                 crate::s2::memory::seq_loss(p, cfg, &b.frames, &b.pauses, &wts, qat, how)
             });
         };
         // The batch in parts: their losses and gradients add up to the whole batch's.
         let mut sum = None;
         for b in &parts {
-            let (l, g) = loss_and_grads(&self.params, b, |p, b| {
+            let (l, g) = loss_and_grads_of(&self.params, trains, b, |p, b| {
                 crate::s2::memory::seq_loss_part(
                     p, cfg, &b.frames, &b.pauses, &wts, qat, how, whole,
                 )
@@ -640,28 +729,27 @@ impl S2Session {
         let wts = Array::from_slice(&wv, &[wv.len() as i32]);
         let cfg = &self.cfg;
         let whole = parts.map(|(_, w)| *w);
-        let f = |p: std::collections::HashMap<std::rc::Rc<str>, Array>,
-                 b: &crate::s2::seq::FrameBatch|
-         -> mlx_rs::error::Result<Vec<Array>> {
-            let asks = crate::s2::memory::Asks {
-                ask: &b.asks,
-                colour: &b.colours,
-                bucket: &b.buckets,
-                shown: &b.shown,
+        let trains = |n: &str| self.opt.cfg.trains(n);
+        let f =
+            |p: &ParamMap, b: &crate::s2::seq::FrameBatch| -> mlx_rs::error::Result<Vec<Array>> {
+                let asks = crate::s2::memory::Asks {
+                    ask: &b.asks,
+                    colour: &b.colours,
+                    bucket: &b.buckets,
+                    shown: &b.shown,
+                };
+                crate::s2::memory::seq_loss_asks_part(
+                    p, cfg, &b.frames, &b.pauses, &wts, qat, how, asks, whole,
+                )
             };
-            crate::s2::memory::seq_loss_asks_part(
-                &p, cfg, &b.frames, &b.pauses, &wts, qat, how, asks, whole,
-            )
-        };
-        let mut f = mlx_rs::transforms::keyed_value_and_grad(f);
         let Some((parts, _)) = parts else {
-            return Ok(f(self.params.clone(), batch)?);
+            return values_and_grads_of(&self.params, trains, batch, f);
         };
         // The batch in parts: every output is a sum over the rows (the loss and the centres
         // weighted for it, `s2::memory::Whole`), and so the gradient.
         let mut sum = None;
         for b in parts {
-            let (v, g) = f(self.params.clone(), b)?;
+            let (v, g) = values_and_grads_of(&self.params, trains, b, f)?;
             add_part(&mut sum, v, g)?;
         }
         sum.context("a sequence step with no part")
@@ -711,9 +799,10 @@ impl S2Session {
         let cfg = &self.cfg;
         let parts = self.sleep_parts(batch)?;
         let (values, grads) = self.sleep_report_grads(batch, parts.as_ref(), qat, how)?;
-        let [loss, deep, last, asks, aux_ce, aux_right, splits, centre]: [Array; 8] = values
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("eight outputs expected"))?;
+        let [loss, deep, last, asks, aux_ce, aux_right, splits, centre, aux_layers]: [Array; 9] =
+            values
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("nine outputs expected"))?;
         let host = |a: &Array| -> Result<Vec<f64>> {
             Ok(crate::model::host_f32(a)?
                 .into_iter()
@@ -792,7 +881,9 @@ impl S2Session {
                 self.params.insert(name, new);
             }
         }
-        mlx_rs::transforms::eval([&deep, &last, &asks, &aux_ce, &aux_right])?;
+        mlx_rs::transforms::eval([&deep, &last, &asks, &aux_ce, &aux_right, &aux_layers])?;
+        let aux_layers = host(&aux_layers)?;
+        let (aux_ce_layers, aux_right_layers) = aux_layers.split_at(aux_layers.len() / 2);
         self.state.step += 1;
         Ok((
             StepStats {
@@ -806,6 +897,8 @@ impl S2Session {
                 asks: asks.item_exact::<f32>() as f64,
                 aux_ce_sum: aux_ce.item_exact::<f32>() as f64,
                 aux_right: aux_right.item_exact::<f32>() as f64,
+                aux_ce_layers: aux_ce_layers.to_vec(),
+                aux_right_layers: aux_right_layers.to_vec(),
                 splits: host(&splits)?,
                 off,
                 groups,
@@ -1966,6 +2059,8 @@ pub struct S2DecideArgs {
     /// over it is cut into parts of rows whose gradients are averaged: the same update with
     /// less memory. Needs `length_pool > 1`.
     pub step_mem_gb: f64,
+    /// The stop rule of phase A ([`RecallStop`]; `None`: the run ends with its budget).
+    pub stop_recall: Option<RecallStop>,
 }
 
 /// Validation summary of one model mode.
@@ -2077,6 +2172,24 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             }
             let n = expand_pretrained(&mut p, &src, &cfg)?;
             println!("initialized {n} tensors from {}", file.display());
+            if a.opt.freeze_base {
+                // A frozen base is the base: every tensor it holds must come from the file.
+                let mut missing: Vec<&str> = p
+                    .keys()
+                    .filter(|k| !a.opt.trains(k) && !src.contains_key(k.as_ref()))
+                    .map(|k| k.as_ref())
+                    .collect();
+                missing.sort_unstable();
+                if !missing.is_empty() {
+                    bail!(
+                        "--freeze-base: {} has no {} (a frozen tensor would stay at its random start)",
+                        file.display(),
+                        missing.join(", ")
+                    );
+                }
+            }
+        } else if a.opt.freeze_base && a.init_params.is_none() {
+            bail!("--freeze-base needs --init (or --init-params): the base it holds");
         }
         if a.memory_out_init > 0.0 {
             if !cfg.memory {
@@ -2146,6 +2259,17 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             "init": a.init, "tokenizer": tok_path, "qat_frac": a.qat_frac, "loop_dropout": a.loop_dropout});
         s
     };
+    if resumed && s.opt.cfg.freeze_base != a.opt.freeze_base {
+        bail!(
+            "the resumed run has freeze_base {}: resume it {} --freeze-base",
+            s.opt.cfg.freeze_base,
+            if s.opt.cfg.freeze_base {
+                "with"
+            } else {
+                "without"
+            }
+        );
+    }
     let stop_at = start(
         &mut s,
         resumed,
@@ -2154,6 +2278,55 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         a.init_params.as_deref(),
     )?;
     s.cfg.bf16 = a.bf16;
+    // docs/s6-sleep4-prereg.md §3.2 (K3): the base frozen, the memory alone trained. Its tensors
+    // are kept as they start and checked bit for bit against them whenever the run saves.
+    let frozen = if s.opt.cfg.freeze_base {
+        if !s.cfg.memory {
+            bail!("--freeze-base needs a memory config: without one nothing would train");
+        }
+        if a.seq_records.is_some() {
+            bail!("--freeze-base does not apply to --seq-records (temporal sequences)");
+        }
+        if a.ema > 0.0 {
+            bail!("--freeze-base with --ema: the average of a frozen tensor moves by rounding");
+        }
+        let (held, trained) = frozen_split(&s.params, &s.opt.cfg);
+        let size = |v: &[(String, usize)]| v.iter().map(|(_, n)| n).sum::<usize>();
+        println!(
+            "frozen base: {} tensors ({} parameters) held at their values; the gradient norm and \
+             its clip are taken over the {} trained tensors ({} parameters): {}",
+            held.len(),
+            size(&held),
+            trained.len(),
+            size(&trained),
+            trained
+                .iter()
+                .map(|(k, _)| k.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        Some(frozen_bits(&s.params, &s.opt.cfg)?)
+    } else {
+        None
+    };
+    let check_frozen = |s: &S2Session| -> Result<()> {
+        if let Some(start) = &frozen {
+            let now = frozen_bits(&s.params, &s.opt.cfg)?;
+            if let Some(k) = start.keys().find(|k| now.get(*k) != start.get(*k)) {
+                bail!("--freeze-base: {k} moved by step {}", s.state.step);
+            }
+        }
+        Ok(())
+    };
+    if let Some(rule) = &a.stop_recall {
+        if !a.seq_log || a.sleep_records.is_empty() {
+            bail!("--stop-recall-acc needs --seq-log and --sleep-records with recall");
+        }
+        println!(
+            "the run ends at the first recall step whose last {} recall steps answer at least {} of their asks (pooled)",
+            rule.window, rule.acc
+        );
+    }
     if !(0.0..model::STABLE_QAT_A_MAX).contains(&a.qat_grad_a) {
         bail!(
             "--qat-grad-a must be in [0, {}) (arXiv 2601.19320, Theorem 4.2)",
@@ -2374,7 +2547,10 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
     }
     let mut seq_loss_sum = (0.0f64, 0usize);
     let mut seq_steps = 0u64;
-    while keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs) {
+    // The pooled accuracy of the window at which the stop rule ended the run.
+    let mut stopped: Option<f64> = None;
+    while stopped.is_none() && keep_going(&a.progress, stop_at, s.state.step, s.state.elapsed_secs)
+    {
         brake.rest(&mut t0);
         let frac = a.progress.frac(s.state.step, s.state.elapsed_secs);
         if !s.state.qat && qat_due(frac, a.qat_frac) {
@@ -2459,6 +2635,13 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                             let n = rep.asks * s.cfg.state_layers as f64;
                             rec["aux_ce"] = (rep.aux_ce_sum / n).into();
                             rec["aux_acc"] = (rep.aux_right / n).into();
+                            // Each memory layer apart (docs/s6-sleep4-prereg.md §11 item 2): the
+                            // mean above is the mean of these.
+                            let per = |v: &[f64]| -> Vec<f64> {
+                                v.iter().map(|x| x / rep.asks).collect()
+                            };
+                            rec["aux_ce_layers"] = json!(per(&rep.aux_ce_layers));
+                            rec["aux_acc_layers"] = json!(per(&rep.aux_right_layers));
                         }
                     }
                     if let Some(gr) = rep.groups {
@@ -2468,6 +2651,15 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
                         rec["memory"] = m;
                     }
                     log.write(&rec)?;
+                    if let Some(rule) = &a.stop_recall {
+                        if sl.games[g].0 == "recall" && rep.asks > 0.0 {
+                            s.state.recall_steps += 1;
+                            let seen = &mut s.state.recall_window;
+                            if let Some(acc) = rule.push(seen, rep.splits[0], rep.asks) {
+                                stopped = Some(acc);
+                            }
+                        }
+                    }
                     st
                 } else {
                     s.sleep_step(&b, lr_scale, qat, how)?
@@ -2632,6 +2824,7 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             )?;
         }
         if last_ckpt.elapsed().as_secs_f64() >= a.checkpoint_minutes * 60.0 {
+            check_frozen(&s)?;
             save(&s, &last)?;
             if let Some(e) = &mut ema {
                 with_params(&mut s, e, |s| save(s, &ema_dir))?;
@@ -2639,7 +2832,8 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
             last_ckpt = Instant::now();
         }
     }
-    if !a.progress.done(s.state.step, s.state.elapsed_secs) {
+    check_frozen(&s)?;
+    if stopped.is_none() && !a.progress.done(s.state.step, s.state.elapsed_secs) {
         // --stop-after: save and exit without the final validation.
         save(&s, &last)?;
         if let Some(e) = &mut ema {
@@ -2652,11 +2846,29 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         );
         return Ok(());
     }
-    println!("done: {} steps", s.state.step);
+    match stopped {
+        Some(acc) => println!(
+            "done: stopped by the rule at step {} (recall step {}: {acc:.4} over the last {} recall steps)",
+            s.state.step,
+            s.state.recall_steps,
+            s.state.recall_window.len()
+        ),
+        None => println!("done: {} steps", s.state.step),
+    }
     let f = validate(&s, &data, &val, false, "f32", &mut log)?;
     let t = validate(&s, &data, &val, true, "ternary", &mut log)?;
     println!("final val accuracy (last exit): latent f32 {f:.4}, ternary {t:.4}");
-    log.write(&json!({"step": s.state.step, "final": true, "acc_f32": f, "acc_ternary": t}))?;
+    let mut fin = json!({"step": s.state.step, "final": true, "acc_f32": f, "acc_ternary": t});
+    if a.stop_recall.is_some() {
+        // docs/s6-sleep4-prereg.md §4.2: whether the rule ended the run, or its budget (the cap).
+        fin["stopped_by_rule"] = stopped.is_some().into();
+        fin["recall_steps"] = s.state.recall_steps.into();
+        fin["recall_window_acc"] = RecallStop::pooled(&s.state.recall_window).into();
+    }
+    if frozen.is_some() {
+        fin["frozen_base_checked"] = true.into();
+    }
+    log.write(&fin)?;
     save(&s, &last)?;
     println!("checkpoint {}", last.display());
     if let Some(e) = &mut ema {
@@ -2670,6 +2882,30 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         println!("EMA checkpoint {}", ema_dir.display());
     }
     Ok(())
+}
+
+/// With a frozen base, the tensors it holds and the trained ones (name, scalars), in name order.
+pub fn frozen_split(p: &ParamMap, opt: &OptConfig) -> (Vec<(String, usize)>, Vec<(String, usize)>) {
+    let mut all: Vec<(String, usize, bool)> = p
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.size(), opt.trains(k)))
+        .collect();
+    all.sort();
+    let (trained, held): (Vec<_>, Vec<_>) = all.into_iter().partition(|x| x.2);
+    let strip = |v: Vec<(String, usize, bool)>| v.into_iter().map(|(k, n, _)| (k, n)).collect();
+    (strip(held), strip(trained))
+}
+
+/// The bits of every tensor a frozen base holds (`OptConfig::trains` false), by name: two
+/// readings are equal exactly when every base tensor is bit-identical.
+pub fn frozen_bits(p: &ParamMap, opt: &OptConfig) -> Result<BTreeMap<String, Vec<u32>>> {
+    p.iter()
+        .filter(|(k, _)| !opt.trains(k))
+        .map(|(k, v)| {
+            let bits = host_f32(v)?.iter().map(|x| x.to_bits()).collect();
+            Ok((k.to_string(), bits))
+        })
+        .collect()
 }
 
 /// Runs `f` on the session with `params` in place of its weights, then puts them back.
@@ -3215,5 +3451,561 @@ mod tests {
                 }
             }
         });
+    }
+
+    /// What the frozen-base tests share: a memory config (v3's memory: shared keys, values of
+    /// form frame, the auxiliary head), its base (the same config without the memory) with random
+    /// weights, the memory model started from it as `s2-decide --init` starts it (the base's
+    /// tensors, the memory fresh, its read-out at zero), two batches of `recall` sequences and
+    /// a set of stateless records.
+    struct Frozen {
+        _dir: tempfile::TempDir,
+        _tok_dir: tempfile::TempDir,
+        sleep: S2Config,
+        base_cfg: S2Config,
+        base: ParamMap,
+        start: ParamMap,
+        batches: Vec<crate::s2::seq::FrameBatch>,
+        data: S2Data,
+    }
+
+    fn frozen_setup(sleep: S2Config, base_seed: u64) -> Frozen {
+        use crate::s2::config::{MemoryQk, MemoryValue};
+        let dir = tempfile::tempdir().unwrap();
+        let rec = dir.path().join("recall.jsonl");
+        crate::s2::seq::generate("recall", 12, 16, 3, &rec).unwrap();
+        let (tok_dir, tok) = s2_tok();
+        let mut sleep = S2Config {
+            memory: true,
+            memory_qk: MemoryQk::Shared,
+            memory_value: MemoryValue::Frame,
+            memory_aux: true,
+            ..sleep
+        };
+        sleep.memory_run.aux_weight = 1.0;
+        sleep.validate().unwrap();
+        let base_cfg = S2Config {
+            memory: false,
+            memory_qk: MemoryQk::Separate,
+            memory_value: MemoryValue::Token,
+            memory_aux: false,
+            memory_run: Default::default(),
+            ..sleep.clone()
+        };
+        base_cfg.validate().unwrap();
+        let base = crate::s2::golden::golden_params(&base_cfg, base_seed).unwrap();
+        let mut start = model::init(&sleep, S2Parts::DECISION, 7).unwrap();
+        let n = expand_pretrained(&mut start, &base, &sleep).unwrap();
+        assert_eq!(n, base.len(), "every base tensor comes from the base");
+        assert!(start
+            .keys()
+            .all(|k| k.starts_with("mem.") || base.contains_key(k)));
+        let sd = crate::s2::seq::SleepData::load(&[rec], None, &tok, &sleep).unwrap();
+        let mut rng = Rng::new(11);
+        let batches: Vec<_> = (0..2).map(|_| sd.sample(5, &mut rng, 32).1).collect();
+        let data = synthetic(&tok, &base_cfg, 30, 1);
+        Frozen {
+            _dir: dir,
+            _tok_dir: tok_dir,
+            sleep,
+            base_cfg,
+            base,
+            start,
+            batches,
+            data,
+        }
+    }
+
+    fn small_sleep() -> S2Config {
+        S2Config {
+            hidden_size: 64,
+            intermediate_size: 32,
+            state_loops: 2,
+            exits: vec![1, 2, 3, 4],
+            fuse_numbers: true,
+            max_state_tokens: 96,
+            ..S2Config::tiny(262)
+        }
+    }
+
+    /// The recipe of the runs (v3's: AdamW, `mem.*` at x10, the gates held) with the base frozen.
+    fn frozen_opt(freeze: bool) -> OptConfig {
+        OptConfig {
+            muon: false,
+            mem_lr_mult: 10.0,
+            mem_gate_lr_mult: 0.0,
+            freeze_base: freeze,
+            ..OptConfig::default()
+        }
+    }
+
+    const ALL_READINGS: SeqWants = SeqWants {
+        groups: true,
+        trace: false,
+        off: true,
+        centre_ema: 0.0,
+    };
+
+    fn bits(a: &Array) -> Vec<u32> {
+        crate::model::host_f32(&a.as_dtype(Dtype::Float32).unwrap())
+            .unwrap()
+            .iter()
+            .map(|x| x.to_bits())
+            .collect()
+    }
+
+    /// Equal as floats, element for element (+0 and −0 are the same answer).
+    fn same_floats(a: &Array, b: &Array) -> bool {
+        a.shape() == b.shape()
+            && crate::model::host_f32(a)
+                .unwrap()
+                .iter()
+                .zip(crate::model::host_f32(b).unwrap())
+                .all(|(x, y)| *x == y)
+    }
+
+    /// `--freeze-base` (`docs/s6-sleep4-prereg.md` §3.2, K3; §11 item 1), with QAT, a sequence
+    /// batch in parts of 2 (`--sleep-chunk 2`), the reading without the memory, the auxiliary
+    /// loss and the compiled stateless step, as the runs take them:
+    ///
+    /// - (a) after the steps every tensor of the base is bit-identical to its start, the memory's
+    ///   read-out and auxiliary heads moved, and the held gates did not;
+    /// - (c) only the memory's gradients are computed (the base's are not in the map at all), they
+    ///   are the memory's part of the full gradient, and the logged gradient norm (and so the clip)
+    ///   is their norm, not the norm of every gradient;
+    /// - (b) the trained model with its memory zeroed answers every frame exactly as the base does,
+    ///   bit for bit, under QAT, and so does its stateless forward;
+    /// - the exported ternary file holds the base's tensors byte for byte (the parity check of
+    ///   §4.1, through `s2::gguf::same_base`), and the checkpoint the base's values.
+    ///
+    /// It also prints the time of a frozen sequence step against a full one (CPU, deciding
+    /// nothing).
+    #[test]
+    fn a_frozen_base_trains_the_memory_alone_and_stays_the_base() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let f = frozen_setup(small_sleep(), 5);
+            let how = crate::s2::memory::Sleep {
+                passes: 2,
+                every: crate::s2::memory::SLEEP_EVERY,
+                full: false,
+            };
+            let mut s = S2Session::new(
+                f.sleep.clone(),
+                params::deep_clone(&f.start),
+                frozen_opt(true),
+                "s2-decide",
+                0,
+                60.0,
+            );
+            s.sleep_chunk = 2;
+            let mut full = S2Session::new(
+                f.sleep.clone(),
+                params::deep_clone(&f.start),
+                frozen_opt(false),
+                "s2-decide",
+                0,
+                60.0,
+            );
+            full.sleep_chunk = 2;
+            let mem_names: Vec<String> = {
+                let mut v: Vec<String> = f
+                    .start
+                    .keys()
+                    .filter(|k| k.starts_with("mem."))
+                    .map(|k| k.to_string())
+                    .collect();
+                v.sort();
+                v
+            };
+            let start_bits = frozen_bits(&f.start, &s.opt.cfg).unwrap();
+            assert_eq!(start_bits.len(), f.base.len());
+            let (mut t_frozen, mut t_full) = (0f64, 0f64);
+            for (i, b) in f.batches.iter().chain(&f.batches).enumerate() {
+                // (c) The gradients of a frozen step: the memory's alone, equal to the memory's
+                // part of the gradients of every parameter.
+                let parts = s.sleep_parts(b).unwrap();
+                let (_, g) = s.sleep_report_grads(b, parts.as_ref(), true, how).unwrap();
+                let mut keys: Vec<String> = g.keys().map(|k| k.to_string()).collect();
+                keys.sort();
+                assert_eq!(keys, mem_names, "the memory's gradients alone");
+                full.params = params::deep_clone(&s.params);
+                let (_, g_all) = full
+                    .sleep_report_grads(b, parts.as_ref(), true, how)
+                    .unwrap();
+                assert!(g_all.len() > g.len());
+                let sq = |m: &ParamMap, only_mem: bool| -> f64 {
+                    m.iter()
+                        .filter(|(k, _)| !only_mem || k.starts_with("mem."))
+                        .map(|(_, v)| {
+                            crate::model::host_f32(v)
+                                .unwrap()
+                                .iter()
+                                .map(|x| (*x as f64).powi(2))
+                                .sum::<f64>()
+                        })
+                        .sum()
+                };
+                for (k, v) in &g {
+                    assert!(
+                        v.all_close(&g_all[k], 1e-4, 1e-6, None).unwrap(),
+                        "{k}: the frozen step's gradient is not the memory's part of the full one"
+                    );
+                }
+                let (mem_norm, all_norm) = (sq(&g, false).sqrt(), sq(&g_all, false).sqrt());
+                assert!((sq(&g_all, true).sqrt() / mem_norm - 1.0).abs() < 1e-4);
+                assert!(
+                    all_norm > mem_norm * 1.001,
+                    "the base has a gradient to leave out"
+                );
+                let t0 = Instant::now();
+                let (st, rep) = s
+                    .sleep_step_report(b, 1.0, true, how, ALL_READINGS)
+                    .unwrap();
+                t_frozen += t0.elapsed().as_secs_f64();
+                let t0 = Instant::now();
+                full.sleep_step_report(b, 1.0, true, how, ALL_READINGS)
+                    .unwrap();
+                t_full += t0.elapsed().as_secs_f64();
+                assert!(
+                    (st.grad_norm as f64 / mem_norm - 1.0).abs() < 1e-4,
+                    "step {i}: logged norm {} vs the memory's {mem_norm} (all: {all_norm})",
+                    st.grad_norm
+                );
+                // The groups of the log: the memory's alone.
+                let groups = rep.groups.unwrap();
+                assert_eq!(groups.keys().collect::<Vec<_>>(), ["mem"]);
+                // The auxiliary readings per layer add up to the logged sums.
+                assert_eq!(rep.aux_right_layers.len(), f.sleep.state_layers);
+                let sum = |v: &[f64]| v.iter().sum::<f64>();
+                assert!((sum(&rep.aux_right_layers) - rep.aux_right).abs() < 1e-6);
+                assert!((sum(&rep.aux_ce_layers) - rep.aux_ce_sum).abs() < 1e-3);
+                assert!(rep
+                    .aux_right_layers
+                    .iter()
+                    .all(|&r| r >= 0.0 && r <= rep.asks));
+                // A stateless step: nothing of the base trains; the compiled step returns the
+                // memory's gradients alone (zero: no memory in a stateless forward).
+                let d = data::sample_batch(&f.data, &[1.0], 8, &mut Rng::new(i as u64), 16);
+                let (_, g) = s.parts_grads(std::slice::from_ref(&d), true, 4).unwrap();
+                assert!(g.keys().all(|k| k.starts_with("mem.")) && g.len() == mem_names.len());
+                assert!(g.values().all(|v| v
+                    .abs()
+                    .unwrap()
+                    .max(None)
+                    .unwrap()
+                    .item_exact::<f32>()
+                    == 0.0));
+                s.decision_step(&d, 1.0, true).unwrap();
+            }
+            println!(
+                "a sequence step of 5 sequences in parts of 2 (CPU, QAT, 2 passes): frozen base {:.3} s, every parameter trained {:.3} s",
+                t_frozen / 4.0,
+                t_full / 4.0
+            );
+            // (a) The base did not move, bit for bit; the memory did.
+            assert_eq!(frozen_bits(&s.params, &s.opt.cfg).unwrap(), start_bits);
+            let moved = |k: &str| bits(&s.params[k]) != bits(&f.start[k]);
+            for l in 0..f.sleep.state_layers {
+                for part in ["out", "aux", "qk", "v", "norm"] {
+                    assert!(
+                        moved(&format!("mem.{l}.{part}.weight")),
+                        "mem.{l}.{part} did not move"
+                    );
+                }
+                for gate in ["alpha", "beta"] {
+                    assert!(
+                        !moved(&format!("mem.{l}.{gate}.weight")),
+                        "the gate {gate} moved"
+                    );
+                }
+            }
+            assert!(s.opt.state_arrays().keys().all(|k| k.contains(".mem.")));
+            assert!(full
+                .params
+                .iter()
+                .any(|(k, v)| !k.starts_with("mem.") && bits(v) != bits(&f.start[k])));
+            // (b) The memory zeroed: every frame answered from an empty memory is the base's
+            // answer, bit for bit, under QAT, though the read-out is no longer zero.
+            assert!(
+                s.params["mem.0.out.weight"]
+                    .abs()
+                    .unwrap()
+                    .max(None)
+                    .unwrap()
+                    .item_exact::<f32>()
+                    > 0.0
+            );
+            let trained = model::prepare(&s.params, &f.sleep, true).unwrap();
+            let n = f.sleep.n_exits();
+            let mut frames = 0;
+            for b in &f.batches {
+                for frame in &b.frames {
+                    let zero =
+                        crate::s2::memory::Memory::zeros(&f.sleep, frame.ids.dim(0)).unwrap();
+                    let (with, _) =
+                        crate::s2::memory::wake(&trained, &f.sleep, frame, n, &zero).unwrap();
+                    let base = model::forward(&f.base, &f.base_cfg, frame, true).unwrap();
+                    assert!(
+                        same_floats(&with, &base),
+                        "frame {frames}: the zeroed memory is not the base"
+                    );
+                    frames += 1;
+                }
+                // The reading without the memory of the training log is the base's too.
+                let asks = crate::s2::memory::Asks {
+                    ask: &b.asks,
+                    colour: &b.colours,
+                    bucket: &b.buckets,
+                    shown: &b.shown,
+                };
+                let wv = model::exit_weight_vec(&f.sleep, None);
+                let wts = Array::from_slice(&wv, &[wv.len() as i32]);
+                let off = crate::s2::memory::asks_read_off(
+                    &s.params, &f.sleep, &b.frames, &wts, true, asks,
+                )
+                .unwrap();
+                let base = crate::s2::memory::asks_read_off(
+                    &f.base,
+                    &f.base_cfg,
+                    &b.frames,
+                    &wts,
+                    true,
+                    asks,
+                )
+                .unwrap();
+                for (x, y) in off.iter().zip(&base) {
+                    assert!(same_floats(x, y));
+                }
+            }
+            assert!(frames > 10);
+            let d = data::sample_batch(&f.data, &[1.0], 8, &mut Rng::new(99), 16);
+            let with = model::forward(&s.params, &f.sleep, &d, true).unwrap();
+            let base = model::forward(&f.base, &f.base_cfg, &d, true).unwrap();
+            assert!(
+                same_floats(&with, &base),
+                "the stateless forward is not the base's"
+            );
+            // The exported files: the base's tensors byte for byte, the memory besides.
+            let tok = crate::s2::data::tests::s2_tokenizer_json();
+            let fmt = crate::s2::gguf::WeightFormat::Ternary;
+            let mb = crate::s2::gguf::to_gguf(&s.params, &f.sleep, &tok, fmt, "m").unwrap();
+            let bb = crate::s2::gguf::to_gguf(&f.base, &f.base_cfg, &tok, fmt, "b").unwrap();
+            let (mg, bg) = (
+                sky_gguf::Gguf::parse(&mb).unwrap(),
+                sky_gguf::Gguf::parse(&bb).unwrap(),
+            );
+            let same = crate::s2::gguf::same_base(&mg, &bg).unwrap();
+            assert_eq!(same.shared, bg.tensors.len());
+            assert!(same
+                .extra
+                .iter()
+                .all(|k| k.starts_with("mem.") && !k.contains(".aux")));
+            let same = crate::s2::gguf::same_base_params(&s.params, &f.base).unwrap();
+            assert_eq!(same.extra.len(), mem_names.len());
+            // ... where the trained file without a frozen base holds other tensors.
+            let fb = crate::s2::gguf::to_gguf(&full.params, &f.sleep, &tok, fmt, "f").unwrap();
+            assert!(crate::s2::gguf::same_base(&sky_gguf::Gguf::parse(&fb).unwrap(), &bg).is_err());
+        });
+    }
+
+    /// §11 item 1: a fresh memory model at the nano config (configs/s6-nano.json with v3's
+    /// memory, the vocabulary of the test tokenizer) under QAT gives its base's logits bit for
+    /// bit, frame after frame of a sequence, with the memory written as it goes: its read-out is
+    /// zero, and so is its ternary form.
+    #[test]
+    fn a_fresh_memory_at_the_nano_config_is_its_base_bit_for_bit_under_qat() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let nano: S2Config =
+                serde_json::from_str(include_str!("../../../../configs/s6-nano.json")).unwrap();
+            let f = frozen_setup(
+                S2Config {
+                    vocab_size: 262,
+                    ..nano
+                },
+                3,
+            );
+            assert_eq!(
+                (
+                    f.sleep.hidden_size,
+                    f.sleep.state_layers,
+                    f.sleep.state_loops
+                ),
+                (144, 2, 2)
+            );
+            let fresh = model::prepare(&f.start, &f.sleep, true).unwrap();
+            for l in 0..f.sleep.state_layers {
+                let wo = &fresh[format!("mem.{l}.out.weight").as_str()];
+                assert!(
+                    bits(wo).iter().all(|&b| b == 0),
+                    "the ternary read-out of layer {l} is +0"
+                );
+            }
+            let n = f.sleep.n_exits();
+            let b = &f.batches[0];
+            let mut mem =
+                crate::s2::memory::Memory::zeros(&f.sleep, b.frames[0].ids.dim(0)).unwrap();
+            for (t, frame) in b.frames.iter().enumerate() {
+                let (with, next) =
+                    crate::s2::memory::wake(&fresh, &f.sleep, frame, n, &mem).unwrap();
+                let base = model::forward(&f.base, &f.base_cfg, frame, true).unwrap();
+                assert_eq!(bits(&with), bits(&base), "frame {t}");
+                mem = next;
+            }
+            assert!(mem
+                .0
+                .iter()
+                .all(|s| s.abs().unwrap().max(None).unwrap().item_exact::<f32>() > 0.0));
+        });
+    }
+
+    /// `--resume` of a run with a frozen base (§11 item 1; as `checkpoint_resume_is_reproducible`):
+    /// the checkpoint keeps `freeze_base`, the optimizer state of the memory alone and the window
+    /// of the stop rule; a run cut after two steps and resumed reproduces the run without the cut
+    /// (the same RNG, steps and parameters), and in both the base is the base, bit for bit.
+    #[test]
+    fn a_frozen_run_resumed_from_its_checkpoint_reproduces_the_run() {
+        let _g = test_util::lock();
+        mlx_rs::with_device(mlx_rs::Device::cpu(), || {
+            let f = frozen_setup(small_sleep(), 5);
+            let how = crate::s2::memory::Sleep::passes(1);
+            // eps 1e-3: AdamW is smooth in the gradient, so that a new session's order of
+            // floating-point sums (a new hash map) moves the parameters by rounding only (see
+            // a_sequence_step_in_parts_is_the_step_of_the_whole_batch).
+            let opt = OptConfig {
+                eps: 1e-3,
+                ..frozen_opt(true)
+            };
+            let rule = RecallStop::new(0.5, 3).unwrap();
+            let step = |s: &mut S2Session, i: usize| {
+                let b = &f.batches[i % 2];
+                let (_, rep) = s
+                    .sleep_step_report(b, 0.5, true, how, ALL_READINGS)
+                    .unwrap();
+                rule.push(&mut s.state.recall_window, rep.splits[0], rep.asks);
+                s.state.recall_steps += 1;
+                let d = data::sample_batch(&f.data, &[1.0], 8, &mut s.state.rng, 16);
+                s.decision_step(&d, 0.5, true).unwrap();
+            };
+            let mut s = S2Session::new(
+                f.sleep.clone(),
+                params::deep_clone(&f.start),
+                opt.clone(),
+                "s2-decide",
+                17,
+                60.0,
+            );
+            s.sleep_chunk = 2;
+            for i in 0..2 {
+                step(&mut s, i);
+            }
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("last");
+            s.save(&dir, &[]).unwrap();
+            for i in 2..4 {
+                step(&mut s, i);
+            }
+            let mut r = S2Session::load(&dir).unwrap();
+            assert!(
+                r.opt.cfg.freeze_base,
+                "the checkpoint keeps the frozen base"
+            );
+            assert_eq!((r.state.step, r.opt.step), (4, 4));
+            assert_eq!(r.state.recall_window.len(), 2);
+            assert!(r.opt.state_arrays().keys().all(|k| k.contains(".mem.")));
+            // The runtime switches of the memory are not in the checkpoint: s2-decide sets them
+            // from its flags at every start, resumed or not (the auxiliary weight here).
+            assert_eq!(r.cfg.memory_run, Default::default());
+            r.cfg.memory_run = s.cfg.memory_run;
+            r.sleep_chunk = 2;
+            for i in 2..4 {
+                step(&mut r, i);
+            }
+            assert_eq!(r.state.rng, s.state.rng);
+            assert_eq!((r.state.step, r.opt.step), (s.state.step, s.opt.step));
+            assert_eq!(r.state.recall_window, s.state.recall_window);
+            assert_eq!(r.state.recall_steps, 4);
+            let start = frozen_bits(&f.start, &opt).unwrap();
+            assert_eq!(frozen_bits(&s.params, &opt).unwrap(), start);
+            assert_eq!(frozen_bits(&r.params, &opt).unwrap(), start);
+            let mut worst = 0f32;
+            for (k, v) in &s.params {
+                let (a, b) = (
+                    crate::model::host_f32(v).unwrap(),
+                    crate::model::host_f32(&r.params[k]).unwrap(),
+                );
+                for (x, y) in a.iter().zip(&b) {
+                    worst = worst.max((x - y).abs());
+                }
+            }
+            println!("a frozen run resumed: largest parameter difference {worst:.1e}");
+            assert!(worst <= 2e-6, "the resumed run differs by {worst}");
+            // A non-frozen checkpoint is not resumed as a frozen one, nor the reverse (decide
+            // refuses it), and the flag is written only when on.
+            let j: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dir.join("state.json")).unwrap())
+                    .unwrap();
+            assert_eq!(j["opt"]["freeze_base"], true);
+            assert_eq!(j["recall_window"].as_array().unwrap().len(), 2);
+        });
+    }
+
+    /// The stop rule of phase A (`docs/s6-sleep4-prereg.md` §4.2) on synthetic readings.
+    #[test]
+    fn the_stop_rule_of_phase_a_ends_at_the_first_full_window_at_the_bar() {
+        assert!(RecallStop::new(0.0, 100).is_err());
+        assert!(RecallStop::new(1.01, 100).is_err());
+        assert!(RecallStop::new(0.98, 0).is_err());
+        let rule = RecallStop::new(0.98, 100).unwrap();
+        // Never before the window is full, even at 1.0.
+        let mut seen = Vec::new();
+        for n in 1..100 {
+            assert_eq!(rule.push(&mut seen, 64.0, 64.0), None, "recall step {n}");
+        }
+        assert_eq!(rule.push(&mut seen, 64.0, 64.0), Some(1.0), "the 100th");
+        // The bar itself ends the run (at least 0.98), just under it does not.
+        let window = |right: f64, asks: f64| -> Vec<[f64; 2]> { vec![[right, asks]; 99] };
+        let mut seen = window(98.0, 100.0);
+        assert_eq!(rule.push(&mut seen, 98.0, 100.0), Some(0.98));
+        let mut seen = window(98.0, 100.0);
+        assert_eq!(rule.push(&mut seen, 97.0, 100.0), None);
+        // Pooled over the asks, not the mean of the steps' accuracies: 99 steps at 63 of 64 and
+        // one at 0 of 1 pool to 0.9843 (the mean of the steps would be 0.9746).
+        let mut seen = window(63.0, 64.0);
+        let got = rule.push(&mut seen, 0.0, 1.0).unwrap();
+        assert!((got - 6237.0 / 6337.0).abs() < 1e-12, "{got}");
+        // The window slides: the oldest step leaves it.
+        let small = RecallStop::new(0.9, 3).unwrap();
+        let mut seen = Vec::new();
+        let accs = [0.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0];
+        let fired: Vec<Option<f64>> = accs
+            .iter()
+            .map(|&a| small.push(&mut seen, a * 10.0, 10.0))
+            .collect();
+        assert_eq!(seen.len(), 3);
+        assert_eq!(fired, [None, None, None, None, None, None, Some(1.0)]);
+        // A rising curve: the rule fires at the first step where the brute-force window of the
+        // last 100 steps reaches the bar, and only there.
+        let curve: Vec<(f64, f64)> = (0..1000)
+            .map(|i| {
+                let asks = 60.0 + (i % 7) as f64;
+                let acc = (0.25 + i as f64 / 700.0).min(1.0);
+                ((acc * asks).round(), asks)
+            })
+            .collect();
+        let brute = (99..curve.len()).find(|&n| {
+            let (r, a) = curve[n - 99..=n]
+                .iter()
+                .fold((0.0, 0.0), |(r, a), x| (r + x.0, a + x.1));
+            r / a >= 0.98
+        });
+        let mut seen = Vec::new();
+        let first = curve
+            .iter()
+            .position(|&(r, a)| rule.push(&mut seen, r, a).is_some());
+        assert!(brute.is_some());
+        assert_eq!(first, brute);
+        assert!(RecallStop::pooled(&[]).is_nan());
     }
 }
