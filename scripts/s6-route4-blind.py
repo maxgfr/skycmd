@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Request-blind rules on the test-like slates of s6-route (docs/s6-route4-study.md, section 8).
+"""Request-blind rules on the test-like slates of s6-route (docs/s6-route4-study.md, section 7).
 
 Standard library only; run with `python3 -I`. The data folder (DATA, default
 /Users/maxime/Documents/Code/skycmd-data/s6-route) is read, never written. No model is run.
