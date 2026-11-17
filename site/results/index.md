@@ -240,7 +240,7 @@ The third version of s6-sleep. v1 stopped at its pilot (above). v2 changed how t
 - **Disclosure.** This is the third version of the same idea on the same games, and its two changes were found by looking at training curves on train sequences; no version had read the development or test seeds before. The first nano run was stopped by the machine's memory guard and started again from scratch with the same seed, its batches computed in parts (amendment 3).
 - **In the browser.** The [Memory](/memory/) page and its Space play `recall` with the published file (seed 0, 752 KB) and its control (715 KB): the evaluation's own episode generator and scoring, with the memory on, zeroed, or the control, frame by frame or over 200 episodes of the validation split, next to the test reading. On the test, that file alone reads 0.4765 at N = 1 and its control 0.245125.
 
-Every table is in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s6-sleep3-nano", and the result block of [`docs/s6-sleep3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep3-prereg.md).
+Every table is in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s6-sleep3-nano", and the result block of [`docs/s6-sleep3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep3-prereg.md). The three versions are told as one story, for a wide audience, in the article [A 752 KB model that remembers, and still fails its gate](/articles/a-memory-that-works-and-a-model-that-does-not).
 
 ### s6-route-nano (s6-nano v2): failed on G1 and G4 {#s6-route-nano-failed}
 
