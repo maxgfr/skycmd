@@ -1,8 +1,8 @@
 # TODO: skycmd, the s6 models, LFM3-1.7B and the flexible weights
 
-Reconciled on 16/11/2026 with the repository: the result files, the pre-registrations and their amendments, `BENCH.md`, the site, `site/public/models/manifest.json`, `hf/cards/`, the Hub and `git log`. How to read the boxes: `- [x] … **Done:** <evidence>` is finished work; `**Superseded:**` was replaced by a later decision, named with its reference; `**Not a task:**` is a rule or a reminder kept as written. Every box still unchecked is a current action and points to an item of "What remains, in order". The sections after that list are history: each opens with one status line, and their outcomes stay as they were written.
+Reconciled on 16/11/2026 with the repository: the result files, the pre-registrations and their amendments, `BENCH.md`, the site, `site/public/models/manifest.json`, `hf/cards/`, the Hub and `git log`; updated 17/11/2026 (afternoon, the state at about 15:15 unless a later time is given). How to read the boxes: `- [x] … **Done:** <evidence>` is finished work; `**Superseded:**` was replaced by a later decision, named with its reference; `**Not a task:**` is a rule or a reminder kept as written. Every box still unchecked is a current action and points to an item of "What remains, in order" or to "Open, not scheduled". The sections after that list are history: each opens with one status line, and their outcomes stay as they were written. The list was renumbered on 17/11/2026: the status lines and the open boxes below point to the new numbers; an item number inside a dated note of 16/11 or earlier refers to the list of that day.
 
-## Where we are (16/11/2026)
+## Where we are (17/11/2026, about 15:15)
 
 | model or work item | status | the number that matters (its bar) | next action |
 |---|---|---|---|
@@ -11,77 +11,85 @@ Reconciled on 16/11/2026 with the repository: the result files, the pre-registra
 | s6-micro (v2) | passed on a second look, published 16/11 | bench 0.553 (≥ 0.45), ECE 0.0588 (≤ 0.08) | none |
 | s6-micro-v1 | failed and published | ECE 0.0821 (≤ 0.08) | none |
 | s6-secrets-pico | passed on its synthetic bench, published 14/11; not a scanner | secret 0.9990 (> 0.977); flags 59.8% of 719 clean real files | none |
-| s6-secrets-verify-pico (v2) | failed and published; an experimental option of secretgate 1.9.0, off by default | line F1 0.8561 (≥ 0.7332 + 0.15) | none: v3 (rules and verifier together) failed too, 0.8477, and the line ends |
+| s6-secrets-verify-pico (v2) | failed and published; an experimental option of secretgate 1.9.0, off by default; its Space `maxgfr/s6-secrets-verify-pico` (kind `secrets-verify`) and the site's Secrets verifier page since 17/11 | line F1 0.8561 (≥ 0.7332 + 0.15) | v3 (rules and verifier together) failed too, 0.8477; its weakest category (API values, line F1 0.541) is item 5, a new pre-registration |
 | s6-ear-nano (v1) | failed and published | end of turn 0.5681 (≥ 0.9263, Smart Turn v3.2) | none |
 | s6-cast-pico (v1) | failed and published | nGMASE 0.9471 and nWQL 0.6646 (≤ 0.838 and ≤ 0.587) | none |
-| s6-route-nano (s6-nano v2) | failed and published, 16/11 | T-tools 0.8395 (bar: above BM25, 0.8500); 38.9 ms in WASM (≤ 2 ms) | none |
-| s6-route (s6-nano v3) | passed on fresh slates, published 16/11: Hugging Face model and Space, the Router page, an article | T2-tools 0.8868 against BM25 0.8169, +0.0698 [0.0455, 0.0952] (lower bound > 0) | none scheduled (its limits: "Open, not scheduled") |
+| s6-route-nano (s6-nano v2) | failed and published, 16/11; its Space `maxgfr/s6-route-nano` (kind `router-v2`, the file alone) since 17/11 | T-tools 0.8395 (bar: above BM25, 0.8500); 38.9 ms in WASM (≤ 2 ms) | none |
+| s6-route (s6-nano v3) | passed on fresh slates, published 16/11: Hugging Face model and Space, the Router page, an article | T2-tools 0.8868 against BM25 0.8169, +0.0698 [0.0455, 0.0952] (lower bound > 0) | its three limits are item 5 (a new pre-registration) |
 | s6-sleep v1 | stopped by its pilot, 15/11 | `recall` 0.2460 against 0.2650 for the control (+0.10 asked) | none |
 | s6-sleep v2 | ended at its CPU check C4, 15/11; no GPU run | C4 failed its three allowed attempts | none |
-| s6-sleep v3 | in progress: C5 passed, pilot verdict "works" (amendment 2); the first nano run was stopped by the memory guard at 16 GB | pilot `recall` 1.0000 against 0.2542 for the control, +0.7458 [0.7323, 0.7593] (≥ +0.10) | the memory fix, an amendment, the six nano runs (item 2) |
-| s6-ear v2 (s6-ear2-nano) | passed, 17/11: published pending | G1: accuracy 0.8993 (bar ≥ 0.85 and ≥ T − 0.08, T = 0.9260); G2: false cut-off 0.0847 (≤ 0.20) and END recall 0.8627 (≥ 0.80) at τ₈₅; G3: 2.39 ms in WASM (≤ 5.0), 631,936 bytes (≤ 3 MB) | publication: commit, upload, site deploy (item 4); the browser demo is built (the Listen page and the Space `maxgfr/s6-ear2-nano`) and checked by the owner on the site in Chrome on 17/11; still open: Safari, and the microphone inside the Hugging Face frame |
-| s6-cast v2 (s6-cast2-pico) | code and data ready, amendments 1 and 2; not launched | G1: nGMASE ≤ 0.838 and nWQL ≤ 0.587; G2: MASE ratio < 1.00 at each term | a launch amendment, then the run (item 3) |
+| s6-sleep v3 | in progress: amendment 3 (the memory fix); the six nano runs ran in the night of 16 to 17/11 without a stop; `runs/s6-sleep3/n.json` chose N = 1; the export is done; the test reading runs on the CPU | pilot `recall` 1.0000 against 0.2542 for the control, +0.7458 [0.7323, 0.7593] (≥ +0.10); nano dev2 `recall` at N = 1: 0.4728, 0.5275 and 0.4467 for the three sleep runs, 0.2542, 0.2567 and 0.2522 for the controls | the end of the test reading, then the gate (item 2) |
+| s6-ear v2 (s6-ear2-nano) | passed, 17/11 at 03:30; published 17/11: Hugging Face model and Space `maxgfr/s6-ear2-nano` (kind `turn`), the Listen page with the microphone, an article | G1: accuracy 0.8993 (bar ≥ 0.85 and ≥ T − 0.08, T = 0.9260); G2: false cut-off 0.0847 (≤ 0.20) and END recall 0.8627 (≥ 0.80) at τ₈₅; G3: 2.39 ms in WASM (≤ 5.0), 631,936 bytes (≤ 3 MB) | v3 is item 5; the microphone in Safari and inside the Hugging Face frame is item 7 |
+| s6-cast v2 (s6-cast2-pico) | running: amendment 3 (launch) on `main`; the smoke found two defects, fixed before the real run; the real chain launched on 17/11 at about 15:10 | G1: nGMASE ≤ 0.838 and nWQL ≤ 0.587; G2: MASE ratio < 1.00 at each term | the end of the run, then the gate (item 1) |
 | LFM3-1.7B S1/S2 router (§6) | failed, 15/11 | router 1,032 tokens against 958 for System 2 alone (H3 asked ≤ 0.5 × 958) | none |
-| LFM3-1.7B fine-tuned (§6.1) | not started | G1: System 1 accuracy ≥ base + 0.03 | the local smoke (item 5) |
+| LFM3-1.7B fine-tuned (§6.1) | not run: amendments 5 and 6 (the shorter plan), the local pipeline implements them and was reviewed (43 CPU tests); nothing has run | G1: System 1 accuracy ≥ base + 0.03 | the local smoke (item 3) |
 | §7 flexible weights | not started; `docs/weights-prereg.md` frozen 09/11, no amendment, no code | (its verdicts are per experiment) | an amendment before any computation (item 6) |
-| §10.4 sleep and dreaming; §10.5 in-place TTT | not started | | item 7; §10.5 not scheduled |
-| Hugging Face datasets (14, public) | the viewer is valid on all 14 (checked 16/11) | | the `load_dataset` check (item 8) |
-| full test pass, consistency of the numbers | not started | | item 8 |
-| clean-up | not started | 19 worktrees, 42 local branches, `data/ear` 31 GB | item 9 |
+| §10.4 sleep and dreaming; §10.5 in-place TTT | not started | | not scheduled ("Open, not scheduled") |
+| the site and every Space in a real browser | not done for every page and Space; s6-ear2-nano's microphone checked by the owner on the site in Chrome on 17/11 | | item 7 |
+| the code, for reuse by others (the brake first) | not started | | item 8 |
+| Hugging Face datasets (14, public) | the viewer is valid on all 14 (checked 16/11) | | the `load_dataset` check (item 11); `skycmd-route` not published yet (item 10) |
+| full test pass, consistency of the numbers | not started | | item 11 |
+| clean-up | not started | 19 worktrees and 42 local branches on 16/11; 23 entries in `git worktree list` (the main checkout included) and 46 local branches on 17/11; `data/ear` 31 GB | item 11 |
 
 ## What remains, in order
 
-Times: "working minutes" are GPU minutes as the pre-registrations count them. Wall clock depends on the brake (`scripts/auto-brake.sh`): about ×1.15 in the night mode (0.95, 55:5), ×1.4 when the Mac is idle (0.85, 50:10) and ×2.7 when it is in use or on battery (0.5, 45:15). One budgeted GPU run at a time.
+Times: "working minutes" are GPU minutes as the pre-registrations count them. Wall clock depends on the brake (`scripts/auto-brake.sh`): about ×1.15 in the night mode (0.95, 55:5), ×1.4 when the Mac is idle (0.85, 50:10) and ×2.7 when it is in use or on battery (0.5, 45:15). One budgeted GPU run at a time. The runs of items 1 and 2 happen in the worktree `.claude/worktrees/s6-tranches-2-7` (branch `sleep3-main`), where their `runs/` folders are.
 
-1. **s6-ear v2 (s6-ear2-nano): done except publication** (`docs/s6-ear2-prereg.md`, amendment 1 and its result block of 17/11/2026).
-   - **Done:** the pilot kept distillation (best arm 0.8715 at rate ×0.5; the stop rule 0.82 did not fire), the training ran once (240.0 working minutes, 305,700 steps, batch 128, seed 1, no restart), the EMA checkpoint was exported and calibrated (temperature 1.4948, τ₀.₅ 0.5, τ₈₅ 0.7244 from validation), and `runs/s6-ear2-nano/GATE.md` and `gate.json` are written: **PASS** (G1 accuracy 0.8993, G2 false cut-off 0.0847 and END recall 0.8627, G3 2.39 ms in WASM and 631,936 bytes). The write-up is in place (`BENCH.md`, the README, the site, `hf/cards/`, the manifest); the commit of the result files and the upload are item 4. The browser demo is built (the Listen page and its Space) and the owner checked its microphone path on the site in Chrome on 17/11/2026; Safari and the microphone inside the Hugging Face frame are item 4.
-   - **Result files to commit** (not the `.jsonl` probability dumps, not the checkpoints): `runs/s6-ear2-nano/GATE.md`, `GATE.json`, `calib.json`, `args.json`, `started.json`, `exported.json`, `latency/latency.json`, `latency/smart-turn.json`, `latency/native.jsonl`, `latency/wasm.jsonl`, `parity/parity.json`, `parity/native.jsonl`, and `runs/s6-ear2-pilot/choice.json`.
-2. **s6-sleep v3: the six nano runs, after the memory fix** (`docs/s6-sleep3-prereg.md`).
-   - **Precondition:** the memory fix committed, with a short run showing that it keeps the computation (the same losses as before the fix); a dated amendment 3 that records the stop by the memory guard as a technical failure, the fix and the relaunch, before any nano run starts again; item 1 off the GPU.
-   - **Commands:** `caffeinate -i scripts/train-sleep3.sh nano` (finished runs are skipped), then `scripts/train-sleep3.sh export eval gate` (`eval` reads the test seeds once).
-   - **GPU:** six runs of 30 working minutes, 180 in all (§6). Wall clock: about 3.5 h in the night mode to 8 h throttled, plus the CPU export, test reading and arena gate.
-   - **Done means:** `runs/s6-sleep3/n.json`, the report and the gate written, and the result block committed in `docs/s6-sleep3-prereg.md`.
-3. **s6-cast v2 (s6-cast2-pico)** (`docs/s6-cast2-prereg.md`, amendments 1 and 2).
-   - **Precondition:** a dated launch amendment (amendment 3) before any training: the counts of the leakage check run again with amendment 2's rule (`skycmd-data/s6-cast2/leak.json`, written 15/11 at 11:55), the worktree, the commit of the trainer and the brake of the run; items 1 and 2 off the GPU.
-   - **Commands:** `SMOKE=1 scripts/train-cast2.sh` (a throwaway prefix; its numbers are not looked at), then `caffeinate -i scripts/train-cast2.sh pilot train export`, then with no training running `scripts/train-cast2.sh latency eval chronos gate` (G3 is dropped by amendment 2; Chronos-ZS is reported).
-   - **GPU:** about 760 working minutes (12 for the pilot, 720 of training, then export, calibration and evaluation; §5). Wall clock: about 14.5 h in the night mode to 34 h throttled (the pre-registration says about 20 h).
-   - **Done means:** `GATE.md` and `gate.json` written and the result block committed in `docs/s6-cast2-prereg.md`.
-4. **Write-up and publication of items 1 to 3, passed or failed** (a failed model is published as a result: owner's decision of 15/11/2026; `AGENTS.md`).
-   - **Precondition:** the item's gate is read.
-   - **For each model:** its section in `BENCH.md`; the README model table; `site/results/index.md`, `site/novelty/index.md` ("What we bring", updated with every result) and `site/bench/index.md`; the GGUF in `site/public/models/` and its `manifest.json` entry (`gate: passed` or `failed`, never a default when failed); `hf/cards/<name>.md` and its `hf/spaces.json` entry; `scripts/build-wasm.sh`, `(cd site && npm run space:build)` and `python3 scripts/hf-publish.py --dry-run --only <name>`; then the upload, `python3 scripts/hf-publish.py --only <name>`, by the owner; an article in `site/articles/` if the line of experiments has a story to tell.
-   - **s6-ear v2:** the browser demo is built: the Listen page (`TurnDemo.vue`, `lib/turn.ts`) and the Space `maxgfr/s6-ear2-nano` (kind `turn`). **Done (17/11/2026):** the owner checked the microphone path on the site in Chrome. **Still open:** the same check in Safari (the permission asked once, the decision following the speech, the latency, a clean console; moved here from §8.2), and the microphone inside the Hugging Face frame of the Space.
-   - **s6-sleep v3:** if it passes, the browser `GameSession` calls the memory's sleep at level changes (moved here from §10.1; the engine part exists).
-   - **GPU:** none. **Done means:** the files committed, the site deployed from `main`, and each Hugging Face URL answering 200.
-5. **LFM3-1.7B fine-tuned (§6.1, `docs/lfm3-ft-prereg.md`).**
-   - **Precondition:** items 1 to 3 off the GPU. Amendment 1 (09/11/2026) already moves everything to the M5 and fixes the LoRA rule; what is missing before `gen` is the local smoke and the dated amendment that copies its revision and LoRA method into the pre-registration and into `BASE_REV_PINNED` and `ENGINE_PINNED` of `scripts/lfm3-ft.sh`. First, `DRY_RUN=1 scripts/lfm3-ft.sh smoke gen sft eval route gate` (the `eval` dry run was never made) and `python3 experiments/lfm3-ft/test_common.py`.
-   - **Commands:** `caffeinate -i scripts/lfm3-ft.sh smoke`, then read `runs/lfm3-ft/smoke/report.json`; the amendment; `caffeinate -i scripts/lfm3-ft.sh gen sft eval`; `scripts/lfm3-ft.sh route gate`.
-   - **GPU:** about 50 h or more (the generation alone is 10 to 15 h at full speed). Wall clock: about 57 h in the night mode to 135 h throttled, over several weeks of evenings and nights.
+1. **s6-cast v2 (s6-cast2-pico): finish the run in progress, read the gate, publish** (`docs/s6-cast2-prereg.md`, amendments 1 to 3).
+   - **Done:** amendment 3 (16/11/2026, commit `054f291`, on `main`): the leakage check under amendment 2's rule (no matching run, USCRN kept whole), where the run happens and its brake. The smoke (`SMOKE=1 scripts/train-cast2.sh`, the throwaway prefix `runs/cast2-smoke/`, its numbers not looked at) found two defects, both fixed before the real run: v1's model files were missing from the run's worktree (now `models/s6-cast` there is a link to the main checkout's `models/s6-cast`), and the gate report's data-sources table read an old field name of `leak.json` (it now reads `informative_runs`, commit `da2153a`; no gated number involved). The real chain was launched on 17/11 at about 15:10: `caffeinate -i scripts/train-cast2.sh pilot train export`. The pilot wrote `runs/s6-cast2-pilot/choice.json` at 15:36 and the training started then.
+   - **Commands left:** none until the chain ends; then, with no training running, `scripts/train-cast2.sh latency eval chronos gate` (G3 is dropped by amendment 2; Chronos-ZS is reported).
+   - **GPU:** about 760 working minutes in all (12 for the pilot, 720 of training, then export, calibration and evaluation; §5). Wall clock: about 14.5 h in the night mode to 34 h throttled (the pre-registration says about 20 h).
+   - **Done means:** `runs/s6-cast2-pico/GATE.md` and `gate.json` written, the result block committed in `docs/s6-cast2-prereg.md`, and the model published with a Space, passed or failed (item 4).
+2. **s6-sleep v3: finish the test reading and the gate, publish** (`docs/s6-sleep3-prereg.md`, amendments 1 to 3).
+   - **Done:** amendment 3 (16/11/2026, commit `6e6019a`): the first nano run was stopped by the memory guard at 16 GB on a 16 GB machine (a technical failure); the fix is `--sleep-chunk` (`ce20cb7`, `f97581a`), and the nano runs use `SLEEP_CHUNK=2` and `SKY_MLX_CACHE_GB=1`. The six nano runs (`caffeinate -i scripts/train-sleep3.sh nano`, 180 working minutes) ran in the night of 16 to 17/11 without a stop. `runs/s6-sleep3/n.json` chose N = 1: dev2 `recall` at N = 1 of the three sleep runs 0.4728, 0.5275 and 0.4467 (mean 0.4823; 0.4911 at N = 2 and 0.4857 at N = 4, within the tolerance of 0.01), against 0.2542, 0.2567 and 0.2522 for the three controls; the pico pilot was at 1.0000. The export of the six models is done (`models/s6-sleep3-nano/`).
+   - **Running:** `scripts/train-sleep3.sh export eval gate`, started on 17/11 at 07:39, on the CPU. `eval` reads the test seeds once: 1,000 `recall` episodes, `rule110`, 200 episodes per arena game and `typed_decisions_bench`, for each of the six models (`runs/s6-sleep3/test/`); it is long. At 18:05 on 17/11, five models were read and the sixth was in its arena games. Then `eval` writes `runs/s6-sleep3/REPORT.md` (H0 to H3) and `gate` follows in the same chain (`runs/s6-sleep3/gate/`).
+   - **GPU:** none left. **Done means:** `REPORT.md` and the gate written, the result block committed in `docs/s6-sleep3-prereg.md`, and the model published with a Space even if it fails (item 4).
+3. **LFM3-1.7B fine-tuned, the shorter plan (§6.1, `docs/lfm3-ft-prereg.md`, amendments 5 and 6).**
+   - **Done:** amendment 5 (16/11/2026): the adapter is System 1 and the base stays System 2; the written solutions of GSM8K and MATH only, 3,000 questions per task, one epoch; about five working hours of GPU instead of fifty or more. Amendment 6 (17/11/2026): w is the share of the test questions under the threshold; the budget of 1/ρ is the one the pair's router chooses on its calibration; if the conversion check says "converted", the base is evaluated again in s1 only and System 2 stays the published base. The local pipeline implements both (`9654147`, `cbd69d2`) and was reviewed, with the fixes in `1582b77`; 43 CPU tests in `experiments/lfm3-ft/`. **Nothing has run.**
+   - **Precondition:** item 1 off the GPU. First, `DRY_RUN=1 scripts/lfm3-ft.sh smoke gen sft eval route gate` and `python3 experiments/lfm3-ft/test_common.py`.
+   - **Commands:** `caffeinate -i scripts/lfm3-ft.sh smoke`, then read `runs/lfm3-ft/smoke/report.json`; a dated amendment that copies the smoke's revision and LoRA method into the pre-registration and into `BASE_REV_PINNED` and `ENGINE_PINNED` of `scripts/lfm3-ft.sh`; then `caffeinate -i scripts/lfm3-ft.sh gen sft eval` (`gen` only writes its marker under amendment 5); then `scripts/lfm3-ft.sh route gate`.
+   - **GPU:** about five working hours (the smoke about half an hour, the fine-tuning one to two hours, the conversion and the s1 answers about two hours); a converted base adds two to three working hours (amendment 6).
    - **Owner:** the derived weights stay private until the owner explicitly agrees to publish them (§9 of the pre-registration).
-   - **Done means:** `runs/lfm3-ft/report.md` and `gate.json` (G1 to G3, and the router H1 to H4 on both models), the result block committed, `BENCH.md` and the Results page updated.
+   - **Done means:** `runs/lfm3-ft/report.md` and `gate.json` (G1 and G3; G2 not read, System 2 being the base; H2 to H4 of the pair, 1/ρ and w), the result block committed, `BENCH.md` and the Results page updated.
+4. **Write-up and publication of items 1 to 3, passed or failed, as was done for s6-ear v2** (a failed model is published as a result: owner's decision of 15/11/2026; every published model has a Space: owner's decision of 17/11/2026; `AGENTS.md`).
+   - **Precondition:** the item's gate is read.
+   - **For each model:** its section in `BENCH.md`; the README model table; `site/results/index.md` (its row in the status table), `site/novelty/index.md` ("What we bring", updated with every result) and `site/bench/index.md`; its card in the Models catalogue (`site/.vitepress/theme/lib/catalogue.ts`, checked by `npm --prefix site test`); the GGUF in `site/public/models/` and its `manifest.json` entry (`gate: passed` or `failed`, never a default when failed); `hf/cards/<name>.md` and its Space entry in `hf/spaces.json`; `scripts/build-wasm.sh`, `(cd site && npm run space:build)` and `python3 scripts/hf-publish.py --dry-run --only <name>`; then the upload, `python3 scripts/hf-publish.py --only <name>`; one article in `site/articles/`, listed on `site/articles/index.md`, newest first.
+   - **s6-sleep v3:** if it passes, the browser `GameSession` calls the memory's sleep at level changes (moved here from §10.1; the engine part exists).
+   - **LFM3 fine-tuned:** the write-up and the article whatever the result; the weights, their card and a Space only once the owner agrees to publish them.
+   - **GPU:** none. **Done means:** the files committed, the site deployed from `main`, and each Hugging Face URL answering 200.
+5. **A quality round: one targeted defect per model, each with its own dated pre-registration before any computation** (added 17/11/2026).
+   - **s6-ear v3:** train with trailing silences of variable length, as the microphone delivers them, and read it on real conversations: v2 catches 0.5253 of the real ends of turn on eot-bench (`livekit/eot-bench-data`) at its cautious threshold τ₈₅ (`hf/cards/s6-ear2-nano.md`).
+   - **s6-route:** the three limits of v3 (moved here from "Open, not scheduled"). The names-masked weakness (0.2497 with every tool renamed `tool_<k>`, where the embedding alone keeps 0.7280; the model part at accuracy 0.0720 for a mean confidence of 0.7968): put the lexical score inside each option's text instead of binding it by name. A test on tool families the clusters never saw (T2-tools reuses v2's held-out test tools). The weight of the three largest clusters (without them +0.0202 [−0.0062, +0.0481] over BM25; the cluster bootstrap gives +0.0698 [−0.0079, +0.1404]): a test with a flatter cluster distribution.
+   - **s6-sleep:** why the memory that reaches 1.0000 at the pico size reaches about 0.5 at the nano size (dev2 `recall` 0.4467 to 0.5275 at N = 1): steps, size or budget, found before any new GPU run.
+   - **s6-secrets-verify-pico:** its weakest category, API values (line F1 0.541, where cbx-secrets-detector-17M is at 0.898; `BENCH.md`).
+   - **GPU:** unknown until each pre-registration is written; not before items 1 to 3 are off the GPU. **Done means:** each pre-registration committed before its computation, each result read once and published as passed or failed.
 6. **§7 flexible weights (`docs/weights-prereg.md`): an amendment first.**
    - **Precondition:** before any computation, a dated amendment (or a new pre-registration, the owner's choice) that brings the frozen text of 09/11 up to date: the base is the checkpoint behind the published s6-nano, `runs/s6-nano-g3/decide/last`; s6-nano plays at the oracle's score in every game on its gate's 30 seeds, so the target-game rule of §3 may find no gap on the dev seeds, and the amendment says what happens then; the z.ai quota of the GLM-5.3-flash calls. Then the code (none is written). Order 7.1, 7.2, 7.4, 7.3 (§2 of the pre-registration).
    - **GPU:** 7.1 and 7.3 run in the arena on the CPU; 7.2 trains nine decision runs of 6,400 steps and 7.4 four copies of s6-secrets-pico at its 23-minute budget: roughly 5 to 6 h of GPU in all (estimated from the step rates of `BENCH.md`, to be fixed in the amendment), 7 to 16 h of wall clock.
    - **Done means:** `runs/weights/REPORT.md` with every arm, failures included; `BENCH.md` and the site updated.
-7. **§10.4, the flexible weights with sleep and dreaming: only if justified.**
-   - **What would justify it:** s6-sleep v3 passes its gate with H1 (sleep passes help at equal wake latency), and §7.3's adapter with its guardrail passes its verdict (`docs/weights-prereg.md` §7). If either fails, §10.4 is not run and this item closes as "not justified".
-   - **Then:** a dated pre-registration before any code or computation; the GPU cost is unknown until it is written. §10.5 (in-place TTT on LFM3) stays not scheduled: only after §6.1, and only if §6 shows long-context failures.
-8. **The full test pass and the final consistency check** (CPU only).
-   - **Commands:** `cargo test` on sky-infer, sky-data, sky-web and sky-gguf; `cargo test --release -p sky-train` (with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`); `cargo test -p xtask`; clippy and fmt; `cargo test -p sky-web --test parity`, `wasm-pack test --node --release crates/sky-web --test parity` and `wasm-pack test --node crates/sky-web --test memory`; `python3 -I scripts/test_s6_adopt.py` and `python3 experiments/lfm3-ft/test_common.py`; `bash -n` and shellcheck on `scripts/`; `DRY_RUN=1` on every step of `scripts/train-all.sh` and `scripts/lfm3-ft.sh`; `cd site && npm run docs:build` with no dead link; each Space opened in a real browser (the model loads, the demo answers, the console is clean); `load_dataset("maxgfr/skycmd-decisions", "boolq")`.
-   - **Numbers:** each model's numbers the same in `BENCH.md`, the README, `site/results`, `site/novelty`, `site/bench`, the tutorial chapters, `hf/cards/` and the manifest, starting with the contradictions found by the reconciliation of 16/11/2026.
-   - **GPU:** none; a few hours of CPU (the release build of sky-train compiles MLX). **Done means:** every command passes, or its failure is fixed and committed, and no number disagrees.
-9. **Clean-up, with the owner's agreement for anything deleted.**
-   - **Worktrees and branches:** 19 worktrees and 42 local branches on 16/11 (`git worktree list`, `git branch`). Remove those whose branch is merged into `origin/main` and that hold no uncommitted work (`git worktree remove`, `git branch -d`); the main checkout is on a local `main` behind `origin/main` (`git pull --ff-only` there).
-   - **Data:** `data/ear` (31 GB, v1's audio) is still read by s6-ear v2: only after item 1; `runs/s6-ear-nano-swap/` and `runs/s6-nano-lr-swap/` (runs set aside, 88 MB); the tokenized caches (`find runs -type d -name cache -prune`, §0); `target/s3-train/debug`; the throwaway smoke prefixes (`runs/turn-smoke/`, `runs/smoke-sleep3/`).
-   - **GPU:** none. **Done means:** `git worktree list` shows only live work, and nothing was deleted without the owner's yes.
+7. **A full check of the site and of every Space in a real browser** (added 17/11/2026).
+   - **What:** each demo page of the site (Play, Live, Router, Forecast, Listen, Secrets verifier) and each of the 16 Spaces of `hf/spaces.json`: the model loads, the demo answers on a preset, the console is clean. A table, one row per model, with the page, the Space, the browser and the date.
+   - **The microphone demos** (the Listen page and the Space `maxgfr/s6-ear2-nano`) are confirmed by the owner, since the microphone permission cannot be automated. **Done (17/11/2026):** the owner checked the microphone path on the site in Chrome. **Still open:** the same check in Safari (the permission asked once, the decision following the speech, the latency, a clean console; moved here from §8.2), and the microphone inside the Hugging Face frame of the Space. Seen while writing this list: the navigation entry still reads "Listen: audio (failed gate)" (`site/.vitepress/config.ts`), written for v1.
+   - **GPU:** none. **Done means:** the table committed, every failure fixed and committed or listed.
+8. **A final review of the source code for reuse** (added 17/11/2026).
+   - **What:** the whole repository, and first the mechanism that lets a training run only when the machine is idle and cool: `scripts/auto-brake.sh` with its modes (in use, left alone, night) and its heat and memory guards; `SKY_DUTY`, `SKY_COOL` and `SKY_BRAKE_FILE`, read by the trainer (`crates/sky-train/src/session.rs`), and `SKY_MLX_CACHE_GB` (`crates/sky-train/src/main.rs`); budgets counted in working minutes.
+   - **Done means:** it is usable by someone else: one documented entry point, a README or tutorial section that explains it and how to reuse it outside this project, its tests, and no dead scripts around it. **GPU:** none.
+9. **An overview article: what worked, what failed, on one laptop**, after items 1 to 3. In `site/articles/`, written as `AGENTS.md` asks, linking to "What we bring" and Results rather than restating them. **GPU:** none.
+10. **The data set `skycmd-route`**: the training records of s6-route-nano (the box in the licence block below). **Done means:** the data set public on Hugging Face, its viewer valid, and its row in `DATA_LICENSES.md`. **GPU:** none.
+11. **The full test pass, the consistency of the numbers, and the clean-up** (CPU only).
+    - **Commands:** `cargo test` on sky-infer, sky-data, sky-web and sky-gguf; `cargo test --release -p sky-train` (with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`); `cargo test -p xtask`; clippy and fmt; `cargo test -p sky-web --test parity`, `wasm-pack test --node --release crates/sky-web --test parity` and `wasm-pack test --node crates/sky-web --test memory`; `python3 -I scripts/test_s6_adopt.py` and `python3 experiments/lfm3-ft/test_common.py`; `bash -n` and shellcheck on `scripts/`; `DRY_RUN=1` on every step of `scripts/train-all.sh` and `scripts/lfm3-ft.sh`; `cd site && npm run docs:build` with no dead link, and `npm --prefix site test`; `load_dataset("maxgfr/skycmd-decisions", "boolq")`.
+    - **Numbers:** each model's numbers the same in `BENCH.md`, the README, `site/results`, `site/novelty`, `site/bench`, the Models catalogue, the articles, the tutorial chapters, `hf/cards/` and the manifest, starting with the contradictions found by the reconciliation of 16/11/2026.
+    - **Clean-up, with the owner's agreement for anything deleted.** Worktrees and branches: 23 entries in `git worktree list` and 46 local branches on 17/11 (`git worktree list`, `git branch`). Remove those whose branch is merged into `origin/main` and that hold no uncommitted work (`git worktree remove`, `git branch -d`); the main checkout is on a local `main` behind `origin/main` (`git pull --ff-only` there). Data: `data/ear` (31 GB, the audio read by s6-ear v1 and v2), not before item 5 says whether s6-ear v3 reads it; `runs/s6-ear-nano-swap/` and `runs/s6-nano-lr-swap/` (runs set aside, 88 MB); the tokenized caches (`find runs -type d -name cache -prune`, §0); `target/s3-train/debug`; the throwaway smoke prefixes (`runs/turn-smoke/`, `runs/smoke-sleep3/`, `runs/cast2-smoke/`).
+    - **GPU:** none; a few hours of CPU (the release build of sky-train compiles MLX). **Done means:** every command passes, or its failure is fixed and committed; no number disagrees; `git worktree list` shows only live work, and nothing was deleted without the owner's yes.
 
 **Licences, decided by the owner on 16/11/2026** (after a read-only audit by GLM-5.3-Flash, checked on the Hub):
 
 - [x] Every data set stays published, `data/dolma3_science_pdfs.parquet` of `maxgfr/skycmd-text` included. **Done:** the owner's decision; nothing is removed.
 - [x] The files `glm_orders` and `paraphrased` (s1 to s3) were written by GLM-5.3-Flash (open weights, MIT). **Done:** the owner's statement, recorded in `DATA_LICENSES.md` with the fact that the name was not logged with the files; no retraining.
 - [x] Generated data and labels are free to use and to publish, marked as AI-generated. **Done:** `DATA_LICENSES.md`, `AGENTS.md`.
-- [ ] Publish the training records of s6-route-nano as a data set (`skycmd-route`: the slates built from the public tool-calling sets under their own licences, and the teacher's descriptions), which `scripts/hf-publish-data.py` does not cover yet. The real-credential sets of s6-secrets are never published: only their obfuscated or replaced forms could be, and they are not ours to redistribute.
+- [ ] Publish the training records of s6-route-nano as a data set (`skycmd-route`: the slates built from the public tool-calling sets under their own licences, and the teacher's descriptions), which `scripts/hf-publish-data.py` does not cover yet (item 10). The real-credential sets of s6-secrets are never published: only their obfuscated or replaced forms could be, and they are not ours to redistribute.
 
-**Open, not scheduled** (no pre-registration, no date): the three limits of s6-route in the notes of 15/11 below (other tool families, names masked, the weight of the three largest clusters), each a new pre-registration if wanted; §10.5; French intent data and the truncation of states (notes of 14/11).
+**Open, not scheduled** (no pre-registration, no date): §10.4, the flexible weights with sleep and dreaming, only if s6-sleep v3 passes its gate with H1 (sleep passes help at equal wake latency) and §7.3's adapter with its guardrail passes its verdict (`docs/weights-prereg.md` §7); if either fails, it closes as "not justified", and otherwise a dated pre-registration comes before any code or computation. §10.5 (in-place TTT on LFM3): only after §6.1, and only if §6 shows long-context failures. French intent data and the truncation of states (notes of 14/11). The three limits of s6-route left this paragraph on 17/11/2026: they are item 5.
 
 ## History: the launch of tranche 1 (written 06/11 to 11/11/2026)
 
@@ -137,9 +145,19 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
   - écrire ce qui reste au §9.2 avant la nuit 2 : les amendements s6-ear, s6-cast, s6-gen, s6-secrets et LFM3, `train-all.sh` et le mode local de `lfm3-ft.sh`.
 - **À ne pas faire en même temps :** LFM3 S1/S2 (§6) et s6-ear (§8). Ils utilisent le même GPU.
 
-## History: status notes, 05/11 to 16/11/2026 (newest first)
+## History: status notes, 05/11 to 17/11/2026 (newest first)
 
-> **Status (16/11/2026): history.** "Where we are" at the top replaces these notes; the points they leave open are in "What remains, in order".
+> **Status (17/11/2026): history.** "Where we are" at the top replaces these notes; the points they leave open are in "What remains, in order".
+
+- **16 and 17/11/2026, after the reconciliation of 16/11.**
+  - **s6-ear v2 (s6-ear2-nano) passed its gate on 17/11 at 03:30** (`runs/s6-ear2-nano/GATE.md`: accuracy 0.8993 on the 31,527 test clips against 0.9260 for Smart Turn v3.2; false cut-off 0.0847 at END recall 0.8627; 2.39 ms in WASM; 631,936 bytes). Result block in `docs/s6-ear2-prereg.md` and result files committed (`2519daf`); published the same day: the Hugging Face model and Space `maxgfr/s6-ear2-nano` (kind `turn`), the Listen page with the microphone (checked by the owner on the site in Chrome; Safari and the microphone inside the Hugging Face frame still open, item 7), the article `site/articles/a-632-kb-end-of-turn-detector.md`.
+  - **Every published model has a Space** (owner's decision of 17/11/2026, recorded as a deviation from §11 in `docs/s6-nano2-prereg.md`): `maxgfr/s6-route-nano` (kind `router-v2`, the file alone) and `maxgfr/s6-secrets-verify-pico` (kind `secrets-verify`) were added, the latter with `scripts/hf-publish.py --space-only`, so the model repository's `engine/` folder was never uploaded again; the site gained a Secrets verifier page.
+  - **Site:** the Models catalogue, a clearer home page, the navigation grouped, a status table on Results, an Articles section with three articles (the router, the secrets verifier, the end-of-turn detector), and decimal file sizes everywhere (`3cd9a35`).
+  - **Licences:** the audit of 16/11 and the owner's decisions (the licence block at the top).
+  - **LFM3 fine-tuned:** amendments 5 (16/11) and 6 (17/11) of `docs/lfm3-ft-prereg.md`, the local pipeline that implements them, reviewed (43 CPU tests). Nothing has run (item 3).
+  - **s6-sleep v3:** amendment 3 (16/11), the six nano runs in the night of 16 to 17/11, N = 1 chosen, the export done, the test reading running (item 2).
+  - **s6-cast v2:** amendment 3 (16/11), the smoke and its two fixes, the real chain launched on 17/11 at about 15:10 (item 1).
+  - **A review of code** found and fixed real defects in the LFM3 pipeline (`1582b77`) and in the end-of-turn demo (`8a9e589`), both on `main`.
 
 - **15/11/2026: two more failures, read by their rules, and what remains.**
   - **s6-cast-pico failed** both GIFT-Eval bars (nGMASE 0.9471, nWQL 0.6646 against 0.838 and 0.587) (`docs/big-run-report.md`).
@@ -150,7 +168,7 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
   - **secretgate 1.8.1 released on 14/11** with the fixes found while measuring v1: https://github.com/maxgfr/secretgate/releases/tag/v1.8.1
   - **LFM3 S1/S2 ended on 15/11 at 12:44 with the verdict "failure"** (§6; `runs/lfm3-s1s2/report.md`, `BENCH.md`). Test, 1,000 questions, budget 1,024 chosen on calibration: System 1 alone 0.667 at 559 tokens, System 2 alone 0.796 at 958, the router 0.786 at 1,032, the oracle 0.814. H2 (accuracy kept) yes, H3 (compute halved) no, H4 (better than both modes) no. `docs/lfm3-ft-prereg.md` sets no condition on this result (§6.1).
   - **The four failed models are published as results** (owner's decision of 15/11/2026; the last amendment of each pre-registration): s6-micro-v1, s6-ear-nano, s6-cast-pico and s6-secrets-verify-pico, on the site (manifest `gate: failed`, never a default) and prepared for Hugging Face (cards opening with the failure; Spaces for the first three, card only for the last; `scripts/hf-publish.py`, upload by the owner). Verdicts unchanged; nothing enters secretgate. (16/11/2026: all four are on Hugging Face, and secretgate 1.9.0 offers s6-secrets-verify-pico as an experimental option, off by default: `BENCH.md`.)
-    - [ ] **Every published model gets a Space, failed gates included** (owner's decision of 17/11/2026; for s6-route-nano a deviation from §11 of `docs/s6-nano2-prereg.md`, noted there). The Spaces of s6-secrets-verify-pico (kind `secrets-verify`, the Secrets verifier page's demo) and s6-route-nano (kind `router-v2`, the file alone) are prepared in `hf/spaces.json`. Upload by the owner: `python3 scripts/hf-publish.py --space-only --only s6-secrets-verify-pico,s6-route-nano` (`--space-only` never touches the model repo, whose `engine/` folder another project pins by sha256), and the two updated cards (`README.md` of each model repo only).
+    - [x] **Every published model gets a Space, failed gates included** (owner's decision of 17/11/2026; for s6-route-nano a deviation from §11 of `docs/s6-nano2-prereg.md`, noted there). The Spaces of s6-secrets-verify-pico (kind `secrets-verify`, the Secrets verifier page's demo) and s6-route-nano (kind `router-v2`, the file alone) are prepared in `hf/spaces.json`. Upload by the owner: `python3 scripts/hf-publish.py --space-only --only s6-secrets-verify-pico,s6-route-nano` (`--space-only` never touches the model repo, whose `engine/` folder another project pins by sha256), and the two updated cards (`README.md` of each model repo only). **Done:** checked on the Hub on 17/11/2026: the Spaces `maxgfr/s6-route-nano` and `maxgfr/s6-secrets-verify-pico` answer 200 and run (published at 13:12 UTC); in the model repository of s6-secrets-verify-pico, `README.md` was last changed on 17/11 ("Card: the demo and its Space") and `engine/` still holds the files of 15/11.
   - **s6-micro v2: passed its gate on 16/11, on a second look** (amendments 12, 16 and 17 of `docs/s6-gen-prereg.md`; `runs/s6-micro2/runs/s6-micro/eval/results.md`). Bench 0.553 (gate 0.45, goal 0.50 met), ECE 0.0588 (bootstrap [0.0526, 0.0687]), the games at s3-pico's scores; CRC thresholds rejected (one extra Dodge veto), so full depth. v1 failed the ECE guard and v2 was designed after that reading on the same test records: every place that reports it says so. Deviations: one restart from `decide/last` (step 61,051) after a file-access error, the end of the run on a loaded machine (latencies not comparable), a binary that is not v1's. When2Call got worse (0.401, ECE 0.2165; `tool_call` predicted 45 times in 2,000); on 11 of the 20 bench tasks one answer covers at least 95% of the items.
     - [x] Result block (amendment 17), result files under `runs/s6-micro2/`, the two readings of amendment 16 (`scripts/s6-answer-priors.py`).
     - [x] Prepared for publication as `s6-micro`: `site/public/models/s6-micro.gguf` (sha256 `f66d7021…40ff`), manifest (`gate: passed`, with the second-look note), card `hf/cards/s6-micro.md`, a Space entry in `hf/spaces.json`; `s6-micro-v1` stays published as the failed first version.
@@ -165,9 +183,9 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
     - [x] Result block, result files under `runs/s6-nano3/`, `scripts/route3-read.sh`.
     - [x] Prepared for publication, not uploaded yet: `site/public/models/s6-route-embed.gguf` (sha256 `c53fb76d…a67a`, MIT, from potion-base-2M) next to the unchanged `s6-route-nano.gguf`, manifest (`task: router`, two `files`, `gate: passed` with the disclosure), card `hf/cards/s6-route.md`, the Router page of the site and a Space of kind `router` (`hf-publish.py --only s6-route`); BENCH, README, SPEC-S6 and the site pages. (Uploaded on 16/11/2026: the box below.)
     - [x] Upload to Hugging Face (owner): the model repo `s6-route` (both files and the card) and its Space; the card of s6-route-nano with its pointer to s6-route. **Done:** checked on the Hub on 16/11/2026: https://huggingface.co/maxgfr/s6-route (both GGUF files and the card) and the Space `maxgfr/s6-route` answer 200, and the s6-route-nano card there points to s6-route.
-    - [ ] **Not scheduled; next action if wanted: a dated pre-registration.** A confirmation on tool lists from sources the clusters never saw (not from v2's test side): T2-tools reuses v2's held-out test tools, whose results were already read; outside its training families the system stays near its embedding part (`BENCH.md`, s6-route, "Open"). See "Open, not scheduled" at the top.
-    - [ ] **Not scheduled; any fix is a new pre-registration.** The names-masked weakness: 0.2497 with every tool renamed `tool_<k>`, where the embedding alone keeps 0.7280; the model part is confidently wrong there (accuracy 0.0720 at a mean confidence of 0.7968) and pulls the fusion with it. See "Open, not scheduled" at the top.
-    - [ ] **Not scheduled; next action if wanted: a dated pre-registration of a test with a flatter cluster distribution.** The advantage over BM25 leans on the three largest clusters of T2-tools (without them +0.0202 [−0.0062, +0.0481]; the cluster bootstrap gives +0.0698 [−0.0079, +0.1404]). See "Open, not scheduled" at the top.
+    - [ ] **Item 5 (scheduled on 17/11/2026): a dated pre-registration first.** A confirmation on tool lists from sources the clusters never saw (not from v2's test side): T2-tools reuses v2's held-out test tools, whose results were already read; outside its training families the system stays near its embedding part (`BENCH.md`, s6-route, "Open"). See item 5 at the top.
+    - [ ] **Item 5 (scheduled on 17/11/2026): any fix is a new pre-registration.** The names-masked weakness: 0.2497 with every tool renamed `tool_<k>`, where the embedding alone keeps 0.7280; the model part is confidently wrong there (accuracy 0.0720 at a mean confidence of 0.7968) and pulls the fusion with it. See item 5 at the top.
+    - [ ] **Item 5 (scheduled on 17/11/2026): a dated pre-registration of a test with a flatter cluster distribution.** The advantage over BM25 leans on the three largest clusters of T2-tools (without them +0.0202 [−0.0062, +0.0481]; the cluster bootstrap gives +0.0698 [−0.0079, +0.1404]). See item 5 at the top.
   - **What remains:** the runs of s6-ear v2, s6-sleep v3 and s6-cast v2, LFM3 fine-tuned (§6.1), §7, the full test pass. (16/11/2026: see "What remains, in order" at the top.)
 - **After the publications of 14/11/2026 (same day).**
   - **s6-secrets-pico fails on real text**: measured for a possible use in `secretgate`, it flags 59.8% of 719 clean real files at p >= 0.9 (`docs/s6-secrets-prereg.md`, amendment 6; secretgate pull request 19). The gate on its generated bench stands; the card, the Space, the site and `BENCH.md` say "not a scanner". Nothing entered secretgate.
@@ -203,7 +221,7 @@ caffeinate -i scripts/s6-recipe.sh 2>&1 | tee -a runs/s6-recipe.log
 - **Recette s6** : le pilote et l'ablation pico décident (§2). s6-nano passe en fenêtres 512 / 160, et le taux de chaque taille est centré par μP.
 - **Les entraînements s6** : la nuit 1 (pilote, ablation, recette) est prête à lancer. s6-ear, s6-secrets, s6-nano, s6-micro et s6-cast suivent les nuits 2 à 4, une fois le §9.2 fait.
 - **Lu et non adopté** (04/11) : ZHA, l'attention hiérarchique de Zyphra (arXiv 2610.42112). Elle ne bat l'attention dense qu'au-delà d'environ 48K tokens et marche mal sous 1B paramètres ; nos états font 64 à 512 tokens. Les raisons sont dans `docs/research.md` (« Not adopted yet »).
-- **LFM3 fine-tuné (§6.1)** : pré-enregistrement figé (`docs/lfm3-ft-prereg.md`), scripts et tests prêts, **rien n'a tourné**. Les scripts visent encore Hugging Face Jobs. Depuis le 05/11, tout se fait sur le M5 : il faut l'amendement 1 de `lfm3-ft-prereg`, l'amendement 2 de `lfm3-s1s2-prereg` (qui annule le passage à distance) et le mode local de `lfm3-ft.sh` (§9.2). (Written on 09/11/2026: amendment 1 of `docs/lfm3-ft-prereg.md`, amendment 2 of `docs/lfm3-s1s2-prereg.md` and the local mode of `scripts/lfm3-ft.sh`; nothing of §6.1 has run: item 5.)
+- **LFM3 fine-tuné (§6.1)** : pré-enregistrement figé (`docs/lfm3-ft-prereg.md`), scripts et tests prêts, **rien n'a tourné**. Les scripts visent encore Hugging Face Jobs. Depuis le 05/11, tout se fait sur le M5 : il faut l'amendement 1 de `lfm3-ft-prereg`, l'amendement 2 de `lfm3-s1s2-prereg` (qui annule le passage à distance) et le mode local de `lfm3-ft.sh` (§9.2). (Written on 09/11/2026: amendment 1 of `docs/lfm3-ft-prereg.md`, amendment 2 of `docs/lfm3-s1s2-prereg.md` and the local mode of `scripts/lfm3-ft.sh`; nothing of §6.1 has run: item 3.)
 - **Issue #75 (Weight-Space Programming sur LFM3) fermée** au profit du routage S1/S2 (§6). Les idées de l'article sont reprises là où elles sont testables, sur nos petits modèles et avec l'arena : édition ciblée sans oubli, initialisation en une fois, poids flexibles en temps réel avec garde-fou conformal, audit des poids (§7). Son worktree a été supprimé le 06/11/2026 : il ne contenait aucun travail non mergé.
 
 > **La labellisation GLM est finie (05/11/2026, §1.1).** Il n'y a plus rien à relancer. `scripts/distill-glm.sh count` doit afficher 0 record à labelliser.
@@ -224,7 +242,7 @@ Ordre (§9, tout sur le M5, une tranche par nuit) : labels GLM (§1.1, finis le 
 
 ## 0. Prérequis
 
-> **Status (16/11/2026): done.** The disk clean-ups are in item 9.
+> **Status (16/11/2026): done.** The disk clean-ups are in item 11.
 
 - [x] Toolchain Metal : `xcodebuild -downloadComponent MetalToolchain`, et `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Présente le 29/10/2026 (`xcrun metal --version` : 32023.921).
 - [x] `export SKYCMD_STORE=$PWD` (le checkout principal) pour `cargo xtask` : `scripts/s6-recipe.sh` le fait tout seul.
@@ -235,7 +253,7 @@ Ordre (§9, tout sur le M5, une tranche par nuit) : labels GLM (§1.1, finis le 
 
 ## 1. Données (une seule fois, avant le premier pilote)
 
-> **Status (16/11/2026): done,** but for the `load_dataset` check of §1.2 (item 8).
+> **Status (16/11/2026): done,** but for the `load_dataset` check of §1.2 (item 11).
 
 `docs/s6-prereg.md` §1 : toutes les données sortent de `scripts/prepare-data.sh`, lancé une fois avant le pilote, sans régénération ensuite.
 
@@ -274,7 +292,7 @@ GLM-5.3-flash est open source : poids sous licence MIT, [`zai-org/GLM-5.3-Flash`
 
 ### 1.2 Publier nos jeux de données sur Hugging Face
 
-> **Status (16/11/2026): done,** but for the `load_dataset` check (item 8); the viewer is valid on all 14 datasets.
+> **Status (16/11/2026): done,** but for the `load_dataset` check (item 11); the viewer is valid on all 14 datasets.
 
 Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'utilisateur, **en public**, les labels GLM compris (en partiel maintenant, puis mis à jour à la fin). Un dataset repo par jeu, une config parquet par source, et une carte qui donne la source, la licence, la commande qui a produit les fichiers et le commit.
 
@@ -308,7 +326,7 @@ Demandé le 03/11/2026 : tous nos jeux de données sur le Hugging Face de l'util
     - s4-micro et s5-lite sont écartés : ce ne sont pas des modèles de jeu.
 
   Non republiés : `LocalLLaMA/typed-decisions` (gated), l'audio de s6-ear (31 Go de log-mel, que `sky-data fetch-audio` reconstruit) et GIFT-Eval (évaluation seulement).
-- [ ] Check that `load_dataset("maxgfr/skycmd-decisions", "boolq")` loads (item 8). The viewer part is done: on 16/11/2026, `https://datasets-server.huggingface.co/is-valid?dataset=maxgfr/<repo>` gives `"viewer": true` for all 14 datasets.
+- [ ] Check that `load_dataset("maxgfr/skycmd-decisions", "boolq")` loads (item 11). The viewer part is done: on 16/11/2026, `https://datasets-server.huggingface.co/is-valid?dataset=maxgfr/<repo>` gives `"viewer": true` for all 14 datasets.
 - **Règles appliquées par le script :**
   - chaque source garde sa licence, et les sources share-alike restent share-alike ;
   - `LocalLLaMA/typed-decisions` (le train et le bench) n'est **pas** republié : ce jeu est gated sur le Hub, et le republier en accès libre contournerait la barrière ;
@@ -408,7 +426,7 @@ Après 2.3, parce qu'il reprend l'`OPT` et le `LR_SCALE` adoptés (amendement 2 
 
 ## 4. s6-cast-pico (`docs/s6-cast-prereg.md`, `docs/SPEC-S6-CAST.md`)
 
-> **Status (16/11/2026): done** (v1 failed, published as a result); v2 is item 3.
+> **Status (16/11/2026): done** (v1 failed, published as a result); v2 is item 1.
 
 Indépendant des autres s6, il ne lit pas de texte.
 
@@ -474,7 +492,7 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 
   **Succès** = H2 et H3. **« LFM3 amélioré »** = H4 en plus.
 - [x] Rapport, quel que soit le résultat : les tableaux, l'oracle (le plafond d'un routeur parfait), la part routée vers s1 et la part de réflexions forcées. À mettre sur le site et dans un chapitre du tutoriel si c'est un succès. **Done:** `BENCH.md` and the Results page (`site/results/index.md`, LFM3-1.7B); no tutorial chapter, since it is a failure.
-- [x] **Ensuite, seulement si le rapport le justifie :** **Superseded (not scheduled):** S1/S2 failed on H3 and H4 (15/11/2026) and the plan moved on to §6.1 (item 5); none of these follow-ups is planned, and each would still need a dated amendment.
+- [x] **Ensuite, seulement si le rapport le justifie :** **Superseded (not scheduled):** S1/S2 failed on H3 and H4 (15/11/2026) and the plan moved on to §6.1 (item 3); none of these follow-ups is planned, and each would still need a dated amendment.
   - un budget de 64 jetons ;
   - IFEval ;
   - une sonde sur les états cachés au lieu des log-probas ;
@@ -484,7 +502,7 @@ Le but est autant de précision, voire plus, pour bien moins de calcul.
 
 ### 6.1 LFM3 fine-tuné (`docs/lfm3-ft-prereg.md`) — **rien n'a tourné**
 
-> **Status (16/11/2026): not started, still open (item 5).** The Hugging Face Jobs plan below is superseded by amendment 1 of `docs/lfm3-ft-prereg.md` (09/11/2026: everything local).
+> **Status (17/11/2026): not started, still open (item 3);** amendments 5 and 6 of `docs/lfm3-ft-prereg.md` replace this plan with a shorter one (no `gen`, the base stays System 2). The Hugging Face Jobs plan below is superseded by amendment 1 of `docs/lfm3-ft-prereg.md` (09/11/2026: everything local).
 
 > **After the failure of S1/S2 (15/11/2026).** `docs/lfm3-ft-prereg.md` says nothing about running the fine-tuning when S1/S2 fails: it sets no precondition on the router's result and does not change its goal. Its only sentences on the router are in §1, « Il ne remplace pas le routeur : le routeur est mesuré sur le modèle de base **et** sur le modèle fine-tuné, avec le même protocole (§5). », and in §6, « Ce verdict est celui du fine-tuning. Il est distinct du « LFM3 amélioré » du routeur (H4 de `docs/lfm3-s1s2-prereg.md`), que le rapport donne sous son propre nom (« H4 »). » Its amendment 1 reuses the base generations of `runs/lfm3-s1s2` as the reference if the conversion check of the smoke allows it. Whether to run it is the owner's decision; nothing has run.
 
@@ -510,19 +528,19 @@ Aucune question de calibration, de test ou de MMLU-Pro n'y entre. Les labels GLM
 
 Depuis le checkout principal à jour de main (`data/lfm3` y est déjà) :
 
-- [x] **Smoke** (L4, 30 à 40 min, environ 0,50 $, au plus 0,80 $) : `scripts/lfm3-ft.sh smoke`. Le suivre avec `hf jobs ps`, puis `hf jobs logs <id>`. Il vérifie : **Superseded:** by the local mode (amendment 1 of `docs/lfm3-ft-prereg.md`, 09/11/2026): the smoke runs on the M5, `scripts/lfm3-ft.sh smoke` (item 5).
+- [x] **Smoke** (L4, 30 à 40 min, environ 0,50 $, au plus 0,80 $) : `scripts/lfm3-ft.sh smoke`. Le suivre avec `hf jobs ps`, puis `hf jobs logs <id>`. Il vérifie : **Superseded:** by the local mode (amendment 1 of `docs/lfm3-ft-prereg.md`, 09/11/2026): the smoke runs on the M5, `scripts/lfm3-ft.sh smoke` (item 3).
   - la révision du modèle de base, qu'il rend ;
   - si vLLM 0.33.0 charge LFM3 et s'accorde avec transformers ;
   - le gabarit avec et sans réflexion ;
   - les noms des modules LoRA ;
   - deux pas de TRL, la fusion et le rechargement.
-- [x] `scripts/lfm3-ft.sh pull`, puis lire `runs/lfm3-ft/smoke/report.json` : `revision`, `engine`, `lora_targets_match`, `trl.ok`. **Superseded:** `pull` has nothing to do in the local mode; the smoke report is read from `runs/lfm3-ft/smoke/report.json` (item 5).
-- [x] **Amendement 1 de `docs/lfm3-ft-prereg.md`** (daté, commité) : recopier la révision et le moteur. Les reporter dans `BASE_REV_PINNED` et `ENGINE_PINNED` en tête de `scripts/lfm3-ft.sh`. Si `lora_targets_match` ou `trl.ok` est faux, on s'arrête : l'écart passe d'abord par l'amendement. **Superseded:** amendment 1 became the local-mode amendment (09/11/2026); the revision and the LoRA method are pinned by a later dated amendment, after the local smoke and before `gen` (item 5).
-- [x] **Génération** (A100, environ 2 h, environ 5 $, au plus 10 $) : `scripts/lfm3-ft.sh gen`. Elle reprend si le job est coupé : relancer la même commande. **Superseded:** local generation with mlx-vlm, capped at 1,000 questions per task (amendment 1; item 5).
-- [x] **Entraînement** (A100, 1 à 2 h, environ 5 $, au plus 10 $) : `scripts/lfm3-ft.sh sft`. Puis `scripts/lfm3-ft.sh pull`, pour avoir `runs/lfm3-ft/sft/result.json` et le commit du modèle. **Superseded:** local LoRA by the rule of amendment 1 (transformers and peft on MPS, else mlx-vlm; item 5).
-- [x] **Évaluation** (A100, environ 1 h 30 par modèle, environ 7,50 $ pour les deux, au plus 15 $) : `scripts/lfm3-ft.sh eval`. C'est un job pour la base, un pour le modèle fine-tuné. Le job de la base est aussi le run à distance du routeur du §6 (amendement 1). **Superseded:** local evaluation; the base may reuse the generations of `runs/lfm3-s1s2` if the conversion check of the smoke allows it (amendment 1; item 5).
-- [x] **Lecture** (local, gratuit) : `scripts/lfm3-ft.sh pull route gate`. Elle donne `runs/lfm3-ft/report.md` et `gate.json`, et `runs/lfm3-ft/eval/<base|ft>/report.md` pour le routeur. **Superseded:** the same reading in the local mode, `scripts/lfm3-ft.sh route gate`, without `pull` (item 5).
-- [x] **Portes** (pré-enregistrées, §6) : **Not a task:** the gates, unchanged by amendment 1, are read in item 5.
+- [x] `scripts/lfm3-ft.sh pull`, puis lire `runs/lfm3-ft/smoke/report.json` : `revision`, `engine`, `lora_targets_match`, `trl.ok`. **Superseded:** `pull` has nothing to do in the local mode; the smoke report is read from `runs/lfm3-ft/smoke/report.json` (item 3).
+- [x] **Amendement 1 de `docs/lfm3-ft-prereg.md`** (daté, commité) : recopier la révision et le moteur. Les reporter dans `BASE_REV_PINNED` et `ENGINE_PINNED` en tête de `scripts/lfm3-ft.sh`. Si `lora_targets_match` ou `trl.ok` est faux, on s'arrête : l'écart passe d'abord par l'amendement. **Superseded:** amendment 1 became the local-mode amendment (09/11/2026); the revision and the LoRA method are pinned by a later dated amendment, after the local smoke and before `gen` (item 3).
+- [x] **Génération** (A100, environ 2 h, environ 5 $, au plus 10 $) : `scripts/lfm3-ft.sh gen`. Elle reprend si le job est coupé : relancer la même commande. **Superseded:** local generation with mlx-vlm, capped at 1,000 questions per task (amendment 1; item 3; amendment 5 then dropped the generation).
+- [x] **Entraînement** (A100, 1 à 2 h, environ 5 $, au plus 10 $) : `scripts/lfm3-ft.sh sft`. Puis `scripts/lfm3-ft.sh pull`, pour avoir `runs/lfm3-ft/sft/result.json` et le commit du modèle. **Superseded:** local LoRA by the rule of amendment 1 (transformers and peft on MPS, else mlx-vlm; item 3).
+- [x] **Évaluation** (A100, environ 1 h 30 par modèle, environ 7,50 $ pour les deux, au plus 15 $) : `scripts/lfm3-ft.sh eval`. C'est un job pour la base, un pour le modèle fine-tuné. Le job de la base est aussi le run à distance du routeur du §6 (amendement 1). **Superseded:** local evaluation; the base may reuse the generations of `runs/lfm3-s1s2` if the conversion check of the smoke allows it (amendment 1; item 3).
+- [x] **Lecture** (local, gratuit) : `scripts/lfm3-ft.sh pull route gate`. Elle donne `runs/lfm3-ft/report.md` et `gate.json`, et `runs/lfm3-ft/eval/<base|ft>/report.md` pour le routeur. **Superseded:** the same reading in the local mode, `scripts/lfm3-ft.sh route gate`, without `pull` (item 3).
+- [x] **Portes** (pré-enregistrées, §6) : **Not a task:** the gates, unchanged by amendment 1, are read in item 3 (amendment 5: G2 is not read).
   - **G1** : précision s1 sur le test ≥ base + 0,03, et arrêts par limite ≤ la moitié de la base ;
   - **G2** : précision s2-1024 ≥ base − 0,01, et réflexion ≤ 0,6 × la base. Elle est rapportée à part ;
   - **G3** : MMLU-Pro (500, s1) ≥ base − 0,02.
@@ -569,7 +587,7 @@ Chaque point passe par un pré-enregistrement figé avant le run, comme pour s6 
 
 ## 8. s6-ear : un s6 qui écoute (`docs/s6-ear-prereg.md`, `docs/SPEC-S6.md` §16)
 
-> **Status (16/11/2026): v1 done** (gates failed, published as a result on 15/11/2026). v2 is a new pre-registration, `docs/s6-ear2-prereg.md` (item 1); the tests left are in item 8.
+> **Status (17/11/2026): v1 done** (gates failed, published as a result on 15/11/2026). v2, `docs/s6-ear2-prereg.md`, passed its gate on 17/11 and is published; v3 is item 5; the browser checks left are in item 7 and the tests left in item 11.
 
 Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement « Mimi comme professeur », le jev audio, les questions `turn_end` et `keyword` (dont le zéro-shot), le contrôle conformal, les portes. Rien n'est entraîné. **Ne pas lancer en même temps que le run LFM3 du §6 : les deux utilisent le GPU.** La labellisation GLM du §1.1 peut continuer, elle ne fait que du réseau.
 
@@ -598,7 +616,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
   - fin de tour ≥ Smart Turn ;
   - mots-clés ≥ 0,90 ;
   - zéro-shot en et fr ≥ 0,20.
-- [x] Publier si les portes tiennent (§5). On ajoute une démo micro sur le site : on parle, et le modèle montre en direct sa décision et sa confiance (`Engine.decideAudio`, PCM rééchantillonné à 16 kHz). **Superseded:** the gates failed; the file is published as a result (amendment 5 of `docs/s6-ear-prereg.md`, 15/11/2026) with its Space; a demo for v2 belongs to item 4.
+- [x] Publier si les portes tiennent (§5). On ajoute une démo micro sur le site : on parle, et le modèle montre en direct sa décision et sa confiance (`Engine.decideAudio`, PCM rééchantillonné à 16 kHz). **Superseded:** the gates failed; the file is published as a result (amendment 5 of `docs/s6-ear-prereg.md`, 15/11/2026) with its Space; v2's demo exists since 17/11/2026 (the Listen page and the Space `maxgfr/s6-ear2-nano`).
 - [x] **v2, après le §1.1** (même quota z.ai) : `sky-data teacher label-transcripts`, puis `sky-data audio-jev --about data/teacher/ear_about_labels.jsonl`, et un nouveau `decide` avec `about`. **v2 duplex** : écrire le téléchargeur AMI (la règle `audio::duplex_label` existe et elle est testée), puis la question `duplex_action` contre la règle « parler après 500 ms de silence ». **Superseded:** v2 is another design, end of turn only (`docs/s6-ear2-prereg.md`); its §3.5 leaves keywords, `duplex_action` and `about` out.
 
 ### 8.1 Le prochain run, pas à pas (s6-ear-nano)
@@ -620,7 +638,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 
 ### 8.2 Tester dans le navigateur
 
-> **Status (16/11/2026): the demo is done;** the microphone check and the publication steps move to item 4.
+> **Status (17/11/2026): the demo is done;** v2 is published with it; the microphone check left (Safari, and inside the Hugging Face frame) is item 7.
 
 - [x] **La démo est écrite** (04/11/2026) : la page `/ear/` (« Listen ») et le composant `EarDemo.vue`.
   - **Entrées :** le micro (`getUserMedia` et un `AudioWorklet`), ou l'un de 3 extraits CC-BY-4.0 joués par le même chemin (`site/public/ear/`).
@@ -634,25 +652,25 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
   - aucune erreur dans la console.
 
   Pour tester un modèle local, le copier dans `site/public/ear/dev/` (ignoré par git) et ouvrir `/skycmd/ear/?model=/ear/dev/<fichier>.gguf`.
-- [x] **Le micro, par l'utilisateur** : la permission micro du navigateur ne s'automatise pas. À faire dans Chrome puis Safari, avec le modèle entraîné. Vérifier : **Superseded for v1:** its model failed its gates; the check moves to item 4, for s6-ear v2 if it is published with a browser demo.
+- [x] **Le micro, par l'utilisateur** : la permission micro du navigateur ne s'automatise pas. À faire dans Chrome puis Safari, avec le modèle entraîné. Vérifier : **Superseded for v1:** its model failed its gates; the check moves to item 7, for s6-ear v2 (Chrome done by the owner on 17/11/2026).
   - que la permission est demandée une seule fois ;
   - que la décision suit la parole : parler, se taire, dire « yes » ou « stop » ;
   - que la latence reste sous 80 ms ;
   - qu'il n'y a aucune erreur dans la console.
-- [x] **À la publication du modèle :** **Superseded:** v1 is published as evaluated, as a failed result (`site/public/models/s6-ear-nano.gguf`, manifest `task: ear`, `gate: failed`; amendment 5), with no `route`, no "Listen" entry in the navigation and no GIF; for v2 these steps belong to item 4.
+- [x] **À la publication du modèle :** **Superseded:** v1 is published as evaluated, as a failed result (`site/public/models/s6-ear-nano.gguf`, manifest `task: ear`, `gate: failed`; amendment 5), with no `route`, no "Listen" entry in the navigation and no GIF; v2 is published with the Listen page in the navigation (17/11/2026).
   - copier `models/s6-ear-nano/s6-ear-nano-crc.gguf` dans `site/public/models/`, avec une entrée `manifest.json` (`task: "ear"`, `arch: "skycmd-s2"`, et `route: {"noul": ρ, "choice": ρ}` tiré de `runs/s6-ear-nano/eval/crc.json`) ;
   - ajouter « Listen » à la barre de navigation (`site/.vitepress/config.ts`) ;
   - enregistrer un GIF de la démo pour le README et la carte Hugging Face.
 
 ### 8.3 Que tout soit carré avant de publier
 
-> **Status (16/11/2026): partly open (item 8).**
+> **Status (16/11/2026): partly open (item 11; the Space in a browser, item 7).**
 
 - [x] Les trois portes lues **telles quelles**, sans relance pour « voir ». Un échec est publié comme tel sur la page Results. **Done:** read as they were, and published as a failure on the Results page (`site/results/index.md`, s6-ear-nano).
-- [ ] Run `cargo test -p sky-web --test parity` and `wasm-pack test --node --release crates/sky-web --test parity` (item 8). The parity itself is measured: max |Δp| 1.79e-5, 20 argmax of 20 (`runs/s6-ear-nano/eval/wasm.json`, `docs/big-run-report.md` §7).
-- [ ] `cargo test` passe sur sky-infer, sky-data, sky-web et sky-gguf, et `cargo test --release -p sky-train` passe (avec `DEVELOPER_DIR` pointé sur Xcode). Clippy et fmt sont propres, et `bash -n` et shellcheck passent sur les scripts. **Open (item 8).**
+- [ ] Run `cargo test -p sky-web --test parity` and `wasm-pack test --node --release crates/sky-web --test parity` (item 11). The parity itself is measured: max |Δp| 1.79e-5, 20 argmax of 20 (`runs/s6-ear-nano/eval/wasm.json`, `docs/big-run-report.md` §7).
+- [ ] `cargo test` passe sur sky-infer, sky-data, sky-web et sky-gguf, et `cargo test --release -p sky-train` passe (avec `DEVELOPER_DIR` pointé sur Xcode). Clippy et fmt sont propres, et `bash -n` et shellcheck passent sur les scripts. **Open (item 11).**
 - [x] Dans `DATA_LICENSES.md`, les vrais comptes remplacent « not fetched yet » (04/11/2026). Rien de `data/ear` n'est commité.
-- [ ] Les chiffres sont cohérents partout, sans un seul « à mesurer » qui traîne : **Open (item 8):** the 0.9263 bar is corrected wherever it appears (16/11), but `site/novelty/index.md` §8 still describes s6-ear as designed ("Measured in the smoke run", transcripts labelled by GLM, which never ran) without its result.
+- [ ] Les chiffres sont cohérents partout, sans un seul « à mesurer » qui traîne : **Open (item 11):** the 0.9263 bar is corrected wherever it appears (16/11), but `site/novelty/index.md` §8 still describes s6-ear as designed ("Measured in the smoke run", transcripts labelled by GLM, which never ran) without its result.
   - SPEC-S6 §16 ;
   - `docs/s6-ear-prereg.md` ;
   - README ;
@@ -660,7 +678,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
   - la page « What we bring » (§8) ;
   - le chapitre 26 du tutoriel ;
   - la carte `hf/cards/s6-ear-nano.md`.
-- [ ] `cd site && npm run docs:build` passe (sans lien mort). Le Space Hugging Face est vérifié dans un vrai navigateur (le modèle se charge, la démo répond, la console est propre). **Open (item 8).**
+- [ ] `cd site && npm run docs:build` passe (sans lien mort). Le Space Hugging Face est vérifié dans un vrai navigateur (le modèle se charge, la démo répond, la console est propre). **Open (items 11 and 7).**
 
 ## 9. Le grand run : tout entraîner, au mieux, sur le M5 (décidé le 05/11/2026, à lancer une prochaine fois)
 
@@ -700,7 +718,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 
 ### 9.2 Ce qui reste à faire avant le run (par Claude, sans GPU)
 
-> **Status (16/11/2026): done,** but for the checks of its last box (item 8).
+> **Status (16/11/2026): done,** but for the checks of its last box (item 11).
 
 - [x] **Les amendements datés, commités avant le moindre run (écrits le 09/11/2026, chacun avec sa ligne sur le mode bridé) :**
   - [x] **`docs/s6-prereg.md` §7, amendement 4 (commité le 06/11/2026, avec `scripts/s6-recipe.sh`)** : les règles §4 sont appliquées par `scripts/s6-adopt.py`. La recette écrite dans `runs/recipe/recipe.json` remplace le commit manuel, et elle est commitée dans le rapport. L'extension au bord est lancée automatiquement par `s6lr --extend`.
@@ -723,7 +741,7 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
   - **Le mode bridé et la reprise, par défaut.** `train-all.sh` exporte `SKY_DUTY=${SKY_DUTY:-0.5}`, `SKY_COOL=${SKY_COOL-45:15}` et `RESUME=1` (`sky-train` et les `train-*.sh` les lisent déjà). Attention : avec `RESUME=1`, un run reprend tout ce qu'il trouve dans son dossier. `SMOKE=1` doit donc écrire ailleurs que `runs/s6-*`, ou nettoyer ses dossiers, sinon les vrais budgets repartiraient d'un checkpoint de fumée.
 - [x] **Le mode local de `scripts/lfm3-ft.sh`** (`gen`, `sft` et `eval` avec mlx-vlm ou MPS, sans `hf jobs`) et son smoke local, dans `experiments/lfm3-ft/local.py`. Il respecte `SKY_DUTY` et `SKY_COOL` comme `experiments/lfm3-s1s2/s1s2.py`. **Écrit le 09/11/2026, jamais exécuté hors dry-run** : le smoke local reste à lancer (§9.4).
 - [x] **Dans chaque amendement ci-dessus :** une ligne pour dire que le run se fait en mode bridé, comme l'amendement 5 de `docs/s6-prereg.md`.
-- [ ] **The checks still to run (item 8):** `cargo test -p xtask` and the `DRY_RUN=1` of the `eval` step of `lfm3-ft.sh` were never run (the others passed on 09/11/2026, before the code of 12 to 16/11); run them all again in the full test pass:
+- [ ] **The checks still to run (item 11):** `cargo test -p xtask` and the `DRY_RUN=1` of the `eval` step of `lfm3-ft.sh` were never run (the others passed on 09/11/2026, before the code of 12 to 16/11); run them all again in the full test pass:
   - `cargo test -p xtask` ;
   - `python3 -I scripts/test_s6_adopt.py` ;
   - `python3 experiments/lfm3-ft/test_common.py` ;
@@ -735,11 +753,11 @@ Code complet : le front-end log-mel (Rust natif et WASM), le pré-entraînement 
 > **Status (16/11/2026): superseded;** nothing here is a task now.
 
 - [x] Garder le Mac ouvert quand c'est possible, de préférence sur secteur : le run n'avance que Mac ouvert. Rabattre l'écran le suspend, éteindre l'arrête, et il suffit alors de relancer la même commande (voir en tête du TODO). Pas de `pmset disablesleep`. **Not a task:** an operating reminder; `scripts/auto-brake.sh` now sets the modes by itself.
-- [x] Launch each tranche (§9.4), or have the session's operator launch it on request. **Superseded:** tranches 1 to 4 and LFM3 S1/S2 ran from 09/11 to 15/11/2026; the runs left are items 1 to 3 and 5.
+- [x] Launch each tranche (§9.4), or have the session's operator launch it on request. **Superseded:** tranches 1 to 4 and LFM3 S1/S2 ran from 09/11 to 15/11/2026; the runs left are items 1 to 3.
 
 ### 9.4 Le run sur le M5, en tranches (une fois le 9.2 fait)
 
-> **Status (16/11/2026):** steps 1 to 6 and 8 are done (the smoke, tranches 1 to 4, s6-sleep v1's pilot, LFM3 S1/S2, `runs/all/REPORT.md` and `docs/big-run-report.md`); step 7 is item 5; step 9 is done for the published models and is item 4 for the next ones.
+> **Status (16/11/2026):** steps 1 to 6 and 8 are done (the smoke, tranches 1 to 4, s6-sleep v1's pilot, LFM3 S1/S2, `runs/all/REPORT.md` and `docs/big-run-report.md`); step 7 is item 3; step 9 is done for the published models and is item 4 for the next ones.
 
 Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `train-all.sh`, reprise de xtask et des scripts). Les durées sont celles du M5 à pleine vitesse : **à multiplier par environ 2,7 en mode bridé (`SKY_DUTY=0.5 SKY_COOL=45:15`)**. Une tranche peut s'étaler sur plusieurs jours, et les « nuits » ci-dessous sont des numéros de tranche.
 
@@ -757,7 +775,7 @@ Chaque tranche reprend là où la précédente s'est arrêtée (marqueurs de `tr
 
 ## 10. Next model: `s6-sleep-nano`, an s6 that sleeps (added 11/11/2026; pre-registered 12/11/2026, no code and no run yet)
 
-> **Status (16/11/2026):** v1 stopped by its pilot (15/11), v2 ended at its check C4 (15/11), v3 in progress (item 2). The plan below is v1's; `docs/s6-sleep2-prereg.md` and `docs/s6-sleep3-prereg.md` are the reference where they differ.
+> **Status (17/11/2026):** v1 stopped by its pilot (15/11), v2 ended at its check C4 (15/11), v3 in progress: nano runs done, test reading and gate running (item 2). The plan below is v1's; `docs/s6-sleep2-prereg.md` and `docs/s6-sleep3-prereg.md` are the reference where they differ.
 
 **Status (15/11/2026): stopped by the pilot, no nano run.** The pico pilot ran on 14/11 (four runs of 3,684 steps, ended at 23:58). On the dev seeds of `recall`, the memory read at N = 1 scores 0.2460 against 0.2650 for the control without memory; the rule asked for +0.10, so "the memory works" is false (truncation kept: 0.2565 against 0.2430; drawn N not kept: 0.2460 against 0.2565). `scripts/s6-sleep-report.py` wrote `runs/s6-sleep/pilot.json` with no flags for the nano arm, and `scripts/train-sleep.sh` stopped: "the pilot says the memory does not work: no nano run". In each memory run, `recall` is the same at N = 1, 2 and 4. H0 to H3 are not tested, the test seeds are not read, nothing is published. Numbers: `BENCH.md`, section "s6-sleep".
 
@@ -857,16 +875,16 @@ A null result on the 4 games would say nothing if they never need memory beyond 
 
 ### 10.4 Then: the flexible weights of §7.3 with sleep and dreaming (2606.03979)
 
-> **Status (16/11/2026): not started; only if justified (item 7).**
+> **Status (17/11/2026): not started, not scheduled** ("Open, not scheduled" at the top: only if justified).
 
-- [ ] **§7.3 changed into consolidation.** The vetoes of a session are collected instead of updating the adapter after each one. At sleep, a new rank-4 low-rank expert is grown and trained so that the frozen model with it imitates the frozen model with its temporary adapter. Then the temporary adapter is reset. **Open (item 7):** only if s6-sleep v3 and §7.3 justify it; a dated pre-registration first.
-- [ ] **Dreaming without an LLM.** Self-play episodes in the `sky-games` simulators, started around the states of the vetoes. The reward is real: the arena score after consolidation is better, or not. This is where skycmd beats the paper: no synthetic curriculum to invent, and episodes cost µs. **Open (item 7):** same condition.
+- [ ] **§7.3 changed into consolidation.** The vetoes of a session are collected instead of updating the adapter after each one. At sleep, a new rank-4 low-rank expert is grown and trained so that the frozen model with it imitates the frozen model with its temporary adapter. Then the temporary adapter is reset. **Open, not scheduled:** only if s6-sleep v3 and §7.3 justify it; a dated pre-registration first.
+- [ ] **Dreaming without an LLM.** Self-play episodes in the `sky-games` simulators, started around the states of the vetoes. The reward is real: the arena score after consolidation is better, or not. This is where skycmd beats the paper: no synthetic curriculum to invent, and episodes cost µs. **Open, not scheduled:** same condition.
 - **Arms.** Frozen; §7.3 online adapter; sleep without dreaming; sleep with dreaming. Every arm has the same CRC guardrail (α = 0.02).
 - **The paper's lesson.** On SQuAD, dreaming carries most of the gain (48.9 vs 35.7). It is the arm to watch.
 
 ### 10.5 Optional: in-place TTT on LFM3-1.7B (2604.06169)
 
-> **Status (16/11/2026): not scheduled** (item 7 says when it would be).
+> **Status (17/11/2026): not scheduled** ("Open, not scheduled" at the top says when it would be).
 
 The gains are on long context only (−0.5 at 4k on RULER), and the §6 tasks are short, so the expected value is low.
 
