@@ -27,6 +27,7 @@ import {
   type ModelEntry,
   type WasmEngine,
 } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 import { DEMO_CASES, type DemoCase } from '../lib/demo-cases'
 import {
   S6_CASES,
@@ -181,7 +182,7 @@ async function load() {
   if (!model.value) return
   // The times are per model.
   times.reset()
-  status.value = `Loading ${model.value.name} (${formatInt(model.value.bytes / 1024)} KB)…`
+  status.value = `Loading ${model.value.name} (${formatSize(model.value.bytes)})…`
   try {
     engine.value = await loadEngine(model.value)
     status.value = ''
@@ -479,7 +480,7 @@ function caseLabel(c: DemoCase) {
       </p>
       <p class="live-meta">
         {{ secretAnswers.length }} decisions, {{ formatMicros(secretTotal) }} for this text · all 4 block passes (full depth, as published)
-        <template v-if="model"> · {{ model.name }}, {{ formatInt(model.bytes / 1024) }} KB</template>
+        <template v-if="model"> · {{ model.name }}, {{ formatSize(model.bytes) }}</template>
       </p>
       <p class="live-meta live-times">
         <template v-if="times.warmMedian !== null">
@@ -518,7 +519,7 @@ function caseLabel(c: DemoCase) {
           <template v-if="answer.layers_used !== null"> · {{ answer.layers_used }} block passes</template>
           · question {{ answer.static_hit ? 'cached' : 'encoded' }}
         </template>
-        <template v-if="model"> · {{ model.name }}, {{ formatInt(model.bytes / 1024) }} KB</template>
+        <template v-if="model"> · {{ model.name }}, {{ formatSize(model.bytes) }}</template>
       </p>
       <p class="live-meta live-times">
         this decision <strong>{{ formatMicros(answer.micros) }}</strong>

@@ -24,6 +24,7 @@ import {
   type RouterEntry,
   type WasmToolRouter,
 } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 import {
   MAX_TOOLS,
   ROUTER_PRESETS,
@@ -164,10 +165,10 @@ const shownAnswer = computed(() => {
 const toolsLabel = `Tools (one per line, name: description, up to ${MAX_TOOLS})`
 const maskLabel = computed(() => (masked.value ? 'Show the real names' : 'Mask names (tool_<k>)'))
 
-const sizeKB = computed(() => (entry.value ? formatInt(entry.value.bytes / 1024) : ''))
+const pairSize = computed(() => (entry.value ? formatSize(entry.value.bytes) : ''))
 /** The model part's file and size (part `model`). */
 const modelFile = computed(() => entry.value?.files.find((f) => f.role === 'model') ?? null)
-const modelKB = computed(() => (modelFile.value ? formatInt(modelFile.value.bytes / 1024) : ''))
+const modelSize = computed(() => (modelFile.value ? formatSize(modelFile.value.bytes) : ''))
 
 onMounted(async () => {
   clockStep.value = clockStepMicros()
@@ -178,8 +179,8 @@ onMounted(async () => {
     return
   }
   status.value = modelOnly.value
-    ? `Loading ${modelFile.value?.file} (${modelKB.value} KB) and the embedding file of ${entry.value.name}, which the engine's router needs…`
-    : `Loading ${entry.value.name} (${sizeKB.value} KB in two files)…`
+    ? `Loading ${modelFile.value?.file} (${modelSize.value}) and the embedding file of ${entry.value.name}, which the engine's router needs…`
+    : `Loading ${entry.value.name} (${pairSize.value} in two files)…`
   try {
     router.value = await loadRouter(entry.value)
     tau.value = router.value.tauAsk()
@@ -381,8 +382,8 @@ function pct(p: number) {
         {{ answer.fast ? 'fast mode' : 'full depth' }}<template v-if="answer.layers_used !== null"> · {{ answer.layers_used }} block passes</template>
         · tool list {{ cachedOf(answer) ? 'cached' : 'encoded' }}
         · model part {{ formatMicros(answer.micros_model) }}, embedding part {{ formatMicros(answer.micros_embedding) }}
-        <template v-if="entry && modelOnly"> · {{ modelFile?.file }}, {{ modelKB }} KB</template>
-        <template v-else-if="entry"> · {{ entry.name }}, {{ sizeKB }} KB in two files</template>
+        <template v-if="entry && modelOnly"> · {{ modelFile?.file }}, {{ modelSize }}</template>
+        <template v-else-if="entry"> · {{ entry.name }}, {{ pairSize }} in two files</template>
       </p>
       <p class="router-meta router-times">
         {{ modelOnly ? 'this request, model part' : 'this request' }} <strong>{{ formatMicros(timeOf(answer)) }}</strong>

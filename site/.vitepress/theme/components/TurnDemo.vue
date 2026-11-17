@@ -11,13 +11,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   engineLabel,
   formatInt,
-  formatKB,
   formatMicros,
   loadTurnDetector,
   loadTurnEntry,
   turnSynthSpeech,
   type WasmTurnDetector,
 } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 import {
   EnergyVad,
   Framer,
@@ -378,7 +378,7 @@ onMounted(async () => {
     const line = [
       inf.name,
       `${formatInt(inf.params)} parameters`,
-      formatKB(inf.file_bytes),
+      formatSize(inf.file_bytes),
       // hops of 10 ms: the window is 4 s
       `window ${((inf.window_hops * TURN_DEFAULTS.frameMs) / 1000).toFixed(1)} s`,
     ]

@@ -6,6 +6,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { engineLabel, familyOf, formatInt, isFailed, loadEngine, loadManifest, loadWasm, type ModelEntry } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 
 interface BenchRow {
   name: string
@@ -108,7 +109,7 @@ async function runBench() {
 const fmtPct = (v: number | null) => (v == null ? 'n/a' : `${(v * 100).toFixed(1)}%`)
 const fmtNum = (v: number | null, d = 3) => (v == null ? 'n/a' : v.toFixed(d))
 const fmtUs = (v: number | null | undefined) => (v == null ? 'n/a' : `${formatInt(v)} µs`)
-const fmtKB = (v: number | null) => (v == null ? 'n/a' : `${formatInt(v / 1024)} KB`)
+const fmtSize = (v: number | null) => (v == null ? 'n/a' : formatSize(v))
 const fmtInt = (v: number | null) => (v == null ? 'n/a' : formatInt(v))
 
 function family(r: BenchRow): string {
@@ -174,8 +175,7 @@ const chart = computed(() => {
 })
 
 function kbLabel(e: number) {
-  const kb = 10 ** e / 1024
-  return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`
+  return formatSize(10 ** e)
 }
 </script>
 
@@ -219,7 +219,7 @@ function kbLabel(e: number) {
             </td>
             <td>{{ family(r) }}</td>
             <td>{{ fmtInt(r.params) }}</td>
-            <td>{{ fmtKB(r.bytes) }}</td>
+            <td>{{ fmtSize(r.bytes) }}</td>
             <td>{{ fmtPct(r.accuracy) }}</td>
             <td>{{ fmtPct(r.games_accuracy) }}</td>
             <td>{{ fmtPct(r.flappy_accuracy) }}</td>

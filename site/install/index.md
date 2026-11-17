@@ -72,8 +72,8 @@ Next to s6-cast-pico, the [Forecast](/forecast/) page runs two reference forecas
 
 | model | runs in | file | license |
 |---|---|---|---|
-| TinyCast (146K params, ported to Rust) | skycmd engine (`Forecaster`) | [tinycast.gguf](https://maxgfr.github.io/skycmd/models/ref/tinycast.gguf) (582 KB) | Apache-2.0 ([notice](https://maxgfr.github.io/skycmd/models/ref/TINYCAST-NOTICE.txt)) |
-| Timestral-5M (Mistral AI, exported to ONNX) | onnxruntime-web | [timestral-5m.onnx](https://maxgfr.github.io/skycmd/models/ref/timestral-5m.onnx) (22.4 MB) | Modified MIT ([license](https://maxgfr.github.io/skycmd/models/ref/TIMESTRAL-LICENSE.txt)) |
+| TinyCast (146K params, ported to Rust) | skycmd engine (`Forecaster`) | [tinycast.gguf](https://maxgfr.github.io/skycmd/models/ref/tinycast.gguf) (596 KB) | Apache-2.0 ([notice](https://maxgfr.github.io/skycmd/models/ref/TINYCAST-NOTICE.txt)) |
+| Timestral-5M (Mistral AI, exported to ONNX) | onnxruntime-web | [timestral-5m.onnx](https://maxgfr.github.io/skycmd/models/ref/timestral-5m.onnx) (23.0 MB) | Modified MIT ([license](https://maxgfr.github.io/skycmd/models/ref/TIMESTRAL-LICENSE.txt)) |
 
 s3-pico plays the four games of the [Play](/play/) page at the oracle's level
 ([chapter 21](/tutorial/21-s3-recursive-tiny)).

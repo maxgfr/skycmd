@@ -3,11 +3,12 @@
 import { computed } from 'vue'
 import { live } from '../lib/store'
 import { formatInt } from '../lib/wasm'
+import { sizeParts } from '../lib/size'
 
 const hasModel = computed(() => live.status === 'model')
 const us = computed(() => (live.medianUs > 0 ? formatInt(live.medianUs) : '—'))
 const capacity = computed(() => (live.medianUs > 0 ? formatInt(1e6 / live.medianUs) : '—'))
-const kb = computed(() => (hasModel.value ? formatInt(live.bytes / 1024) : '—'))
+const size = computed(() => (hasModel.value ? sizeParts(live.bytes) : { value: '—', unit: 'KB' }))
 const params = computed(() => (hasModel.value ? formatInt(live.params) : '—'))
 </script>
 
@@ -22,7 +23,7 @@ const params = computed(() => (hasModel.value ? formatInt(live.params) : '—'))
       <div class="label">decisions/s capacity <span class="muted">({{ formatInt(live.decisionsPerS) }} taken)</span></div>
     </div>
     <div class="stat">
-      <div class="value">{{ kb }}<span class="unit">KB</span></div>
+      <div class="value">{{ size.value }}<span class="unit">{{ size.unit }}</span></div>
       <div class="label">model file</div>
     </div>
     <div class="stat">

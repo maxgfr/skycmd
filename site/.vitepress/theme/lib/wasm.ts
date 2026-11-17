@@ -566,7 +566,3 @@ export class DecisionTimes {
     this.warm = []
   }
 }
-
-export function formatKB(bytes: number): string {
-  return `${Math.round(bytes / 1024).toLocaleString('en-US')} KB`
-}

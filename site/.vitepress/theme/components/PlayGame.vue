@@ -8,7 +8,6 @@ import {
   FAMILY_LABEL,
   familyOf,
   formatInt,
-  formatKB,
   gameModels,
   gateSuffix,
   isFailed,
@@ -22,6 +21,7 @@ import {
   type SkyWeb,
   type WasmEngine,
 } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 
 const GAMES: { kind: GameKind; title: string; blurb: string }[] = [
   {
@@ -212,7 +212,7 @@ async function selectModel(file: string) {
   }
   const entry = models.value.find((m) => m.file === file)
   if (!entry) return
-  status.value = `Downloading ${entry.name} (${formatKB(entry.bytes)})…`
+  status.value = `Downloading ${entry.name} (${formatSize(entry.bytes)})…`
   try {
     engine.value = await loadEngine(entry)
     status.value = ''
@@ -391,7 +391,7 @@ function pct(p: number) {
         <select v-model="selected" :disabled="mode === 'human'">
           <optgroup v-for="g in groups" :key="g.family" :label="g.label">
             <option v-for="m in g.items" :key="m.file" :value="m.file">
-              {{ m.name }} · {{ formatInt(m.params) }} params · {{ formatKB(m.bytes) }}{{ m.weight_format ? ` · ${m.weight_format}` : '' }}{{ gateSuffix(m) }}
+              {{ m.name }} · {{ formatInt(m.params) }} params · {{ formatSize(m.bytes) }}{{ m.weight_format ? ` · ${m.weight_format}` : '' }}{{ gateSuffix(m) }}
             </option>
           </optgroup>
           <option :value="ORACLE">oracle · coded rules, no model</option>

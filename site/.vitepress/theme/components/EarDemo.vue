@@ -9,6 +9,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { engineLabel, formatInt, isFailed, loadManifest, loadWasm, type ModelEntry, type WasmEngine } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 
 const RATE = 16000
 const WINDOW = 163840 // 128 frames of 80 ms = 10.24 s
@@ -291,7 +292,7 @@ onMounted(async () => {
     const full = isFailed(found)
     if (full) e.setExitThreshold(1)
     engine.value = e
-    status.value = `${e.name()} · ${formatInt(e.n_params())} parameters · ${(e.file_bytes() / 1024).toFixed(0)} KB${full ? ' · full depth, as its gate was read' : ''} · ${engineLabel()}`
+    status.value = `${e.name()} · ${formatInt(e.n_params())} parameters · ${formatSize(e.file_bytes())}${full ? ' · full depth, as its gate was read' : ''} · ${engineLabel()}`
   } catch (err) {
     error.value = String(err)
     status.value = ''

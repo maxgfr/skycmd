@@ -9,7 +9,7 @@ Pick a series and every forecaster below runs on this page, with nothing sent to
 
 - **s6-cast** is ours: the s6 encoder with patch inputs, nine deciles, ternary weights and an exit after each loop, trained on synthetic and permissive real series. **Its first run, s6-cast-pico, failed its gate; its file is published as a result (owner's decision of 15/11/2026)**, not for use: it runs here, marked as failed and unticked by default. The gate, written before training ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md)), was to beat the training-free FLAIR on GIFT-Eval (nGMASE ≤ 0.838 and nWQL ≤ 0.587), with the goal of beating TinyCast. s6-cast-pico (369,792 parameters) scored nGMASE 0.9471 and nWQL 0.6646 ([results](/results/#s6-cast-pico-failed)).
 - **TinyCast** (RAWS Labs, 146,505 parameters, Apache-2.0) is ported to Rust and runs in the same wasm module. Our port matches the official PyTorch forecasts to about 1e-5 of the series range.
-- **Timestral-5M** (Mistral AI, modified MIT license) runs in onnxruntime-web, exported from the official weights. Its 23 MB file is downloaded only when you tick it.
+- **Timestral-5M** (Mistral AI, modified MIT license) runs in onnxruntime-web, exported from the official weights. Its 23.0 MB file is downloaded only when you tick it.
 - **Seasonal naive** repeats the last season. It is the floor GIFT-Eval normalizes every score by.
 
 **Backtest** hides the last steps of the series from the models and scores their forecasts: MASE (below 1 beats the seasonal naive) and the share of the hidden points inside the 10–90 % band (about 80 % when the band is calibrated).

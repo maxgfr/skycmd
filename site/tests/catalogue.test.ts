@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CATALOGUE, GROUPS, STATUS, isExternal } from '../.vitepress/theme/lib/catalogue.ts'
+import { formatSize } from '../.vitepress/theme/lib/size.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const site = join(here, '..')
@@ -16,13 +17,6 @@ const manifest: { name: string; bytes: number }[] = JSON.parse(
   readFileSync(join(site, 'public/models/manifest.json'), 'utf8'),
 )
 
-/** "715 KB", "2.4 MB": the decimal units the site writes, rounded as written. */
-function sizeOf(bytes: number, written: string): string {
-  const [value, unit] = written.split(' ')
-  const digits = value.includes('.') ? value.split('.')[1].length : 0
-  const scaled = unit === 'MB' ? bytes / 1e6 : bytes / 1e3
-  return `${scaled.toFixed(digits)} ${unit}`
-}
 
 test('every model of the manifest has a card', () => {
   const covered = new Set(CATALOGUE.flatMap((e) => e.manifest ?? []))
@@ -38,7 +32,8 @@ test('every size matches the bytes of the manifest', () => {
     const m = manifest.find((x) => x.name === e.manifest![0])
     assert.ok(m, `${e.id}: ${e.manifest[0]} is not in the manifest`)
     assert.ok(e.size, `${e.id}: no size`)
-    assert.equal(sizeOf(m.bytes, e.size!), e.size, `${e.id}: ${m.bytes} bytes`)
+    // "715 KB", "2.4 MB": the decimal units of lib/size.ts, exactly as the demos print the same file
+    assert.equal(e.size, formatSize(m.bytes), `${e.id}: ${m.bytes} bytes`)
   }
 })
 

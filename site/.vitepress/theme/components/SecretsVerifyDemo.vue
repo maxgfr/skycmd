@@ -10,12 +10,12 @@ import {
   clockStepMicros,
   engineLabel,
   formatInt,
-  formatKB,
   formatMicros,
   loadSecretVerifier,
   loadVerifierEntry,
   type WasmSecretVerifier,
 } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 import { MIN_VALUE_CHARS, SECRETS_PRESETS, proposeCandidates, type CandidateRecord } from '../lib/secrets-cand'
 
 type TauKey = 'tau_f1' | 'tau_f05' | 'tau_f2'
@@ -71,7 +71,7 @@ onMounted(async () => {
       status.value = ''
       return
     }
-    status.value = `Loading ${entry.name} (${formatKB(entry.bytes)}) and its word list…`
+    status.value = `Loading ${entry.name} (${formatSize(entry.bytes)}) and its word list…`
     const v = await loadSecretVerifier(entry)
     const t = JSON.parse(v.thresholds()) as Record<TauKey, number | null>
     if (TAUS.some((x) => typeof t[x.key] !== 'number')) throw new Error('the file does not store its three thresholds')
@@ -80,7 +80,7 @@ onMounted(async () => {
     const line = [
       entry.name,
       `${formatInt(inf.n_params)} parameters`,
-      formatKB(inf.file_bytes),
+      formatSize(inf.file_bytes),
       `state window ${formatInt(inf.window)} tokens`,
       `${formatInt(inf.words)} words in the word list`,
       'full depth',

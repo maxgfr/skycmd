@@ -21,7 +21,8 @@ import {
   type QuantileForecast,
   type WasmForecaster,
 } from '../lib/forecast'
-import { formatInt, formatKB } from '../lib/wasm'
+import { formatInt } from '../lib/wasm'
+import { formatSize } from '../lib/size'
 
 type ModelKey = 's6-cast' | 'TinyCast' | 'Timestral-5M' | 'Seasonal naive'
 
@@ -97,7 +98,7 @@ async function ensureModel(k: ModelKey): Promise<boolean> {
   if (!e || !mod.value) return false
   if (e.kind === 'onnx') {
     if (onnx) return true
-    loading.value = { ...loading.value, [k]: `Loading onnxruntime-web and ${formatKB(e.bytes)}…` }
+    loading.value = { ...loading.value, [k]: `Loading onnxruntime-web and ${formatSize(e.bytes)}…` }
     try {
       onnx = await loadOnnxForecaster(e)
       return true
@@ -106,7 +107,7 @@ async function ensureModel(k: ModelKey): Promise<boolean> {
     }
   }
   if (wasmModels.has(e.name)) return true
-  loading.value = { ...loading.value, [k]: `Downloading ${formatKB(e.bytes)}…` }
+  loading.value = { ...loading.value, [k]: `Downloading ${formatSize(e.bytes)}…` }
   try {
     wasmModels.set(e.name, await loadWasmForecaster(mod.value, e))
     return true
@@ -382,7 +383,7 @@ function latency(us: number): string {
         <span v-if="!available(k)" class="badge">{{ k === 's6-cast' ? 'not published' : 'not in this demo' }}</span>
         <span v-else-if="failedOf(k) && !loading[k]" class="badge failed-badge">{{ entryOf(k)!.name }} · failed its gate</span>
         <span v-else-if="loading[k]" class="badge">{{ loading[k] }}</span>
-        <span v-else-if="k === 'Timestral-5M' && !enabled[k]" class="badge">23 MB, on demand</span>
+        <span v-else-if="k === 'Timestral-5M' && !enabled[k]" class="badge">{{ formatSize(entryOf(k)!.bytes) }}, on demand</span>
       </label>
     </div>
     <p v-if="status" class="status">{{ status }}</p>
@@ -443,7 +444,7 @@ function latency(us: number): string {
         <tr v-for="r in rows" :key="r.key" :class="{ off: !r.available }">
           <td><span class="key" :class="`s${SLOT[r.key]}`" />{{ r.key }}<span v-if="r.result?.exits" class="muted"> · {{ r.result.exits }}</span></td>
           <td class="num">{{ r.params == null ? '—' : r.params === 0 ? '0' : formatInt(r.params) }}</td>
-          <td class="num">{{ r.bytes == null ? '—' : r.bytes === 0 ? '—' : formatKB(r.bytes) }}</td>
+          <td class="num">{{ r.bytes == null ? '—' : r.bytes === 0 ? '—' : formatSize(r.bytes) }}</td>
           <td class="num">{{ r.result ? latency(r.result.micros) : r.available ? '—' : r.key === 's6-cast' ? 'not published' : 'not in this demo' }}</td>
           <td v-if="backtest" class="num">{{ r.mase == null ? '—' : r.mase.toFixed(3) }}</td>
           <td v-if="backtest" class="num">{{ r.cov == null ? '—' : `${Math.round(r.cov * 100)} %` }}</td>
