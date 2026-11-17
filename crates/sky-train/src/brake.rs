@@ -30,11 +30,13 @@
 //! # The brake-file protocol
 //!
 //! `SKY_BRAKE_FILE` names a file of one line, `<duty> [<work>:<rest>]`: the duty in (0, 1], and
-//! optional long rests in minutes (each part above 0). It is read when the brake is made, then at
-//! most every 5 seconds, and a valid line replaces `SKY_DUTY` and `SKY_COOL`. A missing, unreadable
-//! or invalid file changes nothing: the last setting holds. A writer should replace it atomically
-//! (write another file, then rename it). `scripts/auto-brake.sh` writes it from what the machine is
-//! doing; `scripts/brake.py` is the same reader in Python.
+//! optional long rests in minutes (each part rounded to whole seconds, and at least one second;
+//! the same rule holds for `SKY_COOL`, where a part of 0 seconds is an error). It is read when the
+//! brake is made, then at most every 5 seconds, and a valid line replaces `SKY_DUTY` and
+//! `SKY_COOL`. A missing, unreadable or invalid file changes nothing: the last setting holds. A
+//! writer should replace it atomically (write another file, then rename it).
+//! `scripts/auto-brake.sh` writes it from what the machine is doing; `scripts/brake.py` is the same
+//! reader in Python.
 
 use std::{
     path::PathBuf,
@@ -82,15 +84,27 @@ fn parse_brake_file(text: &str) -> Option<(f64, Option<(u64, u64)>)> {
     words.next().is_none().then_some((duty, cool))
 }
 
-/// `work:rest`, in minutes, as seconds.
+/// `work:rest`, in minutes, as seconds. Each part is rounded to whole seconds and must stay above
+/// 0: a part of 0 seconds would make the cycle divide by zero, or rest forever.
 fn parse_cool(v: &str) -> Result<(u64, u64)> {
     let secs = |m: &str| -> Option<u64> {
         let m: f64 = m.parse().ok()?;
-        (m > 0.0 && m.is_finite()).then(|| (m * 60.0).round() as u64)
+        (m > 0.0 && m.is_finite())
+            .then(|| (m * 60.0).round() as u64)
+            .filter(|&s| s > 0)
     };
     v.split_once(':')
         .and_then(|(w, r)| Some((secs(w)?, secs(r)?)))
         .with_context(|| format!("SKY_COOL must be work:rest in minutes, as 45:15, not {v}"))
+}
+
+/// `secs` in minutes, as the brake file writes them: `45`, `0.5`, `0.02` (two decimals at most).
+fn minutes(secs: u64) -> String {
+    if secs % 60 == 0 {
+        return (secs / 60).to_string();
+    }
+    let m = format!("{:.2}", secs as f64 / 60.0);
+    m.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
 /// Seconds left in the rest part of the cycle at `now`, 0 in its work part.
@@ -145,7 +159,7 @@ impl Brake {
         let rest_per_busy = 1.0 / duty - 1.0;
         if rest_per_busy != self.rest_per_busy || cool != self.cool {
             let rests = cool.map_or("no long rests".to_string(), |(w, r)| {
-                format!("{} min of work, {} of rest", w / 60, r / 60)
+                format!("{} min of work, {} of rest", minutes(w), minutes(r))
             });
             println!("brake: duty {duty}, {rests} ({})", path.display());
             self.rest_per_busy = rest_per_busy;
@@ -178,10 +192,13 @@ impl Brake {
     /// Call it once per step. The short rest is `(1 / duty - 1)` times the time since the previous
     /// rest; then, while the system clock is in the rest part of the `work:rest` cycle, it waits
     /// for the work part (in naps of 5 seconds with a brake file, which is read again between
-    /// them). At duty 1 with no long rests it returns at once.
+    /// them). At duty 1 with no long rests it returns at once, and the time since the previous
+    /// call counts as rested-for: a later switch to a lower duty rests in proportion to the steps
+    /// after the switch only, not to the hours worked at full duty before it.
     pub fn rest(&mut self, clock: &mut Instant) {
         self.refresh();
         if self.rest_per_busy == 0.0 && self.cool.is_none() {
+            self.busy_since = Instant::now();
             return;
         }
         let started = Instant::now();
@@ -211,8 +228,47 @@ impl Brake {
 
 #[cfg(test)]
 mod tests {
-    use super::{cool_wait, parse_brake_file, parse_cool, Brake};
+    use super::{cool_wait, minutes, parse_brake_file, parse_cool, Brake};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_part_that_rounds_to_0_seconds_is_refused() {
+        // 0.001 min is 0.06 s, 0.0083 min 0.498 s: both round to 0
+        for bad in ["0.001:5", "5:0.001", "0.001:0.001", "0.0083:1"] {
+            assert!(parse_cool(bad).is_err(), "{bad}");
+        }
+        assert_eq!(parse_cool("0.0084:1").unwrap(), (1, 60));
+        for bad in ["1 0.001:0.001", "0.5 0.001:10", "0.5 10:0.001"] {
+            assert_eq!(parse_brake_file(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn minutes_are_printed_as_the_file_writes_them() {
+        assert_eq!(minutes(2700), "45");
+        assert_eq!(minutes(600), "10");
+        assert_eq!(minutes(30), "0.5");
+        assert_eq!(minutes(45), "0.75");
+        assert_eq!(minutes(90), "1.5");
+        assert_eq!(minutes(1), "0.02");
+    }
+
+    #[test]
+    fn full_duty_moves_the_mark_of_the_last_rest() {
+        let mut clock = Instant::now();
+        let mut brake = Brake::new(1.0).unwrap();
+        // a long stretch at full duty, then a switch to 0.5 (as a new brake-file line does)
+        std::thread::sleep(Duration::from_millis(300));
+        brake.rest(&mut clock);
+        brake.rest_per_busy = 1.0;
+        std::thread::sleep(Duration::from_millis(20));
+        let t = Instant::now();
+        brake.rest(&mut clock);
+        let rested = t.elapsed();
+        // in proportion to the 20 ms since the switch, not to the 320 ms since the brake was made
+        assert!(rested >= Duration::from_millis(20), "rested {rested:?}");
+        assert!(rested < Duration::from_millis(200), "rested {rested:?}");
+    }
 
     #[test]
     fn the_cycle_works_then_rests() {

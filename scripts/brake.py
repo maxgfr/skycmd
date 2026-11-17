@@ -28,18 +28,15 @@ Settings (environment):
 `working_seconds` counts the time since the brake was made, minus every rest: a budget in working
 minutes then computes the same thing whatever the brake (only the wall-clock duration changes).
 
-Differences from the Rust brake that remain:
-  - `rest()` measures the work since the previous call, as the Rust one does, but it also takes the
-    seconds of work as an argument (`rest(work_seconds)`), for a loop that knows them better
-    (experiments/lfm3-s1s2/s1s2.py passes the generation time).
-  - At duty 1 with no long rests the Rust `rest` returns without moving its mark of the last rest,
-    so that the first rest after a change of the brake file to a lower duty is in proportion to all
-    the time since the last real rest. This module moves the mark at every call: the first rest
-    after the change is in proportion to the last step only.
-  - A cycle whose parts round to 0 seconds each (`1 0.001:0.001`) is refused here as invalid; the
-    Rust brake accepts it and then divides by zero.
-  - Number syntax: Python's float() accepts underscores and surrounding spaces, Rust's parse does
-    not; this module refuses both, so that the two accept the same lines.
+Agreement with the Rust brake: the same lines are valid (a cycle part that rounds to 0 seconds is
+refused by both; Python's float() would also take underscores and surrounding spaces, which this
+module refuses as Rust's parser does), the same messages are printed, and at duty 1 with no long
+rests both move their mark of the last rest at every call, so that a later switch to a lower duty
+rests in proportion to the steps after the switch only.
+
+The one difference that remains: `rest()` measures the work since the previous call, as the Rust one
+does, but it also takes the seconds of work as an argument (`rest(work_seconds)`), for a loop that
+knows them better (experiments/lfm3-s1s2/s1s2.py passes the generation time).
 """
 import math
 import os
@@ -72,10 +69,18 @@ def parse_cool(text):
     for m in (_number(work), _number(rest)):
         if m is None or not (m > 0 and math.isfinite(m)):
             return None
-        parts.append(math.floor(m * 60 + 0.5))  # rounded half away from zero, as Rust's round()
-    if parts[0] + parts[1] == 0:
-        return None
+        s = math.floor(m * 60 + 0.5)  # rounded half away from zero, as Rust's round()
+        if s < 1:  # a part of 0 seconds would divide by zero, or rest forever
+            return None
+        parts.append(s)
     return parts[0], parts[1]
+
+
+def minutes(secs):
+    """`secs` in minutes, as the brake file writes them: 45, 0.5, 0.02 (two decimals at most)."""
+    if secs % 60 == 0:
+        return str(secs // 60)
+    return f"{secs / 60:.2f}".rstrip("0").rstrip(".")
 
 
 def parse_brake_line(text):
@@ -165,7 +170,8 @@ class Brake:
             return
         duty, cool = parsed
         if 1 / duty - 1 != self._rest_per_busy or cool != self.cool:
-            rests = "no long rests" if cool is None else f"{cool[0] // 60} min of work, {cool[1] // 60} of rest"
+            rests = ("no long rests" if cool is None
+                     else f"{minutes(cool[0])} min of work, {minutes(cool[1])} of rest")
             self._log(f"brake: duty {_fmt(duty)}, {rests} ({self.file})")
             self.duty, self._rest_per_busy, self.cool = duty, 1 / duty - 1, cool
 

@@ -58,6 +58,20 @@ class Parsing(unittest.TestCase):
         for bad in ["45", "0:15", "45:0", "a:b", "-1:5", "inf:5", "45:15:5", "45::15", " 45:15"]:
             self.assertIsNone(parse_cool(bad), bad)
 
+    def test_a_part_that_rounds_to_0_seconds_is_refused(self):
+        # 0.001 min is 0.06 s, 0.0083 min 0.498 s: both round to 0 (as in brake.rs)
+        for bad in ["0.001:5", "5:0.001", "0.001:0.001", "0.0083:1"]:
+            self.assertIsNone(parse_cool(bad), bad)
+        self.assertEqual(parse_cool("0.0084:1"), (1, 60))
+        for bad in ["1 0.001:0.001", "0.5 0.001:10", "0.5 10:0.001"]:
+            self.assertIsNone(parse_brake_line(bad), bad)
+        with self.assertRaisesRegex(ValueError, "SKY_COOL must be work:rest"):
+            Brake.from_env({"SKY_COOL": "0.001:5"})
+
+    def test_minutes_are_printed_as_the_file_writes_them(self):
+        self.assertEqual([brake.minutes(s) for s in (2700, 600, 30, 45, 90, 1)],
+                         ["45", "10", "0.5", "0.75", "1.5", "0.02"])
+
     def test_the_cycle_works_then_rests(self):
         cycle = (45 * 60, 15 * 60)
         self.assertEqual(cool_wait(0, cycle), 0)
@@ -175,6 +189,25 @@ class File(unittest.TestCase):
         self.write("1")
         b.read_file()
         self.assertEqual((b.duty, b.cool), (1.0, None))
+
+    def test_a_cycle_under_a_minute_is_logged_in_fractional_minutes(self):
+        self.write("0.5 0.5:0.25")
+        logs = []
+        Clock().brake(1.0, None, self.path, logs=logs)
+        self.assertEqual(logs, [f"brake: duty 0.5, 0.5 min of work, 0.25 of rest ({self.path})"])
+
+    def test_full_duty_moves_the_mark_of_the_last_rest(self):
+        # 300 s at duty 1, then the file says 0.5: the first rest is for the steps after the switch
+        self.write("1")
+        c = Clock(wall=0)
+        b = c.brake(1.0, None, self.path)
+        c.work(300)
+        b.rest()
+        self.write("0.5")
+        c.work(brake.FILE_PERIOD)
+        b.rest()
+        self.assertEqual(b.duty, 0.5)
+        self.assertAlmostEqual(c.sleeps[-1], brake.FILE_PERIOD)  # not 305 s
 
     def test_the_file_is_read_again_every_few_seconds(self):
         self.write("1")
