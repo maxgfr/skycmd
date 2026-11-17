@@ -28,12 +28,24 @@
 //! const { probs, answer, ask, decision, micros } = JSON.parse(r.route("turn on the hall lights", tools, false));
 //! ```
 //!
+//! The `recall` memory probe (s6-sleep3-nano and its control, [`recall`]): the evaluation's episode
+//! generator and scoring, played by a model with its memory on or zeroed:
+//!
+//! ```js
+//! const p = new RecallProbe(ggufBytes);
+//! p.setMemory("zeroed"); p.setSleepPasses(1);           // or "on"; N = 1, 2, 4
+//! const { frames } = JSON.parse(p.start(7000000018));   // what each frame shows, its answer
+//! const { probs, choice, correct, micros } = JSON.parse(p.step());
+//! const { asks } = JSON.parse(p.runEpisode(7000000038)); // a whole episode: [{frame, delay, bucket, correct}]
+//! ```
+//!
 //! The Rust API ([`Model`], [`Session`], [`session::bench`]) is usable natively; the
 //! `#[wasm_bindgen]` types below are thin wrappers that turn errors into JS exceptions.
 
 pub mod clock;
 pub mod forecast;
 pub mod model;
+pub mod recall;
 pub mod router;
 pub mod session;
 pub mod verify;
@@ -340,6 +352,86 @@ impl ToolRouter {
     /// dimension, vocabulary size and fitted values).
     pub fn info(&mut self) -> String {
         self.inner.info().to_string()
+    }
+}
+
+/// The `recall` memory probe ([`recall::Probe`]): episodes of the evaluation's generator, played
+/// frame by frame or whole by an s2 model, with its memory on or zeroed and `N` sleep passes.
+#[wasm_bindgen]
+pub struct RecallProbe {
+    inner: recall::Probe,
+}
+
+#[wasm_bindgen]
+impl RecallProbe {
+    /// From the GGUF bytes of an s2 model, with or without a memory (memory on, `N` = 1).
+    #[wasm_bindgen(constructor)]
+    pub fn new(gguf_bytes: &[u8]) -> Result<RecallProbe, JsError> {
+        Ok(RecallProbe {
+            inner: recall::Probe::load(gguf_bytes).map_err(|e| JsError::new(&e))?,
+        })
+    }
+
+    /// Whether the model keeps a memory across frames (false for the control).
+    #[wasm_bindgen(js_name = hasMemory)]
+    pub fn has_memory(&self) -> bool {
+        self.inner.has_memory()
+    }
+
+    /// `on`, or `zeroed`: the memory reset before every frame (a model with a memory only). Takes
+    /// effect at the next episode.
+    #[wasm_bindgen(js_name = setMemory)]
+    pub fn set_memory(&mut self, mode: &str) -> Result<(), JsError> {
+        self.inner.set_memory(mode).map_err(|e| JsError::new(&e))
+    }
+
+    /// `N`, the passes of each sleep, the wake pass included (1 to 8; 1: no sleep). Takes effect at
+    /// the next episode.
+    #[wasm_bindgen(js_name = setSleepPasses)]
+    pub fn set_sleep_passes(&mut self, n: u32) -> Result<(), JsError> {
+        self.inner
+            .set_sleep_passes(n as usize)
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// `{name, n_params, file_bytes, memory, memory_mode, sleep_passes, sleep_every, frames,
+    /// buckets, instructions, options, keys, exit_threshold}` as JSON.
+    pub fn info(&mut self) -> String {
+        self.inner.info().to_string()
+    }
+
+    /// Starts the episode of `seed` (a whole number) from a zero memory. Returns `{seed, frames:
+    /// [{frame, state, kind, door, colour, answer, delay, bucket}], memory, memory_mode,
+    /// sleep_passes}` as JSON: what each frame shows and its right answer.
+    pub fn start(&mut self, seed: f64) -> Result<String, JsError> {
+        let seed = recall::seed_from_f64(seed).map_err(|e| JsError::new(&e))?;
+        Ok(self.inner.start(seed).to_string())
+    }
+
+    /// Plays the next frame of the episode. Returns `{frame, state, kind, door, colour, answer,
+    /// delay, bucket, probs, choice, correct, micros, done}` as JSON (`probs` in the order of
+    /// `keys`).
+    pub fn step(&mut self) -> Result<String, JsError> {
+        self.inner
+            .step()
+            .map(|r| to_json(&r))
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Whether the episode in progress has ended.
+    pub fn done(&self) -> bool {
+        self.inner.done()
+    }
+
+    /// Plays the whole episode of `seed` from a zero memory. Returns `{seed, asks: [{frame, delay,
+    /// bucket, correct}], decisions, micros}` as JSON.
+    #[wasm_bindgen(js_name = runEpisode)]
+    pub fn run_episode(&mut self, seed: f64) -> Result<String, JsError> {
+        let seed = recall::seed_from_f64(seed).map_err(|e| JsError::new(&e))?;
+        self.inner
+            .run_episode(seed)
+            .map(|r| to_json(&r))
+            .map_err(|e| JsError::new(&e))
     }
 }
 
