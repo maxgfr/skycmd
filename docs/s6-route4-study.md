@@ -126,8 +126,8 @@ fact. "Not verified" means looked for and not confirmed.
   and 13,691, every tool of the two pools). A slate built by a new rule can show a tool that no v2
   record shows, so the complete set is the one to ask for.
 - The 3,317 test-side tools of v2 (`counts/split.json`) need no rewrite: the probe files of v4 are
-  built on its own fresh test (§4, and the pre-registration, which asks the lead to decide whether
-  the teacher may see the fresh test tools' descriptions).
+  built on its own fresh test (§4; the lead decided on 17/11/2026 that the teacher may rewrite the
+  fresh test tools' descriptions for the probe copies only, pre-registration §4.2).
 
 ### 2.3 Teacher calls and quota (facts in the repository)
 
@@ -369,9 +369,9 @@ use case; a single right tool per request, or a subset where that holds.
   distractor. The counts are written before scoring.
 - **Concentration.** A cap per gold tool cluster (v2's 10 per test cluster) and a cap per server,
   so that no server dominates as three clusters dominated T2-tools.
-- **What it costs.** No teacher call for the slates. If the lead allows the teacher to see the
-  fresh tools' descriptions (never a request), one rewrite per Toucan tool shown in the test, for
-  the probe copies: at most a few thousand items, about 100 to 150 calls (**[Inference]** from
+- **What it costs.** No teacher call for the slates. For the probe copies (allowed by the lead
+  on 17/11/2026; the teacher sees descriptions, never a request), one rewrite per Toucan tool shown
+  in the test: at most a few thousand items, about 100 to 150 calls (**[Inference]** from
   "2,000+ tools").
 - **Its limits, stated as plainly.** The requests are model-written from the tool that seeded
   them, so they may echo its description, which favours BM25 and the model part's lexical input;
