@@ -7,6 +7,7 @@ import EarDemo from '../.vitepress/theme/components/EarDemo.vue'
 import ForecastView from '../.vitepress/theme/components/ForecastView.vue'
 import LiveDecide from '../.vitepress/theme/components/LiveDecide.vue'
 import LiveProof from '../.vitepress/theme/components/LiveProof.vue'
+import MemoryDemo from '../.vitepress/theme/components/MemoryDemo.vue'
 import PlayGame from '../.vitepress/theme/components/PlayGame.vue'
 import RouterDemo from '../.vitepress/theme/components/RouterDemo.vue'
 import SecretsVerifyDemo from '../.vitepress/theme/components/SecretsVerifyDemo.vue'
@@ -23,8 +24,10 @@ interface SpaceConfig {
    * `turn`: the end-of-turn demo of the Listen page (s6-ear2-nano through `TurnDetector`).
    * `router-v2`: the same router demo showing the s6-route-nano file alone (it failed its gate; the
    * Space also carries s6-route's two files, which `ToolRouter` needs). `secrets-verify`: the
-   * Secrets verifier demo (s6-secrets-verify-pico through `SecretVerifier`, with its word list). */
-  kind: 'decision' | 'game' | 'secrets' | 'secrets-verify' | 'ear' | 'forecast' | 'router' | 'router-v2' | 'turn'
+   * Secrets verifier demo (s6-secrets-verify-pico through `SecretVerifier`, with its word list).
+   * `memory`: the Memory demo (s6-sleep3-nano and its control, two files of one manifest entry
+   * `task: memory`, through `RecallProbe`; it failed its gate). */
+  kind: 'decision' | 'game' | 'secrets' | 'secrets-verify' | 'ear' | 'forecast' | 'router' | 'router-v2' | 'turn' | 'memory'
   proofs?: boolean
   model_repo: string
   notes?: string[]
@@ -262,6 +265,28 @@ onMounted(async () => {
           </p>
         </section>
       </template>
+      <template v-else-if="cfg.kind === 'memory'">
+        <section>
+          <h2>Does the model remember a colour it saw once?</h2>
+          <p>
+            s6-sleep3-nano failed its pre-registered gate. Its memory is used: on the test episodes of the
+            <code>recall</code> probe it is right on 0.4892 of the questions, against 0.2440 for the same training
+            without a memory. But the memory fades with the delay, four sleep passes add +0.0030 where a gain above
+            zero was asked, and it plays Flappy (15.87 against 71.05) and Dodge (5.89 against 7.94) much worse than the
+            control. It is a research result, not a part to use.
+          </p>
+          <p>
+            A door is shown its colour on one frame; some frames later the door is named, and the model must give
+            the colour back. Below, one episode frame by frame, then 200 episodes with the memory on, with the memory
+            zeroed and with the control file, next to the test reading.
+          </p>
+          <MemoryDemo />
+          <p class="space-note">
+            The episodes come from the evaluation's own generator and are scored by the game, as on the test; the 200
+            here are other seeds (the validation split), so they differ from the test by sampling noise.
+          </p>
+        </section>
+      </template>
       <template v-else-if="cfg.kind === 'forecast'">
         <section>
           <h2>Forecast a series</h2>
@@ -292,7 +317,7 @@ onMounted(async () => {
 
       <footer>
         Everything runs in your browser: a Rust inference engine compiled to WebAssembly (SIMD128) reads the GGUF
-        {{ cfg.kind === 'router' || cfg.kind === 'router-v2' ? 'files' : 'file' }} of this Space{{
+        {{ cfg.kind === 'router' || cfg.kind === 'router-v2' || cfg.kind === 'memory' ? 'files' : 'file' }} of this Space{{
           cfg.kind === 'secrets-verify' ? ', with its word list' : ''
         }}. Nothing is sent to a server.
       </footer>

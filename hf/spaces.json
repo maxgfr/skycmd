@@ -150,6 +150,21 @@
     ]
   },
   {
+    "model": "s6-sleep3-nano",
+    "kind": "memory",
+    "emoji": "🧠",
+    "color_from": "gray",
+    "color_to": "indigo",
+    "tagline": "Failed its pre-registered gate, published as a result: a 752 KB ternary decision model with a fast-weight memory. The memory is used (0.4892 on the recall test against 0.2440 without one) and fades with the delay; sleep passes do not help (+0.0030), and it plays two of four games far worse than the same training without a memory. This Space plays recall episodes with it, with its memory zeroed, and with its control.",
+    "short_description": "Failed its gate: 752 KB memory model, a result",
+    "notes": [
+      "The gate (docs/s6-sleep-prereg.md §7 and §8, docs/s6-sleep2-prereg.md §7, docs/s6-sleep3-prereg.md): H0, the memory is used, holds: recall 0.4892 at N = 1 against 0.2440 for the control without memory, +0.2452 (95% interval +0.2370 to +0.2532; at least 0.10 asked). H1, sleep helps, is not shown: N = 4 minus N = 1 = +0.0030 (interval −0.0010 to +0.0068). H2, the games do not lose, is not shown: Flappy 15.87 against 71.05, Dodge 5.89 against 7.94. H3 holds (typed_decisions_bench 0.4897 against 0.4808). The exported file fails the s6-nano gate on Flappy (2.10 against s3-pico's 200.00) and Dodge (6.90 against 9.47).",
+      "The memory fades with the delay: at N = 1, 0.6147 for questions 1 to 4 frames after the show, 0.5590 at 5 to 8, 0.4530 at 9 to 16 and 0.3302 at 17 to 32, where the control is at about 0.24 everywhere. At the pico size the pilot of the same recipe had reached 1.0000 at every delay on development episodes.",
+      "The episodes are the evaluation's generator and scoring (sky_games recall, in the RecallProbe class of sky-web), played by the exported files in the browser engine. The test read 1,000 other episodes with the training code; the 200 episodes here are validation-split seeds, so their shares differ from the test's by sampling noise.",
+      "\"Memory zeroed\" resets the memory before every frame (the engine's own switch); the control is a second file, the same training with no memory. A research result: do not use this model as a part."
+    ]
+  },
+  {
     "model": "s5-lite",
     "kind": "decision",
     "proofs": true,
