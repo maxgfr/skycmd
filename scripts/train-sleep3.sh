@@ -53,7 +53,8 @@
 #                  batch pads every frame to 32 of them. SLEEP_CHUNK=2 for the nano runs (an
 #                  unchunked nano sequence step peaked at 13.3 GB of MLX memory and the run was
 #                  stopped by the memory brake; in parts of 2 the CPU probe peaks at 1.7 to 2.1 GB)
-#   SKY_DUTY SKY_COOL SKY_BRAKE_FILE   the thermal brake (scripts/auto-brake.sh)
+#   SKY_DUTY SKY_COOL SKY_BRAKE_FILE   the thermal brake (scripts/auto-brake.sh; started with the run
+#                  by scripts/train-when-idle.sh -- scripts/train-sleep3.sh <steps>: docs/idle-training.md)
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}

@@ -102,10 +102,11 @@ export default defineConfig({
       },
       {
         text: 'Learn',
-        activeMatch: '^/(tutorial|articles|sources)/',
+        activeMatch: '^/(tutorial|articles|sources|idle-training)/',
         items: [
           { text: 'Tutorial', link: '/tutorial/' },
           { text: 'Articles', link: '/articles/' },
+          { text: 'Train while you work', link: '/idle-training/' },
           { text: 'Sources', link: '/sources/' },
         ],
       },

@@ -216,6 +216,8 @@ if [ "$MODE" = local ]; then
   export SKY_DUTY=${SKY_DUTY:-0.5}
   export SKY_COOL=${SKY_COOL-45:15}
   # The brake file of scripts/auto-brake.sh, when it runs, wins over the two values (amendment 2).
+  # scripts/train-when-idle.sh -- scripts/lfm3-ft.sh <steps> starts it with the run
+  # (docs/idle-training.md).
   export SKY_BRAKE_FILE=${SKY_BRAKE_FILE-$PWD/runs/brake}
 fi
 

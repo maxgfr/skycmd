@@ -49,7 +49,9 @@
 #                                   validated) | gate
 #   SKY_DUTY=0.5  SKY_COOL=45:15  SKY_BRAKE_FILE=runs/brake   the brake (amendments 4-8 of
 #                                   docs/s6-cast-prereg.md; scripts/auto-brake.sh writes the file
-#                                   and stops a training over its memory cap)
+#                                   and stops a training over its memory cap;
+#                                   scripts/train-when-idle.sh -- scripts/train-cast2.sh <steps>
+#                                   starts it with the run: docs/idle-training.md)
 #   SKY_MLX_CACHE_GB=2              cap of MLX's buffer cache
 #   RESUME=1                        continue the training from its last checkpoint (only after a
 #                                   technical failure, §5); without it an existing run is refused

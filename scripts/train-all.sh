@@ -12,7 +12,9 @@
 #                   continue from a smoke checkpoint
 #   SKY_DUTY=0.5  SKY_COOL=45:15  RESUME=1   the defaults here; RESUME= (empty) starts each training over
 #   SKY_BRAKE_FILE=runs/brake                a file that sets the brake while the run goes on, written by
-#                                            scripts/auto-brake.sh (0.85 and 50:10 when the Mac is left alone)
+#                                            scripts/auto-brake.sh (0.85 and 50:10 when the Mac is left alone);
+#                                            scripts/train-when-idle.sh -- scripts/train-all.sh starts it
+#                                            for the run and stops it after (docs/idle-training.md)
 #   SKY_MLX_CACHE_GB=2                       cap of MLX's buffer cache
 #
 # Each step is idempotent: it leaves a marker in runs/all/done/ and a log in runs/all/. A step cut by

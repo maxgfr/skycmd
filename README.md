@@ -200,6 +200,8 @@ scripts/train-cast.sh train export eval                    # s6-cast: training, 
 scripts/train-secrets.sh data train eval                   # s6-secrets-pico: jev, training, bench vs the rule scanner
 scripts/train-ear.sh data pretrain decide eval             # s6-ear-nano: audio data, Mimi pretraining, gates vs Smart Turn
 ```
+**Training while you work on the same Mac.** The trainings above read a brake file, `SKY_BRAKE_FILE`: one line, `<duty> [<work>:<rest>]`, that tells the loop how much to rest between steps. `scripts/auto-brake.sh` writes it from what the Mac is doing (in use, left alone, at night, on battery, too hot, short of memory), and `scripts/train-when-idle.sh -- <command>` runs any command under it. The rests stay out of the run clock, so a budget in working minutes computes the same thing in every mode. It is meant to be reused outside this project: a standalone Python reader (`scripts/brake.py`), the Rust one (`crates/sky-train/src/brake.rs`) and the file protocol are described in [`docs/idle-training.md`](docs/idle-training.md) and on the site's [Train while you work](https://maxgfr.github.io/skycmd/idle-training/) page.
+
 To use a published model without training anything, see the [Install](https://maxgfr.github.io/skycmd/install/) page.
 The step-by-step guide is the [tutorial](https://maxgfr.github.io/skycmd/tutorial/).
 
