@@ -524,4 +524,7 @@ model. v4's training, validation and test slates are built against it (D7, §6.2
 
 ## 17. Amendments
 
-(none)
+**Wording correction (17/11/2026, after the freeze, before any computation of v4; accepted by the
+lead).** §10, "The bar against MiniLM is relaxed": "the one family outside its training families
+that v3 read" became "the one tool family outside its training families that v3 read" (v3 also
+read CLINC150 and MASSIVE, which are intent sets, not tool lists). Nothing else changes.
