@@ -24,7 +24,9 @@ Written on 17/11/2026, before any v3 code, data or training. No GPU was used, no
    - Seamless Interaction (CC BY-NC 4.0);
    - Switchboard and Fisher (LDC).
    - CANDOR's new licence allows commercial use but forbids sharing derived data; it is recorded for the owner, not chosen.
-7. **Odds** (§7). The whole gate of the draft: about 0.45. Beating Smart Turn on eot-bench (announced, not gated): about 0.15.
+7. **Odds** (§7).
+   - The whole gate, with E1's minimum effect of +0.02 decided by the lead: about 0.35 (about 0.45 without that minimum).
+   - Beating Smart Turn on eot-bench (announced, not gated): about 0.15.
 8. **Cost** (§6).
    - About 92 GB of download, streamed;
    - at most 16.9 GB of new features on disk; 6.1 GB were free when this was written, so space must be freed first;
@@ -321,9 +323,15 @@ The project publishes its models under Apache-2.0 and its data sets openly. A re
   - the energy VAD (breaths, laughter and noise counted as speech; soft speech missed);
   - the rule itself (the listener's choice, above);
   - bleed.
-  - **How it is estimated.** A hand check before training: 200 offsets of validation sessions (100 labelled end of turn, 100 hold, drawn with a seed), each played as both channels from 6 s before to 4 s after the offset, labelled by a person as "A finished", "A had not finished" or "cannot tell". The agreement is reported with its Wilson interval.
-  - **Its consequence.** An agreement under 0.80 stops v3 before training for an amendment of the rule (pre-registration §3.7).
-  - **No model labels.** The labels come from a rule applied to the corpus's own audio; no model writes them. Smart Turn's opinion on the conversation clips is recorded, never trained on.
+  - **How it is estimated, automatically (the bar; the lead's decision of 17/11/2026).**
+    - On every validation session, the labels are derived a second time with an independent detector, Silero VAD v6.2.3 (`silero_vad.onnx`, MIT), and the same label rule. Silero is used for this check only, never for a training label.
+    - **Agreement.** Offsets of the two detectors are matched within 150 ms. The eot/hold agreement on matched offsets must be ≥ 0.85.
+    - **Unconfirmed share.** The share of energy records that are unmatched, or that Silero's path drops, must be ≤ 0.30.
+    - **Below either bar the build stops** before any training (pre-registration §3.7).
+    - **Why this check.** It measures how much the label depends on the detector, which is the part of the noise this design adds.
+    - **What it cannot see.** It does not measure the rule's own noise (the listener's choice above), since both paths apply the same rule.
+  - **The listening check.** 200 validation offsets played as both channels and labelled by a person. It is done only if the owner volunteers, is reported, and is not required. It is the only estimate of the rule's own noise, so without it that part stays unmeasured, and the report says so.
+  - **No generative model writes a label.** The labels come from a rule applied to the corpus's own audio through a voice-activity detector. Smart Turn's opinion on the conversation clips is recorded, never trained on.
 - **The gate's conditions of use.**
   - No attempt to identify speakers: v3 uses only the pseudonymous ids for the split and never listens for identity.
   - Redactions are dropped (§4).
@@ -334,7 +342,7 @@ The project publishes its models under Apache-2.0 and its data sets openly. A re
   - Free space was 6,057,404 KB (6.1 GB) on 17/11/2026 (`df -k`), not the 28 GB of the brief.
   - v3 needs at most 16.9 GB of new data plus the project's 8 GB floor (§6).
   - Space must be freed first. The largest candidate is v1's `data/ear/audio` (20 GB), which v2's pre-registration keeps untouched "unless the owner decides otherwise".
-- **v2's checkpoint.** It exists only in a session worktree (`.claude/worktrees/s6-tranches-2-7/runs/s6-ear2-nano/last-ema`, `model.safetensors` 5.7 MB, not in git). It must be copied somewhere durable before that worktree is removed, or the from-v2 start is impossible.
+- **v2's checkpoint.** It exists only in a session worktree (`.claude/worktrees/s6-tranches-2-7/runs/s6-ear2-nano/last-ema`, `model.safetensors` 5.7 MB, not in git). It must be copied somewhere durable before that worktree is removed, or the from-v2 start is impossible. The lead copies it to `../skycmd-data/s6-ear2/checkpoints/last-ema/` (decision of 17/11/2026), and the sha256 of its files is recorded before the run.
 - **Gate (a) may move.** Half the draws become conversations, and three quarters of the Smart Turn draws get a trailing silence. The trimmed test clips may lose a point. Starting from v2's weights and keeping a quarter of v2's view mitigate this.
 
 ## 6. Cost (one MacBook, Apple M5, 16 GB)
@@ -379,7 +387,9 @@ At v2's estimate for 41.4 GB (15–70 min), this takes 35 minutes to 2.6 hours.
 | Smart Turn on the new eot-bench cuts | about 3 min |
 | **total** | **2–4 hours of wall clock, mostly download** |
 
-**Human time.** The hand check: 200 offsets of about 10 s each, about 1–1.5 hours of listening.
+**The label cross-check.** Silero VAD on the 112 validation sessions, about 56 channel-hours, 6.3 million windows of 32 ms: an estimated 10–20 minutes of CPU through onnxruntime (not measured).
+
+**Human time.** None required. The optional listening check takes 200 offsets of about 10 s each, about 1–1.5 hours, only if the owner volunteers.
 
 **GPU** (working minutes; v2 did 1,274 steps a minute at batch 128):
 
@@ -405,13 +415,15 @@ About 6 hours of wall clock in the brake modes. Evaluation runs on the CPU.
 
 | outcome | probability |
 |---|---:|
+| the label cross-check passes (agreement ≥ 0.85, unconfirmed ≤ 0.30) | 0.70 |
 | the stop rule fires (pilot no better than v2 on conversation validation) | 0.15 |
 | gate (a), Smart Turn test bars, all hold | 0.75 |
-| E1: eot-bench ΔAUC over v2, pooled, lower bound > 0 | 0.75 |
+| eot-bench ΔAUC over v2, pooled, lower bound > 0 | 0.75 |
+| E1 as decided: the same, with a point estimate ≥ +0.02 | 0.55 |
 | E2: Δ eot recall at false cut-off 0.10, lower bound > 0 | 0.65 |
 | E3: no harm on the 13 other languages pooled (lower bound > −0.02) | 0.85 |
 | G3: latency and size (same graph) | 0.98 |
-| **the whole gate** | **about 0.45** |
+| **the whole gate, with E1's minimum effect** | **about 0.35** (about 0.45 without it) |
 | English ΔAUC ≥ +0.03 (reported) | 0.55 |
 | v3's pooled AUC ≥ Smart Turn's on the same cuts (announced goal) | 0.15 |
 | the same, English alone | 0.30 |
@@ -448,9 +460,15 @@ About 6 hours of wall clock in the brake modes. Evaluation runs on the CPU.
   - The per-language effect of English-only conversation data.
   - The VAP event definitions, from the paper but not re-read today.
 - **Overlap between sources.** Overlap between otoSpeech and Smart Turn's or eot-bench's speakers or audio. It is presumed nil (different producers) but cannot be checked.
+- **Silero VAD.** The sha256 of `silero_vad.onnx` at v6.2.3 is not yet computed: the file was listed, not downloaded. It is recorded at its first use. Its speed on this machine was not measured.
 - **The estimates.** Every odds figure in §7 is a judgement, not a result.
 
 ## 9. Sources (read 17/11/2026)
+
+- Silero VAD (MIT, per the GitHub licence API): https://github.com/snakers4/silero-vad.
+  - Release v6.2.3, published 23/09/2026, tag commit `5cd7945676eb32225748052e2e6a0580e4686a08`.
+  - File `src/silero_vad/data/silero_vad.onnx`, 2,327,524 bytes, git blob `80c5592ef1f4c9ede3e357bbd02eb863358a6a9d`, from the contents API at the tag.
+  - PyPI `silero-vad` 6.2.3, wheel sha256 `7b7f5436cfcb02fae583a05b512ea96467fd449fe54cb49a5e4f06c51a1e43b8`.
 
 - otoSpeech 280 h: https://huggingface.co/datasets/otoearth/otoSpeech-full-duplex-280h ; API `https://huggingface.co/api/datasets/otoearth/otoSpeech-full-duplex-280h` and its `tree/main`
 - otoSpeech processed 141 h: https://huggingface.co/datasets/otoearth/otoSpeech-full-duplex-processed-141h

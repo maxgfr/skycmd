@@ -2,6 +2,20 @@
 
 **DRAFT of 17/11/2026: not frozen; it becomes the pre-registration when the owner has accepted the corpus's access conditions (or chosen the fallback) and the lead freezes it; no computation before that.**
 
+**The lead accepted the draft on 17/11/2026** with three changes, all applied here:
+
+- the minimum effect of E1 (§9);
+- the automatic label cross-check of §3.7, in place of a listening bar;
+- "gate on all languages" recorded as decided (§15).
+
+**Conditions still open before the freeze:**
+
+1. The owner accepts otoSpeech's access conditions on Hugging Face, or chooses the fallback of §3.10.
+2. About 25 GB are free at the start (§3.8). 6.1 GB were free on 17/11/2026, so this needs the owner's decision on v1's `data/ear/audio` (20 GB) or another source of space.
+3. v2's EMA checkpoint is copied to a durable place, `../skycmd-data/s6-ear2/checkpoints/last-ema/`, by the lead, and its sha256 list is recorded before the run (§3.1, §16).
+
+Records derived from otoSpeech are not published (§13).
+
 - No line of v3's code is written, no v3 data is downloaded and no v3 model exists.
 - When frozen, this file fixes:
   - the data, the label rule, the clip construction, the model and its start;
@@ -9,7 +23,7 @@
 - The results are then read through it.
 - Four things are fixed later, by rules written here, before training starts:
   - the corpus (otoSpeech, or the AMI fallback of §3.10), by the owner;
-  - the label check and the bleed probe of §3.7;
+  - the automatic label cross-check and the bleed probe of §3.7;
   - the harness checks of §8.1;
   - the start (from v2 or from scratch) and the rate, by the pilot of §6.
 
@@ -44,7 +58,9 @@ Does the s6-ear2-nano graph, unchanged, do measurably better on real conversatio
 
 **Measurably better** means all of these:
 
-- on eot-bench, at the policy's first question (0.2 s into each pause), its AUC and its end-of-turn recall at a false cut-off of 0.10 are above v2's, with the lower bound of a paired bootstrap above 0;
+- on eot-bench, at the policy's first question (0.2 s into each pause):
+  - its AUC is above v2's by at least 0.02, with the lower bound of a paired bootstrap above 0;
+  - its end-of-turn recall at a false cut-off of 0.10 is above v2's, with the lower bound above 0;
 - on the 13 languages other than English pooled, the lower bound of the same bootstrap on the AUC change is above −0.02;
 - on Smart Turn's test clips it keeps what v2 had;
 - it is a drop-in replacement for v2's file: the same graph, size and latency.
@@ -78,11 +94,13 @@ Does the s6-ear2-nano graph, unchanged, do measurably better on real conversatio
 | `pipecat-ai/smart-turn-data-v3.2-test` | **test (a), gated**; v1's WAVs, as v2 | 31,527 clips | CC BY 4.0 |
 | `livekit/eot-bench-data`, config `all`, at `ae834af9` (v2's commit) | **test (b), gated** (§8.3) | 7,342 turns, 1,980,396,015 bytes | CC BY 4.0 (card) |
 | Smart Turn v3.2 CPU ONNX at `f766f81d` | teacher on Smart Turn clips (v2's targets reused); baseline; recorded opinion on conversation records | 8.68 MB | BSD-2 |
-| v2: `models/s6-ear2/s6-ear2-nano.gguf` (sha256 `20435465…a9be783`) and its EMA checkpoint `runs/s6-ear2-nano/last-ema` | comparator; start of training | 631,936 bytes; 5.7 MB | Apache-2.0 (this project) |
+| v2: `models/s6-ear2/s6-ear2-nano.gguf` (sha256 `20435465…a9be783`) and its EMA checkpoint, copied to `../skycmd-data/s6-ear2/checkpoints/last-ema/` | comparator; start of training | 631,936 bytes; 5.7 MB | Apache-2.0 (this project) |
+| Silero VAD **v6.2.3** (tag commit `5cd7945676eb32225748052e2e6a0580e4686a08`, 23/09/2026), file `src/silero_vad/data/silero_vad.onnx` (2,327,524 bytes, git blob `80c5592e`) | the second detector of the label cross-check (§3.7) **only**; never for training labels or for selecting records | 2.3 MB | MIT |
 
 - Every shard is streamed and deleted once its records are written, as in v2.
 - Every licence is recorded in `DATA_LICENSES.md` before the run.
-- v2's checkpoint lives in a session worktree and is not in git. It is copied to the data folder (`skycmd-data/s6-ear3/v2-last-ema/`) with its sha256 before anything else.
+- v2's checkpoint lived in a session worktree and is not in git. The lead copies it to `../skycmd-data/s6-ear2/checkpoints/last-ema/`. The sha256 of each of its files is recorded before the run (§16).
+- Silero's file is pinned by the sha256 of its download, recorded at the first use, and it must be the file of the tag above.
 
 ### 3.2 Conversation records (from one session)
 
@@ -137,11 +155,11 @@ Does the s6-ear2-nano graph, unchanged, do measurably better on real conversatio
 
 ### 3.5 Leakage rules
 
-- **No test audio** of any of the three tests enters training, validation, the pilot, the calibration, a threshold, the label check or any choice: Smart Turn's test, eot-bench, and the 113 conversation test sessions.
+- **No test audio** of any of the three tests enters training, validation, the pilot, the calibration, a threshold, the label cross-check, the listening check or any choice: Smart Turn's test, eot-bench, and the 113 conversation test sessions.
 - **Smart Turn clips.** v2's filter, by test id and by PCM hash, is kept; it dropped no row in v2 (amendment 1 of `docs/s6-ear2-prereg.md`).
 - **No feature or label of DualTurn's data set is used.** Only its session-to-split map is.
 - **No v3 checkpoint reads eot-bench before the gate step**, and v2 reads only the d = 0 cuts of §8.1 before it.
-- **The label check (§3.7) uses validation sessions only.**
+- **The label cross-check and the listening check (§3.7) use validation sessions only.**
 - **Overlap of speakers or audio between otoSpeech and the two tests cannot be checked.** It is presumed nil (different producers), and the report says so.
 
 ### 3.6 Mix, balance and augmentation
@@ -153,14 +171,41 @@ Does the s6-ear2-nano graph, unchanged, do measurably better on real conversatio
 - **Smart Turn clips.** Uniform over training clips, as v2 (49.6% finished); d as in §3.4.
 - **Augmentation.** v2's light augmentation applies to both sources: context jitter 0.3 (1–4 s), two frequency masks of at most 4 bands, and one time mask of at most 8 hops kept out of the window's last second. The window always ends at its cut (clip end + d, or o + d).
 
-### 3.7 The label check and the bleed probe (after the build, before any training)
+### 3.7 The label cross-check and the bleed probe (after the build, before any training)
 
-- **Label check.**
-  - **Sample.** 200 records of validation sessions, 100 labelled end of turn and 100 hold, drawn with seed 7.
-  - **What is played.** Each record as a stereo snippet, both channels, from o − 6 s to o + 4 s, kept on this machine only.
-  - **Who answers.** A person listens and answers "A had finished", "A had not finished" or "cannot tell", without seeing the label.
-  - **Agreement.** The share of the 200 whose answer matches the label, "cannot tell" counted as a disagreement. Reported with its Wilson 95% interval, together with the share of "cannot tell".
-  - **Bar.** Agreement ≥ 0.80. Below it, v3 stops before training, and an amendment revises the rule or the corpus.
+**The automatic label cross-check (the bar).**
+
+- **The second detector.** On every validation session, the labels are derived a second time with an independent detector, Silero VAD v6.2.3 (`silero_vad.onnx` of §3.1, MIT).
+  - **Input.** The same 16 kHz, gain-normalised channels as §3.2.
+  - **Settings.** 512-sample windows (32 ms); a window is speech when its probability is ≥ 0.5; the speech runs are cleaned as in §3.2 item 3 (runs under 150 ms removed, silences under 150 ms filled).
+- **The offsets.** On each channel, a Silero offset is the end of a speech run of at least 150 ms that is followed by at least 200 ms of silence. These are the same conditions as the policy's first ask, without its energy detector.
+- **The same rule.** The label rule and the drops of §3.2 items 3–5 are applied to the Silero speech runs of both channels, with the same code (it takes speech runs as its input). This gives each Silero offset a label, end of turn or hold, or a drop.
+- **Matching.**
+  - Each eligible energy record of a validation session (before the cap of §3.2 item 8) is matched to the nearest Silero offset of the same channel within **150 ms**.
+  - The matching is one to one: the closest pairs first, then each offset is used once.
+  - Why 150 ms: it is the smallest pause either detector keeps after cleaning, and it is below the 200 ms of `stopMs`, so two distinct pauses cannot match the same offset.
+- **Agreement.** Over the matched pairs where both paths give a label (neither drops the offset), the share whose eot/hold label is the same.
+- **Unconfirmed share.** The share of eligible energy records that are either unmatched or matched to an offset the Silero path drops.
+- **What happens to unconfirmed records.** They stay in the data, with the energy path's label. The cross-check measures the labels; it never selects or relabels a record. Selecting records by Silero would make the training labels depend on it.
+- **The two bars.**
+  - Agreement **≥ 0.85**.
+  - Unconfirmed share **≤ 0.30**.
+- **Why the second bar.** The agreement speaks only for the records both detectors find. Below 70% confirmed, it would describe a minority of the data, and the energy detector would be finding pauses that a speech detector does not see: breaths, noise, bleed.
+- **Below either bar,** the build stops before any training, the report says which bar failed and by how much, and only an amendment can revise the rule, the filter or the corpus.
+- **Reported:**
+  - the agreement with its Wilson 95% interval;
+  - the 2 × 2 table of labels;
+  - the unconfirmed share by class and split into unmatched and dropped;
+  - the distribution of the matched offsets' time differences.
+- **Silero is used for this check only.**
+
+**The listening check (optional, reported, not required).**
+
+- **When.** Done only if the owner volunteers. No decision depends on it.
+- **Sample.** 200 validation records, 100 labelled end of turn and 100 hold, drawn with seed 7.
+- **What is played.** Each record as a stereo snippet, both channels, from o − 6 s to o + 4 s, kept on this machine only.
+- **Who answers.** The listener answers "A had finished", "A had not finished" or "cannot tell", without seeing the label.
+- **Reported.** The agreement, "cannot tell" counted as a disagreement, with its Wilson interval and the share of "cannot tell".
 - **Bleed probe.**
   - **Question.** Does the silence after the offset carry the label by itself?
   - **Measure.** On the training records, at each d, the AUC of one number: the mean raw log10-energy channel of A's hops over [o, o + d].
@@ -232,7 +277,10 @@ The demo gets the v3 file only after the result, and by the owner's decision.
 
 ## 6. The run (`scripts/train-turn3.sh`)
 
-1. **Data** (CPU only; §3, §5): `fetch-conv`, `turn-extend` (training and test), the eot-bench span records, the teacher's recorded opinion, then the label check and the bleed probe of §3.7, committed.
+1. **Data** (CPU only; §3, §5):
+   - `fetch-conv`, `turn-extend` (training and test), the eot-bench span records, the teacher's recorded opinion;
+   - then the automatic label cross-check and the bleed probe of §3.7, committed.
+   - The listening check, only if the owner volunteers, is reported when done and gates nothing.
 2. **Harness checks** (§8.1).
 3. **Smoke.** 5 working minutes on 2,000 records of each source, to test the chain. Its numbers are not looked at.
 4. **Pilot.**
@@ -309,7 +357,9 @@ The demo gets the v3 file only after the result, and by the owner's decision.
 - **Metrics.**
   - AUC of `eot` against `hold`.
   - **Eot recall at a false cut-off of 0.10.** The ROC point: the largest recall among thresholds whose false cut-off on the evaluated cuts is ≤ 0.10. It is a ranking measure, not a deployable threshold, and the report says so.
-  - Reported beside them, at the file's τ₈₅ and τ₀.₅: false cut-off and eot recall.
+  - Reported beside them:
+    - eot recall at false cut-offs of 0.05 and 0.20;
+    - false cut-off and eot recall at the file's τ₈₅ and τ₀.₅.
 - **Uncertainty.** A paired bootstrap of Δ = v3 − v2 (and v3 − Smart Turn, reported):
   - 2,000 resamples by turn, all cuts of a turn together;
   - seed 20261117;
@@ -356,7 +406,7 @@ v3 passes if all of these hold.
    - **The bar.** Accuracy at τ₀.₅ on the 31,527 clips **≥ 0.8893**, that is v2's 0.8993 − 0.01.
    - **It contains v2's G1.** The bar implies ≥ 0.85 and ≥ T − 0.08, with T = 0.9260.
 2. **A2 (Smart Turn's test, cut-offs).** At τ₈₅ (from validation), false cut-off **≤ 0.20** and END recall **≥ 0.80**: v2's G2.
-3. **E1 (eot-bench, ranking).** On the cuts of §8.3, all languages pooled, the 95% lower bound of AUC(v3) − AUC(v2) is **> 0**.
+3. **E1 (eot-bench, ranking).** On the cuts of §8.3, all languages pooled, AUC(v3) − AUC(v2) has a point estimate **≥ +0.02** and a 95% lower bound **> 0** (the paired bootstrap of §8.3).
 4. **E2 (eot-bench, the operating region).** On the same cuts, the 95% lower bound of recall@FC0.10(v3) − recall@FC0.10(v2) is **> 0**.
 5. **E3 (eot-bench, no harm outside English).** On the 13 languages other than English pooled, the 95% lower bound of AUC(v3) − AUC(v2) is **> −0.02**.
 6. **G3 (drop-in).** All of these:
@@ -381,7 +431,7 @@ v3 passes if all of these hold.
   - The counts of every drop of §3.2: by rule, sessions removed by the bleed filter, records near redactions.
   - The classes and d distribution of the stored records.
   - The share of fill made of zeros (§3.4).
-  - The label check and the bleed probe (§3.7).
+  - The label cross-check, the bleed probe and, if it was done, the listening check (§3.7).
 - **Pilot.** Its arms, its choice, and the stop-rule reading against v2's validation metric.
 - **Training.** Steps, modes, minutes; validation curves for both sources; teacher–student agreement on Smart Turn validation.
 - **Agreement on conversations.** Between Smart Turn's recorded opinion and the conversation labels, and between Smart Turn and v3, on test (c).
@@ -411,13 +461,19 @@ Every report of v3 states this paragraph.
 
 ## 12. What a failure would mean (written now)
 
-- **The label check is below 0.80, or the bleed probe above 0.60 (§3.7).** The records do not measure "has A finished?" from A's channel alone. No training happens; an amendment revises the rule, the filter or the corpus, or the line stops there.
+- **The label cross-check gives an agreement below 0.85 (§3.7).** The eot/hold labels depend on which detector finds the speech. More than one label in seven would change with an equally defensible detector, so the labels are not a stable target.
+  - The build stops before any training, and the report says so.
+  - An amendment revises the rule or the corpus, or the line stops there.
+- **The unconfirmed share is above 0.30.** The energy detector finds many pauses that a speech detector does not: breaths, noise or bleed. The agreement would speak only for a minority of the records. The build stops, as above.
+- **The bleed probe is above 0.60 (§3.7).** The silence after the offset carries the label: B's voice leaks into A's channel. The records do not measure "has A finished?" from A's channel alone. The build stops; an amendment tightens the bleed filter, or the line stops there.
+- **The listening check, if done, disagrees with the labels.** It gates nothing. Its numbers are reported beside the cross-check, and a large gap between the two is stated as a limit of the labels.
 - **The stop rule fires (§6.5).** Twelve minutes of conversation records did not move v2's ranking on conversation validation by 0.01. Either the human-to-human labels cannot be learned by this graph from one channel, or 1.3M parameters cannot absorb them on top of Smart Turn's clips.
   - The line stops at this size.
   - v2 stays the published file, with its fallback timer.
   - For real conversations the recommendation stays Smart Turn's file, with the reading of v2's card.
 - **A1 or A2 fails.** v3 bought its gain on conversations with a loss on Smart Turn's clips. It does not pass, and v2 stays the published file. If E1–E3 hold, the report says that v3 is better on real conversations and worse on clips: a trade, not a pass.
-- **E1 fails.** No improvement on real human-to-agent speech is shown. Test (c) separates the two causes:
+- **E1 fails on its minimum effect** (lower bound > 0, but the point estimate is under +0.02). v3 is measurably but not usefully better at ranking real ends of turn. It does not pass, and the report gives the gain as measured.
+- **E1 fails on its lower bound.** No improvement on real human-to-agent speech is shown. Test (c) separates the two causes:
   - **(c) improves over v2:** the human-to-human signal does not transfer to agents;
   - **(c) does not improve:** the model did not learn the signal at all.
 - **E1 holds and E2 fails.** The ranking improved, but not where a voice agent works (few cut-offs). It does not pass.
@@ -429,11 +485,12 @@ Every report of v3 states this paragraph.
 
 ## 13. Forbidden
 
-- Training, validating, piloting, calibrating, choosing a threshold or listening to the label check on:
+- Training, validating, piloting, calibrating, choosing a threshold, cross-checking or listening on:
   - any Smart Turn test clip;
   - any eot-bench audio;
   - any of the 113 conversation test sessions.
 - Using DualTurn's features or labels.
+- Using Silero VAD, or the cross-check's results, to label, select, drop or weight any training or validation record (§3.7).
 - Any v3 checkpoint reading eot-bench before the gate step.
 - Reading a v3 test score before §8.1's checks and §8.5's latencies are on file.
 - A second seed, a second run, or another start after the pilot's choice, except after a technical failure.
@@ -441,7 +498,7 @@ Every report of v3 states this paragraph.
 - Attempting to identify, de-anonymise or link a speaker of the corpus.
 - Using, reconstructing or inferring the content of a redacted segment.
 - Publishing the corpus's audio, snippets or derived records, unless the owner decides it in an amendment.
-- Generating any label or example with a model. The labels come from the rule of §3.2, the check from a person (`AGENTS.md`).
+- Generating any label or example with a generative model. The labels come from the rule of §3.2 applied to a voice-activity detector's output; the cross-check uses a second detector (`AGENTS.md`).
 
 ## 14. Amendments
 
@@ -468,14 +525,19 @@ None. This file is a draft (see the top).
 | O15 | pilot metric | **conversation validation AUC at d = 0.2 s, Smart Turn validation ≥ 0.88 to be eligible** | AUC over all asks; Smart Turn validation accuracy | the headline point, without giving up the clips |
 | O16 | stop rule | **chosen arm ≥ v2's validation metric + 0.01** | none; + 0.02 | spends two hours only if twelve minutes moved the ranking |
 | O17 | eot-bench cut | **span start + 0.2 s (spans ≥ 0.2 s; holds > 5 s ignored)** | the span's start (v2's cut) | the policy's first ask, and LiveKit's own 0.2 s score point |
-| O18 | false cut-off of E2 | **0.10** | 0.20; 0.05 | cutting users off is a voice agent's main failure; v2 read 0.2230 at τ₈₅ there; the timer covers missed ends |
+| O18 | false cut-off of E2 | **0.10 (decided by the lead, 17/11/2026); 0.05 and 0.20 reported** | 0.20; 0.05 | cutting users off is a voice agent's main failure; v2 read 0.2230 at τ₈₅ there; the timer covers missed ends |
 | O19 | bootstrap | **paired, by turn, 2,000 resamples** | by cut, 1,000 (v2's) | the cuts of one turn are not independent |
 | O20 | gate A1 | **≥ 0.8893 (v2 − 0.01), with v2's G2** | v2's bars only (≥ 0.85) | "must not lose what v2 had" |
 | O21 | no-harm bar outside English | **lower bound > −0.02** | none; > 0 | the new data is English; the other languages must not pay for it |
-| O22 | minimum effect for E1 | **none beyond a lower bound > 0** | a point estimate ≥ +0.02 as well | the lead's rule; +0.02 would be 37% of v2's gap to Smart Turn |
+| O21b | "gate on all languages" | **decided by the lead (17/11/2026): E1 and E2 on all 14 languages pooled, plus the no-harm bar E3 on the 13 non-English languages pooled; English alone and each language reported** | a bar per language; English gated alone | the new data is English: pooling asks for a gain where users are, and E3 stops it from being paid for by the other languages |
+| O22 | minimum effect for E1 | **decided by the lead (17/11/2026): point estimate ≥ +0.02 and 95% lower bound > 0** | lower bound > 0 only (the draft's first proposal), **dropped**: with about 18,000 cuts the interval is narrow, so a gain too small to matter would pass | +0.02 is 37% of v2's pooled gap to Smart Turn at the span's start (0.054): a gain a user could notice |
 | O23 | thresholds in the file | **v2's rules on Smart Turn validation; τ_c reported** | τ₈₅ from conversation validation | the same keys and meaning, no engine change |
 | O24 | caps | **120,000 / 20,000 / 30,000 records** | every record (about 25 GB more) | disk |
-| O25 | label-check bar | **0.80** | 0.85; 0.90 | DualTurn reports no check; below 0.80, one label in five would be wrong |
+| O25 | label check | **decided by the lead (17/11/2026): an automatic cross-check with a second detector is the bar; the 200-snippet listening check is optional and reported** | the listening check as the bar (the draft's first proposal, at 0.80), **dropped**: it made the run depend on a person's time | DualTurn reports no check; the cross-check runs unattended on every validation session, not on 200 |
+| O25a | second detector | **Silero VAD v6.2.3, `silero_vad.onnx` (MIT), probability ≥ 0.5 on 32 ms windows, cleaned 150 / 150 ms** | WebRTC VAD; the energy VAD at other settings | a neural detector shares nothing with the energy VAD, so their agreement measures the label's dependence on the detector; DualTurn's own labels use Silero at the same threshold |
+| O25b | agreement bar | **≥ 0.85 (decided by the lead)** | 0.80; 0.90 | under one label in seven depending on the detector |
+| O25c | matching tolerance | **150 ms, one to one, the closest first** | 100 ms; 200 ms | the smallest pause either detector keeps after cleaning; under `stopMs` (200 ms), so two pauses cannot share a match |
+| O25d | unconfirmed records | **kept, with the energy label; their share ≤ 0.30 is a second bar** | drop them from training; no bar on the share | dropping by Silero would make it a training-label source, which is forbidden; the bar keeps the agreement representative of at least 70% of the data |
 | O26 | bleed filter | **ratio ≤ 2.0 (+6 dB)** | none; 1.5 | below the VAD's 3.5 × (+10.9 dB), so kept bleed cannot fire the VAD |
 | O27 | Smart Turn | **an announced goal** | gated | never read at these cuts; odds about 0.15 |
 
@@ -489,6 +551,8 @@ None. This file is a draft (see the top).
 - `src/conv.rs`, called from `src/main.rs`:
   - `fetch-conv`: the otoSpeech WebDataset shards one at a time (`HF_TOKEN`, `tar`, `claxon`), with §3.2 in full: gain, VAD and policy replay, the other channel, the label rule, every drop with its count, the bleed filter, redactions, `splits.json`, the caps, the records, the manifest and `CONV.json`.
   - A transient 8 s PCM tail of each validation and test record for the teacher, removed with its shard.
+  - A transient 16 kHz WAV of each validation session's two gain-normalised channels for the cross-check, removed with its shard.
+- `conv-crosscheck` (in `src/conv.rs`): reads Silero's speech runs, runs the same label code, matches the offsets and writes `CROSSCHECK.json` (§3.7). Test: identical runs give agreement 1.0 and an unconfirmed share of 0.
   - The disk rule of v2 (`Guard`, exit status 3, resumable).
   - Tests on a synthetic two-channel session with a known answer.
 - `src/turn.rs`:
@@ -516,7 +580,7 @@ None. This file is a draft (see the top).
 
 - `scripts/train-turn3.sh`, modelled on `scripts/train-turn.sh`, with `DRY_RUN`, `RESUME`, `SMOKE` and the brake. Its steps:
   - conv-data, st-extend, eotbench-data, teacher-conv;
-  - labelcheck, bleed;
+  - crosscheck, bleed, and labelcheck (optional);
   - harness3;
   - smoke, pilot, train, export, calibrate;
   - latency, wasm;
@@ -524,7 +588,12 @@ None. This file is a draft (see the top).
 - `configs/s6-ear3-nano.json`: R4 of `configs/s6-ear2-nano.json`.
 - `scripts/turn-teacher.py --records`: Smart Turn on the PCM tails of conversation records, recorded only.
 - `scripts/ear-baseline.py --eotbench --offset-ms 200`: Smart Turn on the cuts of §8.3.
-- `scripts/turn-labelcheck.py`: writes the 200 stereo snippets and a blank answer sheet (local only); reads the answers back; gives the agreement with its Wilson interval.
+- `scripts/turn-vadcheck.py`: the label cross-check of §3.7.
+  - **Runtime.** uv and onnxruntime, with the pinned `silero_vad.onnx` of v6.2.3, whose sha256 is checked.
+  - **Input.** The transient 16 kHz validation-channel WAVs that `fetch-conv` writes per shard, removed with the shard.
+  - **Output.** The Silero speech runs per channel.
+  - **Then.** `sky-data conv-crosscheck` applies the same label code of `src/conv.rs` to those runs, matches the offsets (150 ms, one to one) and writes `CROSSCHECK.json` with the agreement, the unconfirmed share and the two bars.
+- `scripts/turn-labelcheck.py` (optional, §3.7): writes the 200 stereo snippets and a blank answer sheet (local only); reads the answers back; gives the agreement with its Wilson interval.
 - `scripts/turn-gate.py`, new subcommands:
   - `bleed` (§3.7);
   - `pilot3` (§6.4–6.5);
@@ -533,7 +602,13 @@ None. This file is a draft (see the top).
   - `gate3` (§9, with the paired bootstrap by turn and the breakdowns of §8.3).
 - `scripts/test_turn_gate.py`: tests of the new subcommands on synthetic probabilities.
 
-**Before the run:** the rows of `DATA_LICENSES.md` for otoSpeech (CC BY 4.0, gated, its role, the conditions accepted) and for DualTurn's `splits.json` (licence `other`; only session ids used).
+**Before the run:**
+
+- **v2's EMA checkpoint.** Expected at `../skycmd-data/s6-ear2/checkpoints/last-ema/` (`config.json`, `model.safetensors`, `optimizer.safetensors`, `state.json`), copied there by the lead from the session worktree. The sha256 of every file is recorded in `runs/s6-ear3-nano/init.json` before the run. `--init` refuses a checkpoint whose hashes differ.
+- **Licences.** The rows of `DATA_LICENSES.md`:
+  - otoSpeech: CC BY 4.0, gated, its role, the conditions accepted;
+  - DualTurn's `splits.json`: licence `other`; only session ids used;
+  - Silero VAD v6.2.3: MIT; the cross-check only.
 
 **After the result:** `hf/cards/s6-ear3-nano.md`, the result block of this file, and the site's pages as `AGENTS.md` asks.
 
