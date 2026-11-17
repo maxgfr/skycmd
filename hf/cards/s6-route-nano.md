@@ -45,7 +45,11 @@ name was fixed before training; the pre-registered pilot rule then chose the mic
 against 0.5778 for nano on validation, at least 0.04 asked), so it has the shape of
 [s6-micro](https://huggingface.co/{{USER}}/s6-micro), not of s6-nano.
 
-- **No demo:** the pre-registration publishes the playground only if the gate passes (§11).
+- **Demo:** the pre-registration publishes the playground only if the gate passes (§11). The owner
+  decided on 17/11/2026 that every published model gets a Space, failed gates included, so the
+  Space [{{USER}}/s6-route-nano](https://huggingface.co/spaces/{{USER}}/s6-route-nano) runs this file
+  alone, with its failed gate first and a link to the pair that passed (s6-route); the verdict does
+  not change.
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 - **Pre-registration:** [docs/s6-nano2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano2-prereg.md)
   (the gate in §8, amendments 1 and 2 before training, the result block)

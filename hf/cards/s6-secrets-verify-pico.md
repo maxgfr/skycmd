@@ -48,9 +48,11 @@ of [s6-secrets-pico](https://huggingface.co/{{USER}}/s6-secrets-pico), which rea
 failed on real files; this one was trained and tested on real repositories. It is the project's
 best result on real data, and it is a failed gate.
 
-- **No demo:** the model reads a state built from a rule candidate and hand features
-  (`crates/sky-infer/src/secret_cand.rs`), which needs secretgate's candidate generator; a
-  faithful browser demo would have to port both, so none is published.
+- **Demo:** on the site at [/secrets-verify/](https://maxgfr.github.io/skycmd/secrets-verify/) and as
+  the Space [{{USER}}/s6-secrets-verify-pico](https://huggingface.co/spaces/{{USER}}/s6-secrets-verify-pico)
+  (every published model gets a Space, owner's decision of 17/11/2026). It proposes candidates with a
+  simplified one-rule proposer, not secretgate's engine, and sends the filter flags as false, so it
+  shows the model's judgement on those records, not the measured system.
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 - **Pre-registration:** [docs/s6-secrets2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets2-prereg.md)
   (the gates in §8, amendments 1 to 8 before the run, the result block, amendment 9)

@@ -61,10 +61,11 @@ verdicts do not change, and each card opens with the failure and its numbers:
 On Hugging Face: [s6-micro-v1](https://huggingface.co/maxgfr/s6-micro-v1),
 [s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano) and
 [s6-cast-pico](https://huggingface.co/maxgfr/s6-cast-pico) with a demo Space,
-[s6-secrets-verify-pico](https://huggingface.co/maxgfr/s6-secrets-verify-pico) with a card only
-(its state is built from a candidate of secretgate's rules, which no demo runs), and
-[s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (once uploaded) with a card only (its
-pre-registration publishes the playground only if the gate passes). Its file, fused with a static
+[s6-secrets-verify-pico](https://huggingface.co/maxgfr/s6-secrets-verify-pico) (its demo proposes
+candidates with a simplified rule, not secretgate's engine) and
+[s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (its demo runs the file alone) with a
+demo Space each once uploaded: every published model gets a Space, failed gates included (owner's
+decision of 17/11/2026). Its file, fused with a static
 embedding, is the model part of s6-route, which passed its own gate (above).
 
 Next to s6-cast-pico, the [Forecast](/forecast/) page runs two reference forecasters, which are not ours and keep their own licenses:
