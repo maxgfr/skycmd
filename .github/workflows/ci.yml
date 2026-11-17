@@ -20,6 +20,14 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+      # The idle brake (docs/idle-training.md): the daemon's decision table, pid file and
+      # train-when-idle.sh, and the standalone Python reader. No Rust, no GPU.
+      - name: Brake scripts
+        run: |
+          bash -n scripts/auto-brake.sh
+          bash -n scripts/train-when-idle.sh
+          bash scripts/test-auto-brake.sh
+          python3 -I scripts/test_brake.py
 
   # Everything except sky-train, which links mlx-rs and needs macOS + Metal.
   # The golden tests of sky-infer need the pinned oscar-1-17m model in models-src/oscar
