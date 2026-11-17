@@ -408,8 +408,8 @@ def cmd_gate(a) -> None:
     out += table(rows or [["none found", "", ""]], ["file", "series", "points"])
     if leak.exists():
         lk = json.loads(leak.read_text())
-        out += table([[s, str(v["series"]), str(v["runs"]), str(v["matching_runs"]), str(v["kept"])]
-                      for s, v in lk["sources"].items()], ["source", "series", "runs", "matching runs", "kept"])
+        out += table([[s, str(v["series"]), str(v.get("informative_runs", v.get("runs", ""))), str(v["matching_runs"]), str(v["kept"])]
+                      for s, v in lk["sources"].items()], ["source", "series", "informative runs", "matching runs", "kept"])
     Path(a.out).write_text("\n".join(out) + "\n")
     (Path(a.out).with_name("gate.json")).write_text(json.dumps({
         "verdict": verdict, "G1": g1, "G2": g2, "G3": g3, "G3_state": g3_state, "nGMASE": s2["nGMASE"],
