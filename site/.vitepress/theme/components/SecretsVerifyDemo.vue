@@ -199,6 +199,12 @@ function tauText(v: number) {
             {{ results.length }} {{ results.length === 1 ? 'candidate' : 'candidates' }}; {{ accepted }} accepted as real
             at {{ tauKey }} = {{ tauText(tau) }}
           </p>
+          <p class="sv-meta sv-caveat">
+            Because this simplified proposer cannot compute secretgate's filter flags (placeholder, stop word,
+            allowlist, entropy), the model is asked without them, and it accepts some obviously fake values that
+            secretgate's own pipeline would have flagged as placeholders; the gate's numbers were measured with the
+            real generator.
+          </p>
           <ol class="sv-list">
             <li v-for="(r, i) in results" :key="`${r.rec.line}:${r.rec.start}:${i}`" :class="{ real: r.p >= tau }">
               <div class="sv-head">
@@ -235,8 +241,7 @@ function tauText(v: number) {
       <p class="sv-foot">
         The candidates come from a simplified proposer, not from secretgate's rule engine: the real generator is
         secretgate's, frozen as sg-cand-1, and this demo proposes with one simple rule (the rule id
-        <code>generic-keyword</code>) so that the model's judgement can be seen in a browser. The four filter flags of
-        secretgate's default engine are not computed here: they are sent as false.
+        <code>generic-keyword</code>) so that the model's judgement can be seen in a browser.
       </p>
     </template>
   </div>
@@ -352,6 +357,9 @@ function tauText(v: number) {
   margin: 14px 0 8px;
   font-size: 15px;
   font-variant-numeric: tabular-nums;
+}
+.sv-meta.sv-caveat {
+  margin: 0 0 10px;
 }
 .sv-list {
   list-style: none;
