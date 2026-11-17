@@ -212,7 +212,10 @@ temperature were fitted on v2's validation slates.
 
 The fresh test files were built from requests of the same sources that no v2 slate uses
 (MetaTool, CLINC150 and the MASSIVE held-out scenarios are test only); they are not published
-here.
+here. They are in the data set
+[skycmd-route](https://huggingface.co/datasets/{{USER}}/skycmd-route), with the training,
+validation and test slates of v2, each row with its source; the 100 tool-routing-data slates are
+left out.
 
 ## Files
 

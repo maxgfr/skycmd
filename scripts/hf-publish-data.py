@@ -290,21 +290,21 @@ ROUTE_EXCLUDED = {
     "build/teacher/false-negatives.refused.jsonl": "items refused by the endpoint's moderation",
     "build/teacher/rewrite-description.refused.jsonl": "items refused by the endpoint's moderation (empty)",
 }
-# Tokens that the builder's key rule flags but that are not keys, by sha256 so that none is
-# printed: tool names (the builder masks requests and descriptions, never names, Tool::new) and
-# repository paths in URLs. Reviewed by shape (A capital, a lower-case, 9 digit, runs counted).
+# Tokens that the builder's key rule flags but that are not keys, by the first 16 hex digits of
+# their sha256: public tool names (the builder masks requests and descriptions, never names,
+# Tool::new) and repository paths in URLs. Reviewed by reading them (17/11/2026).
 ROUTE_NOT_KEYS = {
-    "818c8019286d10e7": "tool name, ToolACE (`/a9/a7/a9Aa4Aa3Aa4`)",
-    "0be4005c5ddaee7d": "tool name, ToolACE (`a9Aa2Aa3Aa9Aa5`)",
-    "79f19705af35fd38": "tool name, ToolACE (`/a9/a9Aa11Aa4`)",
-    "64ad8f3153b030d8": "tool name, When2Call test (`Aa6_9_Aa5Aa5Aa5`)",
-    "db88572027160fb0": "tool name, When2Call test (`Aa6_9_Aa5Aa8Aa6`)",
-    "c819d63786f59207": "URL path of a pinned dataset repository",
-    "ebaf5fb28362ff2e": "URL path of a pinned dataset repository",
-    "320160d3beb3b298": "file path of a pinned dataset repository",
-    "4e1c552e6c6d1b66": "URL path of a pinned model repository",
-    "f87e0a2e258f7f02": "name of a pinned dataset repository",
-    "e9e2c8815f70dad4": "name of a pinned model repository",
+    "818c8019286d10e7": "tool name, ToolACE: /v1/youtube/summarizeVideoWithToken",
+    "0be4005c5ddaee7d": "tool name, ToolACE: v1GetFundHistoricalPrices",
+    "79f19705af35fd38": "tool name, ToolACE: /v1/trademarkAvailabilityCheck",
+    "64ad8f3153b030d8": "tool name, When2Call test: Flights_4_SearchOnewayFlight",
+    "db88572027160fb0": "tool name, When2Call test: Flights_4_SearchRoundtripFlights",
+    "c819d63786f59207": "URL path: co/datasets/NousResearch/hermes-function-calling-v1",
+    "ebaf5fb28362ff2e": "URL path: co/datasets/liminghao1630/API-Bank",
+    "320160d3beb3b298": "file path: possible_answer/BFCL_v3_multiple",
+    "4e1c552e6c6d1b66": "URL path: co/sentence-transformers/all-MiniLM-L6-v2",
+    "f87e0a2e258f7f02": "repository: NousResearch/hermes-function-calling-v1",
+    "e9e2c8815f70dad4": "repository: sentence-transformers/all-MiniLM-L6-v2",
 }
 
 SETS = {

@@ -211,7 +211,9 @@ never sent a test request or slate, and it gives no training target. The teacher
 (MIT); how its outputs are used is described in
 [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md), with the licence
 and commit of every source. MetaTool, CLINC150, BFCL, tool-routing-data and the When2Call test are
-test only.
+test only. The training, validation, test and fresh slates are in the data set
+[skycmd-route](https://huggingface.co/datasets/{{USER}}/skycmd-route), each row with its source;
+the 100 tool-routing-data slates are left out.
 
 **Disclosure** (§10 of the pre-registration). This version was designed after s6-nano's results
 were read, and after a study that read s6-nano's test dumps. Its gated test, T-tools, is new:

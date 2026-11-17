@@ -358,7 +358,7 @@ evaluation set). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-s
 codes), [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math) (LFM3 router
 questions), [skycmd-route](https://huggingface.co/datasets/maxgfr/skycmd-route) (the slates of
 s6-route-nano and s6-route and the teacher's descriptions, each row under its sources' licences;
-assembled, not uploaded yet), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) (a fixed sample of
+published since 17/11/2026), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) (a fixed sample of
 our four synthetic series generators, Apache-2.0), [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals) (our hand-written
 evaluation material: demo cases, s5 zero-shot definitions and paraphrases, Apache-2.0), [skycmd-trajectories](https://huggingface.co/datasets/maxgfr/skycmd-trajectories) (complete game episodes played by
 our models and the oracle, Apache-2.0), [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
@@ -379,7 +379,8 @@ each file checked against the hash its host publishes; every file (URL, commit, 
 licence) is listed in `<data>/MANIFEST.json` of the data folder (`../skycmd-data/s6-route`,
 outside the repository; 584,935,409 bytes in all, 15/11/2026). Since 17/11/2026, by the owner's
 decision to publish the data under each source's licence, the dataset `skycmd-route`
-(`scripts/hf-publish-data.py --only route`; assembled, not uploaded yet) holds: the training and
+(`scripts/hf-publish-data.py --only route`; published since 17/11/2026 at
+https://huggingface.co/datasets/maxgfr/skycmd-route) holds: the training and
 validation records the models read (`build/records/*/train.jsonl`, `val.jsonl`); the validation
 slate files (`build/val/v_tools*.jsonl`); the test files built from the sources of this table
 except tool-routing-data (`build/test/`: T-tools and its three reading-check copies, T-metatool,
