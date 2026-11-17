@@ -167,6 +167,7 @@ On the same 31,527 clips: the silence timer 0.4979, s6-ear-nano 0.5681, its cont
 - **It is a student of Smart Turn**, distilled from its logit, pooled embedding and encoder states on the training clips only: it cannot be better than its teacher's labels. Most of its test set is synthetic speech.
 - **Disclosure.** The official test set is partly in-sample for v2's design choices (the 4 s window and the data change came from a design study that read measurements on 3,000 clips of it), though never for its weights: no test clip is trained on, and no threshold is chosen on test. The run happened under the machine's automatic brake, and CPU work of other models ran during the pilot and part of the training, which amendment 1 allows.
 - **No browser demo yet.** The engine API exists (`TurnDetector` in WASM, `sky-turn` natively); the demo waits on the owner's microphone check. The published file: [`site/public/models/s6-ear2-nano.gguf`](https://github.com/maxgfr/skycmd/blob/main/site/public/models/s6-ear2-nano.gguf).
+- **The article.** [A 632 KB model that knows when you have finished speaking](/articles/a-632-kb-end-of-turn-detector) tells this line as a story: v1's failure, the harness bug that hid the teacher's score, and the design decisions the pass rests on.
 
 ### s6-cast-pico: failed {#s6-cast-pico-failed}
 
