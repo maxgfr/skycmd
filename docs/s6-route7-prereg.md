@@ -2,6 +2,8 @@
 
 **Frozen on 18/11/2026 by the lead, before any computation of v7; every later change is a dated amendment that precedes the computation it concerns.**
 
+**Amendment 1 of the same day (18/11/2026), after the rebuild and its checks, before any training (§16):** the stop rule does not fire (N6's excess +0.0025 in training, +0.0667 in validation); the records' hashes, the teacher's counts and the spread table.
+
 - **Nothing of v7 has run.** No record is rebuilt, no plan is drawn, no teacher call is made, no
   blind copy is written, no model is trained and no system is scored. To write this document:
   - no record and no request text was opened;
@@ -383,5 +385,109 @@ As v6 §12, with v7's names, plus:
 
 ## 16. Amendments
 
-*None yet. Amendment 1 holds the records' hashes, the teacher's counts, the checks and the spread
-table, written right after the rebuild and its checks, before any training.*
+### Amendment 1 (18/11/2026, after the rebuild and its checks, before any training): the stop rule does not fire; the records' hashes and the spread table
+
+**What ran, in order** (18/11/2026, `scripts/build-route7-data.sh`, the logs under
+`build7/logs7/`). Nothing else of v7 ran: no blind copy, no fresh file, no baseline, no training.
+
+- **`inputs`:** the 41 files of §4.1 have their hashes in `build6/` (`runs/s6-route7/inputs-check.json`,
+  none differs).
+- **`fix-plan`:** the full copy of `build6/` into `build7/`, 55 files, each checked by sha256
+  (`runs/s6-route7/copy.json`). The plan with `--when2call-anchor nearest` keeps 55,790 plans
+  outside the When2Call group as v5's. Against v6's fix plan (`runs/s6-route7/plan-diff.json`),
+  66,370 plans are byte-identical. 2,920 differ, all of them no-call plans of the group whose two
+  slates were at L6 in v6 (2,792 training, 128 validation, the plan counts' "anchored on the tool
+  nearest to the request"); no other plan differs.
+- **`fix-teacher-jobs`:** of the 349 rebuilt hard no-call slates that a record shows (329 training,
+  20 validation, as counted in §4.2), 53 are answered by v5's answers with the same id and **296 go
+  to the teacher** (279 training, 17 validation), in 15 calls of 20. The other 747 no-call hard
+  slates that a record shows are answered by id (v6's 694 and those 53); 8,151 planned no-call
+  hard slates are shown by no record and get no item (`build7/logs7/v6-fix-items.json`).
+- **The teacher:** GLM-5.3-Flash, v2's prompt, `BUILD=<data>/s6-route/build7/fix7
+  scripts/route-teacher.sh false-negatives loop`; 296 answers out of 296, none refused by
+  moderation, no failed batch; 47,608 tokens in and 4,156 out, 16.1 s. **140 of the 296 answers
+  name at least one tool able to serve the request** (47%, against 87 of 694, 13%, in v6's fix),
+  which the build then replaces. A slate anchored on the tool nearest to the request puts the
+  tools closest to it in front of the teacher, and for requests that list no tool the teacher
+  often judges one of them able.
+- **`fix-build`:** the group's 14,732 records rebuilt by uid.
+  - **Against v6's records, by uid** (`runs/s6-route7/records-diff.json`): 660 training and 33
+    validation records differ, every one a *none*-right natural or hard slate of a replanned
+    request: the 660 and 33 slates of §4.8. The other 13,225 and 814 records of the group are
+    byte-identical to v6's.
+  - **Every other file of `build7/`** has its hash of the copy (`runs/s6-route7/rebuild.json`:
+    52 files equal, 3 allowed to differ, none other differs).
+- **`fix-checks`:** exit 0, **the stop rule does not fire** (`runs/s6-route7/checks.md`,
+  `checks.json`).
+- **`spread`:** `runs/s6-route7/spread.md` (`spread.json`), with v6's build beside it.
+
+**The stop rule after v7's rebuild** (N6 "*none* when the options spread above the median"; every
+judged family; the inverse rule answers no slate in these families).
+
+| family | slates | *none* share | v5: excess | v6: answered *none* | v6: accuracy | v6: excess | v7: median spread | v7: answered *none* | v7: accuracy | v7: excess |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `records when2call train other` | 9,918 | 0.2000 | +0.2410 | 1,067 | 0.5792 | +0.3792 | 0 | 563 | 0.2025 | **+0.0025** |
+| `records when2call val other` | 605 | 0.2000 | +0.2382 | 55 | 0.6000 | +0.4000 | 0 | 30 | 0.2667 | **+0.0667** |
+
+- **Both are within N6's tolerance** (0.2538 in training, 0.3661 in validation), so N6 fails in no
+  family. The validation family's +0.0667 rests on 30 answers, 8 of them right.
+- **The largest excesses of every judged family** are now +0.0667 (above), +0.0501
+  (`records when2call train renamed`, 4 slates answered, unchanged from v6), +0.0249 (N6's
+  inverse on `v5_tools_masked.jsonl`), +0.0197 (`records tools val renamed`) and +0.0178 (N6's
+  inverse on `v5_tools.jsonl`). The last four come from files v7 does not touch.
+- **The mechanism count's prediction** (0.133 against a *none* share of 0.143 among the spread
+  anchored slates of v6) was a count, not a bar; the family as rebuilt reads 0.2025 against 0.2000.
+- **v5's other checks, rerun on all the records and reported** (none stops v7): 17 failures of C2
+  and the N rules, against v6's 19. The 17 failures of the cells are v6's, cell by cell and at the
+  same values; the two N6 failures are gone. C1 fails in 7 training cells, as in v6.
+
+**The spread table** (`runs/s6-route7/spread.md`; the share of slates whose tool options spread
+over several L0 cells, and the share at L6, outside the cell).
+
+| split, kind, answer | slates | v7: spread above 0 | v6: spread above 0 | v5: spread above 0 | v7: L6 | v6: L6 |
+|---|---:|---:|---:|---:|---:|---:|
+| train hard *none*-right | 980 | 0.0602 | 0.3245 | 0.6847 | 0 | 0.3357 |
+| train hard tool-right | 3,967 | 0.0575 | 0.0575 | 0.0575 | 0 | 0 |
+| train natural *none*-right | 1,004 | 0.0548 | 0.2988 | 0.6723 | 0 | 0.3297 |
+| train natural tool-right | 3,967 | 0.0557 | 0.0557 | 0.3726 | 0 | 0 |
+| train renamed *none*-right | 793 | 0.0013 | 0.0013 | 0.4098 | 0 | 0 |
+| train renamed tool-right | 3,174 | 0.0009 | 0.0009 | 0.3948 | 0 | 0 |
+| val hard *none*-right | 63 | 0.0635 | 0.3175 | 0.6667 | 0 | 0.3175 |
+| val hard tool-right | 242 | 0.0413 | 0.0413 | 0.0413 | 0 | 0 |
+| val natural *none*-right | 58 | 0.0690 | 0.2241 | 0.6207 | 0 | 0.2241 |
+| val natural tool-right | 242 | 0.0496 | 0.0496 | 0.3719 | 0 | 0 |
+| val renamed *none*-right | 48 | 0 | 0 | 0.4167 | 0 | 0 |
+| val renamed tool-right | 194 | 0 | 0 | 0.3814 | 0 | 0 |
+
+- **The *none*-right slates now spread as rarely as the tool-right ones,** in both kinds and both
+  splits (within 0.03 everywhere, against 0.17 to 0.28 in v6), and none is at L6.
+- **The slates by level (L0 to L6)** of the rebuilt kinds: training hard *none*-right 910 65 3 2 0 0 0
+  (v6: 604 46 0 1 0 0 329), natural *none*-right 932 66 3 3 0 0 0 (v6: 633 38 1 1 0 0 331);
+  validation hard 59 3 1 0 0 0 0 (v6: 40 2 1 0 0 0 20), natural 53 5 0 0 0 0 0 (v6: 43 2 0 0 0 0
+  13). The tool-right and renamed slates are v6's, level by level.
+
+**The hashes of the training and validation inputs** (`runs/s6-route7/inputs6.json`, 45 files: the
+41 of §4.1, of which these three changed, and v7's fix files). The stage `inputs-ok` checks `build7/`
+against it and only then writes `runs/s6-route7/inputs.ok`.
+
+| file | bytes | sha256 |
+|---|---:|---|
+| `records/when2call/train.jsonl` | 15,946,230 | `e60c0bc6ec7248cf0f91377836ddd9643d4792ace1a0e4e70eb556cd020e6978` |
+| `records/when2call/val.jsonl` | 966,478 | `9828c06af198615429b5597879aa6af05cf11dd4bdda1df7276cfd217492a30a` |
+| `counts/v5-slates.json` | 18,035 | `eea839ab1f3c9e9ca7591c4bfff8650a2e321a9a8cec0ea8376644bc4a62adbb` |
+| `fix7/teacher/false-negatives.items.jsonl` | 186,725 | `432c766756520cc5b34492c106abd08959fda66aa9ac54796bff07f712aa8a83` |
+| `fix7/teacher/false-negatives.jsonl` | 14,215 | `136daaae138881a663e123f503580a6ae4d4f3b361221faacd947cb3b84f3256` |
+| `fix7/teacher/false-negatives.refused.jsonl` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `fix7/stage/plan5.jsonl` | 92,251,077 | `b6a408b0a84eda9d18ace66a54165069d8518974daaea7208a7c5870f4f0667a` |
+
+- **The records:** 197,958, as v6 (training 182,085, validation 15,873; When2Call 13,885 and 847);
+  C3's shares are v6's (1,984 *none*-right of 9,918 and 793 of 3,967 in training; 121 of 605 and
+  48 of 242 in validation).
+
+**What follows, by the frozen text.** The checks are reported and none stops v7 (§4.8); the model's
+blind reading decides (G6). The next stages are v6's, under v7's names, launched by the lead:
+`inputs-ok`, `placeholder`, `support`, `checks-read`, `blind-val`, `baselines-val`, then the
+amendment of §4.5 with the pilot's bar, the training (`scripts/train-route7.sh`), and T5. None has
+run.
+
+**Nothing else changes.** No bar, rule, file or choice of the frozen text moves.

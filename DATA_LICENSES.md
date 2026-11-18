@@ -443,11 +443,18 @@ rewrite is asked for the training and validation tools; for the two probe copies
 rewrite of each Toucan tool a fresh slate shows (the `fresh-tools` items of v4, a name and a
 description only). It never receives a test or fresh request, nor a test slate.
 
-s6-route v6 (`docs/s6-route6-prereg.md` §4.2, §4.8 and amendment 1), the same teacher and prompt,
-not run yet: the `false-negatives` job on the hard slates of When2Call's no-call requests rebuilt
+s6-route v6 (`docs/s6-route6-prereg.md` §4.2, §4.8 and amendment 1), the same teacher and prompt:
+the `false-negatives` job on the hard slates of When2Call's no-call requests rebuilt
 without exempt tools (at most 1,043 items, `sky-data route v5-fix-items`, under `<build6>/fix/`);
 its answers filter those slates only, and every other answer of v5 is used as it is. No new
-source.
+source. Run on 18/11/2026: 694 items, 694 answers (`<build6>/fix/teacher/`).
+
+s6-route v7 (`docs/s6-route7-prereg.md` §4.2 and amendment 1), the same teacher and prompt: the
+`false-negatives` job on the hard slates of When2Call's no-call requests without an own tool in the
+pool, rebuilt in the cell of the pool tool nearest to the request (296 items, 279 training and 17
+validation, `sky-data route v5-fix-items`, under `<build7>/fix7/`), run on 18/11/2026: 296 answers,
+none refused. Its answers filter those slates only; v5's and v6's answers are used as they are, by
+id. No new source.
 
 ## Rejected
 
