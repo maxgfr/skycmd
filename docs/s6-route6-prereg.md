@@ -1,9 +1,9 @@
-# s6-route v6 (v5's data as built, trained, and gated on the model's request-blind reading): pre-registration
+# s6-route v6 (v5's data with one fix, trained, and gated on the model's request-blind reading): pre-registration
 
-**DRAFT of 18/11/2026: not frozen; the lead freezes it by a dated commit before any computation of v6.**
+**Frozen on 18/11/2026 by the lead, before any computation of v6 and before its code is written; every later change is a dated amendment that precedes the computation it concerns.**
 
-- **Nothing of v6 exists yet:** no model trained, no fresh file built, no teacher call, no system
-  scored, no blind copy written. To write this document:
+- **Nothing of v6 exists yet:** no model trained, no record rebuilt, no fresh file built, no
+  teacher call, no system scored, no blind copy written. To write this document:
   - no record and no request was opened;
   - read: v5's published report (`runs/s6-route5/checks.md` and `checks.json`, the result block at
     the end of `docs/s6-route5-prereg.md`), v4's (`runs/s6-route4/checks.md`, `checks.json`), the
@@ -12,11 +12,17 @@
     entries looked up);
   - counted: the option counts and the target position of `v5_tools.jsonl` and its copies
     (§4.3; no request text was printed or kept);
-  - hashed: the bytes of v5's build (§4.1).
-- **v6 is v5 with one change: what decides.** v5 asked the data to be blind before any model was
-  trained. v6 trains on v5's data exactly as they were built, publishes the data checks without
-  letting them stop anything, and gates on the trained model's reading with the request hidden
-  (G6, §8).
+  - hashed: the bytes of v5's build (§4.1);
+  - read, for the fix of §4.8: the When2Call cells and N6 families of `runs/s6-route5/checks.json`
+    (slates by level and by gold).
+- **v6 is v5 with two changes.**
+  - **What decides.** v5 asked the data to be blind before any model was trained. v6 publishes the
+    data checks without letting them stop the run (with one pre-written exception, §4.8), and gates
+    on the trained model's reading with the request hidden (G6, §8).
+  - **One data fix** (§4.8). v5's N6 failure, +0.24 on When2Call's *none* decision, is of the size
+    of the cue that started this line, and v6 does not knowingly train on it. The lead's decision 3
+    of v5's amendment 2 is withdrawn for the hard slates: only When2Call's hard no-call slates are
+    rebuilt, and every other record of v5 stands as built.
   - Everything else is inherited, section by section, from `docs/s6-route5-prereg.md` (frozen on
     18/11/2026, with its amendments 1 and 2 and its result block) and, through it, from
     `docs/s6-route4-prereg.md` (frozen on 17/11/2026, with its amendment 1).
@@ -31,7 +37,9 @@
   - the head window, as v4 §3.3;
   - the pilot's potion-cos bar, as v5 §4.5;
   - the counts amendment of T5, as v5 §6;
-  - the placeholder, if the check of §4.3 refuses the first one.
+  - the placeholder, if the check of §4.3 refuses the first one;
+  - the hashes of the two rebuilt When2Call record files, by an amendment after the rebuild and
+    its checks (§4.1, §4.8).
 
 **Why this experiment.**
 
@@ -63,9 +71,10 @@
     many small cues used together.
   - **What it cannot see:** a cue used jointly with the request. The blind reading measures what
     the model does when the request says nothing (§11).
-- **What v6 does.** It tests the model, not the data. It trains on v5's built data exactly as
-  they stand: no rebuild and no new teacher call for training, with the records' hashes listed in
-  §4.1 before anything runs. It gates on the trained model's request-blind reading.
+- **What v6 does.** It tests the model, not the data. It trains on v5's built data as they stand,
+  with one exception: When2Call's hard no-call slates are rebuilt without the exempt tools that
+  carried part of N6's cue (§4.8). The records' hashes are listed in §4.1 before anything runs. It
+  gates on the trained model's request-blind reading.
 
 ## 1. The question
 
@@ -79,7 +88,8 @@ As v5 §1 (v4 §1, read on T5-tools), and one more:
 
 | # | change | evidence | where it is read |
 |---|---|---|---|
-| B1 | **v5's built data are the training and validation data, as they stand** (hashes, §4.1); no rebuild | v5's build is complete (C6 and C3 hold); its stop came from the judged rules alone | §4.1 |
+| B0 | **One data fix:** When2Call's hard no-call slates hold no exempt tool, and are rebuilt with their false-negative items; one stop rule on N6 after the rebuild (§4.8) | N6 fails in When2Call's two "other" families at +0.24 (v5's table) | §4.8 |
+| B1 | **v5's built data are the training and validation data, as they stand,** except the records of B0 (hashes, §4.1) | v5's build is complete (C6 and C3 hold); its stop came from the judged rules | §4.1 |
 | B2 | **The request-blind reading** of a slate: the request replaced by a placeholder, every lexical score and rank that D4 writes as for a request that matches no option (§4.3) | a model can use cues that no listed rule names, and several at once; only a model shows it | §4.3 |
 | B3 | **The data checks become reported:** C1 to C6 and N1 to N6 are run on every file v6 reads and published; none stops v6 | v4's and v5's tables (§4.4) | §4.4 |
 | B4 | **Two pilot aborts on the blind reading** (§5) | a model that answers from the options alone after 20 minutes would do so after 120 | §5 |
@@ -103,7 +113,17 @@ The head window is chosen by v4 §3.3's rule on v5's records (`scripts/train-rou
 
 The training and validation data are v5's build under `<data>/s6-route/build5/`, written on
 18/11/2026 by the code of 9c2da9b. They are described by v5's tables (`runs/s6-route5/checks.md`).
-Nothing in them is rebuilt, filtered or reweighted.
+Nothing in them is rebuilt, filtered or reweighted, except the 1,043 When2Call hard no-call
+slates of §4.8.
+
+- **The rebuild writes a full copy under `<data>/s6-route/build6/`.** Every file of the table
+  below keeps its hash there, except `records/when2call/train.jsonl`, `records/when2call/val.jsonl`
+  and `counts/v5-slates.json`.
+- **The new hashes.** The rebuilt files' hashes, and those of the new teacher files, are written
+  by an amendment after the rebuild and its checks, before training. That amendment also gives the
+  records' counts.
+- **A difference elsewhere** is a technical failure of the rebuild: it is fixed before anything
+  else, and reported.
 
 **The hashes** (sha256, bytes), copied to `runs/s6-route6/inputs.json` before anything runs. The
 stage `inputs` of §14 refuses to go on if one differs.
@@ -149,9 +169,14 @@ stage `inputs` of §14 refuses to go on if one differs.
 
 ### 4.2 The teacher
 
-- **No job for training:** the false-negative answers of v5 are used as they are (§4.1).
-- **The `fresh-tools` job of v5 §4.2:** about 100 to 150 calls, for T5's probe copies only. It is
-  the one teacher job of v6, run after `fresh`, never on a request.
+- **The false-negative answers of v5 are used as they are** (§4.1), except for the slates of §4.8.
+- **The fix's job:** v5's `false-negatives` job on the 1,043 rebuilt hard no-call slates (§4.8),
+  v2's prompt word for word. That is at most 1,043 items, about **53 calls** of 20, a few minutes
+  at v5's rate (2,982 calls in 4,527.5 s). An answer is reused by id only where a rebuilt slate
+  matches a slate of v2 or v5, by coincidence. The teacher sees training and validation requests
+  only.
+- **The `fresh-tools` job of v5 §4.2:** about 100 to 150 calls, for T5's probe copies only, run
+  after `fresh`, never on a request.
 
 ### 4.3 The request-blind reading (B2)
 
@@ -244,8 +269,10 @@ holds 7 tools, c = 0.142857 there too.
 ### 4.4 The data checks, reported (B3)
 
 - **The records and v5's validation files:** v5's dated table (`runs/s6-route5/checks.md`,
-  `checks.json`) is their description. The files are byte for byte the ones it read (§4.1), so the
-  checks are not run again on them.
+  `checks.json`) is their description. Except for the rebuilt When2Call files, they are byte for
+  byte the ones it read (§4.1).
+- **The rebuilt records:** every check of v5 §4.4 runs again on all the records after the fix
+  (§4.8). The results are reported, and only the stop rule of §4.8 can stop v6.
 - **The other files v6 reads,** with v5's script (`scripts/s6-route5-checks.py`, C2 and N1 to N6,
   and C3), before training, written to `runs/s6-route6/checks-read-files.md`:
   - `v_tools` and `v_tools_masked`, and `v4_tools` and `v4_tools_masked` (v4's table already holds
@@ -253,8 +280,8 @@ holds 7 tools, c = 0.142857 there too.
   - the renamed and natural validation records' copies;
   - T2-tools and its masked copy, files already read; the study's §7 counts for them stand.
 - **T5:** in the counts amendment, as v5 §6 says.
-- **None of these checks stops v6,** whatever it shows. v4's and v5's dated tables are part of
-  the record and are cited with every result of v6.
+- **No other check stops v6,** whatever it shows. v4's and v5's dated tables are part of the
+  record and are cited with every result of v6.
 
 ### 4.5 The baselines on the validation files
 
@@ -272,7 +299,97 @@ blind accuracy is c exactly: a check of the chain.
 ### 4.7 Disk
 
 As v5 §4.7: **3 GB free** on the volume of the data folder before every writing stage
-(`MIN_FREE_GB=3`); below it, a technical stop. About 8.4 GiB were free on 18/11/2026 when this draft was written.
+(`MIN_FREE_GB=3`); below it, a technical stop. About 7.3 GiB were free on 18/11/2026 at the
+freeze.
+
+### 4.8 The one data fix, and the one stop rule on the data (B0)
+
+**What v5's table shows** (`runs/s6-route5/checks.md`, and the When2Call cells of
+`checks.json`).
+
+- **N6 fails in two families only:**
+  - `records when2call train other`: 0.4410 against a tolerance of 0.2345 (*none* share 0.2000;
+    3,052 of 9,918 slates answered *none*), +0.2410;
+  - `records when2call val other`: 0.4382 against 0.2800 (178 of 605), +0.2382.
+
+  In the other 11 judged families both rules are within +0.025 of the *none* share, When2Call's
+  renamed training family included (+0.0061).
+- **What the two families hold:** the hard and natural slates of When2Call, and only those
+  (4,947 + 4,971 = 9,918 in training, 305 + 300 = 605 in validation). When2Call has no removed
+  cell. Their *none*-right slates are therefore the no-call requests' slates of both kinds: 980
+  hard and 1,004 natural in training, and 63 and 58 in validation.
+- **The table does not split N6 by kind,** so it does not confine the failure to the hard
+  no-call slates. By kind it shows two things:
+  - **Outside the cell.** In When2Call, every slate outside the cell (L6) is *none*-right, in
+    both kinds alike: 329 of the 980 hard and 331 of the 1,004 natural no-call slates in
+    training, and 20 of 63 and 13 of 58 in validation. No tool-right slate of the group is at L6
+    (0 of 3,967 in each training kind). These are the slates that C6 counted at L6 (0.0782 and
+    0.0902, under its bar). The table does not say why about a third of the no-call slates of
+    both kinds could not be matched to their first own tool's cell.
+  - **The exempt tools.** The tool-right hard slates hold no exempt tool: the restriction "the
+    right option with the exempt options only" holds 0 slates. The tool-right natural slates hold
+    exempt tools in 1,357 of 3,967 slates in training (84 of 242 in validation). The no-call
+    slates of both kinds hold them, by v5's rule.
+- **What follows.** The table supports the lead's account for the hard slates: the no-call hard
+  slates hold exempt tools, and the tool-right hard slates hold none. It also shows that the
+  natural no-call slates, half of the *none*-right slates of the two families, are as often
+  outside the cell. The fix below is written for the hard slates only, as decided, and is expected
+  to reduce N6's excess rather than certainly remove it. The stop rule decides whether what remains
+  is small enough to leave to the model's gate.
+
+**The fix: decision 3 of v5's amendment 2 is withdrawn for the hard slates.**
+
+- **The rule.** A When2Call no-call hard slate holds no exempt tool. Its tools are the
+  candidates nearest to the request (potion-base-2M cosine on v5's request embeddings) within the
+  cell of the request's first own tool, at the slate's level. That is what v5's code did before
+  amendment 2:
+  - v5 §4.3's levels L0 to L6 and the minimum of 16 apply, counted on all the slate's tools,
+    since every one is drawn;
+  - the slate's size is v2's plan's (stream `route/plan/<id>`);
+  - the request's own tools are not candidates;
+  - the false-negative filter is v5's (§4.2, amendment 2, reading 3): a tool that the teacher
+    names able is replaced by the next of the request's nearest tools in the cell, then from the
+    cell's random fill, then from the next levels.
+- **The slates rebuilt.** The 1,043 hard no-call slates that v5's records hold (980 training, 63
+  validation; the *none*-gold slates of `records when2call hard train` and `val`). They are rebuilt
+  by uid: the trimming to the 0.20 share is not redone, so the same no-call requests keep a hard
+  slate and C3's shares do not move.
+- **What is kept.** The natural slates keep the request's own tools in every case, tool-right and
+  no-call alike. Every other record of v5 stands, byte for byte (§4.1).
+- **The teacher:** the false-negative items of the 1,043 rebuilt slates, about 53 calls of 20
+  (§4.2).
+
+**The order, all before training** (`scripts/build-route6-data.sh`, §14):
+
+1. the replanning of the 1,043 slates, with the plan's other entries unchanged;
+2. their false-negative items, and the teacher;
+3. the build into `<data>/s6-route/build6/`, and the hash check of every unchanged file (§4.1);
+4. the checks of v5 §4.4 (C1 to C6 and N1 to N6, v5's script and tolerances) on the rebuilt
+   records and on `v5_tools` and its masked copy, published as `runs/s6-route6/checks.md` and
+   `checks.json`;
+5. the spread table below;
+6. the amendment that writes the new hashes, the counts by level of the rebuilt slates, the
+   teacher's counts, the checks and the spread table.
+
+**The stop rule** (pre-written; judged once, on the rebuilt records):
+
+> **If, in any N6 family judged by v5's floor (at least 200 tool-gold slates; v5, amendment 2,
+> decision 4), the accuracy of N6 or of its inverse exceeds the family's *none* share by more
+> than 0.10, v6 stops before training, and the table is published. Otherwise the checks are
+> reported, none of them stops v6, and the model's blind reading decides (G6).**
+
+Why 0.10: a cue of that size on the *none* decision is not left to the model's gate. On v5's
+table, 0.10 sits between the When2Call families (+0.24) and every other judged family (at most
++0.025).
+
+**The spread table, before training** (reported). It is the share of When2Call slates whose
+options spread over several L0 cells (spread above 0, the statistic of v5's amendment 2,
+decision 4), given:
+
+- by kind (natural, hard);
+- by *none*-right or tool-right;
+- by split;
+- after the fix, with the same table on v5's records beside it.
 
 ## 5. The run (`scripts/train-route6.sh`)
 
@@ -342,6 +459,11 @@ from the counts amendment, 1/7 = 0.142857 if every slate holds 7 tools):
 | G6 (b) the pair | the same, the embedding part reading P | ≤ 0.1929; upper bound ≤ 0.2229 |
 | G6 (c) *none* without the request, for the model part and for the pair | Δ_none ≤ **0.05**, and the upper bound of its 95% bootstrap with servers resampled ≤ **0.15** | the same |
 
+**G6 is judged on all tool-right slates of T5-tools.** The blind accuracy is also reported on the
+slates split by whether a server-mate of the right tool is shown. If G6 fails only on the slates
+that show server-mates, the report says so in its first sentence, and the verdict is still a
+failure of the gate: T5's construction was frozen with the gate.
+
 - **Why these bars (a and b).** They are the lead's. About 1,600 tool-right slates are expected
   (2,000 slates, 20% removed). There a blind accuracy has a slate standard error of about 0.009.
   A server bootstrap is wider: v3's cluster bootstrap on T2-tools was about three times its slate
@@ -360,7 +482,7 @@ from the counts amendment, 1/7 = 0.142857 if every slate holds 7 tools):
   - **Its bars.** With about 400 *none*-right and 1,600 tool-right slates, the slate standard
     error of Δ_none is 0.017 to 0.028, depending on the share. A server bootstrap two times wider
     gives a half-width of about 0.11. So an upper bound of 0.12 or less could fail a system whose
-    gap is 0, and 0.15 is proposed (§15, O37).
+    gap is 0, and 0.15 is taken (§15, O37).
 - **The announced goals, not gated:** the pair's mean top probability is lower in B0 than in the
   ordinary reading; G6 (a) and (b) hold on `t5_tools_masked` too.
 
@@ -370,18 +492,18 @@ As v5 §9, plus:
 
 - B0 and B1 for every system of §7, on T5-tools and its masked copy, with both intervals;
 - the answer with *none* allowed, the *none* share, Δ_none and the share asked;
-- the blind accuracy by the number of the gold's own server's tools in the slate: 0, 1 to 2, and
-  3 or more (§11);
+- the blind accuracy on the slates that show a server-mate of the right tool and on those that do
+  not, with the finer split by their number (0, 1 to 2, 3 or more) (§8, §11);
 - the support of B0 (§4.3);
 - every pilot and main-run checkpoint in B0 and B1;
-- the data checks of §4.4 and of the counts amendment;
+- the data checks of §4.4, §4.8 and of the counts amendment, and the spread table of §4.8;
 - the diagnostic of §9.1.
 
 ### 9.1 The diagnostic on the published files (B6; reported, files already read)
 
 **What it is.** A reading of files that the project has already read: no new test file, no fresh
-file, no number or verdict of v2 or v3 changes. It can be run at once, before v6's freeze or after
-it, because it reads nothing that v6 will be judged on.
+file, no number or verdict of v2 or v3 changes. **It runs after this freeze and before v6's
+training.** It changes nothing in v6: no bar, rule or choice of v6 depends on it.
 
 **What it reads.**
 
@@ -407,12 +529,12 @@ it, because it reads nothing that v6 will be judged on.
 - the share of blind picks that are the slate's fewest-words option, the cue of
   `docs/s6-route4-study.md` §7 (right on 0.3633 of T2-tools' tool-right slates).
 
-**Where it goes.** The numbers go to `runs/s6-route6/diagnostic.json` and `.md`, whatever they
-are, and one line with them goes into the limits of the cards of `s6-route` and `s6-route-nano`,
-`BENCH.md` and Results.
+**Where it goes, whatever it shows:**
 
-**If it runs before the freeze,** its numbers are written into the freeze commit, and no bar of
-§5 or §8 changes after they are read. The bars of this draft were written before it ran.
+- the numbers, to `runs/s6-route6/diagnostic.json` and `.md`;
+- a dated note at the end of `docs/s6-nano3-prereg.md`;
+- one line in the limits of the cards of `s6-route` and `s6-route-nano`;
+- `BENCH.md` and Results.
 
 **What it can say.** Whether the published model part and pair answer from the options alone on
 files whose slates carry a known request-blind cue. It is a reading of the published files, not a
@@ -425,22 +547,35 @@ As v5 §10, plus:
 - **v6 relaxes what stopped v4 and v5.** It was designed after v4's and v5's data checks were
   read, and the data checks that stopped them do not stop v6. They are replaced by a test on the
   model (G6), which could not be run before a model existed.
+- **The one data fix follows v5's table.** It was chosen after N6's failure was read, and it
+  withdraws the lead's own decision 3 of v5's amendment 2 for the hard slates (§4.8).
+  - The table does not show that the hard no-call slates carry the whole cue. The natural no-call
+    slates are half of the *none*-right slates of the two failing families and are as often
+    outside the cell, and they are not changed.
+  - The stop rule of §4.8 was written before the rebuild.
 - **A reader who holds that the data should have been blind may hold v6 to that view.** v4's and
-  v5's tables are published, and v6's training data are exactly the files v5's table describes.
+  v5's tables are published, and v6's training data are the files v5's table describes, except the
+  1,043 rebuilt slates, whose checks are published (§4.8).
   That table holds R12 inverse in the intents, N2, N3 and N4 in the hard cells of the tools and
   When2Call groups, and N6 on When2Call's *none* decision.
 - **The blind reading is fixed before any model of v6 is trained:** its definition, the
   placeholder and its fallbacks, the statistic and the bars.
 - **v5's data were built for a design that judged them,** and are trained on in a design that
   reports them.
-- **If the diagnostic of §9.1 ran before the freeze,** its numbers were seen when the draft was
-  frozen.
+- **The diagnostic of §9.1 runs after the freeze;** nothing of v6 was chosen on it.
 
 ## 11. What a failure would mean
 
 As v5 §11 (v4 §11) for G1 to G5, with these points added. In each, "by how much" is the blind
 accuracy's excess over c (or Δ_none), with its two intervals.
 
+- **The stop rule of §4.8 stops v6.** After the fix, a *none* cue of more than +0.10 above the
+  *none* share remains in at least one judged family. It lies, at least in part, where the fix did
+  not reach (the natural no-call slates, or the no-call slates outside the cell), or the rebuild
+  moved it. No model is trained, and the table is published with the spread table. A fix of the
+  natural no-call slates or of the no-call slates' cell needs its own pre-registration.
+- **N6 is still above its tolerance but within +0.10.** v6 trains. G6 (c) reads whether the
+  model uses the remaining cue, and the report names it.
 - **The pilot aborts on rule 3 or 4.** After 20 minutes the model part already answers from the
   options alone on validation slates. No main run. Training on these data teaches a request-blind
   preference, and the cue is not named by any rule unless the tables of v5 name it. The
@@ -455,10 +590,10 @@ accuracy's excess over c (or Δ_none), with its two intervals.
   blind accuracy is reported, so the two cases are told apart. Not published as a replacement.
 - **G6 (c) fails.** Without the request the system can tell whether *none* is right: N6's cue read
   in a model. Not published as a replacement.
-- **G6 fails only on slates that show the gold's server-mates** (the breakdown of §9). The cue
-  may be T5's construction: the gold is always among the tools of the one server that the slate
-  shows several of, and its fill comes from other servers. G6 is still failed; the report says
-  which slates carry it.
+- **G6 fails only on slates that show the gold's server-mates** (the split of §8). The cue may
+  be T5's construction: the gold is always among the tools of the one server that the slate shows
+  several of, and its fill comes from other servers. The report says so in its first sentence. G6
+  is still failed, since the construction was frozen with the gate.
 - **G6 holds while v5's tables show cues.** The data carry the cues that the tables name, and the
   trained system does not answer from the options alone by more than 0.05 above chance on T5. The
   claim is limited to that sentence.
@@ -469,12 +604,14 @@ accuracy's excess over c (or Δ_none), with its two intervals.
 
 ## 12. Forbidden
 
-As v5 §12 and v4 §12, with v5's "no remedy" and "the cell's features" points moot since nothing
-is rebuilt, plus:
+As v5 §12 and v4 §12, with v5's "no remedy" and "the cell's features" points moot (the cell is
+not changed), plus:
 
-- rebuilding, filtering, reweighting or editing any file of §4.1, or training on a file whose hash
-  differs;
-- any teacher call other than the `fresh-tools` job;
+- rebuilding, filtering, reweighting or editing any record other than the 1,043 slates of §4.8,
+  or training on a file whose hash differs from §4.1 or from the amendment of §4.8;
+- changing the fix, extending it to other slates, or changing the stop rule's 0.10 after any step
+  of §4.8 has run;
+- any teacher call other than the fix's false-negative job and the `fresh-tools` job;
 - training on any slate whose request is P, or on any blind copy;
 - changing P, its fallbacks, B0, B1, the blind statistic, the pilot rules 3 and 4 or a bar of G6
   after any model of v6 is trained;
@@ -482,17 +619,17 @@ is rebuilt, plus:
 - moving a data check back to a stopping rule, or citing a data check as grounds to stop, change
   or rerun v6;
 - reading the blind copies of T5 before `FRESH-OPEN`;
-- changing a bar of v6 after the diagnostic of §9.1 is read, if it runs after the freeze;
+- changing anything of v6 on the diagnostic of §9.1;
 - running a stage below the disk floor.
 
 ## 13. Cost
 
 | item | amount |
 |---|---|
-| teacher | the `fresh-tools` job only, ≈ 100 to 150 calls (v5 §4.2); no training job |
-| CPU | hash check of §4.1 ≈ 2 min; the placeholder check and the support count ≈ 3 min; the checks of §4.4 on the read files ≈ 5 min; the baselines on the validation files, ordinary and blind ≈ 8 min; Toucan's hash check, read, embedding and clustering ≈ 20 min; the blind copies ≈ 1 min; the pilot readings, ordinary and blind ≈ 25 min; the baselines on T5 and T2, ordinary and blind ≈ 30 min; the diagnostic of §9.1 ≈ 10 min |
+| teacher | the fix's false-negative job, ≤ 1,043 items, ≈ 53 calls (a few minutes); the `fresh-tools` job, ≈ 100 to 150 calls (v5 §4.2) |
+| CPU | hash check of §4.1 ≈ 2 min; the fix's replanning ≈ 5 min, its build ≈ 5 min, its checks and the spread table ≈ 5 min (v5's build and checks took under 2 min together); the placeholder check and the support count ≈ 3 min; the checks of §4.4 on the read files ≈ 5 min; the baselines on the validation files, ordinary and blind ≈ 8 min; Toucan's hash check, read, embedding and clustering ≈ 20 min; the blind copies ≈ 1 min; the pilot readings, ordinary and blind ≈ 25 min; the baselines on T5 and T2, ordinary and blind ≈ 30 min; the diagnostic of §9.1 ≈ 10 min |
 | GPU | smoke 3 + pilot 20 + main 120 + calibration and export 5 + evaluation 15 + blind readings ≈ 5 ≈ **168 working minutes**; ≈ 25 if the pilot rule aborts |
-| disk | no new training data; T5 and its copies ≈ 0.02 GB; the blind copies ≈ 0.02 GB; pilot checkpoints 5 × 64 MB and main 12 × 64 MB ≈ 1.1 GB; evaluation and dumps ≈ 0.15 GB: **≈ 1.3 GB new**; floor **3 GB free** before every writing stage, against about 8.4 GiB free on 18/11/2026 |
+| disk | the full copy `build6/` with the rebuilt records ≈ 0.4 GB; T5 and its copies ≈ 0.02 GB; the blind copies ≈ 0.02 GB; pilot checkpoints 5 × 64 MB and main 12 × 64 MB ≈ 1.1 GB; evaluation and dumps ≈ 0.15 GB: **≈ 1.7 GB new**; floor **3 GB free** before every writing stage, against about 7.3 GiB free on 18/11/2026 at the freeze |
 
 ## 14. Code to write before any run (by file)
 
@@ -503,6 +640,21 @@ plain file gives B0 without change: `sky-route fuse` computes the scores from th
 
 **To write:**
 
+0. **The fix (§4.8):**
+   - `crates/sky-data/src/route/v5.rs`: a plan switch for the no-call hard slates
+     (`sky-data route v5-plan --no-call-hard drawn`), in which the slate holds no exempt tool and
+     its tools are the request's nearest within the first own tool's cell. The default (`exempt`)
+     keeps v5's bytes. Its tests:
+     - such a slate holds no own tool;
+     - its drawn tools follow the request's nearest within the cell;
+     - every other record is byte-identical to the default's on the fixture, and v2's, v3's,
+       v4's and v5's frozen bytes are unchanged.
+   - `sky-data route v5-slates --only-uids <file>`: the rebuild of the listed slates only, the
+     others copied.
+   - The false-negative items of the rebuilt slates alone (`teacher-jobs --only no-call-hard`).
+   - `scripts/s6-route6-checks.py` and `scripts/test_s6_route6_checks.py`: v5's checks imported
+     as they are, the stop rule of §4.8 (exit 2 above +0.10 in a judged family; tests at 0.10 and
+     just above) and the spread table.
 1. **`crates/sky-infer/src/route.rs`:**
    - the constant `BLIND_REQUEST` (P) and its fallbacks;
    - `Render::blind_input(options)`: `model_input(P, options)`, asserting that every BM25 score
@@ -538,12 +690,16 @@ plain file gives B0 without change: `sky-route fuse` computes the scores from th
    with tests at 0.1929.
 6. **`scripts/build-route6-data.sh`:** the stages, each refused without the marker of the one
    before:
-   - `inputs` (§4.1's hashes against `runs/s6-route6/inputs.json`; writes `inputs.ok`);
+   - `inputs` (§4.1's hashes against `runs/s6-route6/inputs.json`);
+   - `fix-plan`, `fix-teacher-jobs` (then `scripts/route-teacher.sh false-negatives loop` on
+     `build6/`), `fix-build` (with the hash check of every unchanged file), `fix-checks` (the stop
+     rule; exit 2 stops v6) and `spread`; then `inputs.ok` is written, holding the hashes of the
+     amendment of §4.8;
    - `placeholder`, `support` and `checks-read` (§4.4);
    - `baselines-val`, with the blind baselines;
    - `blind-val` (the blind copies of `v5_tools` and `v5_tools_masked`);
    - `fresh`, `fresh-tools` (the teacher job), `probes` and `counts`, which call v5's stages on
-     `build5/` with `inputs.ok` in place of `checks.passed`.
+     `build6/` with `inputs.ok` in place of `checks.passed`.
 
    `MIN_FREE_GB=3` is checked before every stage, and `DRY_RUN=1` is supported.
 7. **`scripts/train-route6.sh`:** v5's script with v6's names. It refuses to start without
@@ -552,38 +708,54 @@ plain file gives B0 without change: `sky-route fuse` computes the scores from th
 8. **`scripts/s6-route6-fit.py`** (β and τ_ask6 on `v5_tools`) and the embedding file that stores
    them; **`scripts/s6-route6-gate.py`** and **`scripts/test_s6_route6_gate.py`** (G1 to G6, the
    headline, the report's sentence); the Python reference of the pair under D4 for G4.
-9. **`scripts/route6-diagnostic.sh`:** §9.1, writing `runs/s6-route6/diagnostic.json` and `.md`.
-10. **`DATA_LICENSES.md`:** no new source; the line of T5 says it is read by v6.
+9. **`scripts/route6-diagnostic.sh`:** §9.1 (blind copies of the published files' slates by
+   `sky-data route blind`, read through `sky-eval --dump-probs` and `sky-route fuse` with the
+   published files, and the statistics of `scripts/s6-route6-blind.py`), writing
+   `runs/s6-route6/diagnostic.json` and `.md`. It runs after the freeze and before training.
+10. **`DATA_LICENSES.md`:** no new source; the false-negative line names v6's job on the rebuilt
+    slates, and the line of T5 says it is read by v6.
 
-## 15. Choices (the value proposed in this draft; the alternative is recorded)
+## 15. Choices (the value taken at the freeze; the alternative is recorded)
 
-| | choice | proposed | alternatives | why |
+| | choice | taken | alternatives | why |
 |---|---|---|---|---|
-| O32 | the training data | v5's build as it stands, by hash (the lead's design) | a rebuild with a coarser cell; v4's build | the data checks no longer decide; a rebuild would be a new data design with its own checks |
-| O33 | the placeholder | `?`, then `…`, then `-` if one occurs as a request | the empty string (the embedding part's vector would be zero, its cosine undefined); a phrase of stopwords (reads as a request with content); a word such as "request" (a BM25 token, which would score some options) | no BM25 token, a defined embedding, and the shortest text that reads as no request |
-| O34 | the gated rendering | B0: scores 0.00 and ranks by position, as D4 writes them for a request that matches nothing | B1, the prefix removed (every tool option in *none*'s format); one shared rank (never seen in training) | B0 is the pipeline's own output on a request with no lexical match |
-| O35 | the gated statistic | the pick among the tool options (*none* left out) | the answer with *none* allowed | its chance is c whatever the system does with *none*; the other can hide a preference behind *none* answers |
+| O32 | the training data | v5's build as it stands, by hash, but for the slates of O42 (the lead's design) | a rebuild with a coarser cell; v4's build | the data checks no longer decide; a rebuild would be a new data design with its own checks |
+| O42 | the one data fix | the When2Call no-call hard slates hold no exempt tool; 1,043 slates rebuilt by uid with their false-negative items (the lead's decision 1) | the natural no-call slates too; no fix | a cue of +0.24 is of the size that started this line; the table supports the hard slates' account and does not split by kind, so the natural slates are left to the stop rule |
+| O43 | the stop rule on the data | N6 or its inverse more than 0.10 above the *none* share in a judged family after the fix stops v6 (the lead's decision 1) | 0.05; N6's tolerance | 0.10 lies between When2Call's +0.24 and every other family's +0.025 at most |
+| O33 | the placeholder | `?`, then `…`, then `-` if one occurs as a request (the lead's decision 2) | the empty string (the embedding part's vector would be zero, its cosine undefined); a phrase of stopwords (reads as a request with content); a word such as "request" (a BM25 token, which would score some options) | no BM25 token, a defined embedding, and the shortest text that reads as no request |
+| O34 | the gated rendering | B0: scores 0.00 and ranks by position, as D4 writes them for a request that matches nothing; B1 reported (the lead's decision 2) | B1, the prefix removed (every tool option in *none*'s format); one shared rank (never seen in training) | B0 is the pipeline's own output on a request with no lexical match |
+| O35 | the gated statistic | the pick among the tool options (*none* left out) (the lead's decision 2) | the answer with *none* allowed | its chance is c whatever the system does with *none*; the other can hide a preference behind *none* answers |
 | O36 | G6 (a), (b) | c + 0.05, upper bound (servers) ≤ c + 0.08 (the lead's design) | c + 0.03 and c + 0.06; slates resampled | about five slate standard errors at 1,600 slates; servers as the headline |
-| O37 | G6 (c) | Δ_none ≤ 0.05, upper bound (servers) ≤ 0.15; the *none* share an announced goal (≥ 0.80 *none* or asked) | upper bound ≤ 0.08 or 0.12; a gated band on the *none* share | no share follows from training; the gap is what a request-blind *none* cue moves; 0.15 leaves room for a server interval two times the slate one |
-| O38 | where G6 is read | T5-tools; the masked copy an announced goal | both gated | one gated file, as G1 |
+| O37 | G6 (c) | Δ_none ≤ 0.05, upper bound (servers) ≤ 0.15; the *none* share an announced goal (≥ 0.80 *none* or asked) (the lead's decision 3) | upper bound ≤ 0.08 or 0.12; a gated band on the *none* share | no share follows from training; the gap is what a request-blind *none* cue moves; 0.15 leaves room for a server interval two times the slate one |
+| O38 | where G6 is read | T5-tools, all tool-right slates; the masked copy an announced goal | both gated | one gated file, as G1 |
+| O44 | the server-mates of T5 | judged on all tool-right slates; reported split by whether a server-mate is shown; a failure carried only by those slates said in the report's first sentence, still a failure (the lead's decision 5) | read as a failure of T5's construction | the construction was frozen with the gate |
 | O39 | the pilot's blind aborts | > 0.1929 on `v5_tools` or on `v5_tools_masked` (the lead's design) | `v5_tools` alone; > 0.1729 | 0.05 is about four standard errors at 915 slates |
 | O40 | the data checks | run on every file read, published, never stopping (the lead's design) | judged as in v5 | §10 |
-| O41 | the diagnostic | reported, on `v_tools` and T2-tools, which have been read; may run before the freeze | not run; run on `v5_tools` too | it reads no new test; `v5_tools` is v6's fitting file, left to v6 |
+| O41 | the diagnostic | reported, on `v_tools` and T2-tools, which have been read; after the freeze and before training; into a dated note of `docs/s6-nano3-prereg.md` and both cards (the lead's decision 4) | before the freeze; not run; run on `v5_tools` too | it reads no new test and nothing of v6 depends on it; `v5_tools` is v6's fitting file, left to v6 |
 
-## 16. Questions for the lead
+## 16. The lead's decisions on the draft (18/11/2026)
 
-1. **G6 (c):** the upper bound at 0.15, and the *none* share as an announced goal rather than a
-   band (§8, O37)?
-2. **B0 gated, B1 reported (O34):** or both gated?
-3. **The pick among tools (O35):** or the answer with *none* allowed?
-4. **The diagnostic of §9.1:** run now, before the freeze, with its numbers written into the
-   freeze commit, or after?
-5. **The server-mates of T5 (§11):** G6 is gated on every tool-right slate, and the breakdown is
-   reported. Should a G6 failure carried only by the slates with server-mates be read as a failure
-   of the model (as written) or of T5's construction?
-6. **When2Call's N6 cue (+0.24):** it is trained on as built. Should v6 also report, before
-   training, the share of When2Call's training slates of each kind whose options spread over more
-   than one L0 cell, to read a G6 (c) failure against it?
+1. **One data fix** (§4.8, O42, O43). In When2Call's no-call hard slates the request's own tools
+   are no longer exempt: decision 3 of v5's amendment 2 is withdrawn for the hard slates, and the
+   1,043 such slates are rebuilt with their false-negative items. The checks run again and are
+   reported, and one stop rule applies: N6 more than 0.10 above the *none* share in a judged
+   family stops v6 before training. Disclosed as following v5's table (§10).
+2. **The blind reading** (§4.3, O33 to O35). B0 is gated and B1 reported; the placeholder is `?`,
+   then `…`, then `-`; the gated statistic is the pick among the tool options.
+3. **G6 as drafted** (§8, O36, O37). (a) and (b) at most c + 0.05, with the upper bound at most
+   c + 0.08; (c) the blind *none* gap at most 0.05, with the upper bound at most 0.15. The blind
+   *none* share is an announced goal.
+4. **The diagnostic of the published files** (§9.1, O41) runs after this freeze and before v6's
+   training, as a reported reading of files already read. No bar of v6 depends on it, and its
+   result goes into a dated note of `docs/s6-nano3-prereg.md` and into both cards' limits,
+   whatever it shows.
+5. **T5's server-mates** (§8, §11, O44). G6 is judged on all tool-right slates and reported split
+   by whether a server-mate is shown. A failure carried only by those slates is said in the
+   report's first sentence, and it is still a failure of the gate.
+6. **The spread table** of When2Call's slates, by kind and by *none*-right or tool-right, after
+   the fix, is reported before training (§4.8).
+7. **The costs, the code, the meaning of a failure and the choices** follow these decisions
+   (§11 to §15).
 
 ## 17. Amendments
 
