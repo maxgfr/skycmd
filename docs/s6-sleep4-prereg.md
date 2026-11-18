@@ -361,7 +361,7 @@ Chance is 0.25 (four colours).
 3. The confirmation, if at least one factor is adopted. R\* follows from §3.4.
 4. If R\* passed K1's bar, K5 (§3.5) from the final checkpoint of R\*'s seed-0 run. If K5a meets both of its conditions, v4 takes the preserved route (§4). Otherwise, or if R\* did not pass K1's bar, v4 stops after stage 1 (rules 3 and 4).
 
-The code these checks need (§11 items 3 and 6, K1, K2, the confirmation, K5 and the preserved route in `scripts/train-sleep4.sh` and `scripts/s6-sleep4-report.py`) is written and tested before the first of them runs (§10).
+If v4 goes on, the code these checks need (§11 items 3 and 6, and K1, K2, the confirmation, K5 and the preserved route in `scripts/train-sleep4.sh` and `scripts/s6-sleep4-report.py`) must be written and tested before the first of them runs (§10).
 
 **What follows costs** (the pre-registration's own figures, §3.7 and §9, in GPU working minutes; K3 itself took 97.2, against the 90 to 108 of §3.7):
 
@@ -374,3 +374,5 @@ The code these checks need (§11 items 3 and 6, K1, K2, the confirmation, K5 and
 | then the preserved route, stage 2 | three memory seeds and three controls | at most about 8 hours, plus the term's forward pass (§9; S95max = 700) |
 
 The figures per check are §3.7's: K1 54 per seed, K2 27 per factor, the confirmation 54 per seed, K5 about 45 for its two runs. With K3's 97.2, stage 1 comes to 313 to 466 working minutes (5.2 to 7.8 hours), within §9's 5.1 to 8.0.
+
+**State on 18/11/2026 (evening).** The code of K1, K2, the confirmation, K5 and the preserved route (§11 items 3 and 6, and their parts of item 7 and item 8) is **not written** on `main`. No check has run since K3. Whether v4 goes on past K3 is the owner's decision, and it has not been taken. If v4 stops here, it ends at K3 with this reading, and that is a result. Here is what the reading supports, and no more. At the nano size, with v3's recipe and the base frozen, the memory did not reach K1's bar on either seed within about 1,000 `recall` steps: the answer stayed at chance (0.2579 and 0.2546). What the memory retrieves became linearly decodable for the colour only in part, on one seed (`aux_acc` 0.38 on seed 0, at chance on seed 1). With the memory on, the answer gained 0.03 over the same weights without it, and the gain did not depend on the delay, so the memory gave no sign of holding the colour across the delay. The reading does not show that the memory stores and returns the colour while a frozen base fails to use it: that would need the colour decoded well above chance, and the auxiliary heads did not decode it.
