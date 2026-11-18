@@ -6,6 +6,8 @@
 
 **Amendment 2 of the same day (18/11/2026), from the stages' outputs, before any training (§16):** the pilot's bar (0.578147), the validation baselines, the counts of T5 (2,000 slates, above the floor of 600) and its request-blind rules, reported.
 
+**Amendment 3 (19/11/2026), while the training runs, before the fresh test is opened (§16):** readings of the gate's code (the names of τ_ask7, the stage that opens T5, G4's median, B1, the extra baselines, the blind copies and G4's slates, the one look at T5's records); written before any number of v7 is known.
+
 - **Nothing of v7 has run.** No record is rebuilt, no plan is drawn, no teacher call is made, no
   blind copy is written, no model is trained and no system is scored. To write this document:
   - no record and no request text was opened;
@@ -608,3 +610,53 @@ tolerance of 0.1804:
 here, the placeholder, T5 and its hashes. The head window is chosen by the script's `window` step
 (v4 §3.3's rule). Nothing else changes: no bar, rule, file or choice of the frozen text or of
 amendment 1 moves.
+
+### Amendment 3 (19/11/2026, decided by the lead, while v7's training runs): readings of the gate's code, fixed before the fresh test is opened
+
+**When it is written.** v7's training runs (`scripts/train-route7.sh window pilot main export`).
+The lead has read neither its pilot summary nor any trained model, and no number of v7 is known:
+no accuracy, no β, no τ_ask7, no blind reading. T5 is closed (`runs/s6-route7/FRESH-OPEN` does
+not exist), and no system has read it. The code it reads is on branch `route7-gate`
+(`scripts/route7-gate.sh`, `scripts/route/t5-guard.py`, `scripts/s6-route7-reference.py`,
+`sky-route embed-params`).
+
+The code's readings of the frozen text and of v6's §7, §8 and §14, as the lead decided them:
+
+1. **The names of τ_ask7.** τ_ask7 is stored in v7's embedding file
+   (`models/s6-route7/skycmd-s6-route7-embed.gguf`) under the engine's key
+   `skycmd-embed.route.tau_ask3`, and `runs/s6-route7/fit.json` names it `tau_ask6` (as
+   `scripts/s6-route6-fit.py` writes it, `{tau, accuracy, coverage}`). These are names only: the
+   value is v7's fit on `v5_tools` by v3's rule (§3), and β is stored under
+   `skycmd-embed.route.beta`. Every other key and every tensor of the published
+   `s6-route-embed.gguf` is copied byte for byte, and the published file stays byte-identical.
+2. **Who opens the fresh test.** T5 is opened by the stage `open` of `scripts/route7-gate.sh`,
+   once. It does so only after its checks: the pilot summary exists, did not abort, and was read
+   at the bar of amendment 2 (0.578147); the exported model, the fit and the embedding file
+   exist; every file of `runs/s6-route7/test-files.json` has its sha256. This replaces the file
+   created by hand that v3 and v6 wrote of: the lead's decision. The path is
+   `runs/s6-route7/FRESH-OPEN`. The sentence inside `test-files.json` names
+   `runs/s6-route5/FRESH-OPEN`, the known wording error of amendment 2. Once `gate.json` exists,
+   nothing reads T5 again, and once T5 is open, neither the fit nor the embedding file can change.
+3. **G4's median.** It is the bench's `median_cached_us`
+   (`crates/sky-web/bench/route3-node.mjs --render scores-in-options`): the same tool list asked
+   again, with the embedding part's tool list cached and the model part encoding the options
+   again. That is what a request costs under D4 once a tool list is known (option (i) of v4 §3.4
+   and §8). The first-call median (`median_first_us`) is reported beside it (`runs/s6-route7/g4.json`,
+   under `bench`) and decides nothing. The bar stays 60 ms.
+4. **B1** is read for the model part only, as v6's amendment 2, point 2 says. §7's "B1 for the
+   model part and the pair" is read as that amendment reduced it.
+5. **The extra baselines.** `static-ft`, `pair-lr`, `toolrouter` and `name-prior`, which v3 read,
+   are scored on T5 with v2's fitted values beside §7's systems. They are reported and decide
+   nothing.
+6. **Where the blind copies go, and G4's slates.** T5's blind copies (B0 and B1 of T5-tools and of
+   its masked copy, the kept placeholder `?`) are written after `open`, beside the test files
+   under `<data>/s6-route/toucan5/fresh/`, as v6's blind copies of `v5_tools` sit beside it.
+   G4's 200 slates are the first 200 of T5-tools, as v3 did.
+7. **The one look at T5 before it is opened.** To find the split the T5 records carry, the code's
+   author read, on 18/11/2026, the field names of `t5_tools.jsonl` and of `t5_tools_rw.jsonl`, and
+   the count of their `split` values (all 2,000 `fresh`). No request text, option or target was
+   printed or kept, and no system read the file. Every evaluation call on T5 passes
+   `--split fresh`.
+
+**Nothing else changes.** No bar, rule, file or choice of the frozen text or of amendments 1 and 2
+moves.
