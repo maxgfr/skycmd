@@ -1373,12 +1373,15 @@ fn main() -> Result<()> {
                 } => {
                     use sky_data::route::blind;
                     if !check_placeholder.is_empty() {
+                        if keep && placeholder.is_none() {
+                            anyhow::bail!("--keep needs --placeholder (the placeholder.json kept)");
+                        }
                         let r = blind::check_placeholder(
                             &check_placeholder,
                             &out,
                             keep.then_some(()).and(placeholder.as_deref()),
                         )?;
-                        if r["taken"].is_null() || r["occurs"].as_bool() == Some(true) {
+                        if blind::placeholder_refused(&r) {
                             println!("{r}");
                             std::process::exit(2);
                         }

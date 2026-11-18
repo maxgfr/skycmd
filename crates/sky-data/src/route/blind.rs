@@ -84,6 +84,16 @@ pub fn check_placeholder(files: &[PathBuf], out: &Path, keep: Option<&Path>) -> 
     Ok(r)
 }
 
+/// Whether a report of [`check_placeholder`] refuses (exit 2 on the command line): with `keep`,
+/// when the placeholder kept occurs as a request (its report holds `occurs` and no `taken`);
+/// otherwise when every one of [`PLACEHOLDERS`] occurs (`taken` is null).
+pub fn placeholder_refused(r: &Value) -> bool {
+    match r.get("occurs") {
+        Some(o) => o.as_bool() != Some(false),
+        None => r["taken"].is_null(),
+    }
+}
+
 /// The placeholder of `placeholder.json`, checked: one of [`PLACEHOLDERS`], no BM25 token.
 pub fn placeholder_of(path: &Path) -> Result<String> {
     let v = read_json(path)?;
@@ -362,6 +372,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(r["occurs"], false);
+        assert!(
+            !placeholder_refused(&r),
+            "the kept mode passes when it does not occur"
+        );
         write_jsonl(&t5, &[slate("v1", "?", 0)]).unwrap();
         assert_eq!(
             check_placeholder(
