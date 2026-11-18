@@ -10,7 +10,7 @@
 // Times: the first call of a demo pays the module start-up and the first encodings, so it is shown
 // apart, and the median covers the warm calls after it (lib/wasm.ts, DecisionTimes). The timing
 // lines name the build of the module in use (relaxed SIMD or SIMD128, lib/wasm.ts loadWasm).
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
 import {
   clockStepMicros,
@@ -313,6 +313,10 @@ watch(snippet, () => {
 watch([qtype, ins, optionsText, state, adaptive, model], () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(run, 120)
+})
+// a pending answer is dropped when the demo goes away (the global Space unmounts it)
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
 })
 watch(model, () => load())
 // s5 has no French version (Phase 6 was closed): the French demos fall back on the English presets.

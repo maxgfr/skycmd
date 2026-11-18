@@ -94,7 +94,9 @@ test('every demo and the Space app render a gate through GateNotice, never by ha
     ...readdirSync(join(theme, 'components'))
       .filter((f) => f.endsWith('.vue') && f !== 'GateNotice.vue')
       .map((f) => join(theme, 'components', f)),
-    join(site, 'space/App.vue'),
+    ...readdirSync(join(site, 'space'))
+      .filter((f) => f.endsWith('.vue'))
+      .map((f) => join(site, 'space', f)),
   ]
   for (const f of files) {
     const template = readFileSync(f, 'utf8').split('<template>').slice(1).join('<template>')

@@ -1,6 +1,7 @@
 // Runtime loading of the sky-web wasm module (built into public/pkg by scripts/build-wasm.sh),
 // the model manifest and the GGUF models. Everything is fetched lazily on the client.
 import { withBase } from 'vitepress'
+import { scopeFilter } from './scope'
 
 export interface WasmEngine {
   info(): string
@@ -269,7 +270,8 @@ export function loadWasm(): Promise<SkyWeb> {
 let manifestPromise: Promise<ModelEntry[]> | null = null
 
 /** The single-file models listed in public/models/manifest.json (empty when absent). A two-file
- * router entry (`files`, no `file`) is left out: see `loadRouters`. */
+ * router entry (`files`, no `file`) is left out: see `loadRouters`. In the global Space, only the
+ * models of the open demo's own Space (lib/scope.ts), as in `loadRouters` and `loadMemoryEntry`. */
 export function loadManifest(): Promise<ModelEntry[]> {
   if (!manifestPromise) {
     manifestPromise = fetch(withBase('/models/manifest.json'))
@@ -277,7 +279,8 @@ export function loadManifest(): Promise<ModelEntry[]> {
       .then((list) => (Array.isArray(list) ? (list as ModelEntry[]).filter((m) => m && m.file && m.name) : []))
       .catch(() => [])
   }
-  return manifestPromise
+  const ok = scopeFilter()
+  return ok ? manifestPromise.then((list) => list.filter((m) => ok(m.name))) : manifestPromise
 }
 
 /** One file of a two-file entry (`task: router`). */
@@ -335,7 +338,8 @@ export function loadRouters(): Promise<RouterEntry[]> {
       )
       .catch(() => [])
   }
-  return routersPromise
+  const ok = scopeFilter()
+  return ok ? routersPromise.then((list) => list.filter((m) => ok(m.name))) : routersPromise
 }
 
 async function fetchBytes(file: string): Promise<Uint8Array> {
@@ -550,7 +554,8 @@ export function loadMemoryEntry(): Promise<MemoryEntry | null> {
       })
       .catch(() => null)
   }
-  return memoryPromise
+  const ok = scopeFilter()
+  return ok ? memoryPromise.then((e) => (e && ok(e.name) ? e : null)) : memoryPromise
 }
 
 const recallProbes = new Map<string, Promise<WasmRecallProbe>>()

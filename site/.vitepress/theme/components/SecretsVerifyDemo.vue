@@ -5,7 +5,7 @@
 // (crates/sky-web/src/verify.rs) at full depth: P(real), the decision at one of the three
 // thresholds stored in the file, the time per candidate and the state text the model reads.
 // Everything runs in the page: nothing typed is sent anywhere.
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   clockStepMicros,
   engineLabel,
@@ -136,6 +136,10 @@ let timer: ReturnType<typeof setTimeout> | null = null
 watch([text, file], () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(run, 250)
+})
+// a pending answer is dropped when the demo goes away (the global Space unmounts it)
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
 })
 
 function pct(p: number) {

@@ -13,7 +13,7 @@
 // The engine's router still loads both files, because `ToolRouter` needs both. The model file
 // stores its own ask threshold (`skycmd-s2.route.tau_ask`), which the engine does not expose, so
 // the model part gets no ask decision.
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   clockStepMicros,
   engineLabel,
@@ -238,6 +238,10 @@ let timer: ReturnType<typeof setTimeout> | null = null
 watch([toolsText, request, fast, masked], () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(run, 150)
+})
+// a pending answer is dropped when the demo goes away (the global Space unmounts it)
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
 })
 
 function pct(p: number) {

@@ -5,7 +5,7 @@
 // forecast.json (s6-cast2-pico, s6-cast-pico) gets its own line, and only when forecast.json lists
 // it (a Space lists one); one that failed its gate (`gate`) is listed under a notice with its
 // numbers and starts unticked.
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   coverage,
   levelIndex,
@@ -184,6 +184,14 @@ onMounted(async () => {
   for (const k of MODEL_KEYS) if (failedOf(k)) enabled.value[k] = false
   status.value = ''
   await run()
+})
+
+// When the demo goes away (the global Space unmounts it), a run in progress stops writing its
+// results, and the forecasters this view made are freed (the module itself stays loaded).
+onBeforeUnmount(() => {
+  runId++
+  for (const f of wasmModels.values()) f.free()
+  wasmModels.clear()
 })
 
 // --- chart --------------------------------------------------------------------------------

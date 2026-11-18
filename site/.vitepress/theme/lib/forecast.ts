@@ -2,6 +2,7 @@
 // zero-parameter references it exports, and Timestral-5M through onnxruntime-web (loaded from
 // the CDN only when that model is selected).
 import { withBase } from 'vitepress'
+import { scopeFilter } from './scope'
 import { loadWasm, type SkyWeb } from './wasm'
 
 export interface WasmForecaster {
@@ -70,9 +71,12 @@ async function json<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+/** The forecasters of forecast.json; in the global Space, those of the open demo's own Space
+ * (lib/scope.ts: its s6-cast model and the reference forecasters). */
 export async function loadForecastModels(): Promise<ForecastModelEntry[]> {
+  const ok = scopeFilter()
   const doc = await json<{ models?: ForecastModelEntry[] }>('/models/forecast.json', {})
-  return (doc.models ?? []).filter((m) => m && m.name && m.file)
+  return (doc.models ?? []).filter((m) => m && m.name && m.file && (!ok || ok(m.name)))
 }
 
 export async function loadDemoSeries(): Promise<DemoSeries[]> {

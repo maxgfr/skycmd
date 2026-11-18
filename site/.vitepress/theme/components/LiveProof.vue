@@ -7,7 +7,7 @@
 //   guaranteed, and the measured rate is on the results page.
 // - `dutch`: the model's own probabilities that each option is the answer ("The correct answer
 //   to q is: x"), their negations and their sum; a sum away from 1 is a Dutch book.
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
 import { loadEngine, loadManifest, type ModelEntry, type WasmEngine } from '../lib/wasm'
 
@@ -168,6 +168,10 @@ let timer: ReturnType<typeof setTimeout> | null = null
 watch([ins, optionsText, paraText, state], () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(recompute, 150)
+})
+// a pending answer is dropped when the demo goes away (the global Space unmounts it)
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
 })
 
 function pct(p: number) {
