@@ -8,6 +8,8 @@ format that scripts/route/scorer.py reads.
     route-baselines.py score --system S --split val --out-root DIR --files v_tools,v_tools_masked   (v3 rehearsal)
     route-baselines.py score --system S --split v4val [--files v4_tools,...]   (s6-route v4; v2's fitted values)
     route-baselines.py score --system S --split v5val [--files v5_tools,...]   (s6-route v5; v2's fitted values)
+    route-baselines.py score --system S --split t5 [--files t5_tools,...]   (s6-route v7: T5 and its blind
+        copies, refused until runs/s6-route7/FRESH-OPEN and the hashes of runs/s6-route7/test-files.json)
 
 Systems: potion-cos, potion-cos-4bit, static-ft, pair-lr, bm25, minilm-cos, toolrouter,
 name-prior. s6-nano v1 is scored by sky-eval (scripts/route-eval.sh).
@@ -76,8 +78,12 @@ FILES = {
     "v5val": ("v5_tools", "v5_tools_masked", "v5_tools_rw", "v5_tools_masked_rw",
               # s6-route v6 (docs/s6-route6-prereg.md 4.5): the blind copies (B0), reported
               "v5_tools.blind", "v5_tools_masked.blind"),
+    # s6-route v7 (docs/s6-route7-prereg.md 7, v6 7): T5, its probe copies and its blind copies (B0),
+    # v2's fitted values; refused until runs/s6-route7/FRESH-OPEN (scripts/route/common.py t5_file)
+    "t5": ("t5_tools", "t5_tools_masked", "t5_tools_rw", "t5_tools_masked_rw", "t5_tools.blind",
+           "t5_tools_masked.blind"),
 }
-SPLITS = common.SPLITS + ("v4val", "v5val")
+SPLITS = common.SPLITS + ("v4val", "v5val", "t5")
 
 
 def v4_slate_file(name):
@@ -595,7 +601,7 @@ def score(name, split, model, out_root=None, files=None):
     p = common.load_json(os.path.join(fitted_dir(name), "params.json"))
     s = System(name, p)
     out = os.path.join(out_root or os.path.join(common.eval_root(), split), name)
-    timed = split == "fresh" or out_root is not None
+    timed = split in ("fresh", "t5") or out_root is not None
     for f in files or FILES[split]:
         if f not in FILES[split]:
             raise common.Refused(f"{f} is not a file of the {split} split")
@@ -604,10 +610,12 @@ def score(name, split, model, out_root=None, files=None):
                 path = v4_slate_file(f)
             elif split == "v5val":
                 path = v5_slate_file(f)
+            elif split == "t5":
+                path = common.t5_file(f)
             else:
                 path = common.slate_file(split, f, model)
         except common.Refused as e:
-            if split in ("test", "fresh"):
+            if split in ("test", "fresh", "t5"):
                 raise
             log(f"{name}: {f}: {e}")
             continue
@@ -641,7 +649,7 @@ def main():
     a = ap.parse_args()
     try:
         if a.action == "fit":
-            if a.split in ("fresh", "v4val", "v5val"):
+            if a.split in ("fresh", "v4val", "v5val", "t5"):
                 raise common.Refused(f"the baselines are fitted on v2's validation only; the {a.split} split reads v2's fitted values")
             fit(a.system, a.budget)
         else:

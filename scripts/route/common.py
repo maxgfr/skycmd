@@ -40,6 +40,16 @@ INSTRUCTION = "Which tool should handle the user's request?"
 FRESH_OPEN = os.path.join(REPO, "runs", "s6-nano3", "FRESH-OPEN")
 FRESH_FILES = os.path.join(REPO, "runs", "s6-nano3", "test-files.json")
 SPLITS = ("val", "test", "fresh")
+# s6-route v7 (docs/s6-route7-prereg.md 6 to 8, amendment 2): T5, under <data>/toucan5/fresh (or
+# $T5/fresh), refused until runs/s6-route7/FRESH-OPEN exists (scripts/route7-gate.sh open) and
+# every file has the sha256 that runs/s6-route7/test-files.json records. That file's own sentence
+# names runs/s6-route5/FRESH-OPEN, the builder's text for v5's rule (a wording error recorded in
+# amendment 2): for v7 the file that opens T5 is runs/s6-route7/FRESH-OPEN, here.
+T5_OPEN = os.path.join(REPO, "runs", "s6-route7", "FRESH-OPEN")
+T5_FILES = os.path.join(REPO, "runs", "s6-route7", "test-files.json")
+T5_NAMES = ("t5_tools", "t5_tools_masked", "t5_tools_rw", "t5_tools_masked_rw", "t5_tools.servers")
+# the blind copies (B0) of v6 4.3, written by `sky-data route blind` after FRESH-OPEN
+T5_BLIND = ("t5_tools.blind", "t5_tools_masked.blind")
 
 
 class Refused(Exception):
@@ -225,6 +235,45 @@ def fresh_file(name):
         raise Refused(f"no {path}")
     if sha256_file(path) != want:
         raise Refused(f"{path} is not the fresh file recorded in runs/s6-nano3/test-files.json")
+    return path
+
+
+def t5_root():
+    return os.path.join(os.environ.get("T5") or os.path.join(data_root(), "toucan5"), "fresh")
+
+
+def t5_check():
+    """The guard of T5 (s6-route v7): FRESH-OPEN, then every recorded file with its sha256.
+    Returns the recorded hashes."""
+    if not os.path.isfile(T5_OPEN):
+        raise Refused("T5 is closed: runs/s6-route7/FRESH-OPEN does not exist (scripts/route7-gate.sh open "
+                      "creates it after the pilot summary, the exported model and the embedding file)")
+    if not os.path.isfile(T5_FILES):
+        raise Refused("runs/s6-route7/test-files.json does not exist: T5 is hashed before any reading")
+    want = load_json(T5_FILES)["files"]
+    for name, h in sorted(want.items()):
+        path = os.path.join(t5_root(), name)
+        if not os.path.isfile(path):
+            raise Refused(f"no {path}")
+        if sha256_file(path) != h:
+            raise Refused(f"{path} is not the file recorded in runs/s6-route7/test-files.json")
+    return want
+
+
+def t5_file(name):
+    """A file of T5 (`t5_tools`, `t5_tools_masked`, the two probe copies, `t5_tools.servers`) or a
+    blind copy of one (`t5_tools.blind`, `t5_tools_masked.blind`), after the guard of t5_check: a
+    blind copy is read only when the file it was written from has its recorded hash."""
+    if name not in T5_NAMES + T5_BLIND:
+        raise Refused(f"{name} is not a file of T5")
+    want = t5_check()
+    if name in T5_NAMES and f"{name}.jsonl" not in want:
+        raise Refused(f"{name}.jsonl is not recorded in runs/s6-route7/test-files.json")
+    if name in T5_BLIND and name[:-len(".blind")] + ".jsonl" not in want:
+        raise Refused(f"the source of {name} is not recorded in runs/s6-route7/test-files.json")
+    path = os.path.join(t5_root(), f"{name}.jsonl")
+    if not os.path.isfile(path):
+        raise Refused(f"no {path}")
     return path
 
 
