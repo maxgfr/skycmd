@@ -204,7 +204,7 @@
     "emoji": "🧪",
     "color_from": "gray",
     "color_to": "purple",
-    "tagline": "An experimental 5.6M ternary decision model with free-text options, distilled from Qwen3.5-4B in one night. It failed its quality gate.",
+    "tagline": "An experimental 5.6M ternary decision model with free-text options, distilled from Qwen3.5-4B in one night. It failed its gate, fixed before training: 0.343 on the typed-decisions bench, where the gate asked for more than 0.55.",
     "short_description": "Experimental 2.4 MB ternary decision model",
     "notes": [
       "Published as a documented negative result: it scores below the majority class on the typed-decisions bench."
