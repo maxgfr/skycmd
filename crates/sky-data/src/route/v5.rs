@@ -2452,6 +2452,63 @@ mod tests {
         v5_slates(&v2, &v4d, &b5, false).unwrap();
     }
 
+    /// The bytes of v5's build of the invented fixture (plan, staged items, pools, validation
+    /// slates and their copies, records, counts), frozen when s6-route v6's code was written
+    /// (`docs/s6-route6-prereg.md` 14 and amendment 1: the default of every switch keeps v5's
+    /// bytes): any change to v5's path shows here.
+    #[test]
+    fn v5_build_bytes_are_frozen() {
+        let root = std::env::temp_dir().join(format!("sky-route-v5-frozen-{}", std::process::id()));
+        let (v2, v4d, b5) = (root.join("v2"), root.join("v4"), root.join("b5"));
+        fixture(&v2);
+        run(&v2, 7);
+        v4_rewrites(&v2, &v4d);
+        v5_run(&v2, &v4d, &b5);
+        stage_items(&b5);
+        fn_answers(&b5, false);
+        v5_slates(&v2, &v4d, &b5, false).unwrap();
+        let mut h = hashes(&b5);
+        // counts/v5-slates.json is left out: on the fixture it names a temporary path (v4's
+        // absent v4_tools, counted with its folder)
+        for f in ["counts/v5-plan.json"] {
+            h.insert(f.into(), crate::secrets2::file_entry(&b5.join(f)).unwrap());
+        }
+        let got: Vec<String> = h
+            .iter()
+            .map(|(k, v)| format!("{k} {}", v["sha256"].as_str().unwrap()))
+            .collect();
+        std::fs::remove_dir_all(&root).ok();
+        println!("FROZEN\n{}", got.join("\n"));
+        assert_eq!(got.join("\n"), V5_FROZEN.trim());
+    }
+
+    const V5_FROZEN: &str = "
+counts/v5-plan.json bf2653ffcf70a1cebb69c5bf4641647cef38816f653f6b618903109808e5e3a9
+records/intents/train.jsonl 9c9daa7884514852b3596eb6a78e5d231c126ce511e47cf3052558fa6a9a67af
+records/intents/val.jsonl 18eba4e37e512accb123f26129c532cd7d39490b0ca08a64272dced980bbee03
+records/tools/train.jsonl 7b3a272767c5a02c44b8cfc9c4a6f275ed9c88096f91f237388be13199d35584
+records/tools/val.jsonl d562f437fcbd1673efc1d891561e875d71459931907f7739870c19ec1740ad54
+records/when2call/train.jsonl 99bae7510563cf9cca5203e5ddbb5e7a7f1bce73eea35e857a6323c6e16a367e
+records/when2call/val.jsonl 16a83860388b27afe19fc49ab67b31c984196bba45544872d8272d0825d647fb
+stage/false-negatives5.items.jsonl 49e7d5ebcac88e1f530aa56a8fa2bb7bf915a905f4272542b32b0cd6e74d674c
+stage/plan5.jsonl 8583b015a1d2ae103ce4579acb03cc8b73dff0b0bee8b861802fca1eed8eb9e8
+stage/pools5.json 9f076bff85fc03bad150762635676854062ee8ca925fb6c7f900bb01ff24225f
+teacher/false-negatives.items.jsonl 49e7d5ebcac88e1f530aa56a8fa2bb7bf915a905f4272542b32b0cd6e74d674c
+teacher/false-negatives.jsonl cf0f7a21c542387e3fdb40a02c85c313cea928bb92da208b367bb06b242b879e
+val/r_tools_natural.model.jsonl e613189c786fa2761978c88bf4b07cb1dd509053556010ef39fa52f483decaf6
+val/r_tools_renamed.model.jsonl 29e0d77b876e2e06aeef22007d54ce98bed98f669d7c87e2d4c4ff6cb1bdc639
+val/v5_tools.jsonl e8060e4618c314f4682676f65372a287e6766585324f6f8d9f68700f0160868d
+val/v5_tools.model.jsonl e76b896f60ac6dfeb1ae3a3b5b806c691d9055be0623a2c7f13cdb87a8fe3ce6
+val/v5_tools_masked.jsonl ec7d67e91d3055b121f35f0fdafe2c901ce675bd777b71d8f48770b221e9b63b
+val/v5_tools_masked.model.jsonl 3c9608bbb7404a92cabb028332b643ec866e5c84c2bc24987fb4009b409cecbb
+val/v5_tools_masked_rw.jsonl d75d72d29f6b1d4cb6f3739ad279b59e0f5d6b83f474201a66733a8582a104b2
+val/v5_tools_masked_rw.model.jsonl 8f7f487d12f45964a1345e469b6662f0bbc52d15429a51c5ba10455dd39f063e
+val/v5_tools_rw.jsonl 3783c8a0ed1a0dcef843e0b9883b471fb18ecf2f5439670199bc9ac9b6266eba
+val/v5_tools_rw.model.jsonl 4281da4191787cee5f96aeda12eb8598d72d03f9cb8c7384a76b69ff3b6d5cff
+val/v_tools.model.jsonl 28bd46e9ba84444ddfab3bbbe8c798bdb8a7e0fba2dfa3d1c734fe484dbc088e
+val/v_tools_masked.model.jsonl 5e71d5bd9b5bab5889b1a1b2d6ceef52c67e78fc38459c0974463dde5d22f414
+";
+
     #[test]
     fn an_invented_v5_build() {
         let root = std::env::temp_dir().join(format!("sky-route-v5-{}", std::process::id()));
