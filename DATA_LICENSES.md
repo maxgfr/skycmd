@@ -416,12 +416,21 @@ cluster in training, 10 on the validation and test sides).
 | minishlab/potion-base-2M | MIT | https://huggingface.co/minishlab/potion-base-2M @ `389b9f64` | hard negatives of the training slates; baselines potion-cos, potion-cos-4bit, static-ft; s6-nano v3 (`docs/s6-nano3-prereg.md`): its table packed to 4 bits with its tokenizer in the engine's embedding file `skycmd-s6-route-embed.gguf` (`scripts/s6-route3-embed-export.py`, `sky-route embed-gguf`), a derived copy that carries the licence (MIT, from the model card), the authors (Stephan Tulkens and Thomas van Dongen, Minish Lab) and the commit in its metadata; shipped as `site/public/models/s6-route-embed.gguf`, the embedding part of the published router s6-route (and of its Hugging Face repository once uploaded), under the MIT licence | — |
 | sentence-transformers/all-MiniLM-L6-v2 | Apache-2.0 | https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 @ `1110a243` | tool clustering (§4.2), the test distractor rule (§4.4); baseline minilm-cos | — |
 | stanley-nv/toolrouter | MIT | https://huggingface.co/stanley-nv/toolrouter @ `b2607a34` | baseline toolrouter (reported) | — |
+| Agent-Ark/Toucan-1.5M (config `SFT`: `SFT/train-0000{0,1,2}-of-00003.parquet`, 425,496,735 bytes) | Apache-2.0 (dataset card: "This dataset is released under Apache 2.0"; its GitHub repository shows MIT, LICENSE text not read); its requests were written by Mistral-Small, DevStral-Small, GPT-OSS, Kimi-K2 and Qwen3-32B, its tool descriptions are the MCP servers' own metadata | https://huggingface.co/datasets/Agent-Ark/Toucan-1.5M @ `0df3cf37` | s6-route v4 (`docs/s6-route4-prereg.md` §6): test only (T4-tools, its masked copy and the two probe copies), never trained; **not fetched yet** (the entry `v4_sources` of `scripts/route/pins.json`, fetched by `scripts/build-route4-data.sh fetch`) | not fetched yet |
 
 Teacher: GLM-5.3-flash (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) through a hosted
 endpoint used as a proxy, `sky-data teacher describe-intent | false-negatives |
 rewrite-description`: one description per intent from its name (287 intents), the
 false-negative filter of the hard training and validation slates, one rewrite per gold tool of
 the training and validation requests. It never receives a test request or slate.
+
+s6-route v4 (`docs/s6-route4-prereg.md` §4.2), the same teacher and prompt, not run yet:
+`rewrite-description` for every tool of the training and validation pools and of the intents
+that has no rewrite yet (at most 13,691 items, `sky-data route v4-plan`), shown in place of a
+tool's description with probability 0.5 in the training and validation records (D1); and, for
+the two probe copies of the fresh test only, one rewrite of each Toucan tool's description that
+a fresh slate shows (items of the split `fresh-tools`: a tool's name and description, nothing
+else; `sky-data route toucan`). It never receives a test or fresh request, nor a slate.
 
 ## Rejected
 
