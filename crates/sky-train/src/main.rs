@@ -526,6 +526,10 @@ enum Cmd {
         eval_every: u64,
         #[arg(long, default_value_t = 10.0)]
         checkpoint_minutes: f64,
+        /// Keep a copy of each periodic save under <out>/ckpt-<working minutes>
+        /// (docs/s6-route4-prereg.md 14, item 5).
+        #[arg(long)]
+        keep_checkpoints: bool,
         #[arg(long, default_value_t = 4000)]
         val_max: usize,
         #[arg(long, value_enum, default_value_t = Precision::F32)]
@@ -1015,6 +1019,7 @@ fn main() -> Result<()> {
             log_every,
             eval_every,
             checkpoint_minutes,
+            keep_checkpoints,
             val_max,
             precision,
             no_compile,
@@ -1044,6 +1049,7 @@ fn main() -> Result<()> {
             log_every,
             eval_every,
             checkpoint_minutes,
+            keep_checkpoints,
             val_max,
             bf16: precision == Precision::Bf16,
             compile: !no_compile,

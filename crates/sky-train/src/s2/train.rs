@@ -1979,6 +1979,9 @@ pub struct S2DecideArgs {
     pub log_every: u64,
     pub eval_every: u64,
     pub checkpoint_minutes: f64,
+    /// Keep a copy of each periodic save under `ckpt-<working minutes>` next to `last`
+    /// (`docs/s6-route4-prereg.md` 14, item 5: the pilot is read at every kept checkpoint).
+    pub keep_checkpoints: bool,
     pub val_max: usize,
     pub bf16: bool,
     pub compile: bool,
@@ -2826,6 +2829,10 @@ pub fn decide(a: &S2DecideArgs) -> Result<()> {
         if last_ckpt.elapsed().as_secs_f64() >= a.checkpoint_minutes * 60.0 {
             check_frozen(&s)?;
             save(&s, &last)?;
+            if a.keep_checkpoints {
+                let kept = keep_checkpoint(&last, &a.out, s.state.elapsed_secs)?;
+                println!("checkpoint kept: {}", kept.display());
+            }
             if let Some(e) = &mut ema {
                 with_params(&mut s, e, |s| save(s, &ema_dir))?;
             }
@@ -2911,6 +2918,40 @@ pub fn frozen_bits(p: &ParamMap, opt: &OptConfig) -> Result<BTreeMap<String, Vec
         .collect()
 }
 
+/// The name of a kept checkpoint: `ckpt-<working minutes>`, rounded to the minute.
+pub fn kept_name(elapsed_secs: f64) -> String {
+    format!("ckpt-{}", (elapsed_secs / 60.0).round() as u64)
+}
+
+/// Copies the checkpoint `last` to `<out>/ckpt-<working minutes>` (through a `.tmp` folder, so
+/// that a kept checkpoint is whole or absent); a kept checkpoint of the same name is replaced.
+pub fn keep_checkpoint(last: &Path, out: &Path, elapsed_secs: f64) -> Result<PathBuf> {
+    fn copy_dir(from: &Path, to: &Path) -> Result<()> {
+        std::fs::create_dir_all(to)?;
+        for e in std::fs::read_dir(from)? {
+            let e = e?;
+            let p = e.path();
+            if p.is_dir() {
+                copy_dir(&p, &to.join(e.file_name()))?;
+            } else {
+                std::fs::copy(&p, to.join(e.file_name()))?;
+            }
+        }
+        Ok(())
+    }
+    let dst = out.join(kept_name(elapsed_secs));
+    let tmp = PathBuf::from(format!("{}.tmp", dst.display()));
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?;
+    }
+    copy_dir(last, &tmp)?;
+    if dst.exists() {
+        std::fs::remove_dir_all(&dst)?;
+    }
+    std::fs::rename(&tmp, &dst)?;
+    Ok(dst)
+}
+
 /// Runs `f` on the session with `params` in place of its weights, then puts them back.
 fn with_params<T>(
     s: &mut S2Session,
@@ -2937,6 +2978,39 @@ pub fn host(a: &Array) -> Result<Vec<f32>> {
 mod tests {
     use super::*;
     use crate::{s2::data::tests::s2_tok, sequence::DecisionRecord, test_util};
+
+    #[test]
+    fn kept_checkpoints_are_whole_copies_named_by_working_minutes() {
+        assert_eq!(kept_name(299.0), "ckpt-5");
+        assert_eq!(kept_name(601.0), "ckpt-10");
+        let d = std::env::temp_dir().join(format!("sky-keep-ckpt-{}", std::process::id()));
+        let last = d.join("last");
+        std::fs::create_dir_all(last.join("sub")).unwrap();
+        std::fs::write(last.join("model.safetensors"), b"weights v1").unwrap();
+        std::fs::write(last.join("sub/x.json"), b"{}").unwrap();
+        let k = keep_checkpoint(&last, &d, 300.0).unwrap();
+        assert_eq!(k, d.join("ckpt-5"));
+        assert_eq!(
+            std::fs::read(k.join("model.safetensors")).unwrap(),
+            b"weights v1"
+        );
+        assert!(k.join("sub/x.json").exists());
+        // the next save changes `last`, not the kept copy; a second copy of the same minute
+        // replaces the first, whole
+        std::fs::write(last.join("model.safetensors"), b"weights v2").unwrap();
+        assert_eq!(
+            std::fs::read(k.join("model.safetensors")).unwrap(),
+            b"weights v1"
+        );
+        keep_checkpoint(&last, &d, 600.0).unwrap();
+        assert_eq!(
+            std::fs::read(d.join("ckpt-10/model.safetensors")).unwrap(),
+            b"weights v2"
+        );
+        keep_checkpoint(&last, &d, 610.0).unwrap();
+        assert!(!d.join("ckpt-10.tmp").exists());
+        std::fs::remove_dir_all(d).ok();
+    }
 
     pub(crate) fn synthetic(tok: &Tok, cfg: &S2Config, n: usize, seed: u64) -> S2Data {
         // Learnable: the right option is the one labelled "safe".
