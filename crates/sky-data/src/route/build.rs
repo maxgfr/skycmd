@@ -242,7 +242,7 @@ pub(super) struct Loaded {
     pub index: HashMap<String, usize>,
     pub requests: Vec<Request>,
     pub(super) minilm: Matrix,
-    potion: Matrix,
+    pub(super) potion: Matrix,
     /// Row of each tool in the embedding files.
     pub(super) row: Vec<Option<usize>>,
     pub norm: Vec<String>,
@@ -1811,7 +1811,7 @@ pub(crate) mod tests {
     use crate::route::slates::TEST_TOOLS;
 
     /// A `.npy` file of float32 rows.
-    fn write_npy(path: &Path, rows: &[Vec<f32>]) {
+    pub(crate) fn write_npy(path: &Path, rows: &[Vec<f32>]) {
         let header = format!(
             "{{'descr': '<f4', 'fortran_order': False, 'shape': ({}, {}), }}",
             rows.len(),

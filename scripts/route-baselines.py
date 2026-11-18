@@ -7,6 +7,7 @@ format that scripts/route/scorer.py reads.
     route-baselines.py score --system S --split fresh [--files f_tools,...]   (s6-nano v3; v2's fitted values)
     route-baselines.py score --system S --split val --out-root DIR --files v_tools,v_tools_masked   (v3 rehearsal)
     route-baselines.py score --system S --split v4val [--files v4_tools,...]   (s6-route v4; v2's fitted values)
+    route-baselines.py score --system S --split v5val [--files v5_tools,...]   (s6-route v5; v2's fitted values)
 
 Systems: potion-cos, potion-cos-4bit, static-ft, pair-lr, bm25, minilm-cos, toolrouter,
 name-prior. s6-nano v1 is scored by sky-eval (scripts/route-eval.sh).
@@ -43,6 +44,9 @@ refuses it until runs/s6-nano2/TEST-OPEN exists and the model holds tau_ask.
 s6-route v4 (docs/s6-route4-prereg.md 5, the bar of the pilot rule): the split `v4val` scores the
 validation slates of v4's build (<BUILD4>/val/v4_tools*.jsonl, BUILD4 default <data>/build4) with
 the values fitted for v2, never refitted; it reads validation files only.
+
+s6-route v5 (docs/s6-route5-prereg.md 4.5 and 5): the split `v5val` scores the validation slates
+of v5's build (<BUILD5>/val/v5_tools*.jsonl, BUILD5 default <data>/build5) the same way.
 """
 
 import argparse
@@ -68,8 +72,10 @@ FILES = {
     "fresh": ("f_tools", "f_tools_masked", "f_metatool", "f_clinc", "f_massive"),
     # s6-route v4 (docs/s6-route4-prereg.md 4.3, 5): v4's validation slates, v2's fitted values
     "v4val": ("v4_tools", "v4_tools_masked", "v4_tools_rw", "v4_tools_masked_rw"),
+    # s6-route v5 (docs/s6-route5-prereg.md 4.5, 5): v5's validation slates, v2's fitted values
+    "v5val": ("v5_tools", "v5_tools_masked", "v5_tools_rw", "v5_tools_masked_rw"),
 }
-SPLITS = common.SPLITS + ("v4val",)
+SPLITS = common.SPLITS + ("v4val", "v5val")
 
 
 def v4_slate_file(name):
@@ -82,6 +88,20 @@ def v4_slate_file(name):
     if not os.path.isfile(path):
         raise common.Refused(f"no {path}")
     return path
+
+
+def v5_slate_file(name):
+    """A validation slate file of s6-route v5's build (`v5_tools`, its masked copy, the probe
+    copies): validation only, never a fresh or test file."""
+    if name not in FILES["v5val"]:
+        raise common.Refused(f"{name} is not a validation file of v5")
+    root = os.environ.get("BUILD5") or os.path.join(common.data_root(), "build5")
+    path = os.path.join(root, "val", f"{name}.jsonl")
+    if not os.path.isfile(path):
+        raise common.Refused(f"no {path}")
+    return path
+
+
 DEFAULT_BUDGET = 715136  # s6-nano v1's file; the evaluation passes the evaluated file's bytes
 SEED = 0
 
@@ -578,7 +598,12 @@ def score(name, split, model, out_root=None, files=None):
         if f not in FILES[split]:
             raise common.Refused(f"{f} is not a file of the {split} split")
         try:
-            path = v4_slate_file(f) if split == "v4val" else common.slate_file(split, f, model)
+            if split == "v4val":
+                path = v4_slate_file(f)
+            elif split == "v5val":
+                path = v5_slate_file(f)
+            else:
+                path = common.slate_file(split, f, model)
         except common.Refused as e:
             if split in ("test", "fresh"):
                 raise
@@ -614,7 +639,7 @@ def main():
     a = ap.parse_args()
     try:
         if a.action == "fit":
-            if a.split in ("fresh", "v4val"):
+            if a.split in ("fresh", "v4val", "v5val"):
                 raise common.Refused(f"the baselines are fitted on v2's validation only; the {a.split} split reads v2's fitted values")
             fit(a.system, a.budget)
         else:

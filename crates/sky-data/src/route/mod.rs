@@ -8,7 +8,10 @@
 //! - [`build`]: the steps in order and `BUILD.json`;
 //! - [`fresh`]: the fresh test files of v3 (`docs/s6-nano3-prereg.md`);
 //! - [`v4`]: the data of s6-route v4 (`docs/s6-route4-prereg.md`, section 4), from v2's build;
-//! - [`toucan`]: the fresh test of s6-route v4 (section 6), from Toucan-1.5M.
+//! - [`toucan`]: the fresh test of s6-route v4 (section 6), from Toucan-1.5M, and of v5
+//!   (`docs/s6-route5-prereg.md` 6, `--rule v5`);
+//! - [`v5`]: the data of s6-route v5 (`docs/s6-route5-prereg.md`, section 4), from v2's build
+//!   and v4's rewrites.
 //!
 //! Every file goes to the data folder, outside the repository. The test files are written once
 //! and never read again by this module; the steps print counts only.
@@ -20,6 +23,7 @@ pub mod slates;
 pub mod sources;
 pub mod toucan;
 pub mod v4;
+pub mod v5;
 
 use std::collections::BTreeMap;
 use std::path::Path;

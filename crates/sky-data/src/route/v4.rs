@@ -123,6 +123,247 @@ pub mod surface {
             quintile(sorted, words(desc)),
         )
     }
+
+    // ------------------------------------------------------------------ s6-route v5 (S1)
+    //
+    // The surface cell of `docs/s6-route5-prereg.md` 4.3: six features read on the option as
+    // shown to the model (the name, and the description after `cut_description`, the rewrite
+    // where D1's draw says so), and the widening levels L0 to L6. The features are those of
+    // `scripts/s6-route4-blind.py` (and `scripts/s6-route5-cells.py`, which counted the cells
+    // for amendment 1), read the same way: F1 `name_style`, F4 R1's final period, F5 R2's
+    // `third` and R13's `imperative`, F6 R12's schema-like words.
+
+    /// F1's five classes, in the order of their index.
+    pub const STYLES: [&str; 5] = ["snake", "camel", "pascal", "spaced", "other"];
+    /// The highest level: L6, the kind's filter alone, outside the cell.
+    pub const L6: u8 = 6;
+    /// The number of keys: 5 × 5 × 5 × 2 × 3 × 3.
+    pub const KEYS: usize = 2250;
+
+    pub fn style_index(name: &str) -> u8 {
+        let s = name_style(name);
+        STYLES.iter().position(|x| *x == s).unwrap_or(4) as u8
+    }
+
+    /// F2: the name's length in characters (Python's `len`).
+    pub fn name_chars(name: &str) -> usize {
+        name.chars().count()
+    }
+
+    /// F5: 0 a capitalised first word in -s, not -ss (R2's `third`); 1 an imperative first word
+    /// (R13's: capitalised, not ending in -s, letters only); 2 other. The first word is the text
+    /// before the first space, as `scripts/s6-route4-blind.py` reads it.
+    pub fn first_form(desc: &str) -> u8 {
+        let w = desc.split(' ').next().unwrap_or("");
+        let upper = w.chars().next().is_some_and(char::is_uppercase);
+        if upper && w.ends_with('s') && !w.ends_with("ss") {
+            0
+        } else if upper && !w.ends_with('s') && w.chars().all(char::is_alphabetic) {
+            1
+        } else {
+            2
+        }
+    }
+
+    /// R12's schema-like words, in the order Python's regex tries them (`parameters?` and
+    /// `ids?` greedy first).
+    const SCHEMA: [&str; 15] = [
+        "api",
+        "endpoint",
+        "parameters",
+        "parameter",
+        "json",
+        "ids",
+        "id",
+        "specified",
+        "given",
+        "provided",
+        "based on",
+        "information",
+        "details",
+        "data",
+        "list",
+    ];
+
+    /// The number of matches of R12's pattern `\b(api|endpoint|parameters?|json|ids?|specified|
+    /// given|provided|based on|information|details|data|list)\b` (case-insensitive), as
+    /// Python's `re.findall` counts them: non-overlapping, leftmost first; a word character is a
+    /// letter, a digit or `_`. (ASCII case folding: Python's `re.I` also folds the four non-ASCII
+    /// letters K, ſ, İ and ı to ASCII ones; they are not folded here.)
+    pub fn schema_words(desc: &str) -> usize {
+        let cs: Vec<char> = desc.chars().collect();
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        let (mut i, mut n) = (0, 0);
+        'scan: while i < cs.len() {
+            if i == 0 || !word(cs[i - 1]) {
+                for alt in SCHEMA {
+                    let a: Vec<char> = alt.chars().collect();
+                    let end = i + a.len();
+                    if end <= cs.len()
+                        && cs[i..end]
+                            .iter()
+                            .zip(&a)
+                            .all(|(c, x)| c.to_ascii_lowercase() == *x)
+                        && (end == cs.len() || !word(cs[end]))
+                    {
+                        n += 1;
+                        i = end;
+                        continue 'scan;
+                    }
+                }
+            }
+            i += 1;
+        }
+        n
+    }
+
+    /// The key of a text: F1 to F6, each as a class.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct Key {
+        /// F1, an index of [`STYLES`].
+        pub style: u8,
+        /// F2, the quintile (0 to 4) of the name's length.
+        pub name_q: u8,
+        /// F3, the quintile (0 to 4) of the description's length in words.
+        pub words_q: u8,
+        /// F4.
+        pub period: bool,
+        /// F5, [`first_form`].
+        pub form: u8,
+        /// F6: 0, 1, or 2 for two or more schema-like words.
+        pub schema: u8,
+    }
+
+    impl Key {
+        /// A dense index in `0..KEYS`.
+        pub fn index(self) -> usize {
+            ((((self.style as usize * 5 + self.name_q as usize) * 5 + self.words_q as usize) * 2
+                + self.period as usize)
+                * 3
+                + self.form as usize)
+                * 3
+                + self.schema as usize
+        }
+
+        pub fn from_index(i: usize) -> Self {
+            let schema = (i % 3) as u8;
+            let i = i / 3;
+            let form = (i % 3) as u8;
+            let i = i / 3;
+            let period = i % 2 == 1;
+            let i = i / 2;
+            let words_q = (i % 5) as u8;
+            let i = i / 5;
+            Key {
+                style: (i / 5) as u8,
+                name_q: (i % 5) as u8,
+                words_q,
+                period,
+                form,
+                schema,
+            }
+        }
+    }
+
+    /// The cut points of F2 and F3: the sorted name lengths and word counts of a catalogue of
+    /// texts. A class is [`quintile`]: five times the share of the catalogue strictly below the
+    /// value, rounded down, so that a value equal to a cut point (the 20th, 40th, 60th or 80th
+    /// percentile by nearest rank) goes to the lower class.
+    #[derive(Clone, Debug, Default)]
+    pub struct Cuts {
+        pub names: Vec<usize>,
+        pub words: Vec<usize>,
+    }
+
+    impl Cuts {
+        /// From the (name, description) of every text of the catalogue, repeats kept.
+        pub fn new<'a>(texts: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+            let (mut names, mut ws) = (Vec::new(), Vec::new());
+            for (n, d) in texts {
+                names.push(name_chars(n));
+                ws.push(words(d));
+            }
+            names.sort_unstable();
+            ws.sort_unstable();
+            Cuts { names, words: ws }
+        }
+
+        pub fn key(&self, name: &str, desc: &str) -> Key {
+            Key {
+                style: style_index(name),
+                name_q: quintile(&self.names, name_chars(name)) as u8,
+                words_q: quintile(&self.words, words(desc)) as u8,
+                period: ends_with_period(desc),
+                form: first_form(desc),
+                schema: schema_words(desc).min(2) as u8,
+            }
+        }
+
+        /// The class of every value from 0 to one past the largest of `sorted` (the counts, and
+        /// the cell consistency of `scripts/s6-route5-checks.py`).
+        pub fn classes(sorted: &[usize]) -> Vec<usize> {
+            let top = sorted.last().copied().unwrap_or(0) + 1;
+            (0..=top).map(|v| quintile(sorted, v)).collect()
+        }
+
+        /// The largest value of each of the classes 0 to 3 (the cut points), for the counts.
+        pub fn points(sorted: &[usize]) -> Vec<Option<usize>> {
+            (0..4)
+                .map(|c| {
+                    sorted
+                        .iter()
+                        .copied()
+                        .filter(|&v| quintile(sorted, v) == c)
+                        .max()
+                })
+                .collect()
+        }
+    }
+
+    /// Whether a candidate's key `b` matches the anchor's key `a` at `level` (4.3): L0 every
+    /// feature; L1 F2 and F3 within one class, F1, F4, F5, F6 exact; L2 L1 without F6; L3 L2
+    /// without F5; L4 L3 without F1; L5 F3 within one class and F4; L6 anything.
+    pub fn matches(a: Key, b: Key, level: u8) -> bool {
+        if level >= L6 {
+            return true;
+        }
+        if level == 0 {
+            return a == b;
+        }
+        if a.period != b.period || a.words_q.abs_diff(b.words_q) > 1 {
+            return false;
+        }
+        if level <= 4 && a.name_q.abs_diff(b.name_q) > 1 {
+            return false;
+        }
+        if level <= 3 && a.style != b.style {
+            return false;
+        }
+        if level <= 2 && a.form != b.form {
+            return false;
+        }
+        if level <= 1 && a.schema != b.schema {
+            return false;
+        }
+        true
+    }
+
+    /// The lowest level at which `b` matches `a` (the levels are nested).
+    pub fn match_level(a: Key, b: Key) -> u8 {
+        (0..L6).find(|&l| matches(a, b, l)).unwrap_or(L6)
+    }
+
+    /// [`match_level`] for every pair of keys, `table[a * KEYS + b]`.
+    pub fn level_table() -> Vec<u8> {
+        let keys: Vec<Key> = (0..KEYS).map(Key::from_index).collect();
+        let mut t = vec![L6; KEYS * KEYS];
+        for (i, &a) in keys.iter().enumerate() {
+            for (j, &b) in keys.iter().enumerate() {
+                t[i * KEYS + j] = match_level(a, b);
+            }
+        }
+        t
+    }
 }
 
 // ---------------------------------------------------------------------------------- the plan
@@ -168,7 +409,7 @@ pub struct PlanOptions {
     pub remedy: bool,
 }
 
-fn read_or_empty<T: serde::de::DeserializeOwned>(p: &Path) -> Result<Vec<T>> {
+pub(super) fn read_or_empty<T: serde::de::DeserializeOwned>(p: &Path) -> Result<Vec<T>> {
     if p.exists() {
         read_lines(p)
     } else {
@@ -176,7 +417,7 @@ fn read_or_empty<T: serde::de::DeserializeOwned>(p: &Path) -> Result<Vec<T>> {
     }
 }
 
-fn refused_ids(answers: &Path) -> Result<HashSet<String>> {
+pub(super) fn refused_ids(answers: &Path) -> Result<HashSet<String>> {
     Ok(
         read_or_empty::<crate::distill::Refused>(&crate::distill::refused_path(answers))?
             .into_iter()
@@ -186,15 +427,15 @@ fn refused_ids(answers: &Path) -> Result<HashSet<String>> {
 }
 
 /// The pools of random tools, as v2's split step draws them.
-struct Pools {
-    train: Vec<usize>,
-    val: Vec<usize>,
-    w2c_val: Vec<usize>,
-    intents: BTreeMap<String, Vec<usize>>,
+pub(super) struct Pools {
+    pub train: Vec<usize>,
+    pub val: Vec<usize>,
+    pub w2c_val: Vec<usize>,
+    pub intents: BTreeMap<String, Vec<usize>>,
 }
 
 impl Pools {
-    fn new(a: &Assigned, kept: &[Kept]) -> Self {
+    pub(super) fn new(a: &Assigned, kept: &[Kept]) -> Self {
         let (train, val) = (a.pool("train"), a.pool("val"));
         let mut w2c_val: Vec<usize> = train.iter().chain(val.iter()).copied().collect();
         w2c_val.sort_unstable();
@@ -218,7 +459,7 @@ impl Pools {
     }
 
     /// The pool of a request and its name.
-    fn of(&self, k: &Kept) -> (String, &[usize]) {
+    pub(super) fn of(&self, k: &Kept) -> (String, &[usize]) {
         if k.r.group == INTENTS {
             return (
                 format!("intents/{}", k.r.source),
@@ -346,7 +587,7 @@ fn removed_copy(tools: &[usize], gold: Option<usize>, extra: Option<usize>) -> V
 
 /// The test distractor filter of v2 4.4 (not an excluded tool, not the gold's normalised name,
 /// MiniLM cosine to the gold below 0.8).
-fn test_ok<'a>(cx: &'a Ctx<'a>, k: &'a Kept) -> impl Fn(usize) -> bool + 'a {
+pub(super) fn test_ok<'a>(cx: &'a Ctx<'a>, k: &'a Kept) -> impl Fn(usize) -> bool + 'a {
     let l = cx.l;
     move |t: usize| {
         let Some(g) = k.gold else { return true };
@@ -357,13 +598,13 @@ fn test_ok<'a>(cx: &'a Ctx<'a>, k: &'a Kept) -> impl Fn(usize) -> bool + 'a {
 }
 
 /// v2's build, loaded and its split recomputed, checked against what v2 wrote.
-struct V2 {
-    l: Loaded,
-    a: Assigned,
-    kept: Vec<Kept>,
+pub(super) struct V2 {
+    pub l: Loaded,
+    pub a: Assigned,
+    pub kept: Vec<Kept>,
 }
 
-fn load_v2(v2: &Path, seed: u64) -> Result<V2> {
+pub(super) fn load_v2(v2: &Path, seed: u64) -> Result<V2> {
     let l = build::load(v2)?;
     let m = read_json(&v2.join("BUILD.json")).ok();
     if let Some(s) = m.as_ref().and_then(|m| m["seed"].as_u64()) {
@@ -705,13 +946,13 @@ pub struct SlatesOptions {
 
 /// The rewrites of the build: v2's answers and v4's, cut by `cut_description`; and the tools
 /// whose rewrite the moderation refused.
-struct Rewrites {
-    text: HashMap<String, String>,
-    refused: HashSet<String>,
+pub(super) struct Rewrites {
+    pub text: HashMap<String, String>,
+    pub refused: HashSet<String>,
 }
 
 impl Rewrites {
-    fn load(v2: &Path, out: &Path) -> Result<Self> {
+    pub(super) fn load(v2: &Path, out: &Path) -> Result<Self> {
         let mut text = HashMap::new();
         let mut refused = HashSet::new();
         for dir in [v2, out] {

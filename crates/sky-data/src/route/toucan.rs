@@ -40,6 +40,7 @@ use super::build::{
 use super::cluster::{self, Matrix};
 use super::slates::{self, Slate};
 use super::v4::surface;
+use super::v5::{self, Record5};
 use super::{
     bump, cut_description, mask_keys, norm_text, option_text, read_json, read_lines, sha256_file,
     sha256_hex, state_of, write_json, Counts, Tool, INSTRUCTION, INTENTS,
@@ -68,6 +69,114 @@ pub const SFT_COLUMNS: [&str; 6] = [
 pub const SPLIT: &str = "fresh";
 /// The name of the test files (`t4_tools*.jsonl`).
 pub const NAME: &str = "t4-tools";
+
+/// The rule of 6.2, item 5: v4's (`docs/s6-route4-prereg.md`, files `t4_*`), or v5's
+/// (`docs/s6-route5-prereg.md` 6.2: the fill of other servers within v5's surface cell, the
+/// levels L0 to L6 at 16 candidates; files `t5_*`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Rule {
+    #[default]
+    V4,
+    V5,
+}
+
+impl Rule {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "v4" => Some(Rule::V4),
+            "v5" => Some(Rule::V5),
+            _ => None,
+        }
+    }
+
+    /// The name of the test files' records (`t4-tools`, `t5-tools`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Rule::V4 => NAME,
+            Rule::V5 => "t5-tools",
+        }
+    }
+
+    /// The stem of the files (`t4`, `t5`).
+    pub fn stem(self) -> &'static str {
+        match self {
+            Rule::V4 => "t4",
+            Rule::V5 => "t5",
+        }
+    }
+
+    /// The manifest of the fresh folder (`FRESH4.json`, `FRESH5.json`).
+    pub fn manifest(self) -> &'static str {
+        match self {
+            Rule::V4 => "FRESH4.json",
+            Rule::V5 => "FRESH5.json",
+        }
+    }
+
+    fn version(self) -> &'static str {
+        match self {
+            Rule::V4 => "v4",
+            Rule::V5 => "v5",
+        }
+    }
+
+    fn prereg(self) -> &'static str {
+        match self {
+            Rule::V4 => "docs/s6-route4-prereg.md",
+            Rule::V5 => "docs/s6-route5-prereg.md",
+        }
+    }
+}
+
+/// `docs/s6-route5-prereg.md` 6: the parquet files hash-checked again against the manifest of
+/// the fetch (`<data>/MANIFEST4.json`) before anything reads them: each input must be one of its
+/// files by name, with its bytes and sha256.
+pub fn check_manifest(inputs: &[PathBuf], manifest: &Path) -> Result<Value> {
+    let m = read_json(manifest)?;
+    let files = m["files"]
+        .as_array()
+        .with_context(|| format!("{}: no files", manifest.display()))?;
+    let mut out = BTreeMap::new();
+    for p in inputs {
+        let name = p
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let entry = files
+            .iter()
+            .find(|f| {
+                f["file"]
+                    .as_str()
+                    .is_some_and(|x| x.rsplit('/').next() == Some(name.as_str()))
+            })
+            .with_context(|| format!("{} is not a file of {}", p.display(), manifest.display()))?;
+        let bytes = std::fs::metadata(p)
+            .with_context(|| format!("stat {}", p.display()))?
+            .len();
+        if entry["bytes"].as_u64() != Some(bytes) {
+            bail!(
+                "{}: {bytes} bytes, {} records {}",
+                p.display(),
+                manifest.display(),
+                entry["bytes"]
+            );
+        }
+        let h = sha256_file(p)?;
+        if entry["sha256"].as_str() != Some(h.as_str()) {
+            bail!(
+                "{}: sha256 {h}, {} records {}",
+                p.display(),
+                manifest.display(),
+                entry["sha256"]
+            );
+        }
+        out.insert(name, json!({"bytes": bytes, "sha256": h}));
+    }
+    if inputs.is_empty() {
+        bail!("no parquet file to check");
+    }
+    Ok(json!({"checked against": manifest.display().to_string(), "files": out}))
+}
 
 /// One tool of a server, as the server's metadata lists it.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -528,8 +637,10 @@ pub struct TestOptions {
     /// The Toucan folder (`stage/`, `emb/`; the test files go to `<t4>/fresh`).
     pub t4: PathBuf,
     pub seed: u64,
-    /// A folder for `test-files.json` and `counts.json` (`runs/s6-route4`).
+    /// A folder for `test-files.json` and `counts.json` (`runs/s6-route4`, `runs/s6-route5`).
     pub record: Option<PathBuf>,
+    /// The rule of 6.2, item 5, and the files' names.
+    pub rule: Rule,
 }
 
 /// The fresh folder of a Toucan folder.
@@ -700,6 +811,18 @@ fn record(
     }
 }
 
+/// v5's records: each slate with its level and its options' roles.
+fn with_levels(recs: &[RouteRecord], meta: &[(u8, Vec<String>)]) -> Vec<Record5> {
+    recs.iter()
+        .zip(meta)
+        .map(|(r, (l, roles))| Record5 {
+            r: r.clone(),
+            cell_level: *l,
+            roles: roles.clone(),
+        })
+        .collect()
+}
+
 /// Step 3: the test files of 6.2, written once, with their hashes and counts.
 pub fn build_test(o: &TestOptions) -> Result<Value> {
     let t = load_t4(&o.t4)?;
@@ -838,7 +961,9 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
         &mut rng(&format!("route/{NAME}/removed")),
     );
 
-    // 6.2 item 5: the surface cells over all Toucan tools
+    // 6.2 item 5: the surface cells over all Toucan tools (v4: style, end, word quintile; v5:
+    // the cell of docs/s6-route5-prereg.md 4.3 on the tool as shown, the quintiles of F2 and F3
+    // over Toucan's tools, the levels L0 to L6 at 16 candidates)
     let mut sorted: Vec<usize> = t
         .tools
         .iter()
@@ -850,69 +975,130 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
         .iter()
         .map(|x| surface::cell(&x.tool.name, &x.tool.desc, &sorted))
         .collect();
+    let (table, keys5) = match o.rule {
+        Rule::V4 => (Vec::new(), Vec::new()),
+        Rule::V5 => {
+            let cuts = surface::Cuts::new(
+                t.tools
+                    .iter()
+                    .map(|x| (x.tool.name.as_str(), x.tool.desc.as_str())),
+            );
+            let k: Vec<u16> = t
+                .tools
+                .iter()
+                .map(|x| cuts.key(&x.tool.name, &x.tool.desc).index() as u16)
+                .collect();
+            (surface::level_table(), k)
+        }
+    };
+    let name = o.rule.name();
     let mut main = Vec::new();
     let mut masked = Vec::new();
+    let mut meta5: Vec<(u8, Vec<String>)> = Vec::new();
     let mut servers = Vec::new();
     let mut fill_from = Counts::new();
+    let mut by_level = Counts::new();
+    let mut c6 = v5::LevelCounts::default();
     for (j, c) in drawn.iter().enumerate() {
         let r = &t.rows[c.row];
         let g = c.gold;
         let ok = |x: usize| {
             !near_v2[x] && norm[x] != norm[g] && cos(x, g) < TEST_COSINE && rep[x] != rep[g]
         };
-        // the other servers' tools, by the gold's cell, then the nearest quintiles of its style
-        // and end, then its style, then any
         let other: Vec<usize> = (0..n)
             .filter(|&x| !t.tools[x].servers.iter().any(|s| s == &r.server))
             .collect();
-        let (style, end, q) = cell[g];
-        let mut layers: Vec<Vec<usize>> = (0..5usize)
-            .map(|d| {
-                other
-                    .iter()
-                    .copied()
-                    .filter(|&x| {
-                        cell[x].0 == style && cell[x].1 == end && cell[x].2.abs_diff(q) == d
-                    })
-                    .collect()
-            })
-            .collect();
-        layers.push(
-            other
-                .iter()
-                .copied()
-                .filter(|&x| cell[x].0 == style)
-                .collect(),
-        );
-        layers.push(other.clone());
-        let lay: Vec<&[usize]> = layers.iter().map(Vec::as_slice).collect();
         let mut rg = rng(&format!("route/{NAME}/slate/{}", r.id));
-        let s = slates::test_slate_layers(
-            Some(g),
-            &c.server_tools,
-            &lay,
-            removed.contains(&j),
-            &mut rg,
-            &ok,
-        );
-        for &x in &s.tools {
-            if x == g || c.server_tools.contains(&x) {
-                continue;
+        let s = match o.rule {
+            Rule::V4 => {
+                // the other servers' tools, by the gold's cell, then the nearest quintiles of its
+                // style and end, then its style, then any
+                let (style, end, q) = cell[g];
+                let mut layers: Vec<Vec<usize>> = (0..5usize)
+                    .map(|d| {
+                        other
+                            .iter()
+                            .copied()
+                            .filter(|&x| {
+                                cell[x].0 == style && cell[x].1 == end && cell[x].2.abs_diff(q) == d
+                            })
+                            .collect()
+                    })
+                    .collect();
+                layers.push(
+                    other
+                        .iter()
+                        .copied()
+                        .filter(|&x| cell[x].0 == style)
+                        .collect(),
+                );
+                layers.push(other.clone());
+                let lay: Vec<&[usize]> = layers.iter().map(Vec::as_slice).collect();
+                let s = slates::test_slate_layers(
+                    Some(g),
+                    &c.server_tools,
+                    &lay,
+                    removed.contains(&j),
+                    &mut rg,
+                    &ok,
+                );
+                for &x in &s.tools {
+                    if x == g || c.server_tools.contains(&x) {
+                        continue;
+                    }
+                    let layer = layers
+                        .iter()
+                        .position(|v| v.contains(&x))
+                        .unwrap_or(layers.len());
+                    bump(
+                        &mut fill_from,
+                        match layer {
+                            0 => "the gold's cell",
+                            1..=4 => "its style and end, another quintile",
+                            5 => "its style alone",
+                            _ => "any other server's tool",
+                        },
+                    );
+                }
+                s
             }
-            let layer = layers
-                .iter()
-                .position(|v| v.contains(&x))
-                .unwrap_or(layers.len());
-            bump(
-                &mut fill_from,
-                match layer {
-                    0 => "the gold's cell",
-                    1..=4 => "its style and end, another quintile",
-                    5 => "its style alone",
-                    _ => "any other server's tool",
-                },
-            );
-        }
+            Rule::V5 => {
+                // the tools of the gold's server first (exempt), then the other servers' tools
+                // within the gold's cell at the lowest level that holds 16 of them
+                let kf = |x: usize| (keys5[x], keys5[x]);
+                let never = |_: usize| false;
+                let mut cl = v5::Cell::new(
+                    &other,
+                    Some(keys5[g]),
+                    &table,
+                    &kf,
+                    &never,
+                    &ok,
+                    v5::MIN_CANDIDATES,
+                );
+                let rem = removed.contains(&j);
+                let lv = cl.level;
+                let (s, level, drawn_f) = v5::test_like(
+                    Some(g),
+                    &c.server_tools,
+                    &mut cl,
+                    rem.then_some(lv),
+                    &[],
+                    &other,
+                    &mut rg,
+                    &ok,
+                );
+                for (&x, &d) in s.tools.iter().zip(&drawn_f) {
+                    if d {
+                        bump(&mut fill_from, format!("drawn from L{}", cl.level_of(x)));
+                    }
+                }
+                bump(&mut by_level, format!("L{level}"));
+                c6.add(level, drawn_f.iter().any(|&d| d), !rem);
+                meta5.push((level, v5::roles(&drawn_f, s.gold)));
+                s
+            }
+        };
         if s.tools.len() < slates::TEST_TOOLS {
             bump(&mut drop, "slates of fewer than 7 tools (kept)");
         }
@@ -922,11 +1108,11 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
             "test"
         };
         let text = |x: usize| t.tools[x].tool.option();
-        main.push(record(NAME, &r.id, r, kind, &s, text, &ids));
+        main.push(record(name, &r.id, r, kind, &s, text, &ids));
         let mut rm = rng(&format!("route/{NAME}/masked/{}", r.id));
         let m = slates::masked(&s, |x| t.tools[x].tool.desc.clone(), &mut rm);
         masked.push(record(
-            &format!("{NAME}-masked"),
+            &format!("{name}-masked"),
             &r.id,
             r,
             "masked",
@@ -949,20 +1135,23 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
         }
     }
     let dir = fresh_dir(&o.t4);
+    let stem = o.rule.stem();
     let mut hashes = BTreeMap::new();
     let mut records = BTreeMap::new();
     for (f, recs) in [
-        ("t4_tools.jsonl", &main),
-        ("t4_tools_masked.jsonl", &masked),
+        (format!("{stem}_tools.jsonl"), &main),
+        (format!("{stem}_tools_masked.jsonl"), &masked),
     ] {
-        hashes.insert(f.to_string(), build::write_once(&dir.join(f), recs)?);
-        records.insert(f.to_string(), recs.len());
+        let h = match o.rule {
+            Rule::V4 => build::write_once(&dir.join(&f), recs)?,
+            Rule::V5 => build::write_once(&dir.join(&f), &with_levels(recs, &meta5))?,
+        };
+        hashes.insert(f.clone(), h);
+        records.insert(f, recs.len());
     }
-    hashes.insert(
-        "t4_tools.servers.jsonl".into(),
-        build::write_once(&dir.join("t4_tools.servers.jsonl"), &servers)?,
-    );
-    records.insert("t4_tools.servers.jsonl".into(), servers.len());
+    let sf = format!("{stem}_tools.servers.jsonl");
+    hashes.insert(sf.clone(), build::write_once(&dir.join(&sf), &servers)?);
+    records.insert(sf, servers.len());
 
     // the probe copies' teacher job: every tool a fresh slate shows, its name and description
     // only (4.2; split `fresh-tools`; never a request, never a slate)
@@ -997,7 +1186,7 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
         .iter()
         .filter(|r| r.target.last() == Some(&1.0))
         .count();
-    let counts = json!({
+    let mut counts = json!({
         "about": "s6-route v4 (docs/s6-route4-prereg.md, section 6): the fresh test files, counted before any system reads them",
         "seed": o.seed,
         "rows read by subset": read,
@@ -1017,24 +1206,51 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
         "probe job items (fresh-tools)": items.len(),
         "the rows of the SFT files (toucan-rows)": read_json(&o.t4.join("counts/toucan-rows.json")).unwrap_or(Value::Null),
     });
+    if o.rule == Rule::V5 {
+        let c = counts.as_object_mut().unwrap();
+        c.insert("about".into(), json!("s6-route v5 (docs/s6-route5-prereg.md, section 6): the fresh test files, counted before any system reads them"));
+        let small = c
+            .remove("fewer than 600 slates (6.3: v4 is not trained)")
+            .unwrap_or(Value::Null);
+        c.insert(
+            "fewer than 600 slates (6.3: v5 is not trained)".into(),
+            small,
+        );
+        c.insert("random fill by layer (6.2 item 5)".into(), json!(fill_from));
+        c.insert(
+            "slates by level (6.2 item 5, reported)".into(),
+            json!(by_level),
+        );
+        c.insert(
+            "C6 (reported, not judged: 6.2)".into(),
+            json!({"counts": c6, "share of the drawn slates at L5 or L6": c6.share_l5_l6(),
+                   "above 0.10": c6.share_l5_l6() > v5::C6_BAR}),
+        );
+    }
     let manifest = json!({
-        "about": "s6-route v4: the fresh test files (docs/s6-route4-prereg.md, section 6), hashed before any system reads them",
+        "about": format!("s6-route {}: the fresh test files ({}, section 6), hashed before any system reads them", o.rule.version(), o.rule.prereg()),
         "files": hashes, "records": records, "counts": counts,
     });
-    write_json(&dir.join("FRESH4.json"), &manifest)?;
-    record_files(o.record.as_deref(), &dir, &manifest)?;
+    write_json(&dir.join(o.rule.manifest()), &manifest)?;
+    record_files(o.rule, o.record.as_deref(), &dir, &manifest)?;
     Ok(json!({"files": hashes, "records": records, "counts": counts}))
 }
 
-/// `test-files.json` and `counts.json` in the record folder (`runs/s6-route4`).
-fn record_files(record: Option<&Path>, dir: &Path, manifest: &Value) -> Result<()> {
+/// `test-files.json` and `counts.json` in the record folder (`runs/s6-route4`, `runs/s6-route5`).
+fn record_files(rule: Rule, record: Option<&Path>, dir: &Path, manifest: &Value) -> Result<()> {
     let Some(rd) = record else { return Ok(()) };
     std::fs::create_dir_all(rd)?;
+    let v = rule.version();
+    let run = if rule == Rule::V4 {
+        "s6-route4"
+    } else {
+        "s6-route5"
+    };
     write_json(
         &rd.join("test-files.json"),
         &json!({
-            "about": "s6-route v4: the fresh test files as the build wrote them (docs/s6-route4-prereg.md 6.2, item 6); no system reads them before runs/s6-route4/FRESH-OPEN",
-            "build": dir.join("FRESH4.json"),
+            "about": format!("s6-route {v}: the fresh test files as the build wrote them ({} 6.2, item 6); no system reads them before runs/{run}/FRESH-OPEN", rule.prereg()),
+            "build": dir.join(rule.manifest()),
             "files": manifest["files"],
             "records": manifest["records"],
         }),
@@ -1044,7 +1260,7 @@ fn record_files(record: Option<&Path>, dir: &Path, manifest: &Value) -> Result<(
 }
 
 /// Step 5: the probe copies of 6.4, from the teacher's rewrites of the fresh tools.
-pub fn probes(t4: &Path, seed: u64, record: Option<&Path>) -> Result<Value> {
+pub fn probes(t4: &Path, seed: u64, record: Option<&Path>, rule: Rule) -> Result<Value> {
     let dir = fresh_dir(t4);
     let items: Vec<RewriteItem> = read_lines(&items_path(t4, "rewrite-description"))?;
     let ans_path = answers_path(t4, "rewrite-description");
@@ -1070,13 +1286,29 @@ pub fn probes(t4: &Path, seed: u64, record: Option<&Path>) -> Result<Value> {
     if missing > 0 {
         bail!("{missing} fresh tools without a rewrite: BUILD={} scripts/route-teacher.sh rewrite-description loop", t4.display());
     }
-    let main: Vec<RouteRecord> = read_lines(&dir.join("t4_tools.jsonl"))?;
-    let masked: Vec<RouteRecord> = read_lines(&dir.join("t4_tools_masked.jsonl"))?;
+    let stem = rule.stem();
+    // v5's files carry the level and the roles of every slate (Record5); v4's do not
+    let read5 = |f: &str| -> Result<Vec<Record5>> {
+        Ok(match rule {
+            Rule::V4 => read_lines::<RouteRecord>(&dir.join(f))?
+                .into_iter()
+                .map(|r| Record5 {
+                    r,
+                    cell_level: 0,
+                    roles: Vec::new(),
+                })
+                .collect(),
+            Rule::V5 => read_lines(&dir.join(f))?,
+        })
+    };
+    let main5 = read5(&format!("{stem}_tools.jsonl"))?;
+    let masked5 = read5(&format!("{stem}_tools_masked.jsonl"))?;
     let mut counts = Counts::new();
-    let (mut a, mut b) = (Vec::new(), Vec::new());
-    for (r, m) in main.iter().zip(&masked) {
+    let (mut a, mut b): (Vec<Record5>, Vec<Record5>) = (Vec::new(), Vec::new());
+    for (r5, m5) in main5.iter().zip(&masked5) {
+        let (r, m) = (&r5.r, &m5.r);
         if r.request != m.request {
-            bail!("t4_tools and its masked copy do not hold the same slates");
+            bail!("{stem}_tools and its masked copy do not hold the same slates");
         }
         let g = r
             .target
@@ -1098,12 +1330,12 @@ pub fn probes(t4: &Path, seed: u64, record: Option<&Path>) -> Result<Value> {
         }
         let d =
             cand[Rng::derived(seed, &format!("route/{NAME}-rw/{}", r.request)).below(cand.len())];
-        for (src, dst) in [(r, &mut a), (m, &mut b)] {
+        for (src, dst) in [(r5, &mut a), (m5, &mut b)] {
             let mut x = src.clone();
-            let name = sky_infer::route::option_name(&src.opts[d]).to_string();
-            x.opts[d] = option_text(&name, &text[&src.tools[d]]);
-            x.follow = Some(d);
-            x.src = format!("{}-rw", src.src);
+            let name = sky_infer::route::option_name(&src.r.opts[d]).to_string();
+            x.r.opts[d] = option_text(&name, &text[&src.r.tools[d]]);
+            x.r.follow = Some(d);
+            x.r.src = format!("{}-rw", src.r.src);
             dst.push(x);
         }
         bump(
@@ -1115,15 +1347,25 @@ pub fn probes(t4: &Path, seed: u64, record: Option<&Path>) -> Result<Value> {
         &mut counts,
         format!("fresh tools refused by moderation: {}", refused.len()),
     );
-    let mpath = dir.join("FRESH4.json");
+    let mpath = dir.join(rule.manifest());
     let mut manifest = read_json(&mpath)?;
-    for (f, recs) in [("t4_tools_rw.jsonl", &a), ("t4_tools_masked_rw.jsonl", &b)] {
-        manifest["files"][f] = json!(build::write_once(&dir.join(f), recs)?);
-        manifest["records"][f] = json!(recs.len());
+    for (f, recs) in [
+        (format!("{stem}_tools_rw.jsonl"), &a),
+        (format!("{stem}_tools_masked_rw.jsonl"), &b),
+    ] {
+        let h = match rule {
+            Rule::V4 => {
+                let v: Vec<&RouteRecord> = recs.iter().map(|x| &x.r).collect();
+                build::write_once(&dir.join(&f), &v)?
+            }
+            Rule::V5 => build::write_once(&dir.join(&f), recs)?,
+        };
+        manifest["files"][&f] = json!(h);
+        manifest["records"][&f] = json!(recs.len());
     }
     manifest["counts"]["probe copies (6.4)"] = json!(counts);
     write_json(&mpath, &manifest)?;
-    record_files(record, &dir, &manifest)?;
+    record_files(rule, record, &dir, &manifest)?;
     Ok(json!({"files": manifest["files"], "probe copies": counts}))
 }
 
@@ -1273,6 +1515,7 @@ mod tests {
             t4: t4.clone(),
             seed: T4_SEED,
             record: Some(root.join("runs")),
+            rule: Rule::V4,
         };
         let rep = build_test(&o).unwrap();
         let c = &rep["counts"];
@@ -1348,13 +1591,13 @@ mod tests {
         }
         crate::teacher::route_todo(&ip, &answers_path(&t4, "rewrite-description")).unwrap();
         // the probes need every answer
-        assert!(probes(&t4, T4_SEED, None).is_err());
+        assert!(probes(&t4, T4_SEED, None, Rule::V4).is_err());
         let ans: Vec<Value> = items
             .iter()
             .map(|i| json!({"id": i["id"], "description": format!("Returns {}.", i["name"].as_str().unwrap())}))
             .collect();
         write_jsonl(&answers_path(&t4, "rewrite-description"), &ans).unwrap();
-        probes(&t4, T4_SEED, Some(&root.join("runs"))).unwrap();
+        probes(&t4, T4_SEED, Some(&root.join("runs")), Rule::V4).unwrap();
         let rw: Vec<RouteRecord> = read_lines(&dir.join("t4_tools_rw.jsonl")).unwrap();
         let mrw: Vec<RouteRecord> = read_lines(&dir.join("t4_tools_masked_rw.jsonl")).unwrap();
         assert_eq!(rw.len(), main.len() - none);
@@ -1367,6 +1610,134 @@ mod tests {
         let m = read_json(&dir.join("FRESH4.json")).unwrap();
         assert!(m["files"]["t4_tools_rw.jsonl"].is_string());
         std::fs::remove_dir_all(root).ok();
+    }
+
+    /// s6-route v5 (`docs/s6-route5-prereg.md` 6): the same rows, item 5 by v5's cell; files
+    /// `t5_*` with each slate's level and its options' roles; the probe copies keep them.
+    #[test]
+    fn an_invented_fresh_test_by_v5s_cell() {
+        let root = std::env::temp_dir().join(format!("sky-route-toucan5-{}", std::process::id()));
+        let v2 = root.join("v2");
+        fixture(&v2);
+        run(&v2, 7);
+        let t5 = root.join("t5");
+        invented(&t5);
+        stage(&t5).unwrap();
+        embed(&t5);
+        let o = TestOptions {
+            v2: v2.clone(),
+            t4: t5.clone(),
+            seed: T4_SEED,
+            record: Some(root.join("runs")),
+            rule: Rule::V5,
+        };
+        let rep = build_test(&o).unwrap();
+        let c = &rep["counts"];
+        assert!(c["slates by level (6.2 item 5, reported)"].is_object());
+        assert!(
+            c["C6 (reported, not judged: 6.2)"]["counts"]["drawn slates"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
+        assert!(c["fewer than 600 slates (6.3: v5 is not trained)"].is_boolean());
+        let dir = fresh_dir(&t5);
+        assert!(dir.join("FRESH5.json").exists() && !dir.join("FRESH4.json").exists());
+        let main: Vec<Record5> = read_lines(&dir.join("t5_tools.jsonl")).unwrap();
+        let masked: Vec<Record5> = read_lines(&dir.join("t5_tools_masked.jsonl")).unwrap();
+        assert_eq!(main.len(), 720);
+        let none = main
+            .iter()
+            .filter(|r| r.r.target.last() == Some(&1.0))
+            .count();
+        assert_eq!(none, (main.len() as f64 * 0.2).round() as usize);
+        let tools: Vec<StagedTool> = read_lines(&t5.join("stage/tools.jsonl")).unwrap();
+        let by: HashMap<&str, &StagedTool> =
+            tools.iter().map(|x| (x.tool.id.as_str(), x)).collect();
+        let rows: Vec<ToucanRow> = read_lines(&t5.join("stage/rows.jsonl")).unwrap();
+        let row_of: HashMap<&str, &ToucanRow> = rows.iter().map(|r| (r.id.as_str(), r)).collect();
+        let cuts = surface::Cuts::new(
+            tools
+                .iter()
+                .map(|x| (x.tool.name.as_str(), x.tool.desc.as_str())),
+        );
+        let (mut l0, mut drawn) = (0, 0);
+        for (r, m) in main.iter().zip(&masked) {
+            assert_eq!(r.r.src, "t5-tools");
+            assert_eq!((r.cell_level, &r.roles), (m.cell_level, &m.roles));
+            assert_eq!(r.r.opts.len(), slates::TEST_TOOLS + 1);
+            let src = row_of[r.r.request.as_str()];
+            let gname = &src.target_tools[0];
+            let gold = tools
+                .iter()
+                .find(|x| &x.tool.name == gname && x.servers.contains(&src.server))
+                .unwrap();
+            let gk = cuts.key(&gold.tool.name, &gold.tool.desc);
+            for (id, role) in r.r.tools.iter().zip(&r.roles) {
+                let x = by[id.as_str()];
+                // the tools of the gold's server are exempt; the others drawn within the cell
+                let own = x.servers.contains(&src.server);
+                if role == v5::RIGHT {
+                    continue;
+                }
+                assert_eq!(role == v5::EXEMPT, own, "{}", r.r.uid);
+                if role == v5::DRAWN && r.cell_level < surface::L6 {
+                    let xk = cuts.key(&x.tool.name, &x.tool.desc);
+                    assert!(surface::matches(gk, xk, r.cell_level), "{}", r.r.uid);
+                    drawn += 1;
+                }
+            }
+            l0 += (r.cell_level == 0) as usize;
+        }
+        assert!(drawn > 100 && l0 > 0, "{drawn} {l0}");
+        // written once
+        assert_eq!(build_test(&o).unwrap()["files"], rep["files"]);
+        // the probe copies keep the level and the roles
+        let ip = items_path(&t5, "rewrite-description");
+        let items: Vec<Value> = read_lines(&ip).unwrap();
+        let ans: Vec<Value> = items
+            .iter()
+            .map(|i| json!({"id": i["id"], "description": format!("Returns {}.", i["name"].as_str().unwrap())}))
+            .collect();
+        write_jsonl(&answers_path(&t5, "rewrite-description"), &ans).unwrap();
+        probes(&t5, T4_SEED, Some(&root.join("runs")), Rule::V5).unwrap();
+        let rw: Vec<Record5> = read_lines(&dir.join("t5_tools_rw.jsonl")).unwrap();
+        assert_eq!(rw.len(), main.len() - none);
+        assert!(rw
+            .iter()
+            .all(|r| r.r.follow.is_some() && r.roles.len() == r.r.tools.len()));
+        let m = read_json(&dir.join("FRESH5.json")).unwrap();
+        assert!(m["files"]["t5_tools_masked_rw.jsonl"].is_string());
+        let tf = read_json(&root.join("runs/test-files.json")).unwrap();
+        assert!(tf["about"]
+            .as_str()
+            .unwrap()
+            .contains("runs/s6-route5/FRESH-OPEN"));
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn the_parquet_files_are_hash_checked_against_the_manifest() {
+        let d = std::env::temp_dir().join(format!("sky-route-manifest-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("train-00000-of-00003.parquet");
+        std::fs::write(&p, b"parquet bytes").unwrap();
+        let m = d.join("MANIFEST4.json");
+        let entry = |bytes: u64, sha: &str| json!({"files": [{"file": "SFT/train-00000-of-00003.parquet", "bytes": bytes, "sha256": sha}]});
+        let h = sha256_file(&p).unwrap();
+        write_json(&m, &entry(13, &h)).unwrap();
+        let c = check_manifest(std::slice::from_ref(&p), &m).unwrap();
+        assert_eq!(c["files"]["train-00000-of-00003.parquet"]["sha256"], h);
+        write_json(&m, &entry(13, "00")).unwrap();
+        assert!(check_manifest(std::slice::from_ref(&p), &m).is_err());
+        write_json(&m, &entry(12, &h)).unwrap();
+        assert!(check_manifest(std::slice::from_ref(&p), &m).is_err());
+        let q = d.join("other.parquet");
+        std::fs::write(&q, b"x").unwrap();
+        write_json(&m, &entry(13, &h)).unwrap();
+        assert!(check_manifest(&[p, q], &m).is_err());
+        assert!(check_manifest(&[], &m).is_err());
+        std::fs::remove_dir_all(d).ok();
     }
 
     /// The bytes of v4's fresh test of the invented Toucan (the four test files, the servers
@@ -1388,6 +1759,7 @@ mod tests {
             t4: t4.clone(),
             seed: T4_SEED,
             record: None,
+            rule: Rule::V4,
         })
         .unwrap();
         let items: Vec<Value> = read_lines(&items_path(&t4, "rewrite-description")).unwrap();
@@ -1396,7 +1768,7 @@ mod tests {
             .map(|i| json!({"id": i["id"], "description": format!("Returns {}.", i["name"].as_str().unwrap())}))
             .collect();
         write_jsonl(&answers_path(&t4, "rewrite-description"), &ans).unwrap();
-        probes(&t4, T4_SEED, None).unwrap();
+        probes(&t4, T4_SEED, None, Rule::V4).unwrap();
         let mut got = Vec::new();
         for f in [
             "fresh/t4_tools.jsonl",

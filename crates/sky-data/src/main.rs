@@ -243,6 +243,39 @@ enum RouteStep {
         #[arg(long)]
         provisional: bool,
     },
+    /// s6-route v5 (docs/s6-route5-prereg.md, section 4, amendment 1), step 2 (after
+    /// scripts/route-embed.py --requests): from v2's build (read only, its split recomputed and
+    /// checked) and v4's rewrites, the plan of v5 (<out>/stage/plan5.jsonl: every slate within
+    /// the right tool's surface cell at its level, the hard slates the 16 candidates nearest to
+    /// the request), v5_tools and v5_tools_masked (seed 1238), the counts by group, kind, split
+    /// and level (<out>/counts/v5-plan.json, read by scripts/s6-route5-checks.py --plan for C6),
+    /// and the false-negative items, staged (<out>/stage/false-negatives5.items.jsonl).
+    /// `--seed` is v2's (1234).
+    V5Plan {
+        /// v2's build folder (read only).
+        #[arg(long)]
+        v2: PathBuf,
+        /// v4's build folder (read only: its rewrites).
+        #[arg(long)]
+        v4: PathBuf,
+        /// v5's build folder.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// s6-route v5, step 4 (after BUILD=<out> scripts/route-teacher.sh false-negatives): the
+    /// false-negative filter, the records of every kind (<out>/records/<group>/{train,val}.jsonl,
+    /// with cell_level and the roles of the options), the probe copies and the model's copies.
+    V5Slates {
+        #[arg(long)]
+        v2: PathBuf,
+        #[arg(long)]
+        v4: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// Without every false-negative answer (never trained on outside a smoke run).
+        #[arg(long)]
+        provisional: bool,
+    },
     /// s6-nano v3 (docs/s6-nano3-prereg.md, section 4): the fresh test files, from v2's build
     /// (read only; its split recomputed and checked against its test files) into --out, written
     /// once, with FRESH.json (hashes and counts). Needs `--seed 1235`.
@@ -273,6 +306,10 @@ enum RouteStep {
         /// The Toucan folder.
         #[arg(long)]
         out: PathBuf,
+        /// s6-route v5 (docs/s6-route5-prereg.md 6): the manifest of the fetch
+        /// (<data>/MANIFEST4.json) every input is hash-checked against before it is read.
+        #[arg(long)]
+        manifest: Option<PathBuf>,
     },
     /// s6-route v4 (6.1): the structure of the SFT files only (columns, types, subsets,
     /// skeletons of target_tools and tools, uuids, qualifying rows); no text is printed.
@@ -295,9 +332,13 @@ enum RouteStep {
         v2: PathBuf,
         #[arg(long)]
         t4: PathBuf,
-        /// Where test-files.json and counts.json go (runs/s6-route4).
+        /// Where test-files.json and counts.json go (runs/s6-route4, runs/s6-route5).
         #[arg(long)]
         record: Option<PathBuf>,
+        /// The rule of 6.2, item 5: v4 (files t4_*) or v5 (docs/s6-route5-prereg.md 6: the
+        /// fill within v5's surface cell, files t5_*).
+        #[arg(long, default_value = "v4")]
+        rule: String,
     },
     /// s6-route v4 (6.4), fresh test step 5 (after BUILD=<t4> scripts/route-teacher.sh
     /// rewrite-description): the probe copies t4_tools_rw and t4_tools_masked_rw, written once.
@@ -307,6 +348,9 @@ enum RouteStep {
         t4: PathBuf,
         #[arg(long)]
         record: Option<PathBuf>,
+        /// v4 (t4_*) or v5 (t5_*).
+        #[arg(long, default_value = "v4")]
+        rule: String,
     },
     /// <out>/BUILD.json: inputs, counts, hashes, the test files' hashes, the head window.
     Manifest {
@@ -1178,6 +1222,42 @@ fn main() -> Result<()> {
                         provisional,
                     })?
                 }
+                RouteStep::V5Plan { v2, v4, out } => {
+                    use sky_data::route::v5;
+                    if cli.seed != sky_data::route::v4::V2_SEED {
+                        anyhow::bail!(
+                            "v5 keeps v2's streams: --seed {}",
+                            sky_data::route::v4::V2_SEED
+                        );
+                    }
+                    v5::plan(&v5::PlanOptions {
+                        v2,
+                        v4,
+                        out,
+                        seed: cli.seed,
+                    })?
+                }
+                RouteStep::V5Slates {
+                    v2,
+                    v4,
+                    out,
+                    provisional,
+                } => {
+                    use sky_data::route::v5;
+                    if cli.seed != sky_data::route::v4::V2_SEED {
+                        anyhow::bail!(
+                            "v5 keeps v2's streams: --seed {}",
+                            sky_data::route::v4::V2_SEED
+                        );
+                    }
+                    v5::slates(&v5::SlatesOptions {
+                        v2,
+                        v4,
+                        out,
+                        seed: cli.seed,
+                        provisional,
+                    })?
+                }
                 RouteStep::Fresh {
                     build,
                     out,
@@ -1202,16 +1282,35 @@ fn main() -> Result<()> {
                         record,
                     })?
                 }
-                RouteStep::ToucanRows { input, out } => {
-                    sky_data::route::toucan::rows(&input, &out)?
+                RouteStep::ToucanRows {
+                    input,
+                    out,
+                    manifest,
+                } => {
+                    let checked = match &manifest {
+                        Some(m) => Some(sky_data::route::toucan::check_manifest(&input, m)?),
+                        None => None,
+                    };
+                    let mut c = sky_data::route::toucan::rows(&input, &out)?;
+                    if let Some(x) = checked {
+                        c["hash check (docs/s6-route5-prereg.md 6)"] = x;
+                    }
+                    c
                 }
                 RouteStep::ToucanSchema { input } => sky_data::route::toucan::schema(&input)?,
                 RouteStep::ToucanStage { t4 } => sky_data::route::toucan::stage(&t4)?,
-                RouteStep::Toucan { v2, t4, record } => {
+                RouteStep::Toucan {
+                    v2,
+                    t4,
+                    record,
+                    rule,
+                } => {
                     use sky_data::route::toucan as tc;
+                    let rule = tc::Rule::parse(&rule)
+                        .ok_or_else(|| anyhow::anyhow!("--rule {rule}: v4 or v5"))?;
                     if cli.seed != tc::T4_SEED {
                         anyhow::bail!(
-                            "the fresh test of v4 is built with --seed {} (docs/s6-route4-prereg.md 6.2)",
+                            "the fresh test is built with --seed {} (docs/s6-route4-prereg.md 6.2; docs/s6-route5-prereg.md 6)",
                             tc::T4_SEED
                         );
                     }
@@ -1220,17 +1319,20 @@ fn main() -> Result<()> {
                         t4,
                         seed: cli.seed,
                         record,
+                        rule,
                     })?
                 }
-                RouteStep::ToucanProbes { t4, record } => {
+                RouteStep::ToucanProbes { t4, record, rule } => {
                     use sky_data::route::toucan as tc;
+                    let rule = tc::Rule::parse(&rule)
+                        .ok_or_else(|| anyhow::anyhow!("--rule {rule}: v4 or v5"))?;
                     if cli.seed != tc::T4_SEED {
                         anyhow::bail!(
-                            "the probe copies of v4 are built with --seed {} (docs/s6-route4-prereg.md 6.4)",
+                            "the probe copies are built with --seed {} (docs/s6-route4-prereg.md 6.4)",
                             tc::T4_SEED
                         );
                     }
-                    tc::probes(&t4, cli.seed, record.as_deref())?
+                    tc::probes(&t4, cli.seed, record.as_deref(), rule)?
                 }
                 RouteStep::Manifest {
                     data,
