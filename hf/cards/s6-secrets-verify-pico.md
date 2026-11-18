@@ -107,6 +107,10 @@ read; full-universe numbers in BENCH.md):
 - **Badly:** not 0.15 above the rules on every repository, which is what its gate asked. Its
   weakest category is API keys (line F1 0.541, where cbx-17M is at 0.898); on the issue reports
   cbx-17M is better (0.8616 against 0.8162).
+- **Most of its API misses are not its own.** A later diagnosis
+  ([`docs/s6-secrets4-diagnosis.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets4-diagnosis.md),
+  18/11/2026, no model run) found that most missed API lines get no candidate from the rules, so
+  no verifier can recover them; no number on this card changes.
 - **It only judges what the rules propose.** On the test repositories the generator overlaps
   0.9260 of the gated positive rows: its misses are misses of the model.
 - **On unlabelled lines** (lines CredData never judged) it accepts 99.7 candidates per 1,000 test

@@ -655,7 +655,7 @@ The announced goal (G2 at −0.05) is met; it is not a gate and changes nothing.
   | cbx-17M | 0.904 | 0.929 | 0.266 | 0.945 | 0.898 | 0.936 | 0.876 | 0.634 | 0.880 |
   | logistic regression | 0.689 | 0.746 | 0.795 | 0.909 | 0.358 | 0.837 | 0.854 | 0.842 | 0.567 |
 
-  The model's weakest category is API (0.541), where cbx-17M is at 0.898; cbx-17M's weakest is Key (0.266), where the model is at 0.864.
+  The model's weakest category is API (0.541), where cbx-17M is at 0.898; cbx-17M's weakest is Key (0.266), where the model is at 0.864. A diagnosis made afterwards, [`docs/s6-secrets4-diagnosis.md`](docs/s6-secrets4-diagnosis.md) (18/11/2026, a further look at the test, no model run), found that most of the missed API lines never reach the verifier, because the candidate generator proposes nothing on them (nearly all in one test repository, whose values are quoted strings holding escaped quotes), so a version aimed at this category cannot close G1, and most of the gap lies in the false positives of the Key category; no number above changes.
 - **The UUID rows** were removed from the gated universe by a choice made after reading training and validation rows and before any test file; the full-universe numbers are in the tables above (model line F1 0.8153 against 0.6948 for Betterleaks).
 - **The deviation of amendment 4** (one test meta file seen before training) is above.
 - **CredSweeper's ML was trained on a random 85% of all CredData lines**, so its CredData numbers (line F1 0.9935) are in sample and enter no gate. On the issue reports, out of sample, its candidate F1 is 0.4919.
