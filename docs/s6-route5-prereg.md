@@ -603,4 +603,136 @@ it would have is not known, since no model was trained.
 
 ## 18. Amendments
 
-None.
+**Amendment 1 (18/11/2026, decided by the lead, before any build of v5).** At the freeze, the
+group with the smallest pools (the intents) could fail C6 on arithmetic alone, before any slate
+existed. A design that stops on arithmetic known in advance is corrected before the build. This
+amendment changes:
+
+- the minimum number of candidates for the intents group;
+- when C6 is computed;
+- the costs, the code and the meaning of a failure.
+
+Nothing else changes.
+
+**What was looked at.**
+
+- **The feasibility count.** `scripts/s6-route5-cells.py`, standard library, run once; its output
+  is `runs/s6-route5/cells.json`.
+- **What it reads:** the pools only, read-only in `<data>/s6-route/`:
+  - v2's stage tool table (`build/stage/tools.jsonl`);
+  - the intents' files (`build/teacher/describe-intent*.jsonl`);
+  - v2's and v4's rewrite items and answers (`build/teacher/` and `build4/teacher/`);
+  - v2's aggregate request counts per group, split and source (`build/counts/split.json`).
+
+  The stage tool table also lists test tools: only the 27,950 tools of the pools are kept, and no
+  test tool enters a count.
+- **What it does not read:** any request, any slate, any test or fresh file, Toucan's rows. No
+  slate of v5 was built, no request was embedded, no teacher call was made and no model was run.
+- **When this amendment was written.** It was written after v4's table had been seen, where the
+  intents' hard cells failed R11 (the shortest name), and from this count alone.
+
+**The count** (expected candidates under D1: each tool anchors in its original and its rewritten
+text with weight ½, each candidate counts ½ per text; anchors weigh alike; the kind's distractor
+filter is not applied, so the counts are an upper bound):
+
+| pool | tools | non-empty cells, original / rewrite | min 16: by L4 | min 16: L5 or L6 | min 8: L5 or L6 | min 4: L5 or L6 |
+|---|---:|---:|---:|---:|---:|---:|
+| tools, training (also When2Call training) | 26,221 | 1,223 / 793 | 1.0000 | 0.0000 | 0.0000 | 0.0000 |
+| tools, validation | 1,606 | 528 / 438 | 0.9975 | 0.0025 | 0.0012 | 0.0000 |
+| tools, validation, originals only (`v5_tools`) | 1,606 | 528 / – | 0.9975 | 0.0025 | 0.0000 | 0.0000 |
+| When2Call, validation (training and validation pools) | 27,827 | 1,236 / 798 | 1.0000 | 0.0000 | 0.0000 | 0.0000 |
+| intents, Banking77 (training and validation) | 77 | 32 / 35 | 0.8636 | 0.1364 | 0.0260 | 0.0065 |
+| intents, MASSIVE (training and validation) | 46 | 16 / 21 | 0.7609 | 0.2391 | 0.0761 | 0.0000 |
+
+- **The levels at a minimum of 16:**
+  - tools training: L0 0.8491, L1 0.1322, L2 0.0115, L3 0.0062, L4 0.0010;
+  - tools validation: L0 0.0567, L1 0.5290, L2 0.2786, L3 0.0660, L4 0.0672, L6 0.0025;
+  - Banking77: L1 0.1039, L2 0.1948, L3 0.5649, L5 0.0779, L6 0.0584;
+  - MASSIVE: L1 0.3913, L2 0.0978, L3 0.2717, L5 0.0109, L6 0.2283.
+
+  Every minimum from 4 to 16 is in `cells.json`.
+- **The pools by split.** They follow the split of each tool's rewrite item, which gives 26,221
+  training and 1,606 validation tools where v2's counts give 26,277 and 1,550. The 56 tools apart
+  are, by inference, training-pool golds of When2Call validation requests: When2Call's validation
+  pool is both, so they belong to it either way.
+- **A correction of §11.** The intents' training pools are Banking77 (77 intents) and MASSIVE (46
+  intents outside its four held-out scenarios). CLINC150 is not a training source. §11's "at most
+  150 intents per source (287 intent descriptions in all)" counted CLINC150's 150 and MASSIVE's
+  held-out intents.
+
+**The decisions.**
+
+1. **C6 moves to plan time** (the lead's decision a).
+   - **Before:** §4.4 ran C6 first among the checks, but after the build, so after the
+     false-negative job.
+   - **The new order of the stages:** `embed-requests`, `plan`, **C6**, the false-negative teacher
+     job, `build`, then C1 to C5 and N1 to N5.
+   - **C6 at plan time** reads the levels of the planned drawn slates (the plan's counts by group,
+     kind, split and level), with the bar of §4.4: at most 0.10 at L5 or L6 in every judged cell. It
+     needs no teacher answer. If it fails, v5 stops before any teacher call.
+   - **Levels can rise after the false-negative replacements.** A replacement comes from the
+     slate's own level. When those candidates are used up, it comes from the next level, and the
+     slate's level becomes the highest level any of its drawn distractors came from. A request that
+     the teacher drops leaves the count.
+   - **C6 is therefore confirmed after the build,** with the same bar on the final levels. If it
+     fails there, v5 stops before training, as §4.4 says.
+2. **The minimum number of candidates, by group** (the lead's decision b).
+   - **Tools and When2Call: 16, as frozen.** The count shows at least 0.9975 of their pool tools
+     reaching it by L4, above the 0.90 the lead asked.
+   - **Intents: the number of distractors the slate draws, plus 3.** The draw includes D5's extra
+     distractor for a removed slate, so the minimum runs from 4 (one drawn distractor) to 10 (a
+     removed renamed slate, seven). The widening order L0 to L6 is unchanged. In the count no
+     intents anchor is first matched at L4.
+   - **Why:** a fixed 16 is out of reach in pools of 77 and 46 (L5 or L6 on 0.1364 and 0.2391 of
+     the anchors). A fixed 4 cannot fill a slate that draws 5 to 7 distractors. Three spare
+     candidates leave each draw a choice.
+   - **The expected share of intents slates at L5 or L6 under this minimum,** by cell, the sources
+     weighted by v2's requests:
+
+     | kind | training | validation |
+     |---|---:|---:|
+     | natural | 0.0214 | 0.0236 |
+     | hard | 0.0214 | 0.0236 |
+     | removed | 0.0295 | 0.0330 |
+     | renamed (6 or 7 drawn distractors) | 0.0593 | 0.0711 |
+
+     MASSIVE alone gives 0.0254, 0.0357 and 0.0804; Banking77 alone 0.0162, 0.0213 and 0.0312.
+3. **The intents fall-back is not triggered** (the lead's decision c).
+   - **The condition** was that the count shows the intents group cannot hold C6 at 0.10. It does
+     not: every intents cell is expected at 0.0214 to 0.0711. C6 is therefore judged in every judged
+     cell, the intents' included.
+   - **The margin is small.** The largest expected share, 0.0711 in the renamed validation cell, is
+     0.029 below the bar, and the count is an upper bound on the candidates: the distractor filter
+     (the gold's cluster) and an uneven use of intents as golds can both raise the share.
+   - **What is not adopted.** The pre-written consequence of decision c is not adopted: C6
+     reported in the intents' cells, and the intents group dropped from training and validation if a
+     blind rule failed in an intents cell and in no other. Had it been triggered, it would have
+     removed 89,051 of the 178,855 training slates of v4's size (0.498, counted from v4's C3
+     table). Any reading of T2-clinc or T2-massive would then have been outside every training
+     family; v5's evaluation (§7) reads neither.
+   - **A blind rule that fails in an intents cell** stops v5 as anywhere else (§4.4). No other
+     remedy.
+4. **The costs.**
+   - The count: 10 s of CPU, done.
+   - C6 at plan time: about 1 min.
+   - The false-negative job (about 3,465 calls) runs only if C6 holds at plan time. A stop there
+     costs no teacher call and no GPU minute.
+   - Everything else as §13.
+5. **The code** (§14, items 3, 5 and 6).
+   - `sky-data route v5-plan` writes each planned slate's level and the counts by group, kind,
+     split and level, with the minimum by group (16; for the intents the drawn distractors plus 3).
+   - `scripts/s6-route5-checks.py --plan` reads those counts and judges C6 (exit 2 above the bar).
+     The same script confirms C6 on the built records.
+   - `scripts/build-route5-data.sh` gains the stage `c6` between `plan` and `teacher-jobs`; the
+     stage `teacher-jobs` refuses to run without `c6`'s marker.
+   - The tests: the minimum of an intents slate is its drawn distractors plus 3; a replacement
+     taken from the next level raises the slate's level; C6 at plan time and after the build read
+     the same bar.
+6. **What a failure would mean** (§11), in place of its point on C6.
+   - **C6 fails at plan time.** In at least one judged cell more than 10% of the drawn slates
+     cannot be matched to their cell beyond L4, even with the intents' smaller minimum. v5 stops
+     before any teacher call, and the plan's counts by level are published. A coarser cell would
+     need its own pre-registration.
+   - **C6 fails only after the build.** The false-negative replacements pushed slates out of their
+     cells. v5 stops before training, and the counts are published with the teacher's
+     replacements.
