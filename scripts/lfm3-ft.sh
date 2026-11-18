@@ -38,8 +38,8 @@ case "$MODE" in local | hf) ;; *) echo "MODE must be local or hf, not '$MODE'" >
 BASE=LiquidAI/LFM3-1.7B
 WORK=${WORK:-maxgfr/skycmd-lfm3-ft-work}
 FT_REPO=${FT_REPO:-maxgfr/skycmd-lfm3-1.7b-s1}
-# Recopied from the smoke by a dated amendment of docs/lfm3-ft-prereg.md (§10); empty until then.
-BASE_REV_PINNED=""
+# Recopied from the smoke by a dated amendment of docs/lfm3-ft-prereg.md (§10): amendment 7, 18/11/2026.
+BASE_REV_PINNED="1da06bec6a819da10b54c67e5c90972b46d81871"
 ENGINE_PINNED=""
 BASE_REV=${BASE_REV:-$BASE_REV_PINNED}
 ENGINE=${ENGINE:-$ENGINE_PINNED}

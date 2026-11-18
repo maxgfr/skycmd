@@ -200,3 +200,80 @@ Total estimé : **environ 18 $**, au plus 36 $. Les prix sont ceux de `hf jobs h
 - **If the conversion check of amendment 1 says "converted"** (the local conversion of the base disagrees with the published 4-bit file on more than 4 of the 20 questions): the base is evaluated again **in s1 only**, with the local conversion, on the calibration, the test and the 500 MMLU-Pro questions, so that G1 and G3 compare the fine-tuned model with a base on the same conversion (about 2,100 answers, two to three working hours more). System 2 of the pair stays the published base and its generations of `runs/lfm3-s1s2`: it is the untouched model that a user would call, and no System 2 generation is run again. The report says which conversion each number comes from. Amendment 1's full re-evaluation in the three modes is not run.
 - **Two guards added by the review, which change no number:** the pair is refused unless each of its six files holds exactly the questions of its split, once each, in its own mode; a fine-tuning that has ended is never run again by a second launch of the step (its result file is the completion mark).
 - **What does not change:** everything else of amendment 5.
+
+**Amendment 7 (18/11/2026, after the smoke, before any other step: no training and no evaluation exist, and the smoke read calibration questions only). The pinned revision, the versions, and the smoke's verdict: no LoRA method fits the M5 within its memory bound, so amendment 1's rule 3 applies and nothing is trained.**
+
+- **The first failure of 18/11.** The first smoke stopped at once: `modeling_lfm3.py`, the base model's custom code at revision `1da06bec`, imports `use_kernel_func_from_hub_with_fallback` from `transformers.integrations`, and transformers 5.12.1, the version §4 pinned, has no such name (`runs/all/queue-30-lfm3-smoke.log`).
+- **The revision: `1da06bec6a819da10b54c67e5c90972b46d81871`.** It is the `main` of `LiquidAI/LFM3-1.7B` that the smoke resolved, and the last of the repository's seven revisions (27/10 to 09/11/2026; Hub API, 18/11).
+  - The seven are identical except for their model card: the custom code (`modeling_lfm3.py`, `configuration_lfm3.py`, `lfm3_conv.py`), `config.json`, the tokenizer, the chat template, `LICENSE` and the weights (one `model.safetensors`, 3,457,635,448 bytes, the same file at every revision).
+  - So no older revision runs under 5.12.1: the rule written for this case (keep the versions, pin the last revision whose code imports under them) had no candidate. The revision was pinned and the versions moved.
+  - The `0dc4268b` of §2 and §4 has the same code and weights. The licence is the LFM Open License v1.0, unchanged at every revision.
+  - The published `LiquidAI/LFM3-1.7B-MLX-4bit` (`deb2986b`, the base of `runs/lfm3-s1s2`) names `LiquidAI/LFM3-1.7B` as its base without a revision. Since the bf16 weights never changed, it can only come from these weights, and the conversion check below agrees.
+- **The versions: transformers 5.18.0 instead of 5.12.1, nothing else.** 5.12.1 also lacks `force_accelerate_hooks` and `create_recurrent_attention_mask`, which the custom code imports.
+  - 5.15.0 is the first release that exports all three names. But from 5.15.0 to 5.17.0 transformers renames the `conv` layers of custom-code configurations to `linear_attention`, and LFM3's forward then fails (`KeyError`). These releases were checked on a reduced LFM3 built from the custom code.
+  - 5.18.0 is the lowest release that works. With torch 2.14.0, peft 0.21.2, trl 1.17.1 and accelerate 1.15.0 unchanged (tokenizers moves to 0.23.1 or later with it), it passed three checks:
+    - the reduced model's forward and loss;
+    - the full model loaded on CPU (1,728,801,536 parameters) with the chat template, thinking on and off;
+    - a coherent greedy answer.
+  - transformers only includes LFM3 itself from 5.23.0. The mlx-vlm environment is unpinned, as in `scripts/lfm3-s1s2.sh`, and resolved transformers 5.23.0, mlx 0.32.4 and mlx-vlm 0.7.11.
+  - `scripts/lfm3-ft.sh` changes its `py_lora` line and `BASE_REV_PINNED`. MODE=hf, retired by amendment 1, keeps its first pins: it could not load this revision, and it is not used.
+- **The memory bound, set before the run that decides (owner's instruction of 18/11/2026).** Each batch size is tried in its own process, which `experiments/lfm3-ft/local.py` (`guarded`) stops at once when either of two limits is passed:
+  - the swap in use passes 3 GB;
+  - the 1-minute load passes 8.
+
+  Such a batch "does not fit in memory" in amendment 1's sense, and its fallback follows: batches of 4 with accumulation 8.
+  - An attempt starts only once the swap is back under 2 GB, and waits at most 20 minutes for it. macOS gives back the swap of the other applications slowly.
+  - MPS is capped at its recommended working set (`PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.0`, `PYTORCH_MPS_LOW_WATERMARK_RATIO=0.8`: 11.84 GiB on this Mac). Without the cap, a batch that does not fit swaps instead of raising.
+  - The bound reads the whole machine, the owner's applications included: it says what fits on this Mac while it is used, not what a free 16 GB Mac could hold.
+- **The runs of 18/11, in order** (logs in `runs/lfm3-ft/smoke-attempts/`):
+  1. **18:40.** peft at batch 8 swapped while a macOS update was being staged on the same volume, and the free disk fell to 183 MB. The run was stopped. From then on the smoke deletes the smoke's merged weights once they have reloaded, keeping their size and sha256.
+  2. **18:45.** MPS refused every allocation: the default low watermark (1.4) was above the new cap. Both are now set.
+  3. **18:45 to 19:07, with the MPS cap only.**
+     - peft at batch 8 ran out of MPS memory in its first step: 11.62 GiB allocated, 11.84 allowed.
+     - At batch 4, the first step ended: 59 s, MPS driver peak 10.1 GB. The second, with the optimizer's state, ran out of memory: 11.54 GiB.
+     - The swap reached 12.7 GB.
+  4. **19:07.** mlx-vlm at batch 8 (rule 2) has no hard cap. The swap went from 8 to 12.3 GB in a minute, and the machine, also loaded by other work, restarted.
+  5. **20:10.** With a first guard (swap growth over 6 GB), peft at batch 8 pushed the swap from 0 to 4.7 GB in 15 s. The owner's work lagged, and the run was stopped.
+  6. **21:11, with the bound above.**
+     - Batch 8 was stopped at 3.4 GB of swap in 13 s.
+     - Batch 4 was stopped at once: the swap had not come back down.
+     - The parent process also held a copy of the model. The module names are now read from the custom code built on the meta device, which loads no weights, and an attempt waits for the swap to settle.
+     - The run was stopped and does not count.
+  7. **21:16 to 21:39, the run that decides** (`runs/lfm3-ft/smoke.log`, `smoke/report.json`, `smoke/lora.json`, `smoke/mlx-lora.json`, `smoke-watch.log`).
+- **What the smoke of 21:16 measured.**
+  - The revision above; the chat template, thinking on and off.
+  - The LoRA names are exactly §4's ten (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `w1`, `w2`, `w3`, `in_proj`, `out_proj`, on the loaded custom code; `lora_targets_match`).
+  - **peft on MPS** (rule 1). Each attempt was stopped by the bound 14 to 19 s after it started, before any optimizer step could end (one step took 59 s in run 3):
+    - batch 8: swap 1.87 to 3.51 GB in 14 s, free memory down to 4 %;
+    - batch 4: after 510 s of waiting for the swap, 1.91 to 3.44 GB in 19 s, 7 %.
+  - **The LoRA trainer of mlx-vlm** (rule 2, same hyperparameters, `smoke-mlx-lora`). Both attempts were stopped the same way:
+    - batch 8: after 90 s, 1.98 to 3.43 GB in 15 s, 16 %;
+    - batch 4: after 350 s, 2.05 to 3.08 GB in 14 s, 2 %.
+  - The 1-minute load stayed under 2.9 during the attempts and under 3.7 over the whole run. No optimizer step ended, so the prompt mask, two finite losses, the merge and the reload were not reached by either method.
+  - **The conversion check** passed: 1.0 agreement on the first 64 tokens and 1.0 on the answers, over 20 calibration questions in s1 (bar: 0.8 and 0.8). The local conversion is `mlx_vlm.convert -q --q-bits 4 --q-mode affine` of the bf16 weights at `1da06bec`.
+    - This is the first case of amendment 6: the published 4-bit base is the reference, and its generations of `runs/lfm3-s1s2` are reused. The same check gave 1.0 and 1.0 at 19:05 (run 3).
+  - **Speeds of the published base** on the M5, without the brake's rests: s1 at 110 tokens/s (20 questions), s2-256 at 98 tokens/s (4 questions). Run 3 gave 99 and 93.
+  - **Cost of the run of 21:16.**
+    - 23 minutes in all, of which 16 waiting for the swap to settle, about 1 minute in the four attempts and about 4 in the conversion check.
+    - The battery went from 80 % to 71 % (the Mac was on battery and in use).
+- **The decision, by amendment 1's rule: rule 3.**
+  - Neither peft on MPS nor mlx-vlm validated the points of the rule within the memory bound, at 8 or at 4 examples per batch. So nothing is trained, and `sft`, `eval`, `route` and `gate` are not run.
+  - `smoke/report.json` says `lora_method: null`. `scripts/lfm3-ft.sh sft` refuses to start (`lora_settings`).
+  - Any other choice needs a new amendment written before it runs: a looser bound, a Mac left free, a shorter maximum length, smaller batches with more accumulation, or remote compute.
+  - The report says G1 and G3 are not read.
+- **Working minutes that remain, if a later amendment selects a method.** These are estimates, with the brake's rests not counted:
+  - `sft` cannot be estimated from this smoke, because no step ended under the bound. Run 3, without the bound, did one step of 4 examples of 2,048 tokens in 59 s with peft. 188 steps of 8 such batches would take at most about 25 hours, and much less at the real lengths of the examples.
+  - `eval`: the fine-tuned model in s1 on about 2,100 questions, about 3 hours at 110 tokens/s and the base's 559 tokens per answer, less if the answers are shorter. The base in s1 on the 500 MMLU-Pro questions, about 45 minutes.
+  - `route` and `gate`: a few minutes of CPU.
+- **Deviations from what the earlier amendments said the smoke would do.**
+  - Rule 2 (mlx-vlm) was not in the smoke's code. It was written for this smoke (`smoke-mlx-lora`) with the hyperparameters of §4:
+    - LoRA r 32, alpha 64, dropout 0.05, on the same ten projections;
+    - AdamW at lr 1e-4, cosine, warmup 3 %, no weight decay, gradients clipped at norm 1.0;
+    - completion-only loss, gradient checkpointing, length 2,048.
+  - Each batch size runs in a child process under the bound above.
+  - A step's time is measured without the brake's rests.
+  - The module names are read on the meta device.
+  - The smoke's merged weights are deleted once reloaded (not reached on 18/11).
+  - transformers 5.18.0 instead of 5.12.1.
+  - `smoke-mlx` generates without the brake's rests, as before.
+- **What does not change:** everything else: the base model, the data, the hyperparameters, the gates, the verdict, the test read once, and §9.

@@ -299,8 +299,8 @@ Commercial use only within the license's revenue threshold.
 
 | dataset / model | license | revision | how it is used | rows |
 |---|---|---|---|---:|
-| LiquidAI/LFM3-1.7B-MLX-4bit | LFM Open License v1.0 (`lfm1.0`) | `deb2986b` | the local smoke test of the router only (mlx-vlm 0.7.11); the run itself moved to bf16 (amendment 1) | — |
-| LiquidAI/LFM3-1.7B | LFM Open License v1.0 (`lfm1.0`), custom code (`trust_remote_code`) | pinned by `lfm3-ft.sh smoke`, then by an amendment of `docs/lfm3-ft-prereg.md` | bf16 base model: router run, self-distillation samples, LoRA fine-tuning (planned); derived weights private | — |
+| LiquidAI/LFM3-1.7B-MLX-4bit | LFM Open License v1.0 (`lfm1.0`) | `deb2986b9660c15ff7dd4c2bb1211ce3bbb814d4` | the router run on the M5 (mlx-vlm 0.7.11, `docs/lfm3-s1s2-prereg.md` amendment 2), and the base of the fine-tune's evaluation: the smoke's conversion check of 18/11/2026 agreed with the local conversion of the bf16 weights on 20 of 20 calibration questions (`docs/lfm3-ft-prereg.md`, amendment 7) | — |
+| LiquidAI/LFM3-1.7B | LFM Open License v1.0 (`lfm1.0`), custom code (`trust_remote_code`), unchanged at every revision | `1da06bec6a819da10b54c67e5c90972b46d81871` (`docs/lfm3-ft-prereg.md`, amendment 7: returned by `lfm3-ft.sh smoke` on 18/11/2026; weights, code and licence identical at every revision of the repository) | bf16 base model of the LoRA fine-tuning (not run: on 18/11/2026 no LoRA method fitted the M5's memory bound, amendment 7); derived weights private | — |
 | openai/gsm8k (`main`) | MIT | `740312ad` | 300 train questions (calibration), 500 test questions (test), seed 1234; the other train questions and their worked solutions (`<<...>>` removed, `\boxed{}` final line) for the fine-tune | 800 + about 7,170 |
 | DigitalLearningGmbH/MATH-lighteval | MIT (MATH, Hendrycks et al.) | `0530c786` | 300 train problems with a `\boxed{}` answer (calibration); the other train problems and their solutions for the fine-tune | 300 + about 7,200 |
 | HuggingFaceH4/MATH-500 | MIT (a subset of the MATH test set, from PRM800K); the card has no license tag | `6e4ed1a2` | the 500 test problems (test) | 500 |
