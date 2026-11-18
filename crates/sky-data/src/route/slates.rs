@@ -156,6 +156,78 @@ pub fn test_slate(
     Slate::new(s, if removed { None } else { gold })
 }
 
+/// s6-route v4 (D7, `docs/s6-route4-prereg.md` 4.3): [`fill`] from each layer in turn (the
+/// tools of the right tool's own source first, then the whole pool; the remedy of 4.4 puts the
+/// surface cells first), each layer until `s` holds `want` or the layer has no more.
+pub fn fill_layers(
+    s: &mut Vec<usize>,
+    want: usize,
+    layers: &[&[usize]],
+    rng: &mut Rng,
+    ok: &dyn Fn(usize) -> bool,
+) {
+    for layer in layers {
+        if s.len() >= want {
+            break;
+        }
+        fill(s, want, layer, rng, ok);
+    }
+}
+
+/// [`around`] with the random fill of [`fill_layers`].
+pub fn around_layers(
+    gold: Option<usize>,
+    first: &[usize],
+    n: usize,
+    layers: &[&[usize]],
+    rng: &mut Rng,
+    ok: &dyn Fn(usize) -> bool,
+) -> Vec<usize> {
+    let mut s: Vec<usize> = gold.into_iter().collect();
+    for &t in first {
+        if s.len() >= n {
+            break;
+        }
+        if Some(t) != gold && !s.contains(&t) && ok(t) {
+            s.push(t);
+        }
+    }
+    fill_layers(&mut s, n, layers, rng, ok);
+    s.truncate(n.max(gold.is_some() as usize));
+    rng.shuffle(&mut s);
+    s
+}
+
+/// [`test_slate`] with the random fill of [`fill_layers`]; two calls on clones of one stream
+/// give the same tools before the gold is removed.
+pub fn test_slate_layers(
+    gold: Option<usize>,
+    own: &[usize],
+    layers: &[&[usize]],
+    removed: bool,
+    rng: &mut Rng,
+    ok: &dyn Fn(usize) -> bool,
+) -> Slate {
+    let mut s: Vec<usize> = gold.into_iter().collect();
+    for &t in own {
+        if s.len() >= TEST_TOOLS {
+            break;
+        }
+        if Some(t) != gold && !s.contains(&t) && ok(t) {
+            s.push(t);
+        }
+    }
+    fill_layers(&mut s, TEST_TOOLS, layers, rng, ok);
+    if removed {
+        if let Some(g) = gold {
+            s.retain(|&t| t != g);
+            fill_layers(&mut s, TEST_TOOLS, layers, rng, &|t| t != g && ok(t));
+        }
+    }
+    rng.shuffle(&mut s);
+    Slate::new(s, if removed { None } else { gold })
+}
+
 /// The same slate with every tool's name replaced by `tool_<k>` (distinct k of 1..=99) and the
 /// description kept (7.3).
 pub fn masked(s: &Slate, desc: impl Fn(usize) -> String, rng: &mut Rng) -> Slate {
@@ -280,6 +352,38 @@ mod tests {
             &mut rng
         )
         .is_none());
+    }
+
+    #[test]
+    fn layered_fills_draw_the_first_layer_first() {
+        let pool: Vec<usize> = (0..100).collect();
+        let src: Vec<usize> = (10..14).collect();
+        let mut rng = Rng::new(4);
+        // the source holds enough: every random tool is of it
+        let s = around_layers(Some(10), &[], 4, &[&src, &pool], &mut rng, &|_| true);
+        assert_eq!(s.len(), 4);
+        assert!(s.iter().all(|t| src.contains(t)));
+        // too few: the whole source, then the pool
+        let s = around_layers(Some(10), &[], 7, &[&src, &pool], &mut rng, &|_| true);
+        assert_eq!(s.len(), 7);
+        assert!(src.iter().all(|t| s.contains(t)));
+        // the test-like slate and its removed twin share the tools before the removal
+        let ok = |t: usize| t != 12;
+        let a = test_slate_layers(Some(10), &[], &[&src, &pool], false, &mut Rng::new(8), &ok);
+        let b = test_slate_layers(Some(10), &[], &[&src, &pool], true, &mut Rng::new(8), &ok);
+        assert_eq!((a.tools.len(), b.tools.len()), (TEST_TOOLS, TEST_TOOLS));
+        assert_eq!(a.gold_tool(), Some(10));
+        assert_eq!(b.gold, None);
+        assert!(!a.tools.contains(&12) && !b.tools.contains(&10));
+        let shared = a.tools.iter().filter(|t| b.tools.contains(t)).count();
+        assert_eq!(shared, TEST_TOOLS - 1);
+        // one layer that is the pool: the v2 rule's tools
+        let mut r1 = Rng::new(3);
+        let mut r2 = Rng::new(3);
+        assert_eq!(
+            test_slate(Some(5), &[6], &pool, true, &mut r1, &ok),
+            test_slate_layers(Some(5), &[6], &[&pool], true, &mut r2, &ok)
+        );
     }
 
     #[test]

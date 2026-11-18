@@ -5,7 +5,10 @@
 //! - [`cluster`]: tool names, clusters and the train / validation / test split by cluster (4.2);
 //! - [`slates`](mod@slates): the option lists (4.4): the four training kinds, the test-like slates and the
 //!   files of the reading checks (7.3);
-//! - [`build`]: the steps in order and `BUILD.json`.
+//! - [`build`]: the steps in order and `BUILD.json`;
+//! - [`fresh`]: the fresh test files of v3 (`docs/s6-nano3-prereg.md`);
+//! - [`v4`]: the data of s6-route v4 (`docs/s6-route4-prereg.md`, section 4), from v2's build;
+//! - [`toucan`]: the fresh test of s6-route v4 (section 6), from Toucan-1.5M.
 //!
 //! Every file goes to the data folder, outside the repository. The test files are written once
 //! and never read again by this module; the steps print counts only.
@@ -15,6 +18,8 @@ pub mod cluster;
 pub mod fresh;
 pub mod slates;
 pub mod sources;
+pub mod toucan;
+pub mod v4;
 
 use std::collections::BTreeMap;
 use std::path::Path;

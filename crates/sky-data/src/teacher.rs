@@ -811,17 +811,68 @@ impl RouteJob {
     }
 }
 
-/// The items of a job file that are left to do: neither answered nor refused before. Refuses a
-/// file that holds a test item.
-pub fn route_todo(items: &Path, out: &Path) -> Result<(Vec<Value>, usize, usize)> {
-    let all: Vec<Value> = read_jsonl(items)?;
-    if let Some(t) = all.iter().find(|x| x["split"].as_str() == Some("test")) {
-        bail!(
-            "{}: item {} is of the test split; the teacher never sees a test request (docs/s6-nano2-prereg.md 4.5)",
-            items.display(),
-            t["id"]
-        );
+/// The split of the items of s6-route v4's fresh-test tools (`docs/s6-route4-prereg.md` 4.2):
+/// a tool's name and description, for the probe copies only.
+pub const FRESH_TOOLS: &str = "fresh-tools";
+
+/// The guard of a route job's items: no item of a test or fresh split (the teacher never sees a
+/// test request: `docs/s6-nano2-prereg.md` 4.5, `docs/s6-route4-prereg.md` 4.2); an item of the
+/// split [`FRESH_TOOLS`] holds an id, its split, a name and a description and nothing else, and
+/// only `rewrite-description` takes it.
+pub fn route_guard(job: Option<RouteJob>, items: &Path, all: &[Value]) -> Result<()> {
+    for x in all {
+        match x["split"].as_str() {
+            Some("test") | Some("fresh") => bail!(
+                "{}: item {} is of the {} split; the teacher never sees a test request (docs/s6-nano2-prereg.md 4.5)",
+                items.display(),
+                x["id"],
+                x["split"].as_str().unwrap_or("?")
+            ),
+            Some(FRESH_TOOLS) => {
+                let keys: Vec<&str> = x
+                    .as_object()
+                    .map(|o| o.keys().map(String::as_str).collect())
+                    .unwrap_or_default();
+                let only = keys
+                    .iter()
+                    .all(|k| matches!(*k, "id" | "split" | "name" | "description"));
+                let has = ["id", "name", "description"]
+                    .iter()
+                    .all(|k| x[*k].is_string());
+                if !only || !has {
+                    bail!(
+                        "{}: item {} of the {FRESH_TOOLS} split holds {keys:?}: such an item holds a tool's name and description and nothing else (docs/s6-route4-prereg.md 4.2)",
+                        items.display(),
+                        x["id"]
+                    );
+                }
+                if job.is_some_and(|j| j != RouteJob::RewriteDescription) {
+                    bail!(
+                        "{}: an item of the {FRESH_TOOLS} split goes to rewrite-description only",
+                        items.display()
+                    );
+                }
+            }
+            _ => {}
+        }
     }
+    Ok(())
+}
+
+/// The items of a job file that are left to do: neither answered nor refused before. Refuses a
+/// file that holds a test item ([`route_guard`]).
+pub fn route_todo(items: &Path, out: &Path) -> Result<(Vec<Value>, usize, usize)> {
+    route_todo_for(None, items, out)
+}
+
+/// [`route_todo`] for a job (its own guard).
+pub fn route_todo_for(
+    job: Option<RouteJob>,
+    items: &Path,
+    out: &Path,
+) -> Result<(Vec<Value>, usize, usize)> {
+    let all: Vec<Value> = read_jsonl(items)?;
+    route_guard(job, items, &all)?;
     let ids = |p: &Path| -> Result<HashSet<String>> {
         Ok(if p.exists() {
             read_jsonl::<Value>(p)?
@@ -898,7 +949,7 @@ pub fn route_label(
 ) -> Result<crate::distill::LabelStats> {
     use crate::distill::{LabelStats, Refused, MAX_FAILED_IN_A_ROW};
     use std::sync::Mutex;
-    let (todo, done, refused) = route_todo(items, out)?;
+    let (todo, done, refused) = route_todo_for(Some(job), items, out)?;
     eprintln!(
         "[route] {}: {} items to do ({done} answered, {refused} refused by moderation); {} calls of {} items",
         job.name(),
@@ -1014,6 +1065,41 @@ mod tests {
         let (todo, done, _) = route_todo(&p, &out).unwrap();
         assert_eq!((todo.len(), done), (1, 1));
         assert_eq!(todo[0]["id"], "a:2");
+        fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn fresh_tool_items_hold_a_name_and_a_description_only() {
+        let d = std::env::temp_dir().join(format!("sky-route-fresh-guard-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        let p = d.join("x.items.jsonl");
+        let out = d.join("x.jsonl");
+        let ok =
+            json!({"id": "t1", "split": "fresh-tools", "name": "get_x", "description": "Gets x."});
+        write_jsonl(&p, std::slice::from_ref(&ok)).unwrap();
+        assert_eq!(route_todo(&p, &out).unwrap().0.len(), 1);
+        assert!(route_guard(
+            Some(RouteJob::RewriteDescription),
+            &p,
+            std::slice::from_ref(&ok)
+        )
+        .is_ok());
+        assert!(route_guard(
+            Some(RouteJob::FalseNegatives),
+            &p,
+            std::slice::from_ref(&ok)
+        )
+        .is_err());
+        for bad in [
+            json!({"id": "t1", "split": "fresh-tools", "name": "get_x", "description": "Gets x.", "request": "get me x"}),
+            json!({"id": "t1", "split": "fresh-tools", "name": "get_x"}),
+            json!({"id": "t1", "split": "fresh-tools", "name": "get_x", "description": "d", "options": []}),
+            json!({"id": "t1", "split": "fresh", "name": "get_x", "description": "d"}),
+            json!({"id": "t1", "split": "test", "name": "get_x", "description": "d"}),
+        ] {
+            write_jsonl(&p, std::slice::from_ref(&bad)).unwrap();
+            assert!(route_todo(&p, &out).is_err(), "{bad}");
+        }
         fs::remove_dir_all(d).ok();
     }
 

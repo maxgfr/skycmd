@@ -204,11 +204,44 @@ enum RouteStep {
     },
     /// The model's copy of a slate file: each state gets the BM25 line of its tool options
     /// (amendment 1). The evaluation renders the validation and test slates this way.
+    /// `--render scores-in-options`: s6-route v4's D4 instead (each tool option prefixed with
+    /// its score and rank, the state the request alone; docs/s6-route4-prereg.md 3.1).
     Render {
         #[arg(long = "in")]
         input: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// bm25-line (v2, the default) or scores-in-options (v4).
+        #[arg(long, default_value = sky_infer::route::RENDER_LINE)]
+        render: String,
+    },
+    /// s6-route v4 (docs/s6-route4-prereg.md, section 4), step 1: from v2's build (read only,
+    /// its split recomputed and checked against its validation slates), the plan of v4
+    /// (<out>/stage/plan4.jsonl), the validation slates v4_tools and v4_tools_masked (seed
+    /// 1237), and the items of the one teacher job (<out>/teacher/rewrite-description.items.jsonl,
+    /// the tools without a rewrite). `--seed` is v2's (1234).
+    V4Plan {
+        /// v2's build folder (read only).
+        #[arg(long)]
+        v2: PathBuf,
+        /// v4's build folder.
+        #[arg(long)]
+        out: PathBuf,
+        /// The one remedy of 4.4 (`surface-cell`), only after a data check failed on a surface rule.
+        #[arg(long)]
+        remedy: Option<String>,
+    },
+    /// s6-route v4, step 3 (after BUILD=<out> scripts/route-teacher.sh rewrite-description): the
+    /// records of every kind (<out>/records/<group>/{train,val}.jsonl, D1, D2, D4, D5), the probe
+    /// copies v4_tools_rw and v4_tools_masked_rw, and the model's copies of the validation files.
+    V4Slates {
+        #[arg(long)]
+        v2: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// Without every rewrite (never trained on outside a smoke run).
+        #[arg(long)]
+        provisional: bool,
     },
     /// s6-nano v3 (docs/s6-nano3-prereg.md, section 4): the fresh test files, from v2's build
     /// (read only; its split recomputed and checked against its test files) into --out, written
@@ -226,6 +259,45 @@ enum RouteStep {
         #[arg(long, default_value_t = sky_data::route::fresh::V2_SEED)]
         v2_seed: u64,
         /// Where test-files.json and counts.json go (runs/s6-nano3).
+        #[arg(long)]
+        record: Option<PathBuf>,
+    },
+    /// s6-route v4 (docs/s6-route4-prereg.md 6.1), fresh test step 1: the SFT parquet files of
+    /// Toucan-1.5M read into <out>/stage/rows.jsonl. Stopped: the SFT config has no `metadata`
+    /// column (the step checks the columns, counts the rows by subset and says so).
+    ToucanRows {
+        /// The parquet files (comma separated).
+        #[arg(long, value_delimiter = ',', required = true)]
+        input: Vec<PathBuf>,
+        /// The Toucan folder.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// s6-route v4, fresh test step 2: the tool table and the texts to embed
+    /// (scripts/route-embed.py --build <t4>), from <t4>/stage/rows.jsonl.
+    ToucanStage {
+        #[arg(long)]
+        t4: PathBuf,
+    },
+    /// s6-route v4 (6.2), fresh test step 3: t4_tools, its masked copy and the servers file,
+    /// written once into <t4>/fresh with FRESH4.json, and the items of the probe copies' teacher
+    /// job (a tool's name and description only). Needs `--seed 1236`.
+    Toucan {
+        /// v2's build folder (read only).
+        #[arg(long)]
+        v2: PathBuf,
+        #[arg(long)]
+        t4: PathBuf,
+        /// Where test-files.json and counts.json go (runs/s6-route4).
+        #[arg(long)]
+        record: Option<PathBuf>,
+    },
+    /// s6-route v4 (6.4), fresh test step 5 (after BUILD=<t4> scripts/route-teacher.sh
+    /// rewrite-description): the probe copies t4_tools_rw and t4_tools_masked_rw, written once.
+    /// Needs `--seed 1236`.
+    ToucanProbes {
+        #[arg(long)]
+        t4: PathBuf,
         #[arg(long)]
         record: Option<PathBuf>,
     },
@@ -1058,7 +1130,47 @@ fn main() -> Result<()> {
                     seed: cli.seed,
                     provisional,
                 })?,
-                RouteStep::Render { input, out } => rb::render(&input, &out)?,
+                RouteStep::Render { input, out, render } => {
+                    let how = sky_infer::route::Render::parse(&render).ok_or_else(|| {
+                        anyhow::anyhow!("--render {render}: bm25-line or scores-in-options")
+                    })?;
+                    rb::render_with(&input, &out, how)?
+                }
+                RouteStep::V4Plan { v2, out, remedy } => {
+                    use sky_data::route::v4;
+                    let remedy = match remedy.as_deref() {
+                        None => false,
+                        Some("surface-cell") => true,
+                        Some(r) => anyhow::bail!(
+                            "--remedy {r}: the one remedy of docs/s6-route4-prereg.md 4.4 is surface-cell"
+                        ),
+                    };
+                    if cli.seed != v4::V2_SEED {
+                        anyhow::bail!("v4 keeps v2's streams: --seed {}", v4::V2_SEED);
+                    }
+                    v4::plan(&v4::PlanOptions {
+                        v2,
+                        out,
+                        seed: cli.seed,
+                        remedy,
+                    })?
+                }
+                RouteStep::V4Slates {
+                    v2,
+                    out,
+                    provisional,
+                } => {
+                    use sky_data::route::v4;
+                    if cli.seed != v4::V2_SEED {
+                        anyhow::bail!("v4 keeps v2's streams: --seed {}", v4::V2_SEED);
+                    }
+                    v4::slates(&v4::SlatesOptions {
+                        v2,
+                        out,
+                        seed: cli.seed,
+                        provisional,
+                    })?
+                }
                 RouteStep::Fresh {
                     build,
                     out,
@@ -1082,6 +1194,35 @@ fn main() -> Result<()> {
                         cap: rf::FRESH_CAP,
                         record,
                     })?
+                }
+                RouteStep::ToucanRows { input, out } => {
+                    sky_data::route::toucan::rows(&input, &out)?
+                }
+                RouteStep::ToucanStage { t4 } => sky_data::route::toucan::stage(&t4)?,
+                RouteStep::Toucan { v2, t4, record } => {
+                    use sky_data::route::toucan as tc;
+                    if cli.seed != tc::T4_SEED {
+                        anyhow::bail!(
+                            "the fresh test of v4 is built with --seed {} (docs/s6-route4-prereg.md 6.2)",
+                            tc::T4_SEED
+                        );
+                    }
+                    tc::build_test(&tc::TestOptions {
+                        v2,
+                        t4,
+                        seed: cli.seed,
+                        record,
+                    })?
+                }
+                RouteStep::ToucanProbes { t4, record } => {
+                    use sky_data::route::toucan as tc;
+                    if cli.seed != tc::T4_SEED {
+                        anyhow::bail!(
+                            "the probe copies of v4 are built with --seed {} (docs/s6-route4-prereg.md 6.4)",
+                            tc::T4_SEED
+                        );
+                    }
+                    tc::probes(&t4, cli.seed, record.as_deref())?
                 }
                 RouteStep::Manifest {
                     data,

@@ -133,6 +133,10 @@ pub struct RouteRecord {
     pub tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub follow: Option<usize>,
+    /// s6-route v4 (D1): whether each tool option's description is the teacher's rewrite (the
+    /// builder's own flag, read by the data checks); absent in v2's and v3's files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewritten: Option<Vec<bool>>,
 }
 
 pub fn stage(out: &Path) -> PathBuf {
@@ -237,10 +241,10 @@ pub(super) struct Loaded {
     pub tools: Vec<Tool>,
     pub index: HashMap<String, usize>,
     pub requests: Vec<Request>,
-    minilm: Matrix,
+    pub(super) minilm: Matrix,
     potion: Matrix,
     /// Row of each tool in the embedding files.
-    row: Vec<Option<usize>>,
+    pub(super) row: Vec<Option<usize>>,
     pub norm: Vec<String>,
     stage: PathBuf,
 }
@@ -347,12 +351,12 @@ impl Ctx<'_> {
         Rng::derived(self.seed, label)
     }
 
-    fn cos(&self, m: &Matrix, a: usize, b: usize) -> Option<f32> {
+    pub(super) fn cos(&self, m: &Matrix, a: usize, b: usize) -> Option<f32> {
         Some(cluster::dot(m.row(self.l.row[a]?), m.row(self.l.row[b]?)))
     }
 
     /// A record of a slate.
-    fn record(
+    pub(super) fn record(
         &self,
         src: &str,
         split: &str,
@@ -380,6 +384,7 @@ impl Ctx<'_> {
                 .map(|&t| self.l.tools[t].id.clone())
                 .collect(),
             follow: None,
+            rewritten: None,
         }
     }
 }
@@ -1400,6 +1405,7 @@ pub fn build_slates(o: &SlatesOptions) -> Result<Value> {
             request: p.id.clone(),
             tools: s.tools.iter().map(|&t| tools[t].id.clone()).collect(),
             follow: None,
+            rewritten: None,
         }
     };
     // per (group, split): the slates, those with a tool gold, the removed ones
@@ -1607,6 +1613,39 @@ pub fn build_slates(o: &SlatesOptions) -> Result<Value> {
 /// the BM25 line of its tool options (`sky_infer::route::state_for_options`); nothing else
 /// changes. The slate files themselves keep the request alone, as the baselines read it.
 pub fn render(input: &Path, output: &Path) -> Result<Value> {
+    render_with(input, output, sky_infer::route::Render::Line)
+}
+
+/// [`render`] by a rendering of `sky_infer::route::Render`: v2's line (the records' options
+/// unchanged), or s6-route v4's D4 (`docs/s6-route4-prereg.md` 3.1: each tool option prefixed
+/// with its score and rank, the state the request alone).
+pub fn render_with(input: &Path, output: &Path, how: sky_infer::route::Render) -> Result<Value> {
+    use sky_infer::route::Render;
+    if how == Render::ScoresInOptions {
+        let recs: Vec<Value> = read_lines(input)?;
+        let mut out = Vec::with_capacity(recs.len());
+        for mut r in recs {
+            let state = r["state"].as_str().unwrap_or("");
+            let Some(user) = state.strip_prefix("User: ") else {
+                bail!("{}: a state that is not `User: <request>`", input.display());
+            };
+            if user.contains(&format!("\n{}", sky_infer::route::LINE_PREFIX)) {
+                bail!("{}: a state that carries v2's line", input.display());
+            }
+            let opts: Vec<String> = serde_json::from_value(r["opts"].clone())?;
+            if opts.iter().any(|o| sky_infer::route::plain_option(o) != o) {
+                bail!("{}: already rendered", input.display());
+            }
+            let (opts, st) = how.model_input(user, &opts);
+            r["opts"] = json!(opts);
+            r["state"] = json!(st);
+            out.push(r);
+        }
+        let n = write_jsonl(output, &out)?;
+        return Ok(
+            json!({"rendered": n, "render": how.name(), "out": output.file_name().map(|f| f.to_string_lossy().to_string())}),
+        );
+    }
     let recs: Vec<Value> = read_lines(input)?;
     let mut out = Vec::with_capacity(recs.len());
     for mut r in recs {
