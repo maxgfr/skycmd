@@ -1662,8 +1662,14 @@ struct Filtered {
 
 /// The false-negative filter of every plan: the answers of the folders `dirs` in order (the
 /// first that holds an id wins), then v2's for an item of the same id (4.1); a refusal of any of
-/// them leaves the slate unfiltered.
-fn filtered(plans: &[Plan5], dirs: &[&Path], v2: &Path) -> Result<Filtered> {
+/// them leaves the slate unfiltered. With `needed`, an answer is missing only for the plans it
+/// names (the others keep their hard slate unfiltered: they are not written).
+fn filtered(
+    plans: &[Plan5],
+    dirs: &[&Path],
+    v2: &Path,
+    needed: Option<&HashSet<&str>>,
+) -> Result<Filtered> {
     let mut able: HashMap<String, Vec<usize>> = HashMap::new();
     let mut refused = HashSet::new();
     for d in dirs {
@@ -1688,6 +1694,13 @@ fn filtered(plans: &[Plan5], dirs: &[&Path], v2: &Path) -> Result<Filtered> {
         let verdict = match able.get(&p.fn_id) {
             Some(a) => Verdict::Able(a.clone()),
             None if refused.contains(&p.fn_id) => Verdict::Refused,
+            None if needed.is_some_and(|n| !n.contains(p.id.as_str())) => {
+                bump(
+                    &mut counts,
+                    "hard slates no record shows, without an answer (not filtered)",
+                );
+                Verdict::Planned
+            }
             None => {
                 missing += 1;
                 Verdict::Planned
@@ -1737,7 +1750,7 @@ pub fn slates(o: &SlatesOptions) -> Result<Value> {
         missing,
         from_v2,
         refused,
-    } = filtered(&plans, &[&o.out], &o.v2)?;
+    } = filtered(&plans, &[&o.out], &o.v2, None)?;
     if missing > 0 && !o.provisional {
         bail!(
             "the teacher has not answered every false-negative item ({missing} missing): \
@@ -1955,13 +1968,21 @@ pub fn rebuild_group(o: &RebuildOptions) -> Result<Value> {
         .collect();
     let plans: Vec<Plan5> = read_lines(&stage(&o.fix).join(PLAN5))?;
     let rw = Rewrites::load(&o.v2, &o.v4)?;
+    // the answers needed: every plan's, but the group's no-call requests whose hard slate no
+    // record of the copy shows (v5's share of none trimmed them; they are not rebuilt)
+    let shown_hard = hard_shown(&o.out, &o.group)?;
+    let needed: HashSet<&str> = plans
+        .iter()
+        .filter(|p| p.group != o.group || p.gold.is_some() || shown_hard.contains(&p.id))
+        .map(|p| p.id.as_str())
+        .collect();
     let Filtered {
         finals,
         mut counts,
         missing,
         from_v2,
         refused,
-    } = filtered(&plans, &[&o.out, &o.fix], &o.v2)?;
+    } = filtered(&plans, &[&o.out, &o.fix], &o.v2, Some(&needed))?;
     if missing > 0 && !o.provisional {
         bail!(
             "the teacher has not answered every false-negative item ({missing} missing): \
@@ -2074,13 +2095,38 @@ pub fn rebuild_group(o: &RebuildOptions) -> Result<Value> {
     Ok(report)
 }
 
+#[derive(Deserialize)]
+struct UidOnly {
+    uid: String,
+}
+
+/// The requests of `group` whose hard slate a record of the copy shows (`<id>/hard`).
+fn hard_shown(base: &Path, group: &str) -> Result<HashSet<String>> {
+    let mut out = HashSet::new();
+    for split in ["train", "val"] {
+        let p = base
+            .join("records")
+            .join(group)
+            .join(format!("{split}.jsonl"));
+        for r in read_lines::<UidOnly>(&p)? {
+            if let Some(id) = r.uid.strip_suffix("/hard") {
+                out.insert(id.to_string());
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The fix's teacher items (`sky-data route v5-fix-items --v2 <v2> --base <build6> --fix <fix>`):
 /// the staged items of the fix's plan whose slate is a hard slate of `group` without a tool gold
-/// and whose id has no answer in the copy (`base`), in the fix or in v2's build. A hard slate of
-/// the group with a tool gold and no answer is refused (amendment 1: their tools and answers are
-/// v5's). Writes `<fix>/teacher/false-negatives.items.jsonl`.
+/// that a record of the copy shows (`<id>/hard`: the 1,043 of 4.8; the other no-call requests'
+/// hard slates were trimmed by v5's share of none and are not rebuilt), and whose id has no
+/// answer in the copy (`base`), in the fix or in v2's build. A hard slate of the group with a
+/// tool gold and no answer is refused (amendment 1: their tools and answers are v5's). Writes
+/// `<fix>/teacher/false-negatives.items.jsonl`.
 pub fn fix_items(v2: &Path, base: &Path, fix: &Path, group: &str) -> Result<Value> {
     let plans: Vec<Plan5> = read_lines(&stage(fix).join(PLAN5))?;
+    let shown_hard = hard_shown(base, group)?;
     let staged: Vec<FnItem> = read_lines(&fix.join(FN_STAGED))?;
     let mut answered: HashSet<String> = HashSet::new();
     for d in [base, fix, v2] {
@@ -2092,6 +2138,10 @@ pub fn fix_items(v2: &Path, base: &Path, fix: &Path, group: &str) -> Result<Valu
     for p in plans.iter().filter(|p| p.group == group) {
         let has = answered.contains(&p.fn_id);
         match (&p.gold, has) {
+            (None, _) if !shown_hard.contains(&p.id) => bump(
+                &mut c,
+                "no-call hard slates no record shows (no item: not rebuilt)",
+            ),
             (None, false) => {
                 want.insert(p.fn_id.as_str());
             }
@@ -2850,6 +2900,40 @@ mod tests {
             .collect();
         assert!(!items.is_empty() && items.len() <= nocall);
         assert!(items.iter().all(|i| nocall_ids.contains(i.id.as_str())));
+        // exactly the no-call hard slates that a record of the copy shows and whose slate (and
+        // so id) changed; the no-call requests whose hard slate v5's share of none trimmed get
+        // no item (the stage's guard of at most 1,043 on the real build)
+        let shown: HashSet<String> = ["train", "val"]
+            .iter()
+            .flat_map(|s| {
+                read_lines::<Record5>(&c.join(format!("records/when2call/{s}.jsonl"))).unwrap()
+            })
+            .filter_map(|r| r.r.uid.strip_suffix("/hard").map(str::to_string))
+            .collect();
+        let v5_ids: HashSet<&str> = p5.iter().map(|p| p.fn_id.as_str()).collect();
+        let want: HashSet<&str> = p6
+            .iter()
+            .filter(|p| p.group == WHEN2CALL && p.gold.is_none())
+            .filter(|p| shown.contains(&p.id) && !v5_ids.contains(p.fn_id.as_str()))
+            .map(|p| p.fn_id.as_str())
+            .collect();
+        let got: HashSet<&str> = items.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(got, want);
+        let unshown_changed = p6
+            .iter()
+            .filter(|p| p.group == WHEN2CALL && p.gold.is_none())
+            .filter(|p| !shown.contains(&p.id) && !v5_ids.contains(p.fn_id.as_str()))
+            .count();
+        assert!(
+            unshown_changed > 0,
+            "the fixture holds trimmed no-call hard slates"
+        );
+        // every tool-right hard slate's item id is v5's
+        for (x, y) in p5.iter().zip(&p6) {
+            if x.gold.is_some() {
+                assert_eq!(x.fn_id, y.fn_id, "{}", x.id);
+            }
+        }
         crate::teacher::route_todo(
             &items_path(&fix, "false-negatives"),
             &answers_path(&fix, "false-negatives"),
