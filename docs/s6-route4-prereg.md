@@ -652,3 +652,165 @@ deleted).
        reads dumps, so it needs D4-rendered model dumps on T4);
      - `scripts/s6-route4-gate.py` and `scripts/test_s6_route4_gate.py` (§8, the headline, the
        readings).
+
+## Result (18/11/2026): v4 stopped at its data checks, before any training
+
+**The data checks of §4.4 exit with status 2. C1 and C3 hold in every cell. C2 fails 17 times in
+five cells, and one of the failing rules, R11 (the shortest name), is not on the remedy's list.
+So the remedy is not open, and by §4.4 and §11 v4 stops before training: no model is trained, no
+fresh file is built or read, and the table is published.** The report and its JSON are
+`runs/s6-route4/checks.md` and `runs/s6-route4/checks.json`; the latency result is
+`runs/s6-route4/latency-check.json` with `runs/s6-route4/latency/wasm-uncached.json`.
+
+**What ran, in order, on 18/11/2026.** The logs are `runs/all/route4-teacher-jobs.log`,
+`runs/all/route4-teacher.log`, `runs/all/queue-05-route4-latency-build-checks.log` and
+`runs/all/queue/log` in the lead's worktree; they are not committed.
+
+1. **The Toucan fetch of amendment 1:** the three SFT parquet files, 425,496,735 bytes, checked
+   against the Hub's hashes (`<data>/MANIFEST4.json`). No fresh file was built:
+   `sky-data route toucan` did not run. C5 therefore had no file to read and was not computed
+   (`checks.json` holds `null` for it).
+2. **`teacher-jobs` (`sky-data route v4-plan`):** 13,687 `rewrite-description` items in 685 calls
+   of 20, within the 13,691 of §4.2. The guard let through tools only, with no test or fresh split.
+3. **The teacher:** GLM-5.3-Flash (MIT) through `scripts/route-teacher.sh rewrite-description
+   loop`, from 11:25 to 11:48. It wrote 13,687 answers in 685 calls, with 0 items refused by
+   moderation and 0 failed batches; 467,773 tokens in and 329,651 out, 1,384.7 s. The `fresh-tools`
+   job of §4.2 was not run, since it needs the fresh files.
+4. **The latency check of §3.4**, run as its own stage (amendment 1, item 3) at 13:15.
+   - The setup: the WASM module was rebuilt from the tree (`scripts/build-wasm.sh`), and a copy of
+     v2's published file had its head window set to 320 (one key).
+     `route3-node.mjs --uncached --render scores-in-options` then ran on the first 200 slates of
+     `v4_tools`, SIMD128, with 0 cache hits.
+   - The result: the pair's median per request is **24,622 µs** against the bar of 50,000 µs
+     (the model part 24,571 µs, the embedding part 50 µs). **Option (i) is taken.**
+5. **The build** (`sky-data route v4-slates`), then **the checks** (`scripts/s6-route4-checks.py`).
+   They ended at 13:17:30 with status 2.
+
+**The checks.**
+
+- **C1, the rewrite independent of the answer:** holds in every judged cell (amendment 1's bars).
+  Pooled over the record cells, P(rewritten | right tool) is 0.5005 over 155,494 right tools, and
+  P(rewritten | other tool option) is 0.4998 over 598,352 others (bar: within 0.01 of 0.5).
+- **C3, *none*:** holds in all 14 cells. The share is 0.1998 to 0.2008, against 0.20.
+- **C4, the surface table:** reported in `checks.json`. In the tools group's hard slates, the right
+  option differs from the others:
+  - validation: a final period on 0.657 of right options against 0.822 of the others; 8.96 words
+    against 10.48; 58.0 characters against 67.7; 0.61 schema-like words against 0.94; an imperative
+    first word on 0.579 against 0.435;
+  - training: a final period on 0.657 against 0.746; 58.7 characters against 63.4.
+
+  In the intents group's hard training slates every description ends with a period. Names are
+  16.3 characters long on average for the right option against 16.8 for the others.
+- **C5:** not computed (no fresh file).
+- **C2, request-blind rules at chance:** 24 cells, of which 19 are judged. The 3 removed cells
+  have no tool-gold slate, and `when2call renamed val` has 191 (fewer than 200). There are 17
+  failures in five cells. The full table, compacted from `checks.md`:
+
+  | cell | tool-gold slates | judged | C1 difference | best rule | accuracy | tolerance | failing rules |
+  |---|---:|---|---:|---|---:|---:|---:|
+  | records intents hard train | 25,443 | yes | −0.0061 | R11 the shortest name | 0.4219 | 0.3981 | 1 |
+  | records intents natural train | 25,443 | yes | +0.0016 | R11 the shortest name | 0.3929 | 0.3951 | 0 |
+  | records intents renamed train | 20,354 | yes | +0.0021 | R2 first word a capitalised word in -s | 0.1556 | 0.1678 | 0 |
+  | records intents hard val | 3,078 | yes | +0.0191 | R11 the shortest name | 0.4453 | 0.4130 | 1 |
+  | records intents natural val | 3,078 | yes | +0.0096 | R11 the shortest name | 0.3984 | 0.4063 | 0 |
+  | records intents renamed val | 2,462 | yes | −0.0169 | R7 position 5 | 0.1600 | 0.1770 | 0 |
+  | records tools hard train | 21,759 | yes | −0.0001 | R3 inverse | 0.4220 | 0.4035 | 7 |
+  | records tools natural train | 21,759 | yes | +0.0003 | R11 inverse: the longest name | 0.4015 | 0.3974 | 1 |
+  | records tools renamed train | 17,407 | yes | +0.0014 | R5 most characters | 0.1531 | 0.1682 | 0 |
+  | records tools hard val | 1,116 | yes | −0.0275 | R5 inverse: fewest characters | 0.4809 | 0.4253 | 7 |
+  | records tools natural val | 1,116 | yes | −0.0062 | R11 inverse: the longest name | 0.4137 | 0.4199 | 0 |
+  | records tools renamed val | 893 | yes | +0.0181 | R5 most characters | 0.1706 | 0.1863 | 0 |
+  | records when2call hard train | 3,899 | yes | +0.0126 | R4 most words | 0.4023 | 0.4068 | 0 |
+  | records when2call natural train | 3,899 | yes | −0.0023 | R11 inverse: the longest name | 0.4004 | 0.4066 | 0 |
+  | records when2call renamed train | 3,119 | yes | +0.0211 | R2 inverse | 0.1584 | 0.1754 | 0 |
+  | records when2call hard val | 239 | yes | +0.0108 | R11 the shortest name | 0.4351 | 0.4742 | 0 |
+  | records when2call natural val | 239 | yes | +0.0015 | R5 inverse: fewest characters | 0.4142 | 0.4557 | 0 |
+  | records when2call renamed val | 191 | no | −0.0576 | B: (name style, period, first word form), minority | 0.1770 | 0.2135 | 0 |
+  | val `v4_tools.jsonl` | 915 | yes | | R11 inverse: the longest name | 0.1774 | 0.1860 | 0 |
+  | val `v4_tools_masked.jsonl` | 915 | yes | | R7 position 2 | 0.1661 | 0.1860 | 0 |
+  | records intents, tools, when2call removed (train, val) | 0 | no | | | | | 0 |
+
+  The 17 failing rules, with their accuracy (chance is the mean of 1 / number of tool options):
+
+  | cell | chance | tolerance | failing rules |
+  |---|---:|---:|---|
+  | records intents hard train | 0.3721 | 0.3981 | R11 the shortest name 0.4219 |
+  | records intents hard val | 0.3756 | 0.4130 | R11 the shortest name 0.4453 |
+  | records tools natural train | 0.3709 | 0.3974 | R11 inverse, the longest name 0.4015 |
+  | records tools hard train | 0.3769 | 0.4035 | R3 inverse 0.4220; R5 inverse, fewest characters 0.4151; R1 inverse, no final period 0.4150; R4 inverse, fewest words 0.4132; R12 the fewest schema-like words 0.4127; R2 inverse 0.4074; R13 an imperative first word 0.4072 |
+  | records tools hard val | 0.3763 | 0.4253 | R5 inverse 0.4809; R4 inverse 0.4802; R3 inverse 0.4634; R1 inverse 0.4544; R12 0.4489; R13 0.4268; R2 inverse 0.4264 |
+
+  The renamed cells, `v4_tools` and `v4_tools_masked` pass every rule.
+
+**Why the remedy was not open.** §4.4 opens its one remedy only when every failing rule is among
+R1 to R5, R8, R9, R12 and R13 or their inverses. R11, the shortest or the longest name, fails in
+three cells (`checks.json`, `verdict`: "the remedy of 4.4 is open": false). A reading of the text,
+not a measurement: had the remedy been open, it would not have reached the seven failures of the
+tools group's hard slates. The remedy changes the random fill of every kind, and the distractors of
+a hard slate are not a random fill: they are v2's nearest tools (§4.3: "The hard slates keep v2's
+nearest tools").
+
+**The sentence of §11 applied.** "The data checks stop the build (§4.4): the slate rule itself
+carries a cue that the remedy does not remove; no model is trained; the table is published, and
+the cue is described as a limit of v2's and v3's test files too (they were built by the same
+rule)."
+
+- **Which rules carry the cue.** Two slate rules carry it:
+  - the hard slate rule, in the hard cells of the tools and intents groups: the gold with its
+    nearest tools by potion-base-2M cosine;
+  - the natural fill, where the longest name wins in the tools group's training cell.
+- **v2's and v3's test files have no hard slate.** They were built by the test-slate rule (the
+  conversation's own tools and a random fill from the whole pool).
+- **The limit stated for those test files** is therefore the one already disclosed, unchanged. A
+  rule that never reads the request and picks the fewest words is right on 0.2550 of the tool-right
+  slates of `v_tools`, 0.2439 of T-tools and 0.3633 of T2-tools, against 1/7
+  (`docs/s6-route4-study.md` §7).
+- **The new finding is a limit of v2's training data**, described next.
+
+**What the cue in the hard slates means for v2 and v3.**
+
+- **v4's hard slates are v2's.** v4 kept v2's plans and random streams so that the 69,290
+  false-negative answers apply by their ids (§4.1). Each hard slate therefore holds the same tools
+  as in v2. v4 changed only:
+  - the descriptions shown (D1: each option the rewrite with probability 0.5, where v2's hard slates
+    showed every description as its source wrote it);
+  - the removed slates (D5).
+- **R11 reads names only, and the names did not change.** The shortest-name cue of the intents
+  group's hard slates is in v2's hard training slates as well: 0.4219 where chance is 0.3721.
+- **The description rules of the tools group were counted on texts half rewritten.** On v2's
+  texts their size is not measured. The construction that produces them (the gold and its nearest
+  neighbours) is the same.
+- **v3 trains nothing.** Its model part is v2's file, so what holds for v2's training data holds
+  for v3's model part.
+- **The test-like slates were checked only where v4 built them.** The checks read `v4_tools` and
+  `v4_tools_masked`: the 1,144 validation requests of `v_tools`, each in one slate by v2's test rule
+  with D7's source-first fill. Every rule is within its tolerance there (the best, the longest name,
+  0.1774 for a tolerance of 0.1860 and a chance of 0.1429).
+- **The checks did not read `v_tools`, T-tools or T2-tools,** whose fill comes from the whole
+  pool. For those files the numbers of study §7 stand, and v4 adds nothing to them. That `v4_tools`
+  passes shows that the source-first fill removes the cue from test-like slates of these validation
+  requests. It says nothing about a file built another way.
+- **Whether v2's model part used any of these cues is not measured.** No number or verdict of v2 or
+  v3 changes.
+
+**What stays valid and can be reused.**
+
+- **The teacher's 13,687 rewrites** (`<data>/s6-route/build4/teacher/rewrite-description.jsonl`).
+  With v2's 14,263, every tool of the pools has one.
+- **The latency check.** Option (i) at a head window of 320, the largest that the rule of §3.3 can
+  take.
+- **The code** listed in amendment 1, item 4, including the surface cells of
+  `crates/sky-data/src/route/v4.rs` and the checks of `scripts/s6-route4-checks.py`.
+- **The renamed kind as built.** D1, D3, D5 and *none* under `tool_<k>` names pass C2 in every
+  judged renamed cell, and C1 and C3 hold everywhere.
+- **Toucan, fetched and unread.** No fresh file was built. Its requests have been seen by no
+  system and no person beyond the schema inspection of amendment 1, whose outputs were counted,
+  not read.
+
+**What v4 does not say.** Nothing about a model: none was trained and none was scored. It does
+not say whether D1 to D5 remove the shortcut of the diagnosis, whether a model trained on these
+slates would have used the cues the checks found, or anything about tools of a new family.
+
+**Next.** A fifth version that changes one thing, the distractors drawn within the right tool's
+surface cell in every kind of slate (the hard slates included), is drafted in
+`docs/s6-route5-prereg.md`, not frozen.

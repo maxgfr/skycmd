@@ -130,7 +130,13 @@ among answered requests at τ_ask with coverage ≥ 0.70 is not met (0.9433 at c
   tool's description is the slate's shortest far more often than chance, and a rule that never reads the request
   and picks it is right on 0.2439 of the T-tools slates whose answer is a tool, against 1/7; whether
   the model used it is not measured
-  ([study](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-study.md)). With the
+  ([study](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-study.md)). Its hard
+  training slates carried request-blind surface cues too: counted with no model on a rebuild that
+  holds the same tools with half of the descriptions rewritten (v4, which stopped before
+  training), the fewest characters picks the right tool on 0.4151 of the tools group's hard
+  training slates (chance 0.3769) and the shortest name on 0.4219 of the intents group's (chance
+  0.3721); what the model did with them is not measured
+  ([v4's result](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-prereg.md)). With the
   descriptions of the right tool and of a distractor swapped, it
   follows the description on 0.6700 and the name on 0.0780. Outside its training families it is
   weak: below potion-cos on every other source (MetaTool, CLINC150, tool-routing-data, When2Call,

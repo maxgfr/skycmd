@@ -310,6 +310,8 @@ Nothing is trained. The system takes the s6-route-nano file as it was published 
 - **Announced goals** (not gates). 0.87 on T2-tools: met. 0.95 among the requests it answers at the ask threshold, with coverage ≥ 0.80: not met (0.9433 at coverage 0.8593). The fast mode (the model stopped at its first exit) within 0.015: met (0.8836, 10.5 ms per request).
 - **Latency** (result). Measured on a machine in use by its owner, with a GPU run of another model active: 30.9 ms per request with the tool list cached (SIMD128), 23.5 ms with relaxed SIMD, 10.5 ms in fast mode; the first request on a new tool list 45.3 ms. The 60 ms bar was set after v2 measured 38.9 ms, where its own bar was 2 ms.
 
+- **v4, the retraining without the shortcut** (18/11/2026). It stopped at its data checks before any training, so no model was trained: in the hard training slates, which hold v2's tools, rules that never read the request pick the right tool above their tolerance (the shortest name on 0.4219 of the intents group's slates, chance 0.3721; the fewest characters on 0.4809 of the tools group's validation slates, chance 0.3763), a limit of the data s6-route's model part was trained on, whose use by the model is not measured; no number above changes ([result block](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-prereg.md), [table](https://github.com/maxgfr/skycmd/blob/main/runs/s6-route4/checks.md)).
+
 Try it on the [Router](/router/) page. Every table is in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s6-route". The story of the three versions is told in an article: [A 3.7 MB tool router built on a MacBook](/articles/a-3-7-mb-tool-router).
 
 ## LFM3-1.7B: System 1 first, System 2 when needed (November 2026) {#lfm3-s1s2}

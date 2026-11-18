@@ -1,0 +1,24 @@
+{
+ "about": "s6-route v4: the latency check of docs/s6-route4-prereg.md 3.4 (validation only)",
+ "rule": "median per request <= 50000 us: option (i)",
+ "median_us": 24622.37499999907,
+ "model_median_us": 24571.375,
+ "option": "i",
+ "measurement": {
+  "n": 200,
+  "mode": "uncached",
+  "render": "scores-in-options",
+  "median_us": 24622.37499999907,
+  "model": {
+   "median_us": 24571.375
+  },
+  "embedding": {
+   "median_us": 50.04199999989942
+  },
+  "cache_hits": 0,
+  "bytes_model": 2418912,
+  "bytes_embedding": 1273312,
+  "build": "simd128",
+  "fast": false
+ }
+}

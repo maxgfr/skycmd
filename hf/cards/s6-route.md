@@ -127,6 +127,12 @@ Paired bootstrap (slates): +0.0942 [0.0720, 0.1185] over the model alone, +0.148
   reads the request and picks it is right on 0.3633 of the T2-tools slates whose answer is a tool,
   against 1/7; on validation the pair's advantage over BM25 does not lean on it, on T2-tools that
   was not measured ([study](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-study.md)).
+  The hard slates of the model part's training data carried request-blind surface cues too:
+  counted with no model on a rebuild that holds the same tools with half of the descriptions
+  rewritten (v4, which stopped before training), the fewest characters picks the right tool on
+  0.4151 of the tools group's hard training slates (chance 0.3769) and the shortest name on 0.4219
+  of the intents group's (chance 0.3721); what the model did with them is not measured
+  ([v4's result](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-prereg.md)).
 - **MiniLM is more accurate on every file.** If 91.6 MB and about 12 ms of CPU per request are
   affordable, all-MiniLM-L6-v2 with cosine is the better router on these tests.
 - **Outside the tool lists of its training families it stays near its embedding part, below it on MetaTool and above it on CLINC150 and MASSIVE:** MetaTool

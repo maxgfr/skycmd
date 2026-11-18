@@ -1023,6 +1023,8 @@ The model part natively (`sky-eval`, the same 200 slates): median 24,648 µs, p9
 
 **Verdict: passed, every condition; published as s6-route**, "passed on fresh slates; system defined after v2's test was read" (§8). Open: a confirmation on tools of other families than v2's held-out tools, and the names-masked weakness.
 
+**v4, the model part retrained without its shortcut, stopped at its data checks on 18/11/2026, before any training** ([result block](docs/s6-route4-prereg.md), [`runs/s6-route4/checks.md`](runs/s6-route4/checks.md)): request-blind rules beat their tolerance in the hard slates, which hold v2's tools (in the tools group's validation hard slates the fewest characters is right on 0.4809, chance 0.3763; in the intents group's training hard slates the shortest name on 0.4219, chance 0.3721), so v2's training data carried those cues too; whether its model used them is not measured, no number above changes, and v5 is a draft ([`docs/s6-route5-prereg.md`](docs/s6-route5-prereg.md)).
+
 ## LFM3-1.7B: System 1 first, System 2 when needed, pre-registered, failed
 
 Pre-registration: [`docs/lfm3-s1s2-prereg.md`](docs/lfm3-s1s2-prereg.md), its criteria in §6 and its amendments 1 to 5 (all before any run; amendment 2 cancels amendment 1, so the run is the original local protocol). No weight of LFM3 is trained: `LiquidAI/LFM3-1.7B-MLX-4bit` at revision `deb2986b`, 4-bit, mlx-vlm 0.7.11, on the Apple M5. Run: `scripts/lfm3-s1s2.sh` (`experiments/lfm3-s1s2/s1s2.py`); log `runs/lfm3-s1s2.log`; tables `runs/lfm3-s1s2/report-calib.md` (calibration) and `runs/lfm3-s1s2/report.md` (test), numbers `runs/lfm3-s1s2/summary.json`.
