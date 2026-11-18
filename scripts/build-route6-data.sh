@@ -57,6 +57,13 @@
 #   ROUTE_DATA=../skycmd-data/s6-route   V2=$ROUTE_DATA/build   B4=$ROUTE_DATA/build4
 #   B5=$ROUTE_DATA/build5   B6=$ROUTE_DATA/build6   T5=$ROUTE_DATA/toucan5   RUNS=runs/s6-route6
 #   MIN_FREE_GB=3
+# For a later version over this one (scripts/build-route7-data.sh): FIX (the fix's folder,
+# default $B6/fix), MARKERS and LOGS (default $B6/markers and $B6/logs), PLAN_FLAGS (the fix's
+# plan switches, default --when2call-exempt none), ALSO (more folders whose teacher answers apply
+# by id), CHECK_AGAINST (a previous fix's folder: the plans and records that may change are
+# checked against it), BEFORE_REPORT and BEFORE_LABEL (the report and the build set beside the
+# checks and the spread table; default v5's), EVAL_OUT (the baselines' folder, default
+# $ROUTE_DATA/eval/route6-val).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -73,7 +80,15 @@ min_free=${MIN_FREE_GB:-3}
 export ROUTE_DATA=$data
 D=$CARGO_TARGET_DIR/release/sky-data
 PY=$data/envs/route/bin/python
-fix=$b6/fix
+fix=${FIX:-$b6/fix}
+markers=${MARKERS:-$b6/markers}
+logs=${LOGS:-$b6/logs}
+read -r -a plan_flags <<<"${PLAN_FLAGS:---when2call-exempt none}"
+also=()
+[ -n "${ALSO:-}" ] && also=(--also "$ALSO")
+check_against=${CHECK_AGAINST:-}
+before_report=${BEFORE_REPORT:-runs/s6-route5/checks.json}
+before_label=${BEFORE_LABEL:-v5\'s build}
 stages=(inputs fix-plan fix-teacher-jobs fix-build fix-checks spread inputs-ok placeholder support checks-read
   blind-val baselines-val fresh fresh-tools probes counts)
 
@@ -92,13 +107,13 @@ logged() {
   if [ "$dry" = 1 ]; then
     x "$@"
   else
-    mkdir -p "$b6/logs"
+    mkdir -p "$logs"
     echo "== $name"
-    nice -n 19 "$@" >"$b6/logs/$name.json"
+    nice -n 19 "$@" >"$logs/$name.json"
   fi
 }
 note() { echo "# $*"; }
-marker() { echo "$b6/markers/$1"; }
+marker() { echo "$markers/$1"; }
 need() {
   local m
   m=$(marker "$1")
@@ -112,7 +127,7 @@ done_() {
   if [ "$dry" = 1 ]; then
     note "writes $(marker "$1")"
   else
-    mkdir -p "$b6/markers"
+    mkdir -p "$markers"
     date '+%F %T' >"$(marker "$1")"
   fi
 }
@@ -197,7 +212,7 @@ EOF
   fi
   x mkdir -p "$fix/emb"
   x cp "$b5/emb/potion-requests.npy" "$b5/emb/potion-requests.meta.json" "$fix/emb/"
-  logged v6-fix-plan "$D" --seed 1234 route v5-plan --v2 "$v2" --v4 "$b4" --out "$fix" --when2call-exempt none
+  logged v6-fix-plan "$D" --seed 1234 route v5-plan --v2 "$v2" --v4 "$b4" --out "$fix" "${plan_flags[@]}"
   note "every plan outside the When2Call group, and the fix's v5_tools files, are v5's"
   if [ "$dry" != 1 ]; then
     python3 -I - "$b5" "$fix" <<'EOF'
@@ -225,12 +240,36 @@ for f in ("val/v5_tools.jsonl", "val/v5_tools_masked.jsonl"):
 print(f"{n} plans outside the When2Call group as v5's, {w} of the group replanned")
 EOF
   fi
+  if [ -n "$check_against" ]; then
+    note "against $check_against: only the no-call plans that had no anchor (both slates at L6) may change"
+    if [ "$dry" != 1 ]; then
+      python3 -I - "$check_against/stage/plan5.jsonl" "$fix/stage/plan5.jsonl" "$runs/plan-diff.json" <<'EOF'
+import json, sys
+a, b, out = sys.argv[1:]
+changed, same, bad = [], 0, []
+for x, y in zip(open(a), open(b)):
+    if x == y:
+        same += 1
+        continue
+    p = json.loads(x)
+    if p["group"] == "when2call" and p["gold"] is None and p["natural"]["level"] == 6 and p["hard"]["level"] == 6:
+        changed.append(p["id"])
+    else:
+        bad.append(p["id"])
+json.dump({"against": a, "plans unchanged": same, "plans changed (no-call, no anchor before)": len(changed),
+           "requests changed": changed, "other plans changed": bad}, open(out, "w"), indent=1)
+if bad:
+    sys.exit("%d plans changed that had an anchor or a tool gold: %s" % (len(bad), bad[:5]))
+print(f"{same} plans as the previous fix's, {len(changed)} no-call plans without an anchor replanned")
+EOF
+    fi
+  fi
   done_ fix-plan.done
 }
 
 fix_teacher_jobs() {
   need fix-plan.done fix-plan
-  logged v6-fix-items "$D" route v5-fix-items --v2 "$v2" --base "$b6" --fix "$fix" --group when2call
+  logged v6-fix-items "$D" route v5-fix-items --v2 "$v2" --base "$b6" --fix "$fix" --group when2call ${also[@]+"${also[@]}"}
   note "the guard of the items: training and validation requests with their hard slate, at most 1,043"
   if [ "$dry" != 1 ]; then
     python3 -I - "$fix/teacher/false-negatives.items.jsonl" <<'EOF'
@@ -255,8 +294,9 @@ EOF
 
 fix_build() {
   need fix-teacher-jobs.done fix-teacher-jobs
-  logged v6-fix-build "$D" --seed 1234 route v5-slates --v2 "$v2" --v4 "$b4" --out "$b6" --only-group when2call --fix "$fix"
-  note "every file of build6/ against build5/: all equal but the When2Call records and counts/v5-slates.json"
+  logged v6-fix-build "$D" --seed 1234 route v5-slates --v2 "$v2" --v4 "$b4" --out "$b6" --only-group when2call --fix "$fix" \
+    ${also[@]+"${also[@]}"}
+  note "every file of $b6 against $b5 (the copy): all equal but the When2Call records and counts/v5-slates.json"
   if [ "$dry" != 1 ]; then
     hashes "$runs/copy.json" "$b6" "$runs/rebuild.json" records/when2call/train.jsonl records/when2call/val.jsonl \
       counts/v5-slates.json
@@ -272,8 +312,39 @@ for root, rel in ((b6, "records/when2call/train.jsonl"), (b6, "records/when2call
     p = os.path.join(root, rel)
     if os.path.exists(p):
         h = hashlib.sha256(open(p, "rb").read()).hexdigest()
-        name = rel if root == b6 else "fix/" + rel
+        name = os.path.relpath(p, b6)
         print(f"| `{name}` | {os.path.getsize(p):,} | `{h}` |")
+EOF
+  fi
+  if [ -n "$check_against" ] && [ "$dry" != 1 ]; then
+    note "the records of the group against the copy's: only the none-right natural and hard slates of the replanned requests may change"
+    python3 -I - "$b5" "$b6" "$runs/plan-diff.json" "$runs/records-diff.json" <<'EOF'
+import json, os, sys
+b5, b6, diff, out = sys.argv[1:]
+changed = set(json.load(open(diff))["requests changed"])
+res, bad = {}, []
+for split in ("train", "val"):
+    rel = f"records/when2call/{split}.jsonl"
+    a = [l for l in open(os.path.join(b5, rel)) if l.strip()]
+    b = [l for l in open(os.path.join(b6, rel)) if l.strip()]
+    if len(a) != len(b):
+        sys.exit(f"{rel}: {len(b)} records against {len(a)}")
+    same = diff_n = 0
+    for x, y in zip(a, b):
+        rx, ry = json.loads(x), json.loads(y)
+        if rx["uid"] != ry["uid"]:
+            sys.exit(f"{rel}: not the same uids")
+        if x == y:
+            same += 1
+            continue
+        diff_n += 1
+        if not (rx["request"] in changed and rx["kind"] in ("natural", "hard") and rx["target"][-1] == 1.0):
+            bad.append(rx["uid"])
+    res[rel] = {"records identical": same, "records rebuilt": diff_n}
+json.dump({"files": res, "other records changed": bad}, open(out, "w"), indent=1)
+if bad:
+    sys.exit("records changed that are not the replanned no-call slates: %s" % bad[:5])
+print(json.dumps(res))
 EOF
   fi
   done_ fix-build.done
@@ -285,7 +356,7 @@ fix_checks() {
   local st=0
   local args=(checks --build "$b6" --requests "$v2/stage/requests.jsonl" --tools "$v2/stage/tools.jsonl"
     --pools "$b6/stage/pools5.json" --plan-counts "$b6/counts/v5-plan.json"
-    --val "$b6/val/v5_tools.jsonl" "$b6/val/v5_tools_masked.jsonl" --v5-report runs/s6-route5/checks.json
+    --val "$b6/val/v5_tools.jsonl" "$b6/val/v5_tools_masked.jsonl" --v5-report "$before_report"
     --out "$runs/checks.json" --md "$runs/checks.md")
   if [ "$dry" = 1 ]; then
     x python3 -I scripts/s6-route6-checks.py "${args[@]}"
@@ -301,10 +372,10 @@ fix_checks() {
 
 spread() {
   need fix-checks.done fix-checks
-  x python3 -I scripts/s6-route6-checks.py spread --build "$b6" --v5-build "$b5" --plan-counts "$b6/counts/v5-plan.json" \
+  x python3 -I scripts/s6-route6-checks.py spread --build "$b6" --v5-build "$b5" --before-label "$before_label" --plan-counts "$b6/counts/v5-plan.json" \
     --out "$runs/spread.json" --md "$runs/spread.md"
   done_ spread.done
-  note "next, by the lead: the amendment of 4.8 (the hashes above, the counts by level, the teacher's counts, the checks and $runs/spread.md), with runs/s6-route6/inputs6.json"
+  note "next, by the lead: the amendment of 4.8 (the hashes above, the counts by level, the teacher's counts, the checks and $runs/spread.md), with $runs/inputs6.json"
 }
 
 inputs_ok() {
@@ -370,7 +441,7 @@ blind_val() {
 
 baselines_val() {
   need blind-val.done blind-val
-  local out=$data/eval/route6-val sys split files
+  local out=${EVAL_OUT:-$data/eval/route6-val} sys split files
   for sys in potion-cos bm25; do
     for split in val v4val v5val; do
       case "$split" in

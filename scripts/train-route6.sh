@@ -22,6 +22,9 @@
 #   ROUTE_DATA=../skycmd-data/s6-route   B6=$ROUTE_DATA/build6   MIN_FREE_GB=3
 #   PILOT_MIN=20  MAIN_MIN=120  TIME_SCALE=1   SKY_BRAKE_FILE (required)   POTION_BAR (the
 #   amendment of 4.5: potion-cos on v5_tools - 0.15)   EMBED   RESUME=1   SMOKE=1   DRY_RUN=1
+# For a later version over this one (scripts/train-route7.sh): ROUTE_TAG (default s6-route6: the
+# folders runs/<tag>, runs/<tag>-pilot, models/<tag>, the name <tag>-nano and the guard's files
+# runs/<tag>/inputs.ok and runs/<tag>/placeholder.json).
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -38,7 +41,8 @@ B=$CARGO_TARGET_DIR/release
 T=$B/sky-train
 E=$B/sky-eval
 R=$B/sky-route
-name=s6-route6-nano
+tag=${ROUTE_TAG:-s6-route6}
+name=$tag-nano
 data=${ROUTE_DATA:-../skycmd-data/s6-route}
 b6=${B6:-$data/build6}
 min_free=${MIN_FREE_GB:-3}
@@ -46,14 +50,14 @@ embed=${EMBED:-site/public/models/s6-route-embed.gguf}
 recipe_json=runs/recipe/recipe.json
 smoke=${SMOKE:-}
 if [ -n "$smoke" ]; then
-  SKY_OUT=${SKY_OUT:-runs/route6-smoke/}
+  SKY_OUT=${SKY_OUT:-runs/${tag#s6-}-smoke/}
   PILOT_MIN=${PILOT_MIN:-0.75}
   MAIN_MIN=${MAIN_MIN:-1}
 fi
 out=${SKY_OUT:-}
-run=${out}runs/s6-route6
-pilot_dir=${out}runs/s6-route6-pilot
-m=${out}models/s6-route6
+run=${out}runs/$tag
+pilot_dir=${out}runs/$tag-pilot
+m=${out}models/$tag
 model=$m/skycmd-$name-ternary.gguf
 records=$b6/records/tools,$b6/records/intents,$b6/records/when2call
 weights=tools=0.60,intents=0.25,when2call=0.15
@@ -62,7 +66,7 @@ val=$b6/val
 width=256 batch=64 tok=data/tok/tok-s6-4096.json init_src=runs/s6-micro/pretrain/init want_x=0.5
 if [ -n "$smoke" ]; then
   case "$run" in
-    runs/s6-route6 | ./runs/s6-route6 | "$PWD/runs/s6-route6")
+    "runs/$tag" | "./runs/$tag" | "$PWD/runs/$tag")
       echo "SMOKE=1 needs a prefix that is not the real run's (SKY_OUT=$SKY_OUT)" >&2
       exit 2
       ;;
@@ -108,10 +112,10 @@ disk_floor() {
 
 # the refusals of the header
 guard() {
-  note "require runs/s6-route6/inputs.ok, runs/s6-route6/placeholder.json, runs/s6-route4/latency-check.json option (i) (3.4: kept from v4), no other training"
+  note "require runs/$tag/inputs.ok, runs/$tag/placeholder.json, runs/s6-route4/latency-check.json option (i) (3.4: kept from v4), no other training"
   [ "$dry" = 1 ] && return
-  [ -f runs/s6-route6/inputs.ok ] || { echo "no runs/s6-route6/inputs.ok: scripts/build-route6-data.sh inputs-ok, after the amendment of 4.8" >&2; exit 1; }
-  [ -f runs/s6-route6/placeholder.json ] || { echo "no runs/s6-route6/placeholder.json: scripts/build-route6-data.sh placeholder" >&2; exit 1; }
+  [ -f "runs/$tag/inputs.ok" ] || { echo "no runs/$tag/inputs.ok: the data script's stage inputs-ok, after the amendment of 4.8" >&2; exit 1; }
+  [ -f "runs/$tag/placeholder.json" ] || { echo "no runs/$tag/placeholder.json: the data script's stage placeholder" >&2; exit 1; }
   [ -f "$val/v5_tools.blind.model.jsonl" ] || { echo "no blind copies of v5_tools: scripts/build-route6-data.sh blind-val" >&2; exit 1; }
   python3 -I -c '
 import json, sys
@@ -162,7 +166,7 @@ rate() {
 
 window_of() {
   if [ ! -f "$run/window.json" ]; then
-    [ "$dry" = 1 ] && { echo "<the head window of runs/s6-route6/window.json>"; return; }
+    [ "$dry" = 1 ] && { echo "<the head window of $run/window.json>"; return; }
     echo "no $run/window.json: the window step first" >&2
     exit 1
   fi
@@ -187,7 +191,7 @@ run = sys.argv[1]
 r = {w: json.load(open(os.path.join(run, "truncation", f"micro-{w}.json")))["all"]["head"] for w in (160, 256, 320)}
 ok = [w for w in sorted(r) if r[w] <= 0.05]
 w = ok[0] if ok else max(r)
-json.dump({"about": "s6-route v6: the head window of docs/s6-route6-prereg.md 3 (v4 3.3: v2's rule, amendment 2)",
+json.dump({"about": "s6-route v6 (and later versions over it): the head window of docs/s6-route6-prereg.md 3 (v4 3.3: v2's rule, amendment 2)",
            "head share shrunk": r, "window": w}, open(os.path.join(run, "window.json"), "w"), indent=1)
 print(f"head window {w}: {r}")
 EOF

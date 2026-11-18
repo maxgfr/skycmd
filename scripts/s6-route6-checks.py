@@ -125,7 +125,7 @@ def spread(a):
     after = spread_table(a.build, classes)
     before = spread_table(a.v5_build, classes) if a.v5_build else {}
     return {'about': 's6-route v6: the spread table of docs/s6-route6-prereg.md 4.8 and amendment 1 (reported)',
-            'group': GROUP, 'after the fix': after, "v5's build": before}
+            'group': GROUP, 'after the fix': after, "v5's build": before, 'beside': a.before_label}
 
 
 def markdown(rep):
@@ -134,6 +134,8 @@ def markdown(rep):
                '| split, kind, answer | slates | spread above 0 | L6 | v5: slates | v5: spread above 0 | v5: L6 |',
                '|---|---:|---:|---:|---:|---:|---:|']
         b = rep["v5's build"]
+        label = rep.get('beside') or "v5's build"
+        out[2] = out[2].replace('v5:', label + ':')
         for k, e in rep['after the fix'].items():
             o = b.get(k, {})
             out.append('| %s | %d | %.4f | %.4f | %s | %s | %s |' % (
@@ -166,6 +168,7 @@ def main(argv=None):
     s = sub.add_parser('spread')
     s.add_argument('--build', required=True)
     s.add_argument('--v5-build')
+    s.add_argument('--before-label', default="v5's build", help="the name of the build beside (v5's build; v6's for v7)")
     s.add_argument('--plan-counts', required=True)
     s.add_argument('--out', required=True)
     s.add_argument('--md')
