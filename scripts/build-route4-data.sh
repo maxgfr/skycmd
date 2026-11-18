@@ -59,6 +59,7 @@ runs=${RUNS:-runs/s6-route4}
 model=${MODEL:-site/public/models/s6-route-nano.gguf}
 embed=${EMBED:-site/public/models/s6-route-embed.gguf}
 remedy=${REMEDY:-}
+export ROUTE_DATA=$data
 D=$CARGO_TARGET_DIR/release/sky-data
 G=$CARGO_TARGET_DIR/release/gguf-set
 stages=(fetch teacher-jobs latency build checks fresh probes counts)
