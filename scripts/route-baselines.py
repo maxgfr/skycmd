@@ -73,7 +73,9 @@ FILES = {
     # s6-route v4 (docs/s6-route4-prereg.md 4.3, 5): v4's validation slates, v2's fitted values
     "v4val": ("v4_tools", "v4_tools_masked", "v4_tools_rw", "v4_tools_masked_rw"),
     # s6-route v5 (docs/s6-route5-prereg.md 4.5, 5): v5's validation slates, v2's fitted values
-    "v5val": ("v5_tools", "v5_tools_masked", "v5_tools_rw", "v5_tools_masked_rw"),
+    "v5val": ("v5_tools", "v5_tools_masked", "v5_tools_rw", "v5_tools_masked_rw",
+              # s6-route v6 (docs/s6-route6-prereg.md 4.5): the blind copies (B0), reported
+              "v5_tools.blind", "v5_tools_masked.blind"),
 }
 SPLITS = common.SPLITS + ("v4val", "v5val")
 
