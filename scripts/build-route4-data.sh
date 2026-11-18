@@ -26,7 +26,7 @@
 #                 masked copy; writes checks.passed only when every judged check holds; a failing
 #                 rule stops here (REMEDY=surface-cell runs teacher-jobs, build and checks once
 #                 more with the one remedy of 4.4, only when the checks say it is open)
-#   fresh         Toucan's rows (sky-data route toucan-rows: stopped, see its message), the tool
+#   fresh         Toucan's rows (sky-data route toucan-rows, amendment 1 of 6.1), the tool
 #                 table, the MiniLM embedding (scripts/route-embed.py --build $T4), and the fresh
 #                 test (sky-data --seed 1236 route toucan: t4_tools, its masked copy and servers,
 #                 written once, FRESH4.json, runs/s6-route4/test-files.json), and the items of the

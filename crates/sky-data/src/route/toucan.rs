@@ -4,11 +4,10 @@
 //!
 //! 1. [`rows`] (`sky-data route toucan-rows --input <SFT parquet files> --out <t4 dir>`): the
 //!    parquet files of the SFT config read into `<t4>/stage/rows.jsonl`, one [`ToucanRow`] per
-//!    row. **Stopped** (see [`rows`]): the SFT config has no `metadata` column, so the row's
-//!    server and the gold's description cannot be read as 6.1 says; the step checks the files'
-//!    columns, counts the rows by subset and stops with the difference. Everything after it
-//!    reads `rows.jsonl` in the format of [`ToucanRow`] and runs once an amendment says where a
-//!    row's server and tool list come from.
+//!    qualifying row, by the rule of amendment 1 ([`parse_row`]: the SFT config has no `metadata`
+//!    column; the right tool is the row's single `target_tools` entry, listed in the row's own
+//!    `tools` as `<server>-<tool>`, and the server is that prefix). [`schema`]
+//!    (`route toucan-schema`) prints the files' structure only.
 //! 2. [`stage`] (`sky-data route toucan-stage --t4 <t4 dir>`): the tool table of every server
 //!    tool and `<t4>/stage/texts.jsonl`, which `scripts/route-embed.py --build <t4 dir>` embeds
 //!    with v2's pinned all-MiniLM-L6-v2.
@@ -94,15 +93,93 @@ pub struct ToucanRow {
     pub target_tools: Vec<String>,
 }
 
-/// Step 1: the SFT parquet files read into `rows.jsonl`. **Stopped**: the pre-registration (6.1)
-/// reads the gold "as listed in the row's server metadata" and caps the rows per server (6.2,
-/// item 3); the SFT config's card declares six string columns (`uuid`, `subset_name`, `question`,
-/// `target_tools`, `tools`, `messages`), no `metadata` and no server. This step checks the
-/// columns of each file, counts its rows by subset, and stops with the difference; the parser of
-/// a row is written once an amendment says which column holds a row's server and its tools.
+/// What the parser makes of one SFT row (amendment 1 of `docs/s6-route4-prereg.md`, 6.1).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Parsed {
+    /// A row of the two subsets whose single `target_tools` entry is one tool of its own list.
+    Row(ToucanRow),
+    /// A row left out, and why (counted).
+    Out(&'static str),
+}
+
+/// Amendment 1, 6.1: one SFT row. `target_tools` is a string of comma-separated tool names;
+/// `tools` a JSON string, the list of the row's tools as `{type, function: {name, description,
+/// parameters}}`, each listed name `<server>-<tool>`. A row qualifies when it is of the subsets
+/// `single-turn-original` or `single-turn-diversify`, has one target, and exactly one tool of its
+/// list is `<server>-<target>`; the row's server is that prefix, and every tool of its list must
+/// carry it (each tool is then named without it, as `target_tools` names it). Anything that does
+/// not have this form fails loudly, with the row's uuid.
+pub fn parse_row(v: &Value) -> Result<Parsed> {
+    let field = |k: &str| -> Result<&str> {
+        v[k].as_str()
+            .with_context(|| format!("a row whose `{k}` is not a string: {}", v["uuid"]))
+    };
+    let uuid = field("uuid")?;
+    let subset = field("subset_name")?;
+    if !SUBSETS.contains(&subset) {
+        return Ok(Parsed::Out("6.1: another subset"));
+    }
+    let targets: Vec<String> = field("target_tools")?
+        .split(',')
+        .map(super::collapse_ws)
+        .filter(|t| !t.is_empty())
+        .collect();
+    if targets.len() != 1 {
+        return Ok(Parsed::Out("6.1: not exactly one target tool"));
+    }
+    let target = targets[0].clone();
+    let list: Value = serde_json::from_str(field("tools")?)
+        .with_context(|| format!("row {uuid}: `tools` is not JSON"))?;
+    let Some(list) = list.as_array() else {
+        bail!("row {uuid}: `tools` is not a JSON list");
+    };
+    let mut listed = Vec::with_capacity(list.len());
+    for t in list {
+        let f = &t["function"];
+        let (Some(name), Some(desc)) = (f["name"].as_str(), f["description"].as_str()) else {
+            bail!("row {uuid}: a tool without function.name and function.description");
+        };
+        listed.push((super::collapse_ws(name), desc.to_string()));
+    }
+    let names: Vec<String> = listed.iter().map(|(n, _)| n.clone()).collect();
+    let server = match server_match(&target, &names) {
+        Ok((server, _)) => server,
+        Err(_) if target.contains("::") => {
+            return Ok(Parsed::Out("6.1: a target written Server::Tool"))
+        }
+        Err(why) => return Ok(Parsed::Out(why)),
+    };
+    let prefix = format!("{server}-");
+    let mut tools = Vec::with_capacity(listed.len());
+    for (n, d) in listed {
+        let Some(bare) = n.strip_prefix(&prefix) else {
+            bail!("row {uuid}: the tool {n:?} does not carry its server's prefix {prefix:?}");
+        };
+        tools.push(RawTool {
+            name: bare.to_string(),
+            description: d,
+        });
+    }
+    let question = field("question")?.to_string();
+    Ok(Parsed::Row(ToucanRow {
+        id: format!("toucan:{uuid}"),
+        subset: subset.to_string(),
+        question,
+        server,
+        tools,
+        target_tools: vec![target],
+    }))
+}
+
+/// Step 1: the SFT parquet files read into `<out>/stage/rows.jsonl` by [`parse_row`]: the
+/// columns must be the card's six, every uuid distinct; the rows read and left out are counted
+/// in `<out>/counts/toucan-rows.json`. No text is printed.
 pub fn rows(inputs: &[PathBuf], out: &Path) -> Result<Value> {
-    let mut by_subset = Counts::new();
+    let mut read = Counts::new();
+    let mut left = Counts::new();
     let mut files = BTreeMap::new();
+    let mut uuids = HashSet::new();
+    let mut kept = Vec::new();
     for p in inputs {
         let cols = crate::hf::parquet_columns(p)?;
         let want: BTreeSet<&str> = SFT_COLUMNS.iter().copied().collect();
@@ -114,23 +191,44 @@ pub fn rows(inputs: &[PathBuf], out: &Path) -> Result<Value> {
             );
         }
         let mut n = 0usize;
-        crate::hf::for_each_parquet_row(p, &["subset_name"], |v| {
-            n += 1;
-            let s = v["subset_name"].as_str().unwrap_or("<not a string>");
-            bump(&mut by_subset, s);
-            Ok(())
-        })?;
+        crate::hf::for_each_parquet_row(
+            p,
+            &["uuid", "subset_name", "question", "target_tools", "tools"],
+            |v| {
+                n += 1;
+                bump(
+                    &mut read,
+                    v["subset_name"].as_str().unwrap_or("<not a string>"),
+                );
+                let u = v["uuid"].as_str().unwrap_or("").to_string();
+                if !uuids.insert(u.clone()) {
+                    bail!("{}: the uuid {u} repeats", p.display());
+                }
+                match parse_row(&v)? {
+                    Parsed::Row(r) => kept.push(r),
+                    Parsed::Out(why) => bump(&mut left, why),
+                }
+                Ok(())
+            },
+        )?;
         files.insert(p.display().to_string(), n);
     }
-    let counts = json!({"rows by file": files, "rows by subset": by_subset});
+    if inputs.is_empty() {
+        bail!("no parquet file");
+    }
+    write_jsonl(&out.join("stage/rows.jsonl"), &kept)?;
+    let servers: BTreeSet<&str> = kept.iter().map(|r| r.server.as_str()).collect();
+    let mut by_subset = Counts::new();
+    for r in &kept {
+        bump(&mut by_subset, &r.subset);
+    }
+    let counts = json!({
+        "about": "s6-route v4 (docs/s6-route4-prereg.md 6.1, amendment 1): the rows of Toucan's SFT files",
+        "rows by file": files, "rows read by subset": read, "rows left out, by reason": left,
+        "rows kept": kept.len(), "rows kept by subset": by_subset, "servers of the kept rows": servers.len(),
+    });
     write_json(&out.join("counts/toucan-rows.json"), &counts)?;
-    bail!(
-        "stopped (docs/s6-route4-prereg.md 6.1): the SFT config has no `metadata` column, so a row's \
-         server and the gold's description \"as listed in the row's server metadata\" cannot be read, \
-         nor the cap of 40 per server applied; its columns are {SFT_COLUMNS:?}. An amendment must say \
-         which column holds a row's server and its tools (counts written to {}): {counts}",
-        out.join("counts/toucan-rows.json").display()
-    )
+    Ok(counts)
 }
 
 /// The skeleton of a JSON value: its types and keys, every string, number and boolean replaced
@@ -188,6 +286,7 @@ pub fn schema(inputs: &[PathBuf]) -> Result<Value> {
     let mut lists_one: HashSet<String> = HashSet::new();
     let mut tools_per_row = Counts::new();
     let mut names = Counts::new();
+    let mut servers: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for p in inputs {
         let reader = parquet::file::reader::SerializedFileReader::new(
             std::fs::File::open(p).with_context(|| format!("open {}", p.display()))?,
@@ -201,7 +300,7 @@ pub fn schema(inputs: &[PathBuf]) -> Result<Value> {
             .iter()
             .map(|c| {
                 json!({"column": c.path().string(), "physical": format!("{:?}", c.physical_type()),
-                             "logical": format!("{:?}", c.logical_type())})
+                             "logical": format!("{:?}", c.logical_type_ref())})
             })
             .collect();
         files.insert(
@@ -276,17 +375,35 @@ pub fn schema(inputs: &[PathBuf]) -> Result<Value> {
             if SUBSETS.contains(&subset.as_str()) {
                 if targets.len() == 1 {
                     let t = super::collapse_ws(&targets[0]);
-                    let m = tool_names.iter().filter(|n| **n == t).count();
+                    let exact = tool_names.iter().filter(|n| **n == t).count();
                     bump(
                         &mut q,
-                        match m {
-                            0 => "one target, not in its own tools list",
-                            1 => "one target, exactly one tool of its own tools list (qualifies)",
-                            _ => "one target, named by several tools of its list",
-                        },
+                        format!(
+                            "one target, named exactly by {} tool(s) of its list",
+                            exact.min(2)
+                        ),
                     );
-                    if m == 1 {
-                        lists_one.insert(key);
+                    match server_match(&t, &tool_names) {
+                        Ok((server, _)) => {
+                            bump(&mut q, "one target, exactly one tool <server>-<target> of its list (qualifies)");
+                            lists_one.insert(key);
+                            let all = tool_names
+                                .iter()
+                                .all(|n| n.starts_with(&format!("{server}-")));
+                            bump(
+                                &mut q,
+                                if all {
+                                    "qualifying: every tool of the list carries the server's prefix"
+                                } else {
+                                    "qualifying: a tool of the list without the server's prefix"
+                                },
+                            );
+                            servers
+                                .entry(server)
+                                .or_default()
+                                .insert(sha256_hex(sorted_names(&tool_names).as_bytes()));
+                        }
+                        Err(why) => bump(&mut q, format!("one target, not qualifying: {why}")),
                     }
                     if t.contains("::") {
                         bump(&mut q, "one target written Server::Tool");
@@ -298,6 +415,13 @@ pub fn schema(inputs: &[PathBuf]) -> Result<Value> {
             Ok(())
         })?;
     }
+    let mut by_list: HashMap<&str, usize> = HashMap::new();
+    for v in servers.values() {
+        for l in v {
+            *by_list.entry(l.as_str()).or_default() += 1;
+        }
+    }
+    let shared = by_list.values().filter(|&&n| n > 1).count();
     Ok(json!({
         "files": files,
         "rows by subset_name": by_subset,
@@ -310,7 +434,48 @@ pub fn schema(inputs: &[PathBuf]) -> Result<Value> {
         "rows of the two subsets": q,
         "distinct tool lists (sha256 of the sorted names), all rows": lists.len(),
         "distinct tool lists among the qualifying rows": lists_one.len(),
+        "servers of the qualifying rows (the prefix of the gold's listed name)": servers.len(),
+        "servers listed with more than one tool list": servers.values().filter(|v| v.len() > 1).count(),
+        "tool lists shared by several servers": shared,
     }))
+}
+
+/// The sorted tool names of a list, one per line (the key of a tool list).
+pub fn sorted_names(names: &[String]) -> String {
+    let mut v = names.to_vec();
+    v.sort();
+    v.join("\n")
+}
+
+/// Amendment 1 (6.1): the row's right tool is the one tool of its own `tools` list whose listed
+/// name is `<server>-<target>` for the row's single `target_tools` entry; returns the server (the
+/// prefix) and the tool's position, or why the row does not qualify.
+pub fn server_match(
+    target: &str,
+    names: &[String],
+) -> std::result::Result<(String, usize), &'static str> {
+    if target.is_empty() {
+        return Err("an empty target");
+    }
+    let suffix = format!("-{target}");
+    let m: Vec<usize> = names
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.as_str() == target || (n.ends_with(&suffix) && n.len() > suffix.len()))
+        .map(|(i, _)| i)
+        .collect();
+    match m.as_slice() {
+        [] => Err("no tool of its list is <server>-<target>"),
+        [i] => {
+            let n = &names[*i];
+            if n == target {
+                Err("the tool's listed name carries no server prefix")
+            } else {
+                Ok((n[..n.len() - suffix.len()].to_string(), *i))
+            }
+        }
+        _ => Err("several tools of its list end with -<target>"),
+    }
 }
 
 /// The tools of a stage: every server tool, by id, and the servers that list each.
@@ -850,6 +1015,7 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
         "Toucan tools": n,
         "Toucan tools within v2's cluster rule (never shown)": near_v2.iter().filter(|&&x| x).count(),
         "probe job items (fresh-tools)": items.len(),
+        "the rows of the SFT files (toucan-rows)": read_json(&o.t4.join("counts/toucan-rows.json")).unwrap_or(Value::Null),
     });
     let manifest = json!({
         "about": "s6-route v4: the fresh test files (docs/s6-route4-prereg.md, section 6), hashed before any system reads them",
@@ -1200,9 +1366,160 @@ mod tests {
         }
         let m = read_json(&dir.join("FRESH4.json")).unwrap();
         assert!(m["files"]["t4_tools_rw.jsonl"].is_string());
-        // the raw files: stopped, with the difference stated
-        let err = super::rows(&[], &t4).unwrap_err().to_string();
-        assert!(err.contains("no `metadata` column"), "{err}");
         std::fs::remove_dir_all(root).ok();
+    }
+
+    fn sft_row(uuid: &str, subset: &str, targets: &str, tools: Value) -> Value {
+        json!({"uuid": uuid, "subset_name": subset, "question": format!("question {uuid}"),
+               "target_tools": targets, "tools": tools.to_string(), "messages": "[]"})
+    }
+
+    fn tool(name: &str, desc: &str) -> Value {
+        json!({"type": "function", "function": {"name": name, "description": desc,
+               "parameters": {"type": "object", "properties": {}}}})
+    }
+
+    #[test]
+    fn sft_rows_are_parsed_by_amendment_1() {
+        let list = json!([
+            tool("time-mcp-current_time", "Now."),
+            tool("time-mcp-convert_time", "Converts.")
+        ]);
+        let r = parse_row(&sft_row(
+            "u1",
+            "single-turn-original",
+            "convert_time",
+            list.clone(),
+        ))
+        .unwrap();
+        let Parsed::Row(r) = r else { panic!("{r:?}") };
+        assert_eq!(
+            (r.id.as_str(), r.server.as_str()),
+            ("toucan:u1", "time-mcp")
+        );
+        assert_eq!(
+            r.tools[1],
+            RawTool {
+                name: "convert_time".into(),
+                description: "Converts.".into()
+            }
+        );
+        assert_eq!(r.target_tools, vec!["convert_time".to_string()]);
+        for (row, why) in [
+            (
+                sft_row("u2", "irrelevant", "convert_time", list.clone()),
+                "6.1: another subset",
+            ),
+            (
+                sft_row(
+                    "u3",
+                    "single-turn-diversify",
+                    "convert_time, current_time",
+                    list.clone(),
+                ),
+                "6.1: not exactly one target tool",
+            ),
+            (
+                sft_row("u4", "single-turn-original", "missing", list.clone()),
+                "no tool of its list is <server>-<target>",
+            ),
+            (
+                sft_row(
+                    "u5",
+                    "single-turn-original",
+                    "time-mcp::convert_time",
+                    list.clone(),
+                ),
+                "6.1: a target written Server::Tool",
+            ),
+        ] {
+            assert_eq!(parse_row(&row).unwrap(), Parsed::Out(why));
+        }
+        // two tools ending with the target
+        let two = json!([tool("a-x", "A."), tool("b-a-x", "B.")]);
+        assert_eq!(
+            parse_row(&sft_row("u6", "single-turn-original", "x", two)).unwrap(),
+            Parsed::Out("several tools of its list end with -<target>")
+        );
+        // the loud failures: a tool without the server's prefix, `tools` not a list of functions
+        let mixed = json!([
+            tool("time-mcp-convert_time", "C."),
+            tool("other-thing", "O.")
+        ]);
+        assert!(parse_row(&sft_row(
+            "u7",
+            "single-turn-original",
+            "convert_time",
+            mixed
+        ))
+        .is_err());
+        let bad = json!({"uuid": "u8", "subset_name": "single-turn-original", "question": "q",
+                         "target_tools": "x", "tools": "[{\"name\": \"s-x\"}]"});
+        assert!(parse_row(&bad).is_err());
+        let notjson = json!({"uuid": "u9", "subset_name": "single-turn-original", "question": "q",
+                             "target_tools": "x", "tools": "not json"});
+        assert!(parse_row(&notjson).is_err());
+    }
+
+    /// A parquet file of the SFT config's six string columns.
+    fn write_sft(path: &Path, rows: &[Value]) {
+        use parquet::data_type::{ByteArray, ByteArrayType};
+        use parquet::file::properties::WriterProperties;
+        use parquet::file::writer::SerializedFileWriter;
+        use std::sync::Arc;
+        let schema = Arc::new(
+            parquet::schema::parser::parse_message_type(
+                "message schema { REQUIRED BYTE_ARRAY uuid (UTF8); REQUIRED BYTE_ARRAY subset_name (UTF8); \
+                 REQUIRED BYTE_ARRAY question (UTF8); REQUIRED BYTE_ARRAY target_tools (UTF8); \
+                 REQUIRED BYTE_ARRAY tools (UTF8); REQUIRED BYTE_ARRAY messages (UTF8); }",
+            )
+            .unwrap(),
+        );
+        let f = std::fs::File::create(path).unwrap();
+        let mut w =
+            SerializedFileWriter::new(f, schema, Arc::new(WriterProperties::builder().build()))
+                .unwrap();
+        let mut rg = w.next_row_group().unwrap();
+        for col in SFT_COLUMNS {
+            let mut c = rg.next_column().unwrap().unwrap();
+            let vals: Vec<ByteArray> = rows
+                .iter()
+                .map(|r| ByteArray::from(r[col].as_str().unwrap()))
+                .collect();
+            c.typed::<ByteArrayType>()
+                .write_batch(&vals, None, None)
+                .unwrap();
+            c.close().unwrap();
+        }
+        rg.close().unwrap();
+        w.close().unwrap();
+    }
+
+    #[test]
+    fn sft_parquet_files_are_read() {
+        let d = std::env::temp_dir().join(format!("sky-route-sft-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let list = json!([tool("srv-a", "Does a."), tool("srv-b", "Does b.")]);
+        let mut rows = vec![
+            sft_row("u1", "single-turn-original", "a", list.clone()),
+            sft_row("u2", "single-turn-diversify", "b", list.clone()),
+            sft_row("u3", "multi-turn", "a", list.clone()),
+            sft_row("u4", "single-turn-original", "a, b", list.clone()),
+        ];
+        let p = d.join("train.parquet");
+        write_sft(&p, &rows);
+        let sch = schema(std::slice::from_ref(&p)).unwrap();
+        assert_eq!(sch["uuids"]["distinct"], 4);
+        let c = super::rows(std::slice::from_ref(&p), &d).unwrap();
+        assert_eq!(c["rows kept"], 2);
+        assert_eq!(c["servers of the kept rows"], 1);
+        let kept: Vec<ToucanRow> = read_lines(&d.join("stage/rows.jsonl")).unwrap();
+        assert_eq!(kept[1].tools[1].name, "b");
+        // a repeated uuid fails loudly
+        rows[1]["uuid"] = json!("u1");
+        write_sft(&p, &rows);
+        assert!(super::rows(std::slice::from_ref(&p), &d).is_err());
+        assert!(super::rows(&[], &d).is_err());
+        std::fs::remove_dir_all(d).ok();
     }
 }

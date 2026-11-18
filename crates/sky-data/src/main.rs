@@ -262,9 +262,10 @@ enum RouteStep {
         #[arg(long)]
         record: Option<PathBuf>,
     },
-    /// s6-route v4 (docs/s6-route4-prereg.md 6.1), fresh test step 1: the SFT parquet files of
-    /// Toucan-1.5M read into <out>/stage/rows.jsonl. Stopped: the SFT config has no `metadata`
-    /// column (the step checks the columns, counts the rows by subset and says so).
+    /// s6-route v4 (docs/s6-route4-prereg.md 6.1, amendment 1), fresh test step 1: the SFT
+    /// parquet files of Toucan-1.5M read into <out>/stage/rows.jsonl (the qualifying rows: one
+    /// target, listed in the row's own tools as <server>-<tool>), counted in
+    /// <out>/counts/toucan-rows.json.
     ToucanRows {
         /// The parquet files (comma separated).
         #[arg(long, value_delimiter = ',', required = true)]
