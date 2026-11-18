@@ -295,7 +295,11 @@ onMounted(async () => {
             <strong>Backtest</strong> hides the last steps and scores the forecasts (MASE below 1 beats repeating the
             last season). TinyCast (RAWS Labs, Apache-2.0,
             <a href="./models/ref/TINYCAST-NOTICE.txt">NOTICE</a>), ported to Rust, runs in the same WebAssembly
-            module as a reference: s6-cast-pico was to beat FLAIR (its gate) and TinyCast (its goal), and did neither.
+            module as a reference:
+            <template v-if="cfg.model === 's6-cast2-pico'"
+              >s6-cast2-pico was to beat FLAIR on GIFT-Eval (its gate G1) and did not; it stays behind TinyCast.</template
+            >
+            <template v-else>s6-cast-pico was to beat FLAIR (its gate) and TinyCast (its goal), and did neither.</template>
           </p>
           <ForecastView />
         </section>

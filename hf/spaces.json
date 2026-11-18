@@ -100,6 +100,21 @@
     ]
   },
   {
+    "model": "s6-cast2-pico",
+    "kind": "forecast",
+    "emoji": "📉",
+    "color_from": "gray",
+    "color_to": "blue",
+    "tagline": "Failed its pre-registered gate, published as a result: a 149 KB ternary forecaster (nine deciles) with a periodicity front end that scores nGMASE 0.8847 and nWQL 0.6190 on GIFT-Eval, where its gate asked for 0.838 and 0.587. Better than its first version, behind TinyCast.",
+    "short_description": "Failed its gate: 149 KB forecaster, a result",
+    "notes": [
+      "Failed its gate: G1 asked for nGMASE ≤ 0.838 and nWQL ≤ 0.587 on GIFT-Eval without flip, the bars of the training-free FLAIR; it scored 0.8847 and 0.6190 (0.8692 / 0.6071 with flip). G2 holds: its MASE ratio to the seasonal naive is under 1.00 at each term (short 0.833, medium 0.928, long 0.988). The Chronos-ZS gate was dropped before training (its harness did not reproduce the published TinyCast); there it reads 0.9014 / 0.7143, reported, against 0.8598 / 0.6928 for our TinyCast port without flip.",
+      "It improves on s6-cast-pico (0.9471 / 0.6646) and stays behind our TinyCast port (0.7918 / 0.5622 without flip) on MASE in every term, band and domain. GIFT-Eval is partly in-sample for its design choices, never for its weights. By its pre-registration the s6-cast line stops here: TinyCast is the forecaster to use.",
+      "Measured on one synthetic series of 2,048 points, one core of an Apple M5: 838 µs natively and 1,636 µs in WASM per 64-step forecast, against 21,531 µs and 39,998 µs for our TinyCast port; its file is 148,512 bytes, TinyCast's 595,840.",
+      "s6-cast2-pico starts unticked: tick it to compare it with TinyCast and the seasonal naive on the same series."
+    ]
+  },
+  {
     "model": "s6-secrets-verify-pico",
     "engine": true,
     "kind": "secrets-verify",
