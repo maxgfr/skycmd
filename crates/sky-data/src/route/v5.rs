@@ -3058,6 +3058,72 @@ mod tests {
         assert_eq!(got.join("\n"), V5_FROZEN.trim());
     }
 
+    /// The bytes of v6's fix on the invented fixture (`--when2call-exempt none`, the fix's items
+    /// and the rebuild of the When2Call group by uid), frozen when s6-route v7's code was written
+    /// (`docs/s6-route7-prereg.md`: the default of its switch keeps v6's bytes).
+    #[test]
+    fn v6_fix_bytes_are_frozen() {
+        let root = std::env::temp_dir().join(format!("sky-route-v6-frozen-{}", std::process::id()));
+        let (v2, v4d, a) = (root.join("v2"), root.join("v4"), root.join("b5"));
+        fixture(&v2);
+        run(&v2, 7);
+        v4_rewrites(&v2, &v4d);
+        v5_run(&v2, &v4d, &a);
+        stage_items(&a);
+        fn_answers(&a, false);
+        v5_slates(&v2, &v4d, &a, false).unwrap();
+        let c = root.join("b6");
+        copy_tree(&a, &c);
+        let fix = c.join("fix");
+        copy_tree(&a.join("emb"), &fix.join("emb"));
+        plan(&PlanOptions {
+            when2call_none: true,
+            ..opts(&v2, &v4d, &fix)
+        })
+        .unwrap();
+        fix_items(&v2, &c, &fix, WHEN2CALL).unwrap();
+        let items: Vec<FnItem> = read_lines(&items_path(&fix, "false-negatives")).unwrap();
+        let ans: Vec<Value> = items
+            .iter()
+            .enumerate()
+            .map(|(j, i)| json!({"id": i.id, "able": if j % 3 == 0 { vec![1] } else { vec![] }}))
+            .collect();
+        write_jsonl(&answers_path(&fix, "false-negatives"), &ans).unwrap();
+        rebuild_group(&RebuildOptions {
+            v2: v2.clone(),
+            v4: v4d.clone(),
+            out: c.clone(),
+            fix: fix.clone(),
+            group: WHEN2CALL.into(),
+            seed: 7,
+            provisional: false,
+        })
+        .unwrap();
+        let mut got = Vec::new();
+        for (d, f) in [
+            (&fix, "stage/plan5.jsonl"),
+            (&fix, "stage/false-negatives5.items.jsonl"),
+            (&fix, "teacher/false-negatives.items.jsonl"),
+            (&fix, "counts/v5-plan.json"),
+            (&c, "records/when2call/train.jsonl"),
+            (&c, "records/when2call/val.jsonl"),
+        ] {
+            got.push(format!("{f} {}", sha256_file(&d.join(f)).unwrap()));
+        }
+        std::fs::remove_dir_all(&root).ok();
+        println!("FROZEN\n{}", got.join("\n"));
+        assert_eq!(got.join("\n"), V6_FIX_FROZEN.trim());
+    }
+
+    const V6_FIX_FROZEN: &str = "
+stage/plan5.jsonl aa3e1002b5462d709c39af14976e887cc0851052379f296948b0dccb941e5355
+stage/false-negatives5.items.jsonl efb61136ebe6270b7efc3df361830a1d2a4af28c06584891d36f639bb025ea42
+teacher/false-negatives.items.jsonl c4aa8771a17d2da085d9848eee28c1898f159b3c045fac180b34f998ef7e5a1b
+counts/v5-plan.json fc0dfb84090d53d3869f803e30e9101db820ebfe9ebeeb55513592d5da5fb5d0
+records/when2call/train.jsonl 788f5fc3a6b712601b671c55096ff52f7dd740f1169576845db1acd7a01672f0
+records/when2call/val.jsonl 6bdd2cd641259d27caf8eb9bac302da0210fa9019e8ca6348713dbb4ef6255fa
+";
+
     const V5_FROZEN: &str = "
 counts/v5-plan.json bf2653ffcf70a1cebb69c5bf4641647cef38816f653f6b618903109808e5e3a9
 records/intents/train.jsonl 9c9daa7884514852b3596eb6a78e5d231c126ce511e47cf3052558fa6a9a67af
