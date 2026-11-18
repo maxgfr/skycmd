@@ -338,7 +338,11 @@ export_() {
   fi
   x "$B/gguf-set" "$model" "$model" skycmd-s2.exit_threshold.choice=1 skycmd-s2.exit_threshold.score=1 \
     skycmd-s2.exit_threshold.noul=1 "skycmd-s2.route.tau_ask=$tau" skycmd-s2.route.render=str:scores-in-options
-  echo "== $model: tau_ask $tau; next: scripts/s6-route6-fit.py (beta and tau_ask6 on v5_tools) and the embedding file that stores them"
+  if [ "$tag" = s6-route7 ]; then
+    echo "== $model: tau_ask $tau; next: scripts/route7-gate.sh fit embed (beta and tau_ask7 on v5_tools, and the embedding file that stores them)"
+  else
+    echo "== $model: tau_ask $tau; next: scripts/s6-route6-fit.py (beta and tau_ask6 on v5_tools) and the embedding file that stores them"
+  fi
 }
 
 steps=("$@")
