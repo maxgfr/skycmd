@@ -96,6 +96,25 @@ class Baselines(unittest.TestCase):
             got = rb.bm25_scores([rec], theta=0.0)[0][:-1]
             np.testing.assert_allclose(got, c["scores"], atol=1e-5)
 
+    def test_v4_validation_files(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "val"))
+            open(os.path.join(d, "val", "v4_tools.jsonl"), "w").close()
+            old = os.environ.get("BUILD4")
+            os.environ["BUILD4"] = d
+            try:
+                self.assertEqual(rb.v4_slate_file("v4_tools"), os.path.join(d, "val", "v4_tools.jsonl"))
+                for bad in ("t4_tools", "f_tools", "v_tools", "v4_tools_masked"):
+                    with self.assertRaises(rb.common.Refused):
+                        rb.v4_slate_file(bad)
+            finally:
+                if old is None:
+                    del os.environ["BUILD4"]
+                else:
+                    os.environ["BUILD4"] = old
+        self.assertIn("v4val", rb.SPLITS)
+
     def test_name_prior(self):
         r = {"opts": ["a: x", "b: y", rb.common.NONE_OPTION]}
         self.assertEqual(list(rb.name_prior_probs([r], {"b": 3, "a": 1})[0]), [0, 1, 0])

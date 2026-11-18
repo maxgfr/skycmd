@@ -32,7 +32,10 @@
 #   ROUTE_DATA=../skycmd-data/s6-route   B4=$ROUTE_DATA/build4
 #   PILOT_MIN=20  MAIN_MIN=120  TIME_SCALE=1   working minutes (the brake's rests do not count)
 #   SKY_DUTY=0.5  SKY_COOL=45:15  SKY_BRAKE_FILE (required)   the brake (docs/s6-gen-prereg.md)
-#   SKY_MLX_CACHE_GB=2   POTION_BAR   the bar of the pilot rule (1), from the amendment
+#   SKY_MLX_CACHE_GB=2   POTION_BAR   the bar of the pilot rule (1), from the amendment: potion-cos
+#                 on v4_tools by v2's fitted values (CPU, before the pilot), minus 0.15:
+#                   <data>/envs/route/bin/python -I scripts/route-baselines.py score --system potion-cos \
+#                     --split v4val --files v4_tools   (its accuracy: dump lines whose argmax is the gold)
 #   EMBED=site/public/models/s6-route-embed.gguf   the embedding part of the pilot's pair
 #   RESUME=1   continue after a technical failure only (section 5)
 #   SMOKE=1    the smoke run of section 5 (a pilot of 0.75 minute and a main run of 1, every step,

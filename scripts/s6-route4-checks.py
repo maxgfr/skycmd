@@ -18,9 +18,13 @@ Cells: every (group, kind, split) of `<build>/records/<group>/<split>.jsonl`, an
 judged. The --fresh files (the fresh test, 6.2 item 5) are always reported and never judged: a
 rule above its tolerance there is reported with the gate and does not change the file.
 
-- C1, the rewrite is independent of the answer: |P(rewritten | right tool) - P(rewritten | other
-  tool option)| <= 0.01 in a cell of at least 1,000 tool-gold slates, <= 0.03 elsewhere (the
-  builder's own flag `rewritten`; cells without it are not read for C1).
+- C1, the rewrite is independent of the answer (amendment 1 of 18/11/2026, which replaced the
+  frozen bars 0.01 and 0.03 before any data was built): in every judged cell, each of the two
+  rates P(rewritten | right tool) (over its n right tools) and P(rewritten | other tool option)
+  (over its n other tool options) is within 3 standard errors of a fair draw of 0.5,
+  |rate - 0.5| <= 3 sqrt(0.25 / n); and over the tool-gold slates of every record cell pooled,
+  both rates are within 0.01 of 0.5. The difference of the two rates, its spread and z are
+  reported per cell (the builder's own flag `rewritten`; cells without it are not read for C1).
 - C2, request-blind rules at chance: each rule picks one tool option from the option texts alone
   (the score and rank of D4 are taken off first); a tie counts 1/|tie| when the right tool is in
   it; chance c is the mean of 1/(tool options); a rule fails when its accuracy on the n
@@ -53,9 +57,8 @@ blind = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(blind)
 
 MIN_JUDGED = 200
-C1_LARGE = 1000
-C1_TOL_LARGE = 0.01
-C1_TOL = 0.03
+C1_SE = 3.0
+C1_POOLED = 0.01
 C2_MARGIN = 0.02
 NONE_SHARE = 0.2
 SCORE = re.compile(r'^score -?[0-9.]+ rank [0-9]+; ')
@@ -236,18 +239,20 @@ def cell_report(name, recs, srcmap, judged=True):
     out['C2'] = rules
     # C1
     if with_flags:
-        rg = sum(r['rewritten'][g] for r, g in zip(tg, golds)) / n
-        oth = [r['rewritten'][i] for r, g in zip(tg, golds) for i in range(len(r['tools'])) if i != g]
-        ro = sum(oth) / max(len(oth), 1)
-        t1 = C1_TOL_LARGE if n >= C1_LARGE else C1_TOL
-        # the spread of the difference if every flag were an independent draw of p 0.5 (D1):
-        # reported next to the frozen tolerance, which does not scale with the cell
-        sd = 0.5 * math.sqrt(1 / n + 1 / max(len(oth), 1))
-        out['C1'] = {'P(rewritten | right tool)': rg, 'P(rewritten | other tool option)': ro,
-                     'difference': rg - ro, 'tolerance': t1,
+        kg = sum(bool(r['rewritten'][g]) for r, g in zip(tg, golds))
+        oth = [bool(r['rewritten'][i]) for r, g in zip(tg, golds) for i in range(len(r['tools'])) if i != g]
+        no_, ko = len(oth), sum(oth)
+        rg, ro = kg / n, ko / max(no_, 1)
+        tg_, to_ = C1_SE * math.sqrt(0.25 / n), C1_SE * math.sqrt(0.25 / max(no_, 1))
+        # the spread of the difference if every flag were an independent draw of p 0.5 (D1)
+        sd = 0.5 * math.sqrt(1 / n + 1 / max(no_, 1))
+        out['C1'] = {'P(rewritten | right tool)': rg, 'right tools': n, 'its bar (3 SE)': tg_,
+                     'P(rewritten | other tool option)': ro, 'other tool options': no_, 'its bar (3 SE) ': to_,
+                     'counts (right rewritten, others rewritten)': [kg, ko],
+                     'difference (reported)': rg - ro,
                      'sd of the difference under D1 (reported)': sd,
-                     'z (reported)': (rg - ro) / sd,
-                     'fails': out['judged'] and abs(rg - ro) > t1}
+                     'z of the difference (reported)': (rg - ro) / sd,
+                     'fails': out['judged'] and (abs(rg - 0.5) > tg_ or (no_ > 0 and abs(ro - 0.5) > to_))}
     # C4: the surface table
     keys = ['period', 'third', 'imperative', 'words', 'chars', 'schema', 'digits', 'namelen', 'position']
     if with_flags:
@@ -343,6 +348,23 @@ def run(build, requests, val, fresh, fresh_manifest):
         cells['fresh ' + os.path.basename(p)] = c
     c3 = none_share_checks(cells, records)
     c1_fail = [k for k, c in cells.items() if c.get('C1', {}).get('fails')]
+    # C1 pooled: the tool-gold slates of every record cell, both rates within 0.01 of 0.5
+    pk = [0, 0, 0, 0]
+    for k, c in cells.items():
+        x = c.get('C1')
+        if x and c.get('kind') == 'records':
+            pk[0] += x['counts (right rewritten, others rewritten)'][0]
+            pk[1] += x['right tools']
+            pk[2] += x['counts (right rewritten, others rewritten)'][1]
+            pk[3] += x['other tool options']
+    c1_pooled = None
+    if pk[1]:
+        pr, po = pk[0] / pk[1], pk[2] / max(pk[3], 1)
+        c1_pooled = {'P(rewritten | right tool)': pr, 'right tools': pk[1],
+                     'P(rewritten | other tool option)': po, 'other tool options': pk[3],
+                     'bar': C1_POOLED, 'fails': abs(pr - 0.5) > C1_POOLED or abs(po - 0.5) > C1_POOLED}
+        if c1_pooled['fails']:
+            c1_fail.append('pooled')
     c3_fail = [x['cell'] for x in c3 if x['fails']]
     c2_fail = [(k, r['rule'], r['tag']) for k, c in cells.items() for r in c['C2'] if r['fails']]
     remedy_open = bool(c2_fail) and all(tag in REMEDY_RULES for _, _, tag in c2_fail)
@@ -361,9 +383,9 @@ def run(build, requests, val, fresh, fresh_manifest):
         'exit': 1 if (c1_fail or c3_fail) else (2 if c2_fail else 0),
     }
     return {'about': 's6-route v4: the data checks of docs/s6-route4-prereg.md 4.4 (no model)',
-            'rules': {'C1 tolerance': [C1_TOL_LARGE, C1_TOL, C1_LARGE], 'C2': 'c + 0.02 + 2 sqrt(c(1-c)/n)',
-                      'cells judged from': MIN_JUDGED},
-            'cells': cells, 'C3': c3, 'C5': c5, 'verdict': verdict}
+            'rules': {'C1': '|rate - 0.5| <= 3 sqrt(0.25 / n) per cell and rate; pooled |rate - 0.5| <= 0.01 (amendment 1)',
+                      'C2': 'c + 0.02 + 2 sqrt(c(1-c)/n)', 'cells judged from': MIN_JUDGED},
+            'cells': cells, 'C1 pooled': c1_pooled, 'C3': c3, 'C5': c5, 'verdict': verdict}
 
 
 def markdown(rep, top=5):
@@ -375,7 +397,7 @@ def markdown(rep, top=5):
             '|---|---:|---:|---|---:|---|---:|---:|---:|']
     for k, c in rep['cells'].items():
         best = c['C2'][0] if c['C2'] else None
-        c1 = c.get('C1', {}).get('difference')
+        c1 = c.get('C1', {}).get('difference (reported)')
         out.append('| %s | %d | %d | %s | %s | %s | %s | %s | %d |' % (
             k, c['slates'], c['tool-gold slates'], 'yes' if c['judged'] else 'no',
             '%+.4f' % c1 if c1 is not None else '', best['rule'] if best else '',

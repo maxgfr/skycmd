@@ -133,19 +133,44 @@ class Checks(unittest.TestCase):
                      'R13 an imperative first word'):
             self.assertIn(want, f)
 
-    def test_c1_on_random_draws_of_a_cell_of_about_a_thousand(self):
-        # D1 draws each flag independently with p 0.5: in a cell of ~1,000 tool-gold slates the
-        # difference has a standard deviation of about 0.017, so the frozen tolerance of 0.01
-        # fails on about half of such cells by sampling alone (reported to the lead)
+    def test_c1_on_random_draws(self):
+        # D1 draws each flag independently with p 0.5: the rule of amendment 1 (3 standard
+        # errors of a fair draw per rate) fails a cell by chance on about 0.5% of draws; the
+        # frozen bar of 0.01 failed about half of the cells of ~1,000 slates
         rng = random.Random(10)
-        fails = 0
+        fails = frozen = 0
         for rep_ in range(40):
             recs = [slate(rng, 'd%d' % j, gold=rng.randrange(7), flags=[rng.random() < 0.5 for _ in range(7)])
                     for j in range(1100)]
             c1 = report(recs)['C1']
-            self.assertGreater(c1['sd of the difference under D1 (reported)'], 0.012)
             fails += c1['fails']
-        self.assertGreater(fails, 10)
+            frozen += abs(c1['difference (reported)']) > 0.01
+            self.assertAlmostEqual(c1['its bar (3 SE)'], 3 * (0.25 / c1['right tools']) ** 0.5)
+        self.assertLessEqual(fails, 2)
+        self.assertGreater(frozen, 10)
+
+    def test_c1_pooled(self):
+        # the pooled rates off by more than 0.01: a defect
+        rng = random.Random(11)
+        with tempfile.TemporaryDirectory() as d:
+            rd = os.path.join(d, 'records', 'tools')
+            os.makedirs(rd)
+            recs = []
+            for kind in ('natural', 'hard', 'renamed'):
+                for j in range(1000):
+                    g = rng.randrange(7)
+                    f = [rng.random() < 0.525 for _ in range(7)]
+                    r = slate(rng, '%s%d' % (kind, j), gold=g, flags=f, none=j % 5 == 0)
+                    r['kind'] = kind
+                    recs.append(r)
+            with open(os.path.join(rd, 'val.jsonl'), 'w') as f:
+                f.writelines(json.dumps(r) + '\n' for r in recs)
+            out = os.path.join(d, 'c.json')
+            checks.main(['--build', d, '--out', out])
+            with open(out) as f:
+                rep = json.load(f)
+            self.assertTrue(rep['C1 pooled']['fails'])
+            self.assertIn('pooled', rep['verdict']['C1 fails'])
 
     def test_small_cells_and_fresh_files_are_not_judged(self):
         rng = random.Random(7)
