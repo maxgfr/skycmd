@@ -35,7 +35,7 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <ModelCatalogue home />
 
-<p class="home-more"><a href="./models/">All models, with their status and what each one brings</a></p>
+<p class="home-more"><a href="./models/">All models, with their status and what each one brings</a> · <a href="https://huggingface.co/spaces/maxgfr/skycmd">Every demo in one Space</a></p>
 
 </section>
 
