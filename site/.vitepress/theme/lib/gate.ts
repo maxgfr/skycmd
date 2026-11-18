@@ -6,8 +6,14 @@
 // template compiler drops a text node made only of whitespace at the start of a `<template>`, which
 // ran the sentences together ("not for use.It missed …"). components/GateNotice.vue renders it.
 
+/** How the gate was fixed: `pre-registered` (the default: a pre-registration document in docs/)
+ * or `fixed-before-training` (a bar written down before training with no such document: s4-micro,
+ * whose bar is in GitHub issue #1). */
+export type GateKind = 'pre-registered' | 'fixed-before-training'
+
 export interface GateFields {
   gate?: 'passed' | 'failed' | null
+  gate_kind?: GateKind | null
   gate_note?: string | null
   gate_url?: string | null
 }
@@ -27,10 +33,11 @@ export interface GateNotice {
 export function gateNotice(entry: GateFields | null | undefined, subject?: string, extra?: string): GateNotice | null {
   const tone = entry?.gate
   if (tone !== 'passed' && tone !== 'failed') return null
+  const gate = entry?.gate_kind === 'fixed-before-training' ? 'gate, fixed before training' : 'pre-registered gate'
   const lead =
     tone === 'failed'
-      ? `${subject ? `${subject} failed` : 'Failed'} its pre-registered gate: published as a result, not for use.`
-      : `${subject ? `${subject} passed` : 'Passed'} its pre-registered gate.`
+      ? `${subject ? `${subject} failed` : 'Failed'} its ${gate}: published as a result, not for use.`
+      : `${subject ? `${subject} passed` : 'Passed'} its ${gate}.`
   const url = entry?.gate_url || undefined
   const note = (entry?.gate_note ? ` ${entry.gate_note}.` : '') + (extra ? ` ${extra}` : '') + (url ? ' ' : '')
   return { tone, lead, note, url }

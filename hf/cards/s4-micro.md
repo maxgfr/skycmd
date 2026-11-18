@@ -18,11 +18,11 @@ tags:
 
 # s4-micro
 
-> **Failed its pre-registered gate: published as a result, not for use.** The gate, written down
-> before training ([issue #1](https://github.com/maxgfr/skycmd/issues/1), checked by
-> `scripts/s4-gate.py`), asked for more than 0.55 on `typed_decisions_bench`. s4-micro scored
-> **0.343**, below s3-pico (0.382) and below the majority class (0.398). Numbers:
-> [BENCH.md, section skycmd-s4](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s4-s4-micro-generic-decisions-distilled-from-qwen35-experimental).
+> **Failed its gate, fixed before training: published as a result, not for use.** The gate,
+> written in [issue #1](https://github.com/maxgfr/skycmd/issues/1) before the run (there is no
+> pre-registration document) and checked by `scripts/s4-gate.py`, asked for more than 0.55 on
+> `typed_decisions_bench`. s4-micro scored **0.343**, below s3-pico (0.382) and below the majority
+> class (0.398). Numbers: [BENCH.md, section skycmd-s4](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s4-s4-micro-generic-decisions-distilled-from-qwen35-experimental).
 
 **A 5.6M-parameter ternary decision model with free-text options, distilled from Qwen3.5-4B in one
 night.** It is the first skycmd model trained for decisions in general rather than for games. It

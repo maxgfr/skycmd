@@ -81,6 +81,9 @@ export interface ModelEntry {
    * 15/11/2026). Every list says so, and no picker selects a failed model by default. Absent for a
    * model published without a gate. The verdict notice (lib/gate.ts) shows both verdicts. */
   gate?: 'passed' | 'failed'
+  /** `fixed-before-training` for a gate written down before training without a pre-registration
+   * document in docs/ (s4-micro); absent for a pre-registered gate. */
+  gate_kind?: 'pre-registered' | 'fixed-before-training'
   /** The gate and the numbers, in one line (the verdict notice's note, with no final period). */
   gate_note?: string
   /** Where the result is written (a section of BENCH.md). */

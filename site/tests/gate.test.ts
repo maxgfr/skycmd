@@ -54,6 +54,23 @@ test('the three parts of the notice are separated by a space', () => {
   assert.equal(gateNoticeText(gateNotice({ gate: 'failed', gate_note: 'A note', gate_url: null })!).endsWith('use. A note.'), true)
 })
 
+test('the lead says how the gate was fixed: pre-registered by default, else fixed before training', () => {
+  const fixed = { ...v1, gate_kind: 'fixed-before-training' } as const
+  assert.equal(gateNotice(fixed)!.lead, 'Failed its gate, fixed before training: published as a result, not for use.')
+  assert.equal(gateNotice(fixed, 's4-micro')!.lead, 's4-micro failed its gate, fixed before training: published as a result, not for use.')
+  assert.equal(gateNotice({ ...fixed, gate: 'passed' })!.lead, 'Passed its gate, fixed before training.')
+  assert.equal(gateNotice({ ...v1, gate_kind: 'pre-registered' })!.lead, gateNotice(v1)!.lead)
+  assert.equal(gateNotice({ ...v1, gate: 'passed' })!.lead, 'Passed its pre-registered gate.')
+  const s4 = manifest.find((e) => e.name === 's4-micro')!
+  assert.equal(
+    gateNoticeText(gateNotice(s4)!),
+    `Failed its gate, fixed before training: published as a result, not for use. ${s4.gate_note}. The result.`,
+  )
+  // a gate fixed before training is named so only where no pre-registration document exists
+  for (const e of manifest) if (e.gate_kind) assert.equal(e.gate_kind, 'fixed-before-training', e.name)
+  assert.deepEqual(manifest.filter((e) => e.gate_kind).map((e) => e.name), ['s4-micro'])
+})
+
 test('a model without a gate gets no notice', () => {
   assert.equal(gateNotice(null), null)
   assert.equal(gateNotice({}), null)

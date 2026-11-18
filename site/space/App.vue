@@ -39,6 +39,8 @@ interface SpaceConfig {
    * with a notice that gives its verdict, passed or failed, with the numbers and the link to the
    * result; a model published without a gate has none. */
   gate?: 'passed' | 'failed'
+  /** `fixed-before-training` when no pre-registration document exists (lib/gate.ts). */
+  gate_kind?: 'pre-registered' | 'fixed-before-training'
   gate_note?: string
   gate_url?: string
 }

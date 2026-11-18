@@ -31,7 +31,9 @@ paragraph the Space's README prints first (s6-route: its disclosure).
 
 A model whose manifest entry has `"gate": "failed"` failed its pre-registered gate and is
 published as a result (owner's decision of 15/11/2026): its card says so in its first lines, and
-its Space opens with the same notice (space.json `gate`, `gate_note`, `gate_url`). The Space of a
+its Space opens with the same notice (space.json `gate`, `gate_kind`, `gate_note`, `gate_url`;
+`gate_kind: "fixed-before-training"` turns "pre-registered gate" into "gate, fixed before
+training" for a gate with no pre-registration document, s4-micro's). The Space of a
 model whose entry has `"gate": "passed"` opens with a notice of the same structure that says it
 passed (its README too, unless the entry of hf/spaces.json has a `readme_notice`); a model with
 no `gate` was published without one and gets no verdict notice.
@@ -48,15 +50,39 @@ PUBLIC = ROOT / "site" / "public"
 ENGINE = ROOT / "target" / "verify-assets"
 
 
+# How the gate was fixed (manifest `gate_kind`, as site/.vitepress/theme/lib/gate.ts reads it):
+# pre-registered by default (a pre-registration document in docs/), or written down before
+# training without one (s4-micro: GitHub issue #1).
+GATE_WORDS = {"pre-registered": "pre-registered gate", "fixed-before-training": "gate, fixed before training"}
+
+
+def gate_lead(entry: dict) -> str | None:
+    """The bold lead of the verdict notice, word for word as lib/gate.ts writes it; None for a
+    model published without a gate."""
+    kind = entry.get("gate_kind") or "pre-registered"
+    if kind not in GATE_WORDS:
+        raise SystemExit(f"{entry['name']}: unknown gate_kind {kind!r}")
+    if entry.get("gate") == "failed":
+        return f"Failed its {GATE_WORDS[kind]}: published as a result, not for use."
+    if entry.get("gate") == "passed":
+        return f"Passed its {GATE_WORDS[kind]}."
+    return None
+
+
+def check_card(m: str, card: str, entry: dict) -> None:
+    """A failed model's card opens, in the first lines after its title, with the bold lead of its
+    failure notice, the one that matches its `gate_kind`, and no other."""
+    if entry.get("gate") == "failed" and f"**{gate_lead(entry)}**" not in card.split(f"\n# {m}\n", 1)[-1][:300]:
+        raise SystemExit(f"hf/cards/{m}.md: a failed model's card must open with its failure notice "
+                         f"(**{gate_lead(entry)}**)")
+
+
 def space_readme(user: str, s: dict, entry: dict) -> str:
     m = s["model"]
     failed = f"{s['readme_notice']}\n\n" if s.get("readme_notice") else ""
-    if entry.get("gate") == "failed":
-        failed = (f"**Failed its pre-registered gate: published as a result, not for use.** "
-                  f"{entry.get('gate_note', '')}. [The result]({entry.get('gate_url', '')}).\n\n")
-    elif entry.get("gate") == "passed" and not failed:
-        failed = (f"**Passed its pre-registered gate.** "
-                  f"{entry.get('gate_note', '')}. [The result]({entry.get('gate_url', '')}).\n\n")
+    lead = gate_lead(entry)
+    if lead and (entry.get("gate") == "failed" or not failed):
+        failed = f"**{lead}** {entry.get('gate_note', '')}. [The result]({entry.get('gate_url', '')}).\n\n"
     return f"""---
 title: {m}
 emoji: {s["emoji"]}
@@ -99,9 +125,7 @@ def assemble(user: str, s: dict, manifest: list, space_only: bool = False) -> tu
     model_dir, space_dir = base / "model", base / "space"
     card = (ROOT / "hf" / "cards" / f"{m}.md").read_text().replace("{{USER}}", user)
     entry = next(e for e in manifest if e["name"] == m)
-    # a failed model's card opens with the notice: the first lines after the title
-    if entry.get("gate") == "failed" and "Failed its pre-registered gate" not in card.split(f"\n# {m}\n", 1)[-1][:300]:
-        raise SystemExit(f"hf/cards/{m}.md: a failed model's card must open with its failure notice")
+    check_card(m, card, entry)
     if space_only:
         if not s.get("space", True):
             return None, None
@@ -158,6 +182,7 @@ def assemble(user: str, s: dict, manifest: list, space_only: bool = False) -> tu
         "notes": s.get("notes", []),
         "game": s.get("game"),
         "gate": entry.get("gate"),
+        "gate_kind": entry.get("gate_kind"),
         "gate_note": entry.get("gate_note"),
         "gate_url": entry.get("gate_url"),
     }
