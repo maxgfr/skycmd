@@ -318,6 +318,32 @@ class LocalMode(unittest.TestCase):
         mc = {"task": "mmlu_pro", "question": "Q?", "options": "(A) x"}
         self.assertIn("(A) x", L.user_item(mc)["question"])
 
+    def test_memory_update_keeps_the_peaks(self):
+        """The smoke's memory figures (amendment 7): the highest MPS readings, the lowest available memory."""
+        import local as L
+
+        rec = {}
+        L.memory_update(rec, 5, 3, 900)
+        L.memory_update(rec, 9, 2, 1000)
+        L.memory_update(rec, 7, 4, 400)
+        self.assertEqual(rec, {"mps_driver_peak": 9, "mps_current_peak": 4, "available_min": 400})
+        L.memory_update(rec, None, None, None)  # nothing readable: nothing changes
+        self.assertEqual(rec, {"mps_driver_peak": 9, "mps_current_peak": 4, "available_min": 400})
+
+    def test_drop_weights_keeps_the_rest(self):
+        """The smoke's merged model, once reloaded: its weights are removed and recorded, the rest is kept."""
+        import hashlib
+
+        import local as L
+
+        with tempfile.TemporaryDirectory() as d:
+            for name, body in (("model.safetensors", b"weights"), ("config.json", b"{}"), ("modeling_lfm3.py", b"#")):
+                with open(os.path.join(d, name), "wb") as f:
+                    f.write(body)
+            gone = L.drop_weights(d)
+            self.assertEqual(gone, {"model.safetensors": {"bytes": 7, "sha256": hashlib.sha256(b"weights").hexdigest()}})
+            self.assertEqual(sorted(os.listdir(d)), ["config.json", "modeling_lfm3.py"])
+
 
 class Amendment5(unittest.TestCase):
     """Amendment 5 (local mode): part (a) only under the cap, the pair folder, the gates without G2 and

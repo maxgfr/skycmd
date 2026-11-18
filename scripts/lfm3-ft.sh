@@ -169,7 +169,13 @@ py_mlx() {
   run_local uv run -q --python 3.12 --with "mlx-vlm==0.7.11" --with "datasets>=3" python "$EXP/local.py" "$@"
 }
 py_lora() {
-  run_local uv run -q --python 3.12 --with torch==2.14.0 --with transformers==5.12.1 --with trl==1.17.1 \
+  # transformers 5.18.0, not the 5.12.1 of §4 (to be recorded by the amendment that follows the smoke): the
+  # base's custom code imports names that 5.12.1 lacks and only 5.15.0 exports, and 5.15.0-5.17.0 rename its
+  # "conv" layers to "linear_attention"; peft, trl and accelerate are unchanged.
+  # MPS may allocate up to its recommended working set and no more: a batch that does not fit raises (and
+  # the smoke takes amendment 1's memory fallback) instead of filling the swap, which shares the full disk.
+  PYTORCH_MPS_HIGH_WATERMARK_RATIO=${PYTORCH_MPS_HIGH_WATERMARK_RATIO:-1.0} \
+  run_local uv run -q --python 3.12 --with torch==2.14.0 --with transformers==5.18.0 --with trl==1.17.1 \
     --with peft==0.21.2 --with accelerate==1.15.0 --with datasets==5.1.0 --with "huggingface_hub>=1.31,<2" \
     python "$EXP/local.py" "$@"
 }

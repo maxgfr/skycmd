@@ -121,16 +121,51 @@ def cmd_gen(_):
     print(json.dumps(marker, indent=2))
 
 
-def brake_callback():
-    """The thermal brake between two optimizer steps (s1s2.py's rest)."""
+def memory_update(rec, driver, current, available):
+    """Keep the peaks of one memory reading in `rec` (bytes): the MPS driver's allocation and the tensors
+    alive at the reading (highest), the system's available memory (lowest)."""
+    for key, value, pick in (("mps_driver_peak", driver, max), ("mps_current_peak", current, max),
+                             ("available_min", available, min)):
+        if value is not None:
+            rec[key] = value if rec.get(key) is None else pick(rec[key], value)
+    return rec
+
+
+def memory_reading():
+    """(MPS driver bytes, MPS current bytes, available system bytes); None for what cannot be read."""
+    import torch
+
+    try:
+        import psutil
+
+        available = psutil.virtual_memory().available
+    except ImportError:
+        available = None
+    if not torch.backends.mps.is_available():
+        return None, None, available
+    return torch.mps.driver_allocated_memory(), torch.mps.current_allocated_memory(), available
+
+
+def brake_callback(record=None):
+    """The thermal brake between two optimizer steps (s1s2.py's rest). With `record` (the smoke), each
+    step's seconds without its rest go to record["step_seconds"] and the memory peaks are kept in it,
+    read before the rest."""
     from transformers import TrainerCallback
 
     class Brake(TrainerCallback):
         def on_step_begin(self, args, state, control, **kw):
             self.t0 = time.time()
 
+        def on_substep_end(self, args, state, control, **kw):
+            if record is not None:
+                memory_update(record, *memory_reading())
+
         def on_step_end(self, args, state, control, **kw):
-            S.rest(time.time() - self.t0)
+            dt = time.time() - self.t0
+            if record is not None:
+                record.setdefault("step_seconds", []).append(dt)
+                memory_update(record, *memory_reading())
+            S.rest(dt)
 
     return Brake()
 
@@ -397,15 +432,35 @@ def max_length_rows(tok, n):
     return out
 
 
-def try_lora(rev, rows, per_device):
-    """Two optimizer steps with this batch; (seconds per step, losses, trainer)."""
+def try_lora(rev, rows, per_device, record):
+    """Two optimizer steps with this batch; (seconds per step without the brake's rests, losses, mask
+    check, trainer). `record` receives each step's seconds and the memory peaks (brake_callback)."""
     trainer, _, _ = C.make_trainer(C.BASE, rev, rows, f"{SMOKE}/sft-out", max_steps=2, per_device=per_device, grad_accum=1,
-                                   callbacks=[brake_callback()])
+                                   callbacks=[brake_callback(record)])
     mask = C.check_completion_mask(trainer, rows[0])
-    t0 = time.time()
     out = trainer.train()
     losses = [h["loss"] for h in trainer.state.log_history if "loss" in h] or [out.training_loss]
-    return (time.time() - t0) / 2, losses, mask, trainer
+    steps = record.get("step_seconds") or [float("nan")]
+    return sum(steps) / len(steps), losses, mask, trainer
+
+
+def drop_weights(d):
+    """Remove the *.safetensors of a directory once it has been reloaded, keeping every other file, and
+    return {name: {bytes, sha256}} of what was removed. The smoke's merged model is checked, not used
+    again (sft merges its own), and 16 GB of disk cannot hold it next to the base and its conversion."""
+    import hashlib
+
+    out = {}
+    for name in sorted(os.listdir(d)):
+        if name.endswith(".safetensors"):
+            p = os.path.join(d, name)
+            h = hashlib.sha256()
+            with open(p, "rb") as f:
+                for block in iter(lambda: f.read(1 << 24), b""):  # 16 MB at a time: the file is 3.5 GB
+                    h.update(block)
+            out[name] = {"bytes": os.path.getsize(p), "sha256": h.hexdigest()}
+            os.remove(p)
+    return out
 
 
 def cmd_smoke_lora(a):
@@ -426,15 +481,19 @@ def cmd_smoke_lora(a):
     rep["linear_names"], rep["lora_targets_match"] = names, sorted(C.LORA_TARGETS) == names
     del model
     os.makedirs(SMOKE, exist_ok=True)
+    rep["memory_total"] = __import__("psutil").virtual_memory().total
     ok = False
     for per_device, grad_accum in ((8, 4), (4, 8)):  # amendment 1: the memory fallback keeps 32 examples per step
+        record = {}
         try:
-            sec, losses, mask, trainer = try_lora(rev, max_length_rows(tok, per_device), per_device)
+            sec, losses, mask, trainer = try_lora(rev, max_length_rows(tok, per_device), per_device, record)
             rep.update(per_device=per_device, grad_accum=grad_accum, seconds_per_batch_at_max_len=sec, losses=losses, mask_ok=mask)
+            rep[f"memory_{per_device}"] = record
             ok = mask and all(math.isfinite(x) for x in losses)
             break
         except Exception:  # noqa: BLE001  (out of memory on MPS is a RuntimeError; anything else is reported too)
             rep[f"error_{per_device}"] = traceback.format_exc()[-3000:]
+            rep[f"memory_{per_device}"] = record
             trainer = None
             torch.mps.empty_cache()
     reload_ok = False
@@ -448,7 +507,10 @@ def cmd_smoke_lora(a):
             x = torch.tensor([C.encode(tok, on)], device="mps")
             y = m.generate(input_ids=x, max_new_tokens=16, do_sample=False, temperature=None, top_p=None, top_k=None)
             rep["reload_text"] = C.decode(tok, y[0, x.shape[1]:].tolist())
+            rep["merged_files"] = sorted(os.listdir(merged))
             reload_ok = True
+            del m
+            rep["merged_weights_removed"] = drop_weights(merged)  # checked, never used again: the disk needs the room
         except Exception:  # noqa: BLE001
             rep["reload_error"] = traceback.format_exc()[-3000:]
     rep["lora_ok"] = bool(ok and reload_ok and rep["lora_targets_match"] and rep["template_ok"])
