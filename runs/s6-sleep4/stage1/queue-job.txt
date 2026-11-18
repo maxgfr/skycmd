@@ -1,0 +1,9 @@
+# s6-sleep v4, the check K3 of docs/s6-sleep4-prereg.md (frozen on 17/11/2026): the base frozen,
+# seed 0 then seed 1, then its reading (runs/s6-sleep4/stage1/k3.json, runs/s6-sleep4/stage1.json).
+# The code is main's commit c6794ac (CI green; it holds the v4 code of 7b5e1f0); this worktree is moved to it first.
+set -euo pipefail
+git fetch -q origin
+git checkout -q --detach c6794ac
+export SKY_BRAKE_FILE=/Users/maxime/Documents/Code/skycmd/runs/brake
+export CARGO_BUILD_JOBS=4
+exec caffeinate -i bash scripts/train-sleep4.sh k3

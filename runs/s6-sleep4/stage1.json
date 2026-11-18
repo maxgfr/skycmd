@@ -1,0 +1,21 @@
+{
+  "k3": {
+    "seed0": {
+      "S90": null,
+      "S95": null,
+      "last_100_ask_acc": 0.257890625,
+      "bar": false,
+      "recall_steps": 1019
+    },
+    "seed1": {
+      "S90": null,
+      "S95": null,
+      "last_100_ask_acc": 0.254609375,
+      "bar": false,
+      "recall_steps": 1000
+    }
+  },
+  "k3_pass": false,
+  "route": "closed",
+  "next": "the frozen route is closed for v4: K1 (seed 0, then seed 1), then K2 (i) to (iv) on seed 0, then the confirmation if a factor is adopted (section 3.6, rule 2)"
+}

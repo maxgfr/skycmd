@@ -302,4 +302,75 @@ The draft of 17/11/2026 was accepted with these changes, all written into the se
 
 ## 14. Amendments
 
-None yet.
+### Amendment 1 (18/11/2026), owed before stage 2, recorded after K3's reading
+
+The lead's two readings of the frozen text (TODO.md, item 5, statement of 18/11/2026), written down here before any stage-2 run:
+
+1. **The language parity check of the frozen route** (§4.1, §6 H3) compares the `s2-eval` report of the memory model with the base's line by line: every line of the report (each exit and source: accuracy, NLL, ECE, the early exit, the permutation and coherence checks), for the float and the ternary rows, equal, but for the two lines that name the model and its checkpoint (`typed_parity` in `scripts/s6-sleep4-report.py`). `s2-eval` writes no per-question answer, so this is a necessary condition; a per-answer dump would be the exact check that §4.1's "answer for answer" asks for.
+2. **v2's stop** (§4.2, C19: the ask-frame cross-entropy above 1.336 over the last 50 `recall` steps of phase A) is read as one rule for all seeds: it is read on every memory seed, and if it holds for any one of them, no phase B runs for any seed and v4 reports a failure in-sample (`cmd_phase_a`, which sets `stop` when it holds for any seed).
+
+**Both are moot for the frozen route**, which K3's failure closed (§15). On the preserved route, (2) still applies, to the memory seeds of that route, as §4.2 writes it. (1) does not: on the preserved route every parameter trains, so the memory model is not the base and H3 is read as v3 read it, `typed_decisions_bench` at most 0.01 under that route's trained control, with no parity check.
+
+## 15. K3, read on 18/11/2026: failed; the frozen route is closed
+
+**What ran.** `scripts/train-sleep4.sh k3` from `main`'s commit `c6794ac`, through the job queue (`runs/all/queue/`, job `21-sleep4-k3`, started 18/11/2026 at 13:35:32; its text is `runs/s6-sleep4/stage1/queue-job.txt`, its console `runs/s6-sleep4/stage1/console.log`). A first job, `20-sleep4-k3`, failed at 13:17:32 with status 126 ("Permission denied": the script lacked its executable bit); no step ran, so it is no run of K3. Seed 0 ran from 13:35 to 15:24 (38.2 working minutes), seed 1 from 15:25 to 18:10 (59.0 working minutes), each 1,310 steps on the GPU, one after the other, with `--freeze-base --memory-off-eval 4` and v3's recipe otherwise (each command checked against v3's by `s6-sleep4-report.py recipe`; `runs/s6-sleep4/stage1/k3-s*/cmd.txt`). The frozen base was checked bit for bit at every save and at the end (`"frozen_base_checked": true` in both final lines, `k3-s*/final.json`); the validation at the end equals the one at step 0 on both seeds (f32 0.5132 and 0.5015, ternary 0.5985 and 0.6128). The reading is `runs/s6-sleep4/stage1/k3.json` and `runs/s6-sleep4/stage1.json`, written at 18:10 by `s6-sleep4-report.py k3`; the job's status 1 is the script's exit on K3's failure, not a technical failure. Every number below comes from these files and from each run's `log.jsonl` (each step's own batch, before its update).
+
+**The bar (K1's, §3.1): failed on both seeds.**
+
+| seed | `recall` steps | `ask_acc`, last 100 `recall` steps | bar | S90 | S95 |
+|---|---:|---:|---:|---|---|
+| 0 | 1,019 | 0.2579 | 0.95 | never | never |
+| 1 | 1,000 | 0.2546 | 0.95 | never | never |
+
+Chance is 0.25 (four colours).
+
+**The windows of 50 `recall` steps (§3.1).** `ask_acc` pooled over the window; `aux_acc` per memory layer, pooled over the window; the excess ratio (n/a while the 1 to 4 bucket is within 0.02 of chance); `off`, the same weights without the memory on the steps of the window that read it (one sequence step in four; their number in brackets).
+
+| `recall` steps | seed 0 `ask_acc` | seed 0 `aux_acc` L0 / L1 | seed 0 excess | seed 0 `off` | seed 1 `ask_acc` | seed 1 `aux_acc` L0 / L1 | seed 1 excess | seed 1 `off` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1-50 | 0.104 | 0.256 / 0.254 | 0.99 | 0.233 (14) | 0.091 | 0.248 / 0.255 | 1.10 | 0.229 (13) |
+| 51-100 | 0.047 | 0.259 / 0.260 | 1.01 | 0.230 (11) | 0.028 | 0.236 / 0.241 | 0.99 | 0.236 (14) |
+| 101-150 | 0.112 | 0.234 / 0.237 | 0.99 | 0.219 (10) | 0.053 | 0.245 / 0.255 | 0.98 | 0.202 (11) |
+| 151-200 | 0.191 | 0.252 / 0.249 | 1.38 | 0.246 (11) | 0.131 | 0.255 / 0.248 | 0.81 | 0.201 (12) |
+| 201-250 | 0.210 | 0.247 / 0.250 | 1.16 | 0.212 (13) | 0.175 | 0.252 / 0.240 | 0.78 | 0.212 (13) |
+| 251-300 | 0.236 | 0.253 / 0.252 | n/a | 0.227 (11) | 0.204 | 0.246 / 0.256 | 1.64 | 0.227 (13) |
+| 301-350 | 0.231 | 0.247 / 0.251 | n/a | 0.236 (12) | 0.219 | 0.251 / 0.242 | 1.00 | 0.202 (12) |
+| 351-400 | 0.239 | 0.255 / 0.260 | n/a | 0.243 (12) | 0.245 | 0.251 / 0.251 | n/a | 0.241 (11) |
+| 401-450 | 0.223 | 0.245 / 0.249 | 1.03 | 0.220 (11) | 0.225 | 0.255 / 0.243 | 1.35 | 0.222 (13) |
+| 451-500 | 0.241 | 0.253 / 0.245 | 1.06 | 0.224 (12) | 0.244 | 0.250 / 0.255 | n/a | 0.221 (10) |
+| 501-550 | 0.242 | 0.260 / 0.259 | n/a | 0.220 (13) | 0.243 | 0.254 / 0.251 | n/a | 0.224 (11) |
+| 551-600 | 0.246 | 0.255 / 0.258 | -0.03 | 0.232 (14) | 0.256 | 0.251 / 0.248 | n/a | 0.207 (12) |
+| 601-650 | 0.257 | 0.257 / 0.257 | n/a | 0.224 (13) | 0.246 | 0.246 / 0.255 | n/a | 0.218 (12) |
+| 651-700 | 0.247 | 0.278 / 0.281 | n/a | 0.228 (12) | 0.233 | 0.250 / 0.250 | 0.65 | 0.202 (11) |
+| 701-750 | 0.256 | 0.292 / 0.338 | n/a | 0.229 (11) | 0.252 | 0.250 / 0.249 | n/a | 0.208 (11) |
+| 751-800 | 0.260 | 0.353 / 0.362 | 0.35 | 0.219 (12) | 0.255 | 0.253 / 0.252 | n/a | 0.228 (13) |
+| 801-850 | 0.258 | 0.362 / 0.365 | n/a | 0.227 (14) | 0.262 | 0.261 / 0.265 | n/a | 0.232 (12) |
+| 851-900 | 0.264 | 0.359 / 0.374 | n/a | 0.200 (13) | 0.245 | 0.235 / 0.250 | 0.49 | 0.208 (13) |
+| 901-950 | 0.259 | 0.373 / 0.385 | n/a | 0.231 (12) | 0.256 | 0.253 / 0.250 | n/a | 0.193 (10) |
+| 951-1000 | 0.257 | 0.373 / 0.385 | n/a | 0.219 (13) | 0.254 | 0.258 / 0.249 | n/a | 0.215 (11) |
+| 1001-1019 | 0.256 | 0.379 / 0.389 | n/a | 0.227 (5) | | | | |
+
+**The auxiliary heads do not decode the colour on `recall`.** On seed 1, `aux_acc` stays at chance in every window (0.2524 over the last 100 `recall` steps, `aux_ce` 1.388 against ln 4 = 1.386). On seed 0 it leaves chance from `recall` step 651 on and reaches 0.38 (0.3804 over the last 100, `aux_ce` 1.248), while `ask_acc` stays between 0.247 and 0.264 over the same windows. No `recall` step reaches an `aux_acc` of 1.0 (the largest of one step: 0.477 on seed 0, 0.363 on seed 1). The `aux_acc` of 1.0 with `aux_ce` near 0 that the logs show (for example at step 180 of seed 0) is on `rule110` steps, 162 of seed 0's 172 and 166 of seed 1's 173: a `rule110` ask frame (`... ask d steps 4`) is an ask for the code (`is_ask` in `crates/sky-train/src/s2/seq.rs`), and since it has no colour, `answer_colour` gives none and its auxiliary target is the constant 0 (`seq.rs`, `load`: `answer_colour(&v).unwrap_or(0)`). A constant target says nothing about what the memory holds. v3's T2 says that "`rule110` and the other games have no auxiliary loss" (`docs/s6-sleep3-prereg.md` §2), so the code adds an auxiliary term on `rule110` that the text does not have. This holds for v3's runs and for K3, and it holds for K1, which runs v3's recipe unchanged. **So the numbers do not show that the memory stores and returns the colour while the frozen base ignores it.** What they show is this: with the base frozen, what the memory retrieves did not become linearly decodable for the colour within 1,000 `recall` steps on seed 1, and became so only in part on seed 0 (0.38), where the answer did not follow.
+
+**The memory off.** The base alone answers `recall` at 0.19 to 0.25 in every window, as a model without memory must. The memory starts as the base: at the first `recall` step, the answers with and without the memory are the same (0.2422 on both seeds, with cross-entropies equal to 1e-4), because the read-out starts at zero. The memory then pushed the answer below the base, then brought it back to chance. Over the steps that read both, for `recall` steps 1 to 100: 0.079 with the memory against 0.232 without on seed 0 (25 steps), and 0.065 against 0.233 on seed 1 (27 steps), at a last-exit cross-entropy of 2.38 and 2.40 against 1.62 and 1.61. Over the last 100 `recall` steps: 0.253 against 0.225 on seed 0 (26 steps), and 0.239 against 0.205 on seed 1 (21 steps), at a cross-entropy of 1.50 and 1.45 against 1.62. This gain of 0.03 is the same at every delay: over the last 100 `recall` steps, the accuracy at 1-4, 5-8, 9-16 and 17-32 is 0.249, 0.257, 0.259 and 0.266 on seed 0, and 0.256, 0.266, 0.253 and 0.243 on seed 1.
+
+**The rule that applies (§3.6, rule 2).** K3 fails on both seeds, so the frozen route is closed for v4, and no frozen base runs again (§3.4, §10). Next, in this order, each check's reading and verdict committed before the next starts:
+
+1. K1 (§3.3), seed 0, then seed 1.
+2. K2 (i) to (iv) (§3.4), on seed 0, against K1's seed 0. (iv)'s clip is computed from K1's seed-0 log.
+3. The confirmation, if at least one factor is adopted. R\* follows from §3.4.
+4. If R\* passed K1's bar, K5 (§3.5) from the final checkpoint of R\*'s seed-0 run. If K5a meets both of its conditions, v4 takes the preserved route (§4). Otherwise, or if R\* did not pass K1's bar, v4 stops after stage 1 (rules 3 and 4).
+
+The code these checks need (§11 items 3 and 6, K1, K2, the confirmation, K5 and the preserved route in `scripts/train-sleep4.sh` and `scripts/s6-sleep4-report.py`) is written and tested before the first of them runs (§10).
+
+**What follows costs** (the pre-registration's own figures, §3.7 and §9, in GPU working minutes; K3 itself took 97.2, against the 90 to 108 of §3.7):
+
+| path from here | checks | GPU working minutes |
+|---|---|---:|
+| v4 stops before K5, no factor adopted | K1 × 2, K2 × 4 | 216 |
+| v4 stops before K5, a factor adopted | K1 × 2, K2 × 4, confirmation × 2 | 324 |
+| no factor adopted, then K5 | K1 × 2, K2 × 4, K5 | about 261, plus three Flappy probes on the CPU |
+| a factor adopted, the confirmation, then K5 (the maximum) | K1 × 2, K2 × 4, confirmation × 2, K5 | about 369, plus the probes |
+| then the preserved route, stage 2 | three memory seeds and three controls | at most about 8 hours, plus the term's forward pass (§9; S95max = 700) |
+
+The figures per check are §3.7's: K1 54 per seed, K2 27 per factor, the confirmation 54 per seed, K5 about 45 for its two runs. With K3's 97.2, stage 1 comes to 313 to 466 working minutes (5.2 to 7.8 hours), within §9's 5.1 to 8.0.

@@ -1,0 +1,32 @@
+{
+  "name": "s6-sleep4-nano",
+  "vocab_size": 2048,
+  "hidden_size": 144,
+  "intermediate_size": 288,
+  "state_layers": 2,
+  "static_layers": 2,
+  "fusion_layers": 2,
+  "exits": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "head_count": 2,
+  "fuse_numbers": true,
+  "state_loops": 2,
+  "max_state_tokens": 512,
+  "max_head_tokens": 160,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05,
+  "exit_threshold": [
+    0.5,
+    0.5,
+    0.52
+  ],
+  "temperature": {},
+  "memory": true,
+  "memory_qk": "shared",
+  "memory_value": "frame",
+  "memory_aux": true
+}
