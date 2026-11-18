@@ -1,0 +1,15 @@
+{
+  "verdict": "FAIL",
+  "G1": false,
+  "G2": true,
+  "G3": true,
+  "G3_state": "reported",
+  "nGMASE": 0.8846616075385746,
+  "nWQL": 0.6190151553874401,
+  "terms": {
+    "short": 0.8327155424611346,
+    "medium": 0.9279896629111719,
+    "long": 0.9881915310632038
+  },
+  "smoke": false
+}

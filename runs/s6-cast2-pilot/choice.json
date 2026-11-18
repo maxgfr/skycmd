@@ -1,0 +1,6 @@
+{
+  "lr": "3e-3",
+  "teacher": "crates/sky-infer/tests/golden/tinycast.gguf",
+  "pinball_distill": 0.045361044712182955,
+  "pinball_plain": 0.045962905138731004
+}

@@ -1,0 +1,7 @@
+v1 full 64 s6-cast-pico: 2048 points of history, horizon 64: median 799 µs, p90 852 µs, p95 870 µs (1000 runs)
+v2 full 64 s6-cast2-pico: 2048 points of history, horizon 64: median 838 µs, p90 891 µs, p95 906 µs (1000 runs)
+tinycast full 64 TinyCast: 2048 points of history, horizon 64: median 21531 µs, p90 22602 µs, p95 23189 µs (1000 runs)
+v2 calibrated 64 s6-cast2-pico: 2048 points of history, horizon 64: median 842 µs, p90 891 µs, p95 904 µs (1000 runs)
+v2 full 720 s6-cast2-pico: 2048 points of history, horizon 720: median 10367 µs, p90 10801 µs, p95 11158 µs (1000 runs)
+v1 full 720 s6-cast-pico: 2048 points of history, horizon 720: median 9826 µs, p90 10271 µs, p95 10474 µs (1000 runs)
+tinycast full 720 TinyCast: 2048 points of history, horizon 720: median 164760 µs, p90 168740 µs, p95 171634 µs (1000 runs)

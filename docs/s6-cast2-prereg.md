@@ -265,3 +265,108 @@ None yet.
 - **The brake** is the automatic one (`scripts/auto-brake.sh`): half duty with 45 minutes of work and 15 of rest whenever the machine is in use by day, 0.95 at night when it is left alone, and its memory guard (the training is stopped above 13 GB held; a stop is a technical failure, restarted from the last checkpoint and reported). Budgets are working minutes, so the brake changes the duration and not the steps; the report gives the steps and the modes. CPU work of other models (write-ups, evaluations on dumps) may run at the same time; the latencies of §7.2 are measured with no training running.
 - **Order on the GPU:** after the runs of s6-ear v2 and of s6-sleep v3, one budgeted run at a time; the smoke first, under a throwaway prefix, its numbers not looked at.
 - **What does not change:** the data and its mix, the model, the pilot and its rule, the 720 working minutes (seed 1, once), the checkpoint rule, the evaluation and its checks, G1 and G2 (G3 dropped by amendment 2), §12.
+
+**Result (18/11/2026, after the gate was read once). The gate failed: G1 does not hold. G2 holds. G3 was dropped before training (amendment 2) and Chronos-ZS is reported. v2 is published as a failed result.**
+
+- **Verdict** (`runs/s6-cast2-pico/GATE.md`, `gate.json`): **FAIL**. G1 and G2 were read on the benchmark that shaped the design (§10), and Chronos-ZS is reported, not gated.
+- **Disclosure (§10).** v2 was designed after reading v1's GIFT-Eval results on the same 97 configurations, window by window: where it lost, by band, term, domain, seasonality, context length and horizon. GIFT-Eval is therefore partly in-sample for v2's design choices, though not for its weights: no GIFT-Eval series is trained on. TinyCast's authors make the same disclosure about their own design and treat Chronos-ZS as the cleaner test. G3 exists for this reason. Every report of v2 states this paragraph.
+- **What was run, in which order** (`scripts/train-cast2.sh`; logs `runs/all/cast2-train.log` and `runs/all/cast2-gate.log`). In one chain, started on 17/11 at 15:36 (`started.json`): the pilot, the training, the export and the calibration; then, after the training had ended, the latencies of §7.2 (`latency/latency.json`, written 18/11 at 11:25), the checks of §7.1 (`checks.json`), the TinyCast port without flip on GIFT-Eval, v2 on GIFT-Eval without and with flip, v2 on Chronos-ZS, the diagnostics and the gate (`GATE.md`, 18/11 at 13:14). The chain stopped twice on a full disk; both incidents are below.
+- **The checks before v2 was read** (§7.1, `checks.json`): the seasonal naive gives nGMASE 0.9999 over 97 configurations (rule 1.00 ± 0.02: ok); the TinyCast port's files give back 0.7856 / 0.5570 (ok). The port without flip, run once: nGMASE 0.7918, nWQL 0.5622, nMSIS 0.5865 (`data/gift-eval-out/tinycast-noflip/summary.json`).
+- **The gate** (ternary GGUF `s6-cast2-pico.gguf`, the calibrated file, without flip, the full harness; GIFT-Eval, 97 configurations, 371,330 windows, of which 2,017 in 12 configurations have no observation in the last 2,048 points and are forecast by the seasonal naive, as for v1):
+
+  | term | measured | bar | verdict |
+  |---|---|---|---|
+  | G1 | nGMASE **0.8847**, nWQL **0.6190** | nGMASE ≤ 0.838 and nWQL ≤ 0.587 | **does not hold** |
+  | G2 | MASE ratio to the seasonal naive: short **0.833**, medium **0.928**, long **0.988** | < 1.00 at each term | holds |
+  | G3 | dropped before training (amendment 2) | | reported below |
+
+- **GIFT-Eval, every model on the same harness** (`data/gift-eval-out/*/summary.json`; lower is better):
+
+  | model | nGMASE | nWQL | nMSIS |
+  |---|---:|---:|---:|
+  | s6-cast-pico (v1), without flip | 0.9471 | 0.6646 | 0.7190 |
+  | v1, with flip | 0.9099 | 0.6417 | 0.6860 |
+  | **s6-cast2-pico (v2), without flip** (the gated model) | **0.8847** | **0.6190** | 0.6848 |
+  | v2, with flip | 0.8692 | 0.6071 | 0.6735 |
+  | TinyCast port, with flip | 0.7856 | 0.5570 | 0.5781 |
+  | TinyCast port, without flip | 0.7918 | 0.5622 | 0.5865 |
+  | seasonal naive | 0.9999 | 0.8876 | 2.6778 |
+  | bar of G1 (FLAIR, training-free) | 0.838 | 0.587 | |
+
+  The gap of v2 (without flip) to the port, not gated: +0.0991 nGMASE and +0.0620 nWQL to the port with flip, +0.0929 and +0.0568 to the port without flip, +0.1107 and +0.0740 to the published TinyCast (0.774 / 0.545). Of v1's gap to the port (sum of log ratios over the 97 configurations), v2 closes 0.365 on MASE and 0.402 on WQL.
+- **By term** (MASE / WQL ratio to the seasonal naive, geometric means; `GATE.md`):
+
+  | term | configs | v1 | v2 | TinyCast port |
+  |---|---:|---|---|---|
+  | short | 55 | 0.860 / 0.638 | 0.833 / 0.610 | 0.756 / 0.571 |
+  | medium | 21 | 1.046 / 0.696 | 0.928 / 0.624 | 0.806 / 0.534 |
+  | long | 21 | 1.105 / 0.706 | 0.988 / 0.637 | 0.848 / 0.546 |
+
+- **By band** (same ratios):
+
+  | band | configs | v1 | v2 | TinyCast port |
+  |---|---:|---|---|---|
+  | second | 6 | 1.298 / 0.896 | 0.926 / 0.692 | 0.909 / 0.702 |
+  | sub-hourly | 30 | 1.046 / 0.735 | 0.936 / 0.653 | 0.794 / 0.571 |
+  | hourly | 31 | 0.914 / 0.606 | 0.870 / 0.569 | 0.754 / 0.480 |
+  | daily | 15 | 0.782 / 0.494 | 0.770 / 0.490 | 0.711 / 0.465 |
+  | weekly | 8 | 0.908 / 0.729 | 0.937 / 0.737 | 0.858 / 0.732 |
+  | monthly and coarser | 7 | 0.878 / 0.850 | 0.907 / 0.878 | 0.890 / 0.853 |
+
+- **By domain** (same ratios):
+
+  | domain | configs | v1 | v2 | TinyCast port |
+  |---|---:|---|---|---|
+  | Econ/Fin | 6 | 1.018 / 0.901 | 0.984 / 0.876 | 0.894 / 0.841 |
+  | Energy | 32 | 1.080 / 0.800 | 1.003 / 0.746 | 0.882 / 0.661 |
+  | Healthcare | 5 | 0.760 / 0.614 | 0.825 / 0.678 | 0.735 / 0.639 |
+  | Nature | 15 | 0.862 / 0.467 | 0.825 / 0.414 | 0.757 / 0.358 |
+  | Sales | 4 | 0.753 / 0.457 | 0.749 / 0.455 | 0.734 / 0.445 |
+  | Transport | 15 | 0.833 / 0.644 | 0.772 / 0.603 | 0.669 / 0.510 |
+  | Web/CloudOps | 20 | 0.983 / 0.662 | 0.861 / 0.593 | 0.750 / 0.562 |
+
+  v2 is better than v1 on both metrics in every term, in four of the six bands and in six of the seven domains; it is worse than v1 in Healthcare (0.825 / 0.678 against 0.760 / 0.614) and in the weekly and monthly bands. Energy stays at the seasonal naive's MASE (1.003). In no term, band or domain is v2's MASE below the port's; its WQL is below the port's in one place only, the second band (0.692 against 0.702).
+- **Configurations where v2's MASE is above the seasonal naive's: 31 of 97** (the list is in `GATE.md`). The worst: `ett2/W/short` 1.626, `us_births/M/short` 1.572, `m4_hourly/H/short` 1.513, `bitbrains_fast_storage/5T/long` 1.422, `bitbrains_rnd/5T/long` 1.376, `bitbrains_fast_storage/5T/medium` 1.365, `solar/10T/long` 1.335, `solar/H/medium` 1.312. `m4_hourly/H/short`, the clean 24-step cycle that §2 (C2) aimed at, stays above the seasonal naive.
+- **Not reported: the coverage and the front-end diagnostics of §9** (coverage per quantile level and for the 80% interval by term; the window-level splits; the horizon profile by tenths). `runs/s6-cast2-pico/diagnostics.json` holds the three tables with no row, and so does `GATE.md`. The script (`scripts/s6-cast2-diagnostics.py`) reads the per-window quantile dumps (`*.q.bin`) of each model folder and skips a configuration that has none; the dumps of the GIFT-Eval folders are no longer on the disk (the third incident below), and the files do not record whether any was there when the gate step ran. The promised readings are therefore missing, not measured as empty. They can be rebuilt without training: `sky-cast-eval run` on the published files writes the dumps again, then `scripts/s6-cast2-diagnostics.py`; that has not been done.
+- **Chronos-ZS, reported, not gated** (27 tasks, relative to fev's seasonal naive, geometric means; `GATE.md`, `skycmd-data/s6-cast2/chronos-zs-out/*/summary.json`). The harness check of §7.3 did not validate (amendment 2): the port with flip is at 0.8576 / 0.6822 where the published values are 0.880 / 0.722.
+
+  | model | relative MASE | relative WQL | tasks |
+  |---|---:|---:|---:|
+  | **v2, without flip** | **0.9014** | **0.7143** | 27 |
+  | TinyCast port, without flip | 0.8598 | 0.6928 | 27 |
+  | TinyCast port, with flip (harness check) | 0.8576 | 0.6822 | 27 |
+  | seasonal naive | 1.0000 | 1.0000 | 27 |
+
+  On the benchmark its design never read, v2 beats the seasonal naive and stays behind the port on both metrics. G3's comparison (each ≤ 1.083 × the port without flip) is printed in `GATE.md` as "reported: True" and `gate.json` carries `"G3": true` with `"G3_state": "reported"`; it decides nothing, since G3 was dropped before training because the harness did not reproduce the published port.
+- **Training** (`runs/s6-cast2-pico/args.json`, `runs/all/cast2-train.log`, `GATE.md`).
+  - **The pilot** (`runs/s6-cast2-pilot/choice.json`, 3,000 steps each at 3e-3): validation pinball 0.045361 with the TinyCast teacher against 0.045963 without, so the rule of §5 kept distillation (teacher `crates/sky-infer/tests/golden/tinycast.gguf`, on 50% of the windows, weight 0.5 annealed to 0).
+  - **The run:** 720.0 working minutes, **377,082 steps**, batch 256, AdamW at 3e-3, seed 1, once, no restart of the training; QAT over the last 20%, EMA 0.999. Windows seen: 21,295,763 synthetic, 25,092,584 real, 6,420,364 synthetic stand-ins of the bands with no real series, 43,724,281 distilled. Brake modes (`GATE.md`): 20 cooling pauses (`SKY_COOL`), the automatic brake at duty 0.95 (55 min of work, 5 of rest) three times and at duty 0.5 (45 and 15) three times.
+  - **The data** (§3): v1's series of `data/series/` and the 1,011 USCRN sub-hourly series (8,282,112 points) of `skycmd-data/s6-cast2/series2-checked`, kept whole by the leakage check of amendment 3; 10,670 real series in training and 1,130 held out for validation. Real windows by band, as weighted: sub-hourly 0.309 (2,726 series), hourly 0.320 (548), daily 0.155 (5,990); the second (0.062, periods 360), weekly (0.082, period 52) and monthly (0.072, periods 12 and 4) bands had no real series and were filled by synthetic stand-ins; the game series kept v1's share, 0.0433 of all windows.
+  - **The checkpoint** (§6, `exported.json`): **the EMA** (`last-ema`), its final ternary validation pinball 0.0435 against 0.0443 for `last`. Validation pinball of the exported weights by band (ternary EMA): synthetic 0.04884 (512 windows), sub-hourly 0.02609 (285), hourly 0.03496 (55), daily 0.01968 (621), real series without a band 0.17125 (141). The exit calibration (α 0.05, δ 0.02, 2,000 synthetic windows) stored `exit_tolerance` 0.012839192.
+- **Size and latency** (§7.2, `runs/s6-cast2-pico/latency/`; measured 18/11 at 11:25 on an Apple M5 after v2's training had ended, one core, the `tsi` synthetic series of seed 7 with a 2,048-point history, 1,000 forecasts per line; natively `sky-cast --bench` in the default `TernaryCompute` mode, in WASM `sky-web`'s `Forecaster` under Node with SIMD128). The files: v2 148,512 bytes and 377,568 parameters (§4.4 expected about 149 KB), v1 142,912 bytes and 369,792 parameters, the TinyCast port 595,840 bytes and 146,505 parameters.
+
+  | target | model | depth | horizon | median µs | p95 µs |
+  |---|---|---|---:|---:|---:|
+  | native | v1 | full | 64 | 799 | 870 |
+  | native | **v2** | full | 64 | **838** | 906 |
+  | native | v2 | calibrated | 64 | 842 | 904 |
+  | native | TinyCast port | full | 64 | 21,531 | 23,189 |
+  | native | v1 | full | 720 | 9,826 | 10,474 |
+  | native | v2 | full | 720 | 10,367 | 11,158 |
+  | native | TinyCast port | full | 720 | 164,760 | 171,634 |
+  | WASM | v1 | full | 64 | 1,545 | 1,908 |
+  | WASM | **v2** | full | 64 | **1,636** | 1,955 |
+  | WASM | v2 | calibrated | 64 | 1,528 | 1,650 |
+  | WASM | TinyCast port | full | 64 | 39,998 | 41,530 |
+  | WASM | v1 | full | 720 | 17,922 | 19,230 |
+  | WASM | v2 | full | 720 | 19,346 | 22,060 |
+  | WASM | v2 | calibrated | 720 | 18,232 | 19,463 |
+  | WASM | TinyCast port | full | 720 | 309,243 | 375,050 |
+
+  In WASM on this series every forecast used its 4 exits (`mean_exits_used` 4), the calibrated file included; on GIFT-Eval the calibrated file used 3.334 exits of 4 on average over its 369,313 model-forecast windows (v1's count was not recorded). The sentence of §8, from `GATE.md`: *v2 at 838 µs and 148,512 bytes against the port's 21,531 µs and 595,840 bytes, nGMASE 0.8847 against 0.7856: the port forecasts better; take it unless size or speed decide.* These latencies are one series on one machine; they say nothing of accuracy.
+- **Technical incidents** (lead's statement of 18/11/2026, checked against `runs/all/cast2-gate.log`; none changes a number).
+  1. **First stop, during v2's GIFT-Eval forecasts.** The log shows the latencies, the two checks, the port without flip forecast and scored (nGMASE 0.7918, the only summary printed before the stop), then v2's forecasts of 81 configurations, from `bitbrains_fast_storage/5T/long` to `saugeen/W/short`, and `Error: Os { code: 28, kind: StorageFull, message: "No space left on device" }` on the next one. The lead's statement counts 82 configurations written; the log shows 81 finished and the error during the 82nd. **No v2 score was printed before that stop**: the log holds no per-configuration MASE or WQL line and no summary of v2 before it, and no v2 `summary.json` existed. The evaluation was started again from its beginning ("== restart after a full disk (18/11/2026): the evaluation, the Chronos check and the gate"): the two checks again, then v2 without flip on all 97 configurations and its scoring (nGMASE 0.8847), then with flip (0.8692). That GIFT-Eval scoring of v2 ran once, to its end.
+  2. **Second stop, in the Chronos-ZS scoring of v2.** The datasets cache, removed by the lead to free space, was rebuilt by the scoring library and filled the disk: `OSError: [Errno 28] No space left on device` in `fev`'s `evaluation_summary`. Before it, v2's Chronos-ZS forecasts of the 27 tasks had been written and the per-task lines of eight tasks printed (`monash_traffic` to `monash_nn5_weekly`); no Chronos-ZS summary of v2 was printed. The Chronos step and the gate were started again ("== restart after a full disk (18/11/2026): the Chronos check and the gate (second restart; the evaluation is scored)", `runs/all/cast2-restart.sh`): v2's forecasts again, the 27 tasks scored (relative MASE 0.9014, WQL 0.7143), the diagnostics and the gate. Chronos-ZS is not gated.
+  3. **The forecast dumps.** After scoring, the lead removed the raw forecast dumps (`*.q.bin`) of the seven scored folders of `data/gift-eval-out/` (v1, v1 with flip, v2, v2 with flip, the port with and without flip, the seasonal naive) to free disk space; their `all_results.csv` and `summary.json` are kept, and `sky-cast-eval run` rebuilds the dumps from the published files. This is why the per-window diagnostics of §9 are missing (above).
+- **What the failure means, by §11.** **G1 fails.** In the words written before the run: "The s6 patch encoder at about 380K ternary parameters is not competitive in this niche, even with a periodicity front end, band-matched data and 1.5× the training. The s6-cast line stops. The forecaster offered by the project becomes the TinyCast port: Apache-2.0, credited, already ported, optionally post-training INT8 (+2.1% in the paper). No v3 is planned on GIFT-Eval." What improved is stated as plainly: v2 is better than v1 on both GIFT-Eval metrics, with and without flip; its MASE is under the seasonal naive's at every term, which v1's was not at the medium and long terms (G2 holds); it beats the seasonal naive on Chronos-ZS; and its file forecasts 64 steps in 838 µs natively against 21,531 µs for the port, from 148,512 bytes against 595,840. It stays behind the port on GIFT-Eval (on MASE in every term, band and domain; on WQL everywhere but the second band) and on Chronos-ZS.
+- **What is published** (owner's decision of 15/11/2026, §11's last case: the file as evaluated, its first lines giving the verdict): `site/public/models/s6-cast2-pico.gguf`, the calibrated file the gate read (148,512 bytes, sha256 `30cbee8e846bc47d0876d9d77e3460278e58025cf01b6a5390b79b999215959f`), with its manifest entry (`gate: failed`) and its line in `site/public/models/forecast.json`; the Forecast page lists it next to v1, TinyCast, Timestral-5M and the seasonal naive, unticked by default; its card `hf/cards/s6-cast2-pico.md` and its Space entry in `hf/spaces.json` (kind `forecast`), both opening with the failure; `BENCH.md`, the README, Results, What we bring, Bench and the Models catalogue. The small result files are committed under `runs/s6-cast2-pico/` and `runs/s6-cast2-pilot/choice.json`; the logs, checkpoints and dumps are not.

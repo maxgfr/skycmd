@@ -1,0 +1,49 @@
+{
+  "tables": [
+    [
+      "Coverage by term (share of labels at or below each level; last: inside the 80% interval)",
+      [],
+      [
+        "term",
+        "model",
+        "0.1",
+        "0.2",
+        "0.3",
+        "0.4",
+        "0.5",
+        "0.6",
+        "0.7",
+        "0.8",
+        "0.9",
+        "80% interval"
+      ]
+    ],
+    [
+      "The horizon profile by tenths (ratio of summed scaled errors)",
+      [],
+      [
+        "term",
+        "ratio",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10"
+      ]
+    ],
+    [
+      "Window-level splits, v2 / TinyCast port (configurations with >= 20 such windows)",
+      [],
+      [
+        "windows",
+        "configs",
+        "v2 / port MASE"
+      ]
+    ]
+  ]
+}

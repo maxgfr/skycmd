@@ -1,0 +1,19 @@
+{
+  "seasonal_naive": {
+    "nGMASE": 0.9998606916737356,
+    "nWQL": 0.88764421988706,
+    "nMSIS": 2.677803294499921,
+    "configs": 97,
+    "rule": "nGMASE 1.00 +- 0.02 over 97 configurations",
+    "ok": true
+  },
+  "tinycast_port": {
+    "nGMASE": 0.7856061209399323,
+    "nWQL": 0.5570065230110346,
+    "nMSIS": 0.5780954262286554,
+    "configs": 97,
+    "rule": "the files give back 0.7856 / 0.5570",
+    "ok": true
+  },
+  "ok": true
+}
