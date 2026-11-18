@@ -1,0 +1,123 @@
+{
+ "against": "runs/s6-route6/inputs.json",
+ "root": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build5",
+ "files": {
+  "counts/v5-plan.json": {
+   "bytes": 18348,
+   "sha256": "c887b15f2b0d273013b2fe9d6d7ec8db961b4a829d99d03b8bd57d0f8cae4f20"
+  },
+  "counts/v5-slates.json": {
+   "bytes": 21555,
+   "sha256": "48d3afd81e028fc3235caa1d04b2fe86bcfc24f0732d9223c3021ca320bd41d0"
+  },
+  "emb/potion-requests.meta.json": {
+   "bytes": 755,
+   "sha256": "4c8000f1fd24ffb585633d78df61369bece34cecca0611d1add852c08f361b70"
+  },
+  "emb/potion-requests.npy": {
+   "bytes": 17738368,
+   "sha256": "66f23fb02d59a3fcbebea3c1aa199d20730956d3c1195e2910a29ff961f80763"
+  },
+  "records/intents/train.jsonl": {
+   "bytes": 95646509,
+   "sha256": "6a68f686818d592893d01178c0c8bd3f95fe5ad5817f8da1e56ef92fb81bf48b"
+  },
+  "records/intents/val.jsonl": {
+   "bytes": 11393779,
+   "sha256": "b810a7fcd1dca65961d51bea0f6dc3e2820c6ff70a1290001a28385b54101490"
+  },
+  "records/tools/train.jsonl": {
+   "bytes": 99350230,
+   "sha256": "47448bcfb0641fe0da57b2737185a577fb0c6520fda01fac3fd692cdb4f67463"
+  },
+  "records/tools/val.jsonl": {
+   "bytes": 5095890,
+   "sha256": "488d5c9194dee948fbe2a9777684787d376a5e277b4d32b2654fef8cd2b44e73"
+  },
+  "records/when2call/train.jsonl": {
+   "bytes": 15944301,
+   "sha256": "b121f86b0875fceb887a8b52974ecb2147ff6ddacd80a1067cf9cc35500d060a"
+  },
+  "records/when2call/val.jsonl": {
+   "bytes": 965617,
+   "sha256": "328855c43ed683137027c498cd9d444c94630172edf25c493215370322a2cde4"
+  },
+  "stage/plan5.jsonl": {
+   "bytes": 92289168,
+   "sha256": "c3fe7dc7166bb0dd063313d6036f9167a7a13cbaf1036cd2d37bbc8f04fde9d7"
+  },
+  "stage/pools5.json": {
+   "bytes": 1317247,
+   "sha256": "6d459aa06283017bf1552b8e39a9d40bd8b6d2eb137a210009db2ab2918787fc"
+  },
+  "teacher/false-negatives.items.jsonl": {
+   "bytes": 36201112,
+   "sha256": "683e9f75e3b42d36f0c6e547e66e389b449c95dac1bdc920985be49915d14bb0"
+  },
+  "teacher/false-negatives.jsonl": {
+   "bytes": 2805563,
+   "sha256": "145fd7d8fbace537712975379fc9cadc0e6b824c3d73422b31f3e27cc982b3cf"
+  },
+  "teacher/false-negatives.refused.jsonl": {
+   "bytes": 91,
+   "sha256": "4a3a304630e8529e2531feb4ef16398c8a055cd028324a5ff5ad80d55a8ca4d4"
+  },
+  "val/r_tools_natural.model.jsonl": {
+   "bytes": 1347426,
+   "sha256": "00fa2c8c62858f51f2bae64d19f5917bffbd622c64ab126738cb0a9deb8736a5"
+  },
+  "val/r_tools_renamed.model.jsonl": {
+   "bytes": 1720186,
+   "sha256": "87eb3e1bbbb70c0d44756c5e217f636143a11b00e9a65849340352b1ab10eb11"
+  },
+  "val/v4_tools.model.jsonl": {
+   "bytes": 1663413,
+   "sha256": "1fcc42718bf4b20b3ea9e508ff4b50863fb3ab2b93627d8772ae7f7a9d619bf6"
+  },
+  "val/v4_tools_masked.model.jsonl": {
+   "bytes": 1579075,
+   "sha256": "1248da55e99dabd62e0681a35da4bd992fbd55d6978e2117bcbea7d65324e1c3"
+  },
+  "val/v5_tools.jsonl": {
+   "bytes": 1603383,
+   "sha256": "767a6699e5c16633a2d00a87721d14de386295ada79555454b791842f210f704"
+  },
+  "val/v5_tools.model.jsonl": {
+   "bytes": 1755565,
+   "sha256": "87de9c6875a3bcb1fcee6de2856762280a0f2fc697bc3e746d152efa3ac4084e"
+  },
+  "val/v5_tools_masked.jsonl": {
+   "bytes": 1513147,
+   "sha256": "790660875170506ab28be0cabc13b59c36665b5530e850fb577716015e23d0ac"
+  },
+  "val/v5_tools_masked.model.jsonl": {
+   "bytes": 1665328,
+   "sha256": "e6ea0f85b3b372772549948d6de2968f93f1ceecb65dfce1be514b8ba1d90ad6"
+  },
+  "val/v5_tools_masked_rw.jsonl": {
+   "bytes": 1530864,
+   "sha256": "fc29557cde676596457b4ff2d2c32db7c7bc685dd2042da161b103a27f2b3f46"
+  },
+  "val/v5_tools_masked_rw.model.jsonl": {
+   "bytes": 1683045,
+   "sha256": "b41817aba2de222ba5139b859fc38f59d3c3063db2418ee8b7fff7b0ad524062"
+  },
+  "val/v5_tools_rw.jsonl": {
+   "bytes": 1621100,
+   "sha256": "495c2e357aeb9f49056dae689cb5d838ce39665cea5765d81909ada843cdf14f"
+  },
+  "val/v5_tools_rw.model.jsonl": {
+   "bytes": 1773282,
+   "sha256": "1b10219e8b3d1fe75966512163d1d32f69a1f4bc9eb249a68c233730903f9fdf"
+  },
+  "val/v_tools.model.jsonl": {
+   "bytes": 1729811,
+   "sha256": "c72afb5955e1737e33ac949d851fce3920925901debebbe82575869ffd080ef1"
+  },
+  "val/v_tools_masked.model.jsonl": {
+   "bytes": 1641952,
+   "sha256": "d18ee12b4e5cbcacc7e78f5cda443725e23fab1c1acb5af760afe8c5c93555a3"
+  }
+ },
+ "differ": []
+}

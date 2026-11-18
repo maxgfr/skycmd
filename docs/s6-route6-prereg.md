@@ -968,3 +968,196 @@ The code's readings of the frozen text and of amendment 1, as the lead decided t
    - the bench that writes G4's JSON in the form of point 5.
 
 **Nothing else changes.** No bar, rule, file or choice of the frozen text or of amendment 1 moves.
+
+## Result (18/11/2026): v6 stopped at its stop rule, before any training
+
+**v6 stops at the one stop rule of §4.8.** After the fix, N6 (*none* answered when a slate's options
+spread over several L0 cells) exceeds the *none* share by more than 0.10 in both of When2Call's
+"other" families. No model was trained, no blind copy of a validation or fresh file was written,
+no fresh file was built, and no system was scored on v6's data. The table is
+`runs/s6-route6/checks.md` (`checks.json`), and the spread table, promised before training, is
+`runs/s6-route6/spread.md` (`spread.json`).
+
+**What ran, in order (18/11/2026; logs in `runs/all/`, read-only).**
+
+- **The diagnostic of §9.1** (`route6-diagnostic.log`). Its first run stopped at "no val records"
+  on T2-tools' blind copy, a defect of the reading corrected in e74531b. The diagnostic then ran
+  and is published (a8be5ef): `runs/s6-route6/diagnostic.md`, the dated note at the end of
+  `docs/s6-nano3-prereg.md`, one line in each card.
+  - With the request replaced by `?`, the published model part and pair pick the right tool among
+    the tools at or below chance (0.1257 and 0.1104 on `v_tools`, 0.1310 and 0.1402 on T2-tools,
+    against 1/7 = 0.1429). Every blind *none* gap's interval holds zero.
+- **The stages `inputs` and `fix-plan`** (`route6-fix.log`). Every one of the 29 files of §4.1 has
+  its hash (`runs/s6-route6/inputs-check.json`, none differs). The full copy of `build5/` into
+  `build6/` is checked file by file (`copy.json`, 37 files). The plan keeps 55,790 plans outside
+  the When2Call group as v5's and replans the group's 13,500 (amendment 1).
+- **The fix's teacher items, first launch** (`route6-fix.log`). The stage `fix-teacher-jobs` stopped
+  on its own guard: 6,274 items, more than the 1,043 hard no-call slates of §4.8. No teacher call
+  was made. The defect was in the code: it selected every no-call request of the plan, not the hard
+  slates that a record shows. It was corrected in f8b9f0d before the second launch, and the items
+  file of the first launch was removed.
+- **The second launch** (`route6-fix2.log`).
+  - **The items:** 694, in 35 calls of 20 (651 training, 43 validation). Of the 1,043 hard no-call
+    slates that a record shows, 349 are answered by v5's answer with the same id, and 694 went to
+    the teacher. The other 8,151 planned no-call hard slates are shown by no record and get no
+    item (`build6/logs/v6-fix-items.json`).
+  - **The teacher:** GLM-5.3-Flash, v2's prompt; 694 answers out of 694, none refused by
+    moderation, no failed batch; 102,962 tokens in and 9,175 out, 33.4 s. 87 of the 694 answers
+    name at least one tool able to serve the request, which the build then replaces.
+  - **The rebuild** (`fix-build`): the group's 14,732 records rebuilt by uid (13,885 training, 847
+    validation), the *none* share by kind as built. Every other file of `build6/` equals v5's
+    (`runs/s6-route6/rebuild.json`: 34 files, 3 allowed to differ, none other differs).
+  - **The checks** (`fix-checks`): exit 2, the stop rule fires. The stage `spread` did not run after
+    it. It is a count on the built records with no model, so it was run afterwards, by hand, with
+    the stage's own command (`scripts/s6-route6-checks.py spread`), read-only on `build6/` and
+    `build5/`.
+
+**The stop rule, before and after the fix** (N6 "*none* when the options spread above the median";
+every judged family; the inverse rule answers no slate in these families).
+
+| family | slates | *none* share | v5: accuracy | v5: excess | v6: median spread | v6: answered *none* | v6: accuracy | v6: excess |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `records when2call train other` | 9,918 | 0.2000 | 0.4410 | +0.2410 | 0 | 1,067 | 0.5792 | **+0.3792** |
+| `records when2call val other` | 605 | 0.2000 | 0.4382 | +0.2382 | 0 | 55 | 0.6000 | **+0.4000** |
+
+- **The next largest excesses** are +0.0501 (`records when2call train renamed`, where the rule
+  answers *none* on 4 slates only, 1 of them right), +0.0249 (N6's inverse on
+  `v5_tools_masked.jsonl`) and +0.0197 (`records tools val renamed`). The last two come from
+  files the fix does not touch and are v5's.
+- **v5's other checks, rerun on all the records after the fix and reported** (none stops v6): 19
+  failures of C2 and the N rules, against v5's 17. v5's 17 are all still there. The two new ones are
+  in `records when2call renamed train`: N2, 0.1851 against a tolerance of 0.1753, and N4's
+  inverse, 0.1799 against 0.1753. C1 fails in 7 training cells, against 6; the new cell is the same
+  one.
+
+**The spread table** (`runs/s6-route6/spread.md`; the share of slates whose tool options spread
+over several L0 cells, and the share at L6, outside the cell).
+
+| split, kind, answer | slates | v6: spread above 0 | v5: spread above 0 | L6 (v5 and v6) |
+|---|---:|---:|---:|---:|
+| train hard *none*-right | 980 | 0.3245 | 0.6847 | 0.3357 |
+| train hard tool-right | 3,967 | 0.0575 | 0.0575 | 0 |
+| train natural *none*-right | 1,004 | 0.2988 | 0.6723 | 0.3297 |
+| train natural tool-right | 3,967 | 0.0557 | 0.3726 | 0 |
+| train renamed *none*-right | 793 | 0.0013 | 0.4098 | 0 |
+| train renamed tool-right | 3,174 | 0.0009 | 0.3948 | 0 |
+| val hard *none*-right | 63 | 0.3175 | 0.6667 | 0.3175 |
+| val hard tool-right | 242 | 0.0413 | 0.0413 | 0 |
+| val natural *none*-right | 58 | 0.2241 | 0.6207 | 0.2241 |
+| val natural tool-right | 242 | 0.0496 | 0.3719 | 0 |
+| val renamed *none*-right | 48 | 0 | 0.4167 | 0 |
+| val renamed tool-right | 194 | 0 | 0.3814 | 0 |
+
+The slates by level L0 to L6 barely move. In training, the hard *none*-right slates are at
+604 46 0 1 0 0 329 (v5: 608 42 0 1 0 0 329), the natural *none*-right at 633 38 1 1 0 0 331 (v5:
+636 35 1 1 0 0 331), and the tool-right slates of both kinds exactly as in v5, none at L6. Every
+level count is in `spread.md`.
+
+**Why the fix did not work** (counted afterwards, read-only, with no model and no request text:
+the records of `build5/` and `build6/` joined by request id to v2's tool lists,
+`build/stage/requests.jsonl`, and to the group's training pool, `build6/fix/stage/pools5.json`;
+`runs/s6-route6/no-call-anchors.json`).
+
+- **The anchor.** A no-call slate is planned in the cell of the request's first own tool that the
+  pool allows (`crates/sky-data/src/route/v5.rs`, `plan_one`). Without such a tool the slate has no
+  anchor, so it is at L6 and is drawn from the whole pool.
+- **Who has no anchor.** In training, 660 of the 1,984 hard and natural no-call slates have none.
+  For 608 of them (303 hard, 305 natural) the request lists no tool at all. For 52 (26 hard,
+  26 natural) none of the request's tools is in the training pool. In validation, 33 of 121 have no
+  anchor (31 list no tool).
+- **The other cause does not occur.** No slate with an anchor is at L6: the cell is never too
+  small. Every one of the 1,324 anchored no-call slates in training is at L0 to L5, and so is every
+  tool-right slate.
+- **The fix worked where a cell exists.** In the training "other" family, the anchored no-call
+  slates now spread as rarely as the tool-right slates: 69 of 1,324 (5.2%) against 449 of 7,934
+  (5.7%). In v5 the shares were 797 of 1,324 (60.2%) and 1,706 of 7,934 (21.5%).
+- **The fix could not reach the slates without an anchor.** They spread as in v5: 549 of 660
+  (83.2%), with the same count in both builds.
+
+**The mechanism.** The fix removed the spread from every When2Call slate that has a cell, so most
+slates of the family now spread over no cell at all, and the median spread fell to 0. N6 then reads
+"*none* when the options spread at all", and the slates it picks are mostly the no-call slates
+without an anchor: 549 of the 618 *none*-right slates among its 1,067 answers in training (28 of 33
+among 55 in validation). These slates were already there in v5, and §4.8 and amendment 1 counted
+them (329 of 980 hard and 331 of 1,004 natural at L6). By removing the spread from everything else,
+the fix made them stand out more. Leaving them out of the count, the family's anchored slates
+answer *none* on 69 of the 518 slates whose options spread, 0.133, against a *none* share of 0.143
+among them. That is a count of where the cue sits, not a check of this pre-registration.
+
+**The hashes of the rebuild,** as `fix-build` printed them. They are given for the record only: the
+amendment of §4.8 that would have made them training inputs is not written, and no training reads
+them.
+
+| file | bytes | sha256 |
+|---|---:|---|
+| `records/when2call/train.jsonl` | 15,949,866 | `8cb01eee5297492947f5bb56564438093a2e0cc97ed560d891908c0ed98b2f00` |
+| `records/when2call/val.jsonl` | 966,319 | `1cd5d00dab7dcb2cd48aad72b82285b1fb7ff15ef954176bb79664aab6583908` |
+| `counts/v5-slates.json` | 18,173 | `d1d38894a35cf815d8de0a3ab00a1ab768f1ecc20209fd817ed254bf966c0800` |
+| `fix/teacher/false-negatives.items.jsonl` | 401,646 | `6ca7b307b94c81c80d02e57dfdb519915f98b74aca3a96877e98d159a58d299b` |
+| `fix/teacher/false-negatives.jsonl` | 33,034 | `41cc27993c2826dad11d6207b2b367e8d72d2b178830a45899e5996651e1ea4e` |
+| `fix/teacher/false-negatives.refused.jsonl` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `fix/stage/plan5.jsonl` | 92,251,077 | `78da2d9e6ad67329055e439d864b2b8ba32216c5bbcb4d2f11a98037b5d5c31f` |
+
+**The sentence of §11 applied.**
+
+- "**The stop rule of §4.8 stops v6.** After the fix, a *none* cue of more than +0.10 above the
+  *none* share remains in at least one judged family. It lies, at least in part, where the fix did
+  not reach (the natural no-call slates, or the no-call slates outside the cell), or the rebuild
+  moved it. No model is trained, and the table is published with the spread table. A fix of the
+  natural no-call slates or of the no-call slates' cell needs its own pre-registration."
+- It lies in the no-call slates outside the cell, of both kinds. The rebuild did not move them,
+  but it made them stand out more. v6 stops here, and any further fix needs its own
+  pre-registration (§12 forbids changing or extending the fix after a step of §4.8 has run).
+
+**What stays valid.**
+
+- **The published pair and the diagnostic of §9.1.** Read with the request hidden, the published
+  pair is at chance. That reading does not measure a cue used together with the request.
+- **The code** on `main`: the When2Call switch, the rebuild by uid, the fix's items, the blind
+  copies, the checks, the stop rule and the spread table, and the scripts of the pilot, the fit and
+  the gate. The last three have not run.
+- **The teacher's answers:** v5's 58,984 false-negative answers as they stand, and the fix's 694
+  (`build6/fix/teacher/`, hashes above).
+- **v5's build** (`build5/`, unchanged, its hashes in §4.1) and the full copy `build6/` with the
+  rebuilt group.
+- **Toucan,** fetched for v4, never built into a test file and never read. T5 does not exist.
+
+**What the three stops say together.** v4, v5 and v6 each stopped before any GPU time was spent, on
+a cue found in the training data by a rule that never reads the request.
+
+- **The tools and intents groups.** v5's surface cell reduced v4's cues to a few points above
+  chance.
+- **The When2Call group.** Its *none*-right slates could not be made to look like its tool-right
+  slates, neither by v5's construction (the request's own tools exempt) nor by v6's (no exempt
+  tool, every option drawn in the cell). A third of its no-call slates have no tool to anchor a
+  cell on.
+- **The limit.** This says nothing about a model trained on these data: none was. It also does not
+  say that a request-blind cue cannot be removed from When2Call's slates, only that these two
+  constructions did not remove it.
+
+**What comes next: not decided.** The options, for the owner:
+
+- **(a) Close the line here.** The published pair stands with its stated limits: a pass on fresh
+  slates of v2's held-out tools, the names-masked weakness, the cues of v2's training data named by
+  v4's table, and the blind reading at chance.
+- **(b) A v7 that drops the When2Call group from training.**
+  - **What it removes:** 13,885 of the 182,085 training records (7.6%) and 847 of the 15,873
+    validation records (5.3%).
+  - **Among the training slates whose answer is *none*,** When2Call holds 2,777 of 36,417 (7.6%).
+    Its 1,984 hard and natural no-call slates are the only training slates from requests that no
+    tool answers; every other *none*-right slate is a copy whose right tool was removed.
+  - **What becomes out of family.** v6's own readings would not be (`v5_tools`, `v4_tools`,
+    `v_tools`, T5 and T2-tools use no When2Call tool list; amendment 1, §2). v2's reported readings
+    on requests that no tool answers would be: the `cannot_answer` requests of When2Call
+    `test/mcq` (1,863 items), BFCL's 240 irrelevance items, and the 1,000 out-of-scope requests of
+    CLINC150 in v2's test group. The model would have met *none* only as a removed tool.
+- **(c) A v7 that anchors the no-call slates without an own tool.** Give the 660 training and 33
+  validation slates a cell, for example the cell of the pool tool nearest to the request
+  (potion-base-2M cosine on v5's request embeddings, the measure of the hard slates). Their options
+  would then be drawn within one cell, like every other slate of the group.
+  - Whether that removes N6 is not known before it is built. The count above says only that the
+    anchored slates are now within a point of the tool-right ones.
+  - The anchor would carry its own risk: a tool chosen for being close to the request is not a tool
+    the request owns.
+
+No recommendation is made here. Each of (b) and (c) needs its own pre-registration.

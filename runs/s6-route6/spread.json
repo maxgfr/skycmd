@@ -1,0 +1,368 @@
+{
+ "about": "s6-route v6: the spread table of docs/s6-route6-prereg.md 4.8 and amendment 1 (reported)",
+ "group": "when2call",
+ "after the fix": {
+  "train hard none-right": {
+   "slates": 980,
+   "spread above 0": 318,
+   "slates by level": [
+    604,
+    46,
+    0,
+    1,
+    0,
+    0,
+    329
+   ],
+   "share spread above 0": 0.32448979591836735,
+   "share at L6": 0.3357142857142857
+  },
+  "train hard tool-right": {
+   "slates": 3967,
+   "spread above 0": 228,
+   "slates by level": [
+    3696,
+    260,
+    3,
+    8,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.057474161835139904,
+   "share at L6": 0.0
+  },
+  "train natural none-right": {
+   "slates": 1004,
+   "spread above 0": 300,
+   "slates by level": [
+    633,
+    38,
+    1,
+    1,
+    0,
+    0,
+    331
+   ],
+   "share spread above 0": 0.29880478087649404,
+   "share at L6": 0.3296812749003984
+  },
+  "train natural tool-right": {
+   "slates": 3967,
+   "spread above 0": 221,
+   "slates by level": [
+    3706,
+    247,
+    4,
+    10,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.05570960423493824,
+   "share at L6": 0.0
+  },
+  "train renamed none-right": {
+   "slates": 793,
+   "spread above 0": 1,
+   "slates by level": [
+    792,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.0012610340479192938,
+   "share at L6": 0.0
+  },
+  "train renamed tool-right": {
+   "slates": 3174,
+   "spread above 0": 3,
+   "slates by level": [
+    3171,
+    1,
+    2,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.000945179584120983,
+   "share at L6": 0.0
+  },
+  "val hard none-right": {
+   "slates": 63,
+   "spread above 0": 20,
+   "slates by level": [
+    40,
+    2,
+    1,
+    0,
+    0,
+    0,
+    20
+   ],
+   "share spread above 0": 0.31746031746031744,
+   "share at L6": 0.31746031746031744
+  },
+  "val hard tool-right": {
+   "slates": 242,
+   "spread above 0": 10,
+   "slates by level": [
+    229,
+    13,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.04132231404958678,
+   "share at L6": 0.0
+  },
+  "val natural none-right": {
+   "slates": 58,
+   "spread above 0": 13,
+   "slates by level": [
+    43,
+    2,
+    0,
+    0,
+    0,
+    0,
+    13
+   ],
+   "share spread above 0": 0.22413793103448276,
+   "share at L6": 0.22413793103448276
+  },
+  "val natural tool-right": {
+   "slates": 242,
+   "spread above 0": 12,
+   "slates by level": [
+    228,
+    14,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.049586776859504134,
+   "share at L6": 0.0
+  },
+  "val renamed none-right": {
+   "slates": 48,
+   "spread above 0": 0,
+   "slates by level": [
+    48,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.0,
+   "share at L6": 0.0
+  },
+  "val renamed tool-right": {
+   "slates": 194,
+   "spread above 0": 0,
+   "slates by level": [
+    194,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.0,
+   "share at L6": 0.0
+  }
+ },
+ "v5's build": {
+  "train hard none-right": {
+   "slates": 980,
+   "spread above 0": 671,
+   "slates by level": [
+    608,
+    42,
+    0,
+    1,
+    0,
+    0,
+    329
+   ],
+   "share spread above 0": 0.6846938775510204,
+   "share at L6": 0.3357142857142857
+  },
+  "train hard tool-right": {
+   "slates": 3967,
+   "spread above 0": 228,
+   "slates by level": [
+    3696,
+    260,
+    3,
+    8,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.057474161835139904,
+   "share at L6": 0.0
+  },
+  "train natural none-right": {
+   "slates": 1004,
+   "spread above 0": 675,
+   "slates by level": [
+    636,
+    35,
+    1,
+    1,
+    0,
+    0,
+    331
+   ],
+   "share spread above 0": 0.6723107569721115,
+   "share at L6": 0.3296812749003984
+  },
+  "train natural tool-right": {
+   "slates": 3967,
+   "spread above 0": 1478,
+   "slates by level": [
+    3706,
+    247,
+    4,
+    10,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.3725737332997227,
+   "share at L6": 0.0
+  },
+  "train renamed none-right": {
+   "slates": 793,
+   "spread above 0": 325,
+   "slates by level": [
+    792,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.4098360655737705,
+   "share at L6": 0.0
+  },
+  "train renamed tool-right": {
+   "slates": 3174,
+   "spread above 0": 1253,
+   "slates by level": [
+    3171,
+    1,
+    2,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.39477000630119724,
+   "share at L6": 0.0
+  },
+  "val hard none-right": {
+   "slates": 63,
+   "spread above 0": 42,
+   "slates by level": [
+    40,
+    3,
+    0,
+    0,
+    0,
+    0,
+    20
+   ],
+   "share spread above 0": 0.6666666666666666,
+   "share at L6": 0.31746031746031744
+  },
+  "val hard tool-right": {
+   "slates": 242,
+   "spread above 0": 10,
+   "slates by level": [
+    229,
+    13,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.04132231404958678,
+   "share at L6": 0.0
+  },
+  "val natural none-right": {
+   "slates": 58,
+   "spread above 0": 36,
+   "slates by level": [
+    43,
+    2,
+    0,
+    0,
+    0,
+    0,
+    13
+   ],
+   "share spread above 0": 0.6206896551724138,
+   "share at L6": 0.22413793103448276
+  },
+  "val natural tool-right": {
+   "slates": 242,
+   "spread above 0": 90,
+   "slates by level": [
+    228,
+    14,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.371900826446281,
+   "share at L6": 0.0
+  },
+  "val renamed none-right": {
+   "slates": 48,
+   "spread above 0": 20,
+   "slates by level": [
+    48,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.4166666666666667,
+   "share at L6": 0.0
+  },
+  "val renamed tool-right": {
+   "slates": 194,
+   "spread above 0": 74,
+   "slates by level": [
+    194,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "share spread above 0": 0.38144329896907214,
+   "share at L6": 0.0
+  }
+ }
+}
