@@ -1140,6 +1140,6 @@ say whether a model trained on these slates would use any of the cues the table 
 the surface cell and the request anchor would have helped a model on a new family.
 
 **Next.** A sixth version, `docs/s6-route6-prereg.md`, was drafted and frozen on the same day. It
-trains on v5's data with one fix (When2Call's hard no-call slates rebuilt without exempt tools),
+trains on v5's data with one fix (When2Call's slates rebuilt without exempt tools, its amendment 1),
 publishes the data checks without letting them stop the run except by one rule on N6, and tests
 the trained model in a reading where the request is hidden.

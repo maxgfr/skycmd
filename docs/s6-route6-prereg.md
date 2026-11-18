@@ -2,6 +2,8 @@
 
 **Frozen on 18/11/2026 by the lead, before any computation of v6 and before its code is written; every later change is a dated amendment that precedes the computation it concerns.**
 
+**Amendment 1 of the same day (18/11/2026), before any computation of v6 (§17):** the fix of §4.8 is extended to every slate of the When2Call group, none of which shows an exempt tool any more.
+
 - **Nothing of v6 exists yet:** no model trained, no record rebuilt, no fresh file built, no
   teacher call, no system scored, no blind copy written. To write this document:
   - no record and no request was opened;
@@ -303,6 +305,9 @@ As v5 §4.7: **3 GB free** on the volume of the data folder before every writing
 freeze.
 
 ### 4.8 The one data fix, and the one stop rule on the data (B0)
+
+*Amendment 1 (§17) extends this fix to every slate of the When2Call group. The text below is the
+frozen one; where the two differ, the amendment applies.*
 
 **What v5's table shows** (`runs/s6-route5/checks.md`, and the When2Call cells of
 `checks.json`).
@@ -759,4 +764,128 @@ plain file gives B0 without change: `sky-route fuse` computes the scores from th
 
 ## 17. Amendments
 
-None.
+### Amendment 1 (18/11/2026, decided by the lead, before any computation of v6)
+
+**Nothing of v6 has run.** No code of §14 is written, no record is rebuilt, no teacher call is
+made, no blind copy is written, no model is trained and no system is scored. The published
+diagnostic of §9.1 has not run either. This amendment is written from v5's published table alone
+(`runs/s6-route5/checks.md` and `checks.json`).
+
+**Why.** As frozen, the fix of §4.8 changes the hard no-call slates only. The table shows that
+N6's failure sits in the natural no-call slates as much as in the hard ones (§4.8). A fix that
+leaves half of it would be expected to trip its own stop rule. A stop that is known from the table
+before any computation is corrected before any computation.
+
+**1. The fix is extended to the whole When2Call group.** In the When2Call group no slate of any
+kind shows an exempt tool.
+
+- **A tool-right slate** holds its right tool and drawn distractors.
+- **A no-call slate** holds drawn distractors only:
+  - natural: the cell's random fill in the first own tool's cell, at the slate's level;
+  - hard: the tools nearest to the request within that cell, as frozen in §4.8.
+- **The request's own tools other than the right tool are not shown** in this group, in any kind
+  (natural, hard and renamed, and the renamed kind's *none*-right copies). Every tool of a slate is
+  a drawn tool, so the minimum of 16 candidates and the levels L0 to L6 of v5 §4.3 apply to all of
+  them. The slate's size is kept, as is the stream that drew it.
+
+**What the table shows that motivates each half.**
+
+- **The no-call slates of both kinds.** In When2Call, the *none*-right slates of both kinds sit
+  outside the cell (L6) about a third of the time, and no tool-right slate does:
+  - training: 329 of the 980 hard and 331 of the 1,004 natural no-call slates;
+  - validation: 20 of 63 and 13 of 58;
+  - 0 of the 3,967 tool-right slates of each training kind.
+
+  Changing the hard no-call slates alone would leave the natural half of the *none*-right slates of
+  the two failing families as they are.
+- **The tool-right slates.** Exempt tools are held by 1,357 of the 3,967 tool-right natural
+  training slates (84 of 242 in validation), and by 1,282 of the 3,174 tool-right renamed training
+  slates (77 of 194 in validation). If only the no-call slates lost their exempt tools, these slates
+  would be the only ones of the group with tools outside the right tool's cell. "The options spread,
+  so a tool is right" would then be the inverse cue.
+
+**2. What is lost.**
+
+- **When2Call's own near-miss tools are no longer shown as they come.** These are the tools that
+  its authors put next to a request which none of them can answer, and the tools that sit next to
+  the right tool in a real When2Call conversation.
+- **Close distractors remain on *none*-right slates.** The hard no-call slates still put the tools
+  nearest to the request in front of the model, filtered by the teacher. So *none*-right slates
+  whose distractors are close to the request remain in training.
+- **No reading of v6 uses When2Call's own tool lists.** v2's When2Call test file
+  (`t_when2call`) is not read by v6's gate, nor by any reading of §5, §7, §9 or §9.1. Those
+  readings are `v5_tools`, `v4_tools`, `v_tools`, the tools group's renamed and natural validation
+  records, T5, T2-tools and their copies. The When2Call validation records are rebuilt by the rule
+  above, so they are within the construction. Had any reading used When2Call's own tool lists, it
+  would have been labelled an out-of-construction reading.
+
+**3. What is rebuilt.**
+
+- **Every record of the When2Call group, by uid:** 14,732 slates.
+
+  | split | hard | natural | renamed | total |
+  |---|---:|---:|---:|---:|
+  | training | 4,947 | 4,971 | 3,967 | 13,885 |
+  | validation | 305 | 300 | 242 | 847 |
+
+  The *none* share is kept at 0.20 as built: the same slates are rebuilt, so C3's counts do not
+  move (1,984 *none*-right of 9,918 and 793 of 3,967 in training; 121 of 605 and 48 of 242 in
+  validation). When2Call has no removed cell; its *none*-right slates are the no-call slates and
+  the renamed kind's removed set.
+- **The teacher's items, for the hard no-call slates only:** at most 1,043 items, about 53 calls,
+  unchanged.
+  - The tool-right hard slates already hold no exempt tool, so their tools and their v5 answers
+    are unchanged, by id.
+  - The natural and renamed slates have no false-negative filter.
+- **Everything outside the When2Call group is byte-identical,** checked by hash (§4.1).
+  - The files that change are those §4.1 already named: `records/when2call/train.jsonl`,
+    `records/when2call/val.jsonl` and `counts/v5-slates.json`, with the new teacher files.
+  - The other groups keep their exempt tools exactly as v5 built them. In the tools group, 5,830
+    of 22,020 natural and 5,431 of 17,616 renamed training slates hold exempt tools; the intents
+    group has none.
+  - The table shows no N6 failure outside When2Call. The largest N6 excess there is +0.0249
+    (N6's inverse on `v5_tools_masked`). Among the record families the largest is +0.0197
+    (`records tools val renamed`).
+
+**4. The stop rule and the spread table.**
+
+- **The stop rule of §4.8 stands as frozen.** If, in any N6 family judged by v5's floor, the
+  accuracy of N6 or of its inverse exceeds the family's *none* share by more than 0.10 after the
+  rebuild, v6 stops before training, and the table is published.
+- **Before training, the report gives the spread table** for the When2Call group: the share of
+  slates whose options spread over several L0 cells, by kind (natural, hard, renamed), by
+  *none*-right or tool-right and by split, after the rebuild, with v5's beside it. It also gives
+  the counts by level of the rebuilt slates, with the L6 share by kind and by *none*-right or
+  tool-right.
+
+**5. The code and the costs** (§13, §14), as they now stand.
+
+- **Code, item 0 of §14, replaced:**
+  - `crates/sky-data/src/route/v5.rs`: a group switch (`sky-data route v5-plan --when2call-exempt
+    none`). In the When2Call group it shows no exempt tool in any kind and draws every tool of the
+    slate in the cell: the natural no-call fill in the first own tool's cell, the hard no-call
+    slates by the request's nearest within it, and the tool-right slates' fill in the right tool's
+    cell. The default (`all`) keeps v5's bytes.
+  - Its tests:
+    - no When2Call slate of any kind holds an own tool other than the right tool;
+    - a no-call slate holds drawn tools only;
+    - the hard no-call slates follow the request's nearest within the cell;
+    - the slates' sizes and the kept uids are unchanged;
+    - every record outside the When2Call group is byte-identical to the default's on the fixture;
+    - v2's, v3's, v4's and v5's frozen bytes are unchanged.
+  - `sky-data route v5-slates --only-group when2call`: the rebuild of the group's records by uid,
+    every other file copied.
+  - `teacher-jobs --only no-call-hard`, unchanged.
+  - `scripts/s6-route6-checks.py`: the stop rule unchanged, and the spread table and the levels by
+    kind, by *none*-right or tool-right and by split, for the When2Call group.
+  - The stages of `scripts/build-route6-data.sh` keep their names (`fix-plan`, `fix-teacher-jobs`,
+    `fix-build`, `fix-checks`, `spread`).
+- **Costs:**
+  - teacher unchanged: about 53 calls for the fix and 100 to 150 for `fresh-tools`;
+  - CPU: the fix's replanning and build, about 10 minutes (14,732 records instead of 1,043, still
+    small next to v5's whole build, which with its checks took under 2 minutes);
+  - GPU and disk unchanged: about 168 working minutes, and about 1.7 GB new, `build6/` included.
+
+**Disclosure** (§10, added). The extension follows v5's table, as the fix did. It was decided
+after the frozen fix was compared with the table's counts by level and by gold, and before
+anything of v6 ran.
