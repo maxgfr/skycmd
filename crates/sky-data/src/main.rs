@@ -261,6 +261,10 @@ enum RouteStep {
         /// v5's build folder.
         #[arg(long)]
         out: PathBuf,
+        /// s6-route v6 (docs/s6-route6-prereg.md, amendment 1): `all` (v5's slates, the default)
+        /// or `none` (no slate of the When2Call group shows an exempt tool).
+        #[arg(long, default_value = "all")]
+        when2call_exempt: String,
     },
     /// s6-route v5, step 4 (after BUILD=<out> scripts/route-teacher.sh false-negatives): the
     /// false-negative filter, the records of every kind (<out>/records/<group>/{train,val}.jsonl,
@@ -275,6 +279,54 @@ enum RouteStep {
         /// Without every false-negative answer (never trained on outside a smoke run).
         #[arg(long)]
         provisional: bool,
+        /// s6-route v6 (4.8, amendment 1): rebuild this group's records only, by uid, into the
+        /// full copy --out, from the plan and answers of --fix; every other record file must keep
+        /// its hash.
+        #[arg(long)]
+        only_group: Option<String>,
+        /// The fix's folder (its stage/plan5.jsonl, val/ and teacher/), with --only-group.
+        #[arg(long)]
+        fix: Option<PathBuf>,
+    },
+    /// s6-route v6 (4.8, amendment 1): the fix's teacher items, the hard slates of --group
+    /// without a tool gold and without an answer by id (<fix>/teacher/false-negatives.items.jsonl).
+    V5FixItems {
+        #[arg(long)]
+        v2: PathBuf,
+        /// The full copy of v5's build (its teacher answers).
+        #[arg(long)]
+        base: PathBuf,
+        #[arg(long)]
+        fix: PathBuf,
+        #[arg(long, default_value = "when2call")]
+        group: String,
+    },
+    /// s6-route v6 (docs/s6-route6-prereg.md 4.3): the request-blind copies of a slate file:
+    /// <stem>.blind.jsonl (the request replaced by the placeholder, the options plain),
+    /// <stem>.blind.model.jsonl (B0, by --render) and <stem>.blind-bare.model.jsonl (B1). A file
+    /// under a `fresh` folder needs --open <its FRESH-OPEN>. With --check-placeholder, the
+    /// placeholder is chosen instead (`?`, then `…`, then `-`: the first that is no request of
+    /// the --records files) and written to --out.
+    Blind {
+        #[arg(long = "in")]
+        input: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+        /// runs/s6-route6/placeholder.json (the placeholder taken).
+        #[arg(long)]
+        placeholder: Option<PathBuf>,
+        /// bm25-line (v2's file) or scores-in-options (v4 to v6).
+        #[arg(long, default_value = sky_infer::route::RENDER_SCORES_IN_OPTIONS)]
+        render: String,
+        #[arg(long)]
+        open: Option<PathBuf>,
+        /// Choose the placeholder: no request of these files may equal it.
+        #[arg(long, num_args = 1.., value_delimiter = ',')]
+        check_placeholder: Vec<PathBuf>,
+        /// With --check-placeholder: check that the placeholder already taken (--placeholder) is
+        /// no request of the files (T5: the counts amendment), exit 2 if it is.
+        #[arg(long)]
+        keep: bool,
     },
     /// s6-nano v3 (docs/s6-nano3-prereg.md, section 4): the fresh test files, from v2's build
     /// (read only; its split recomputed and checked against its test files) into --out, written
@@ -1222,26 +1274,11 @@ fn main() -> Result<()> {
                         provisional,
                     })?
                 }
-                RouteStep::V5Plan { v2, v4, out } => {
-                    use sky_data::route::v5;
-                    if cli.seed != sky_data::route::v4::V2_SEED {
-                        anyhow::bail!(
-                            "v5 keeps v2's streams: --seed {}",
-                            sky_data::route::v4::V2_SEED
-                        );
-                    }
-                    v5::plan(&v5::PlanOptions {
-                        v2,
-                        v4,
-                        out,
-                        seed: cli.seed,
-                    })?
-                }
-                RouteStep::V5Slates {
+                RouteStep::V5Plan {
                     v2,
                     v4,
                     out,
-                    provisional,
+                    when2call_exempt,
                 } => {
                     use sky_data::route::v5;
                     if cli.seed != sky_data::route::v4::V2_SEED {
@@ -1250,13 +1287,99 @@ fn main() -> Result<()> {
                             sky_data::route::v4::V2_SEED
                         );
                     }
-                    v5::slates(&v5::SlatesOptions {
+                    let when2call_none = match when2call_exempt.as_str() {
+                        "all" => false,
+                        "none" => true,
+                        x => anyhow::bail!("--when2call-exempt {x}: all or none"),
+                    };
+                    v5::plan(&v5::PlanOptions {
                         v2,
                         v4,
                         out,
                         seed: cli.seed,
-                        provisional,
+                        when2call_none,
                     })?
+                }
+                RouteStep::V5Slates {
+                    v2,
+                    v4,
+                    out,
+                    provisional,
+                    only_group,
+                    fix,
+                } => {
+                    use sky_data::route::v5;
+                    if cli.seed != sky_data::route::v4::V2_SEED {
+                        anyhow::bail!(
+                            "v5 keeps v2's streams: --seed {}",
+                            sky_data::route::v4::V2_SEED
+                        );
+                    }
+                    match (only_group, fix) {
+                        (None, None) => v5::slates(&v5::SlatesOptions {
+                            v2,
+                            v4,
+                            out,
+                            seed: cli.seed,
+                            provisional,
+                        })?,
+                        (Some(group), Some(fix)) => v5::rebuild_group(&v5::RebuildOptions {
+                            v2,
+                            v4,
+                            out,
+                            fix,
+                            group,
+                            seed: cli.seed,
+                            provisional,
+                        })?,
+                        _ => anyhow::bail!("--only-group and --fix go together"),
+                    }
+                }
+                RouteStep::V5FixItems {
+                    v2,
+                    base,
+                    fix,
+                    group,
+                } => sky_data::route::v5::fix_items(&v2, &base, &fix, &group)?,
+                RouteStep::Blind {
+                    input,
+                    out,
+                    placeholder,
+                    render,
+                    open,
+                    check_placeholder,
+                    keep,
+                } => {
+                    use sky_data::route::blind;
+                    if !check_placeholder.is_empty() {
+                        let r = blind::check_placeholder(
+                            &check_placeholder,
+                            &out,
+                            keep.then_some(()).and(placeholder.as_deref()),
+                        )?;
+                        if r["taken"].is_null() || r["occurs"].as_bool() == Some(true) {
+                            println!("{r}");
+                            std::process::exit(2);
+                        }
+                        r
+                    } else {
+                        let how = sky_infer::route::Render::parse(&render).ok_or_else(|| {
+                            anyhow::anyhow!("--render {render}: bm25-line or scores-in-options")
+                        })?;
+                        let input = input.ok_or_else(|| anyhow::anyhow!("--in is needed"))?;
+                        let p = placeholder.ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "--placeholder runs/s6-route6/placeholder.json is needed"
+                            )
+                        })?;
+                        blind::blind(
+                            &input,
+                            &out,
+                            &blind::placeholder_of(&p)?,
+                            how,
+                            open.as_deref(),
+                        )?
+                    }
                 }
                 RouteStep::Fresh {
                     build,

@@ -32,8 +32,8 @@ use serde_json::{json, Value};
 use sky_infer::route::{options_with_scores, Render};
 
 use super::build::{
-    self, answers_path, fn_id, stage, Able, Assigned, Ctx, FnItem, Kept, Loaded, Plan, RouteRecord,
-    NEAREST, NONE_SHARE, REMOVED_SHARE,
+    self, answers_path, fn_id, items_path, stage, Able, Assigned, Ctx, FnItem, Kept, Loaded, Plan,
+    RouteRecord, NEAREST, NONE_SHARE, REMOVED_SHARE,
 };
 use super::cluster::{self, Matrix};
 use super::slates::{self, Slate};
@@ -339,6 +339,9 @@ pub struct PlanOptions {
     pub out: PathBuf,
     /// v2's seed.
     pub seed: u64,
+    /// s6-route v6 (amendment 1): `false` (`--when2call-exempt all`, v5's slates) or `true`
+    /// (`none`: no exempt tool in the When2Call group).
+    pub when2call_none: bool,
 }
 
 /// The two keys each tool can show, as shown in real names and under `tool_<k>` names.
@@ -362,6 +365,8 @@ struct World<'a> {
     comb: Matrix,
     tool_rows: usize,
     tool_of_row: HashMap<usize, usize>,
+    /// `--when2call-exempt none` (s6-route v6).
+    w2c_none: bool,
 }
 
 /// The sha256 of v2's plan and of its ids, which the request embeddings must have been written
@@ -547,10 +552,22 @@ impl World<'_> {
                 && !same_cluster(t)
                 && (k.r.group == INTENTS || a.allowed(&k.r.group, &k.split, t))
         };
+        // s6-route v6 (docs/s6-route6-prereg.md, amendment 1): with `--when2call-exempt none`,
+        // no slate of the When2Call group shows an own tool as exempt, and its own tools other
+        // than the right tool are not candidates of the natural, renamed and no-call hard slates;
+        // the tool-right hard slates keep v5's candidates, so that their tools and their answers
+        // stay v5's. The default keeps v5's slates.
+        let strip = self.w2c_none && k.r.group == WHEN2CALL;
+        let shown_own: &[usize] = if strip { &[] } else { &k.own };
+        let not_own = |t: usize| !(strip && Some(t) != gold && k.own.contains(&t));
+        let okn = |t: usize| ok(t) && not_own(t);
         // the anchor: the right tool, else the request's first own tool (4.3)
         let anchor = gold.or_else(|| k.own.first().copied());
         let ids = |v: &[usize]| v.iter().map(|&t| l.tools[t].id.clone()).collect::<Vec<_>>();
-        let own_ok = k.own.iter().filter(|&&t| Some(t) != gold && ok(t)).count();
+        let own_ok = shown_own
+            .iter()
+            .filter(|&&t| Some(t) != gold && okn(t))
+            .count();
         let g1 = gold.is_some() as usize;
 
         // ---- the natural slate: v2's size, the request's own tools, the cell's random fill
@@ -564,21 +581,21 @@ impl World<'_> {
             &self.table,
             &kf,
             &df,
-            &ok,
+            &okn,
             minimum(gs, nat_drawn),
         );
         let mut rng = cx.rng(&format!("route5/natural/{}", p.id));
         let mut s: Vec<usize> = gold.into_iter().collect();
-        for &t in &k.own {
+        for &t in shown_own {
             if s.len() >= n {
                 break;
             }
-            if Some(t) != gold && !s.contains(&t) && ok(t) {
+            if Some(t) != gold && !s.contains(&t) && okn(t) {
                 s.push(t);
             }
         }
         let fixed = s.len();
-        let lv = fill_levels(&mut s, n, nc.level, &mut nc, src, pool, &mut rng, &ok);
+        let lv = fill_levels(&mut s, n, nc.level, &mut nc, src, pool, &mut rng, &okn);
         s.truncate(n.max(g1));
         // a drawn distractor is one the fill drew (not the gold, not an own tool placed first)
         let (s, nat_flags) = shuffled(s, fixed, &mut rng);
@@ -603,7 +620,7 @@ impl World<'_> {
                 let lr = nc.level_for(minimum(gs, nat_drawn + 1)).max(natural.level);
                 let mut t: Vec<usize> = s.iter().copied().filter(|&x| x != g).collect();
                 let want = t.len() + 1;
-                let okg = |x: usize| x != g && ok(x);
+                let okg = |x: usize| x != g && okn(x);
                 let from = natural.level;
                 let le = fill_levels(&mut t, want, from, &mut nc, src, pool, &mut rng, &okg);
                 let (mut v, mut flags) = (s.clone(), nat_flags.clone());
@@ -636,7 +653,7 @@ impl World<'_> {
             Some(g) => vec![g],
             None => {
                 let mut b: Vec<usize> = Vec::new();
-                for &t in &k.own {
+                for &t in shown_own {
                     if b.len() >= size {
                         break;
                     }
@@ -649,6 +666,7 @@ impl World<'_> {
         };
         let nb = base.len();
         let need = size.saturating_sub(nb);
+        let okh: &dyn Fn(usize) -> bool = if gold.is_some() { &ok } else { &okn };
         let sh = Shown::D1(D1::new(self.seed, &p.id, "hard"));
         let (kf, df) = (self.key_fn(sh), self.draw_fn(sh));
         let mut hc = Cell::new(
@@ -657,7 +675,7 @@ impl World<'_> {
             &self.table,
             &kf,
             &df,
-            &ok,
+            okh,
             minimum(gs, need),
         );
         let hard_removed_min = hc.level_for(minimum(gs, need + 1));
@@ -665,7 +683,7 @@ impl World<'_> {
         let cands: Vec<usize> = if lh < surface::L6 {
             hc.members(lh)
         } else {
-            pool.iter().copied().filter(|&t| ok(t)).collect()
+            pool.iter().copied().filter(|&t| okh(t)).collect()
         };
         let rows: Vec<usize> = cands.iter().filter_map(|&t| l.row[t]).collect();
         let near: Vec<usize> =
@@ -693,7 +711,7 @@ impl World<'_> {
                 );
             }
             seq_lv.extend(fill_levels(
-                &mut seq, want, lh, &mut hc, src, pool, &mut rng, &ok,
+                &mut seq, want, lh, &mut hc, src, pool, &mut rng, okh,
             ));
         }
         seq.truncate(want);
@@ -726,13 +744,13 @@ impl World<'_> {
         let (renamed, renamed_removed) = match gold {
             None => (None, None),
             Some(_) => {
-                let own_p: Vec<usize> = k
-                    .own
+                let own_p: Vec<usize> = shown_own
                     .iter()
                     .copied()
                     .filter(|t| pool.binary_search(t).is_ok())
                     .collect();
-                let tok = v4::test_ok(&cx, k);
+                let tok4 = v4::test_ok(&cx, k);
+                let tok = |t: usize| tok4(t) && not_own(t);
                 let own_t = own_p.iter().filter(|&&t| Some(t) != gold && tok(t)).count();
                 let drawn = slates::TEST_TOOLS - 1 - own_t.min(slates::TEST_TOOLS - 1);
                 let sh = Shown::D1Masked(D1::new(self.seed, &p.id, "renamed"));
@@ -1411,6 +1429,7 @@ pub fn plan(o: &PlanOptions) -> Result<Value> {
         comb,
         tool_rows,
         tool_of_row,
+        w2c_none: o.when2call_none,
     };
     // every request's plan, on threads (the result does not depend on their number)
     let threads = std::thread::available_parallelism()
@@ -1632,34 +1651,31 @@ pub struct SlatesOptions {
     pub provisional: bool,
 }
 
-/// Step 4 of v5: the false-negative filter, the records (D1, D2, D4, D5, the levels and the
-/// roles), the probe copies and the model's copies of the validation files.
-#[allow(clippy::too_many_lines)]
-pub fn slates(o: &SlatesOptions) -> Result<Value> {
-    if o.out == o.v2 || o.out == o.v4 {
-        bail!(
-            "v5 writes to its own folder, never to v2's or v4's ({})",
-            o.out.display()
-        );
+/// The plan's slates after the teacher's answers.
+struct Filtered {
+    finals: Vec<Option<Final>>,
+    counts: Counts,
+    missing: usize,
+    from_v2: usize,
+    refused: HashSet<String>,
+}
+
+/// The false-negative filter of every plan: the answers of the folders `dirs` in order (the
+/// first that holds an id wins), then v2's for an item of the same id (4.1); a refusal of any of
+/// them leaves the slate unfiltered.
+fn filtered(plans: &[Plan5], dirs: &[&Path], v2: &Path) -> Result<Filtered> {
+    let mut able: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut refused = HashSet::new();
+    for d in dirs {
+        let p = answers_path(d, "false-negatives");
+        for x in read_or_empty::<Able>(&p)? {
+            able.entry(x.id).or_insert(x.able);
+        }
+        refused.extend(refused_ids(&p)?);
     }
-    let tools: Vec<Tool> = read_lines(&stage(&o.v2).join("tools.jsonl"))?;
-    let index: HashMap<String, usize> = tools
-        .iter()
-        .enumerate()
-        .map(|(i, t)| (t.id.clone(), i))
-        .collect();
-    let plans: Vec<Plan5> = read_lines(&stage(&o.out).join(PLAN5))?;
-    let rw = Rewrites::load(&o.v2, &o.v4)?;
-    // the teacher's answers: v5's, then v2's for an item of the same id (4.1)
-    let p5 = answers_path(&o.out, "false-negatives");
-    let mut able: HashMap<String, Vec<usize>> = read_or_empty::<Able>(&p5)?
-        .into_iter()
-        .map(|x| (x.id, x.able))
-        .collect();
-    let refused = refused_ids(&p5)?;
     let fids: HashSet<&str> = plans.iter().map(|p| p.fn_id.as_str()).collect();
     let mut from_v2 = 0usize;
-    for x in read_or_empty::<Able>(&answers_path(&o.v2, "false-negatives"))? {
+    for x in read_or_empty::<Able>(&answers_path(v2, "false-negatives"))? {
         if fids.contains(x.id.as_str()) && !able.contains_key(&x.id) {
             from_v2 += 1;
             able.insert(x.id, x.able);
@@ -1668,7 +1684,7 @@ pub fn slates(o: &SlatesOptions) -> Result<Value> {
     let mut counts = Counts::new();
     let mut missing = 0usize;
     let mut finals: Vec<Option<Final>> = Vec::with_capacity(plans.len());
-    for p in &plans {
+    for p in plans {
         let verdict = match able.get(&p.fn_id) {
             Some(a) => Verdict::Able(a.clone()),
             None if refused.contains(&p.fn_id) => Verdict::Refused,
@@ -1688,6 +1704,40 @@ pub fn slates(o: &SlatesOptions) -> Result<Value> {
             }),
         );
     }
+    Ok(Filtered {
+        finals,
+        counts,
+        missing,
+        from_v2,
+        refused,
+    })
+}
+
+/// Step 4 of v5: the false-negative filter, the records (D1, D2, D4, D5, the levels and the
+/// roles), the probe copies and the model's copies of the validation files.
+#[allow(clippy::too_many_lines)]
+pub fn slates(o: &SlatesOptions) -> Result<Value> {
+    if o.out == o.v2 || o.out == o.v4 {
+        bail!(
+            "v5 writes to its own folder, never to v2's or v4's ({})",
+            o.out.display()
+        );
+    }
+    let tools: Vec<Tool> = read_lines(&stage(&o.v2).join("tools.jsonl"))?;
+    let index: HashMap<String, usize> = tools
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.id.clone(), i))
+        .collect();
+    let plans: Vec<Plan5> = read_lines(&stage(&o.out).join(PLAN5))?;
+    let rw = Rewrites::load(&o.v2, &o.v4)?;
+    let Filtered {
+        finals,
+        mut counts,
+        missing,
+        from_v2,
+        refused,
+    } = filtered(&plans, &[&o.out], &o.v2)?;
     if missing > 0 && !o.provisional {
         bail!(
             "the teacher has not answered every false-negative item ({missing} missing): \
@@ -1861,6 +1911,223 @@ pub fn slates(o: &SlatesOptions) -> Result<Value> {
     });
     write_json(&o.out.join("counts/v5-slates.json"), &report)?;
     Ok(report)
+}
+
+// ------------------------------------------------------------ s6-route v6: the When2Call fix
+
+/// `docs/s6-route6-prereg.md` 4.8 and amendment 1: the rebuild of one group's records.
+pub struct RebuildOptions {
+    pub v2: PathBuf,
+    pub v4: PathBuf,
+    /// The full copy of v5's build (`build6/`): its records of the other groups, its validation
+    /// files and its teacher answers stay, byte for byte.
+    pub out: PathBuf,
+    /// The fix's folder (`build6/fix/`): the plan of `v5-plan --when2call-exempt none`
+    /// (`stage/plan5.jsonl`, `val/`) and the answers of the fix's teacher job (`teacher/`).
+    pub fix: PathBuf,
+    /// The group rebuilt (`when2call`).
+    pub group: String,
+    pub seed: u64,
+    pub provisional: bool,
+}
+
+/// The rebuild of one group's records by uid (`sky-data route v5-slates --only-group <g> --fix
+/// <dir>`): the slates are chosen as v5 chose them, from the fix's plan and the answers of the
+/// copy and of the fix; the group's uids must be those of the copy's records; every other record
+/// file is rendered and must have the copy's sha256 (a difference is a technical failure); the
+/// fix's `v5_tools` files must be the copy's. Writes the group's two record files and
+/// `counts/v5-slates.json`.
+#[allow(clippy::too_many_lines)]
+pub fn rebuild_group(o: &RebuildOptions) -> Result<Value> {
+    for d in [&o.out, &o.fix] {
+        if d == &o.v2 || d == &o.v4 {
+            bail!(
+                "the rebuild writes to its own folders, never to v2's or v4's ({})",
+                d.display()
+            );
+        }
+    }
+    let tools: Vec<Tool> = read_lines(&stage(&o.v2).join("tools.jsonl"))?;
+    let index: HashMap<String, usize> = tools
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.id.clone(), i))
+        .collect();
+    let plans: Vec<Plan5> = read_lines(&stage(&o.fix).join(PLAN5))?;
+    let rw = Rewrites::load(&o.v2, &o.v4)?;
+    let Filtered {
+        finals,
+        mut counts,
+        missing,
+        from_v2,
+        refused,
+    } = filtered(&plans, &[&o.out, &o.fix], &o.v2)?;
+    if missing > 0 && !o.provisional {
+        bail!(
+            "the teacher has not answered every false-negative item ({missing} missing): \
+             BUILD={} scripts/route-teacher.sh false-negatives loop",
+            o.fix.display()
+        );
+    }
+    // the fix's validation slates are the copy's
+    let mut unchanged = BTreeMap::new();
+    for f in ["v5_tools.jsonl", "v5_tools_masked.jsonl"] {
+        let (a, b) = (o.out.join("val").join(f), o.fix.join("val").join(f));
+        let (ha, hb) = (sha256_file(&a)?, sha256_file(&b)?);
+        if ha != hb {
+            bail!(
+                "{}: the fix's plan wrote other validation slates than the copy's ({hb}, {ha})",
+                b.display()
+            );
+        }
+        unchanged.insert(format!("val/{f}"), ha);
+    }
+    let chosen = choose(&plans, &finals, o.seed, &mut counts);
+    let cells = level_counts(&plans, &finals, &chosen);
+    let mut shown: BTreeMap<String, Counts> = BTreeMap::new();
+    let mut written = BTreeMap::new();
+    let mut shares = BTreeMap::new();
+    let mut rebuilt = BTreeMap::new();
+    for ((group, split), picks) in &chosen {
+        let c = shown.entry(format!("{group} {split}")).or_default();
+        let mut all = Vec::with_capacity(picks.len());
+        for pk in picks {
+            let p = &plans[pk.req];
+            let pl = pk.planned(&finals);
+            let masked = (pk.kind == "renamed")
+                .then(|| Rng::derived(o.seed, &format!("route5/renamed/{}", p.id)));
+            all.push(record(
+                o.seed,
+                p,
+                pl,
+                pk.kind,
+                pk.from(),
+                &uid_of(p, pk),
+                masked,
+                &tools,
+                &index,
+                &rw,
+                c,
+            )?);
+        }
+        let path = o
+            .out
+            .join("records")
+            .join(group)
+            .join(format!("{split}.jsonl"));
+        let rel = format!("records/{group}/{split}.jsonl");
+        if group == &o.group {
+            // by uid: the same slates as the copy's
+            let old: Vec<Value> = read_lines(&path)?;
+            let old_uids: Vec<&str> = old.iter().filter_map(|r| r["uid"].as_str()).collect();
+            let new_uids: Vec<&str> = all.iter().map(|r| r.r.uid.as_str()).collect();
+            if old_uids != new_uids {
+                bail!(
+                    "{rel}: the rebuilt slates are not the copy's by uid ({} against {})",
+                    new_uids.len(),
+                    old_uids.len()
+                );
+            }
+            let is_none = |r: &Record5| r.r.target.last() == Some(&1.0);
+            let mut kinds: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+            for r in &all {
+                let e = kinds.entry(r.r.kind.clone()).or_default();
+                e.0 += 1;
+                e.1 += is_none(r) as usize;
+            }
+            shares.insert(
+                format!("{group} {split}"),
+                json!({"by kind (slates, none gold)": kinds}),
+            );
+            written.insert(rel.clone(), write_jsonl(&path, &all)?);
+            rebuilt.insert(rel, sha256_file(&path)?);
+        } else {
+            let want = sha256_file(&path)?;
+            let got = super::sha256_hex(&build::records_bytes(&all)?);
+            if got != want {
+                bail!("{rel}: the records of another group would differ from the copy's (sha256 {got}, the copy {want}): a technical failure of the rebuild");
+            }
+            unchanged.insert(rel, want);
+        }
+    }
+    let rebuilt_plans = plans.iter().filter(|p| p.group == o.group).count();
+    let report = json!({
+        "about": "s6-route v6 (docs/s6-route6-prereg.md 4.8, amendment 1): the rebuild of one group's records by uid, counted before any training",
+        "seed": o.seed,
+        "provisional": o.provisional,
+        "group rebuilt": o.group,
+        "plans of the group": rebuilt_plans,
+        "false-negative answers missing": missing,
+        "teacher (4.2, 9)": {"hard slates": plans.len(), "answered by v2's answer with the same id": from_v2,
+                             "refused by moderation": plans.iter().filter(|p| refused.contains(&p.fn_id)).count(),
+                             "requests dropped": plans.len() - finals.iter().filter(|f| f.is_some()).count()},
+        "records rebuilt (records, then sha256)": written,
+        "rebuilt files (sha256)": rebuilt,
+        "files checked unchanged (sha256)": unchanged,
+        "none share of the rebuilt group": shares,
+        "rewrites shown (D1), by group and split": shown,
+        "C6 bar": C6_BAR,
+        "C6 cells": c6_json(&cells),
+        "counts": counts,
+    });
+    write_json(&o.out.join("counts/v5-slates.json"), &report)?;
+    Ok(report)
+}
+
+/// The fix's teacher items (`sky-data route v5-fix-items --v2 <v2> --base <build6> --fix <fix>`):
+/// the staged items of the fix's plan whose slate is a hard slate of `group` without a tool gold
+/// and whose id has no answer in the copy (`base`), in the fix or in v2's build. A hard slate of
+/// the group with a tool gold and no answer is refused (amendment 1: their tools and answers are
+/// v5's). Writes `<fix>/teacher/false-negatives.items.jsonl`.
+pub fn fix_items(v2: &Path, base: &Path, fix: &Path, group: &str) -> Result<Value> {
+    let plans: Vec<Plan5> = read_lines(&stage(fix).join(PLAN5))?;
+    let staged: Vec<FnItem> = read_lines(&fix.join(FN_STAGED))?;
+    let mut answered: HashSet<String> = HashSet::new();
+    for d in [base, fix, v2] {
+        let p = answers_path(d, "false-negatives");
+        answered.extend(read_or_empty::<Able>(&p)?.into_iter().map(|x| x.id));
+    }
+    let mut want: HashSet<&str> = HashSet::new();
+    let mut c = Counts::new();
+    for p in plans.iter().filter(|p| p.group == group) {
+        let has = answered.contains(&p.fn_id);
+        match (&p.gold, has) {
+            (None, false) => {
+                want.insert(p.fn_id.as_str());
+            }
+            (None, true) => bump(&mut c, "no-call hard slates answered by id"),
+            (Some(_), true) => bump(&mut c, "tool-right hard slates answered by id (v5's)"),
+            (Some(_), false) => bail!(
+                "{}: a tool-right hard slate of {group} without an answer: its tools should be v5's",
+                p.id
+            ),
+        }
+    }
+    let items: Vec<&FnItem> = staged
+        .iter()
+        .filter(|i| want.contains(i.id.as_str()))
+        .collect();
+    if items.len() != want.len() {
+        bail!(
+            "{} of the {} no-call hard slates have no staged item",
+            want.len() - items.len(),
+            want.len()
+        );
+    }
+    for i in &items {
+        if i.split != "train" && i.split != "val" {
+            bail!("{}: an item of the {} split", i.id, i.split);
+        }
+    }
+    let mut by_split = Counts::new();
+    for i in &items {
+        bump(&mut by_split, &i.split);
+    }
+    write_jsonl(&items_path(fix, "false-negatives"), &items)?;
+    Ok(
+        json!({"group": group, "items": items.len(), "calls of 20": items.len().div_ceil(20),
+              "by split": by_split, "counts": c}),
+    )
 }
 
 /// One record: names real or `tool_<k>` (the renamed kind's stream), D1 on every tool option,
@@ -2409,6 +2676,7 @@ mod tests {
             v4: v4.into(),
             out: out.into(),
             seed: 7,
+            when2call_none: false,
         }
     }
 
@@ -2430,6 +2698,231 @@ mod tests {
     fn stage_items(out: &Path) {
         std::fs::create_dir_all(out.join("teacher")).unwrap();
         std::fs::copy(out.join(FN_STAGED), items_path(out, "false-negatives")).unwrap();
+    }
+
+    fn copy_tree(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let (f, t) = (e.path(), to.join(e.file_name()));
+            if f.is_dir() {
+                copy_tree(&f, &t);
+            } else {
+                std::fs::copy(&f, &t).unwrap();
+            }
+        }
+    }
+
+    /// s6-route v6 (`docs/s6-route6-prereg.md` 4.8, amendment 1): `--when2call-exempt none`, the
+    /// fix's items and the rebuild of the When2Call group by uid, on the invented build.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn the_when2call_fix_of_v6() {
+        let root = std::env::temp_dir().join(format!("sky-route-v6-fix-{}", std::process::id()));
+        let (v2, v4d, a) = (root.join("v2"), root.join("v4"), root.join("b5"));
+        fixture(&v2);
+        run(&v2, 7);
+        v4_rewrites(&v2, &v4d);
+        v5_run(&v2, &v4d, &a);
+        stage_items(&a);
+        fn_answers(&a, false);
+        v5_slates(&v2, &v4d, &a, false).unwrap();
+        // the full copy, and the fix's plan in its own folder
+        let c = root.join("b6");
+        copy_tree(&a, &c);
+        let before = hashes(&c);
+        let fix = c.join("fix");
+        copy_tree(&a.join("emb"), &fix.join("emb"));
+        plan(&PlanOptions {
+            when2call_none: true,
+            ..opts(&v2, &v4d, &fix)
+        })
+        .unwrap();
+        let p5: Vec<Plan5> = read_lines(&stage(&a).join(PLAN5)).unwrap();
+        let p6: Vec<Plan5> = read_lines(&stage(&fix).join(PLAN5)).unwrap();
+        assert_eq!(p5.len(), p6.len());
+        let l = build::load(&v2).unwrap();
+        let asg = build::assign(&l).unwrap();
+        let kept = asg.kept();
+        let by_req: HashMap<&str, &Kept> = kept.iter().map(|k| (k.r.id.as_str(), k)).collect();
+        let (mut nocall, mut changed) = (0, 0);
+        for (x, y) in p5.iter().zip(&p6) {
+            assert_eq!(x.id, y.id);
+            if x.group != WHEN2CALL {
+                // every plan outside the group is the default's
+                assert_eq!(
+                    serde_json::to_string(x).unwrap(),
+                    serde_json::to_string(y).unwrap()
+                );
+                continue;
+            }
+            let k = by_req[x.id.as_str()];
+            let own: HashSet<&str> = k
+                .own
+                .iter()
+                .map(|&t| l.tools[t].id.as_str())
+                .filter(|t| Some(t.to_string()) != x.gold)
+                .collect();
+            // the slates' sizes are kept
+            assert_eq!(x.natural.tools.len(), y.natural.tools.len(), "{}", x.id);
+            assert_eq!(x.hard.tools.len(), y.hard.tools.len(), "{}", x.id);
+            // no slate of any kind holds an own tool other than the right tool, and every tool
+            // but the right one is drawn
+            let mut slates = vec![&y.natural];
+            slates.extend(y.renamed.iter());
+            slates.extend(y.renamed_removed.iter());
+            if x.gold.is_none() {
+                slates.push(&y.hard);
+            }
+            for pl in slates {
+                for (t, d) in pl.tools.iter().zip(&pl.drawn) {
+                    assert!(!own.contains(t.as_str()), "{}: an own tool shown", x.id);
+                    assert_eq!(*d, Some(t) != x.gold.as_ref(), "{}", x.id);
+                }
+            }
+            match &x.gold {
+                // the tool-right hard slates are v5's, with their answers by id
+                Some(_) => {
+                    assert_eq!(x.hard, y.hard, "{}", x.id);
+                    assert_eq!(x.fn_id, y.fn_id);
+                }
+                None => {
+                    nocall += 1;
+                    changed += (x.hard != y.hard) as usize;
+                    assert!(y.hard.drawn.iter().all(|&d| d));
+                }
+            }
+        }
+        assert!(nocall > 10 && changed > 0, "{nocall} {changed}");
+        // the hard no-call slates follow the request's nearest within the first own tool's cell
+        let pools = Pools::new(&asg, &kept);
+        let cat = catalogue(&pools);
+        let rw = rewrites(&v2, &v4d, &cat, &l).unwrap();
+        let (_, keys) = keys_of(&l, &rw, &cat).unwrap();
+        let reqm = Matrix::read_npy(&fix.join(REQ_EMB)).unwrap();
+        let pot = &l.potion;
+        let (mut nearest, mut checked) = (0, 0);
+        for (i, y) in p6.iter().enumerate() {
+            if y.group != WHEN2CALL || y.gold.is_some() || y.hard.level >= surface::L6 {
+                continue;
+            }
+            let k = by_req[y.id.as_str()];
+            let (_, pool) = pools.of(k);
+            let d1 = D1::new(7, &y.id, "hard");
+            let shown = |t: usize| {
+                if keys.rw[t] != keys.orig[t] && d1.draw(&l.tools[t].id) {
+                    keys.rw[t]
+                } else {
+                    keys.orig[t]
+                }
+            };
+            let anchor = surface::Key::from_index(shown(k.own[0]) as usize);
+            let mut cands: Vec<(f32, usize)> = pool
+                .iter()
+                .copied()
+                .filter(|&t| {
+                    !k.exclude.contains(&t)
+                        && !k.own.contains(&t)
+                        && asg.allowed(WHEN2CALL, &k.split, t)
+                        && surface::match_level(anchor, surface::Key::from_index(shown(t) as usize))
+                            <= y.hard.level
+                })
+                .map(|t| (cluster::dot(reqm.row(i), pot.row(l.row[t].unwrap())), t))
+                .collect();
+            cands.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+            let top: HashSet<&str> = cands
+                .iter()
+                .take(NEAREST)
+                .map(|(_, t)| l.tools[*t].id.as_str())
+                .collect();
+            nearest += y.hard.tools.iter().all(|t| top.contains(t.as_str())) as usize;
+            checked += 1;
+        }
+        assert!(checked > 5 && nearest == checked, "{nearest} of {checked}");
+        // the fix's items: the no-call hard slates without an answer, nothing else
+        let rep = fix_items(&v2, &c, &fix, WHEN2CALL).unwrap();
+        let items: Vec<FnItem> = read_lines(&items_path(&fix, "false-negatives")).unwrap();
+        assert_eq!(rep["items"].as_u64().unwrap() as usize, items.len());
+        let nocall_ids: HashSet<&str> = p6
+            .iter()
+            .filter(|p| p.group == WHEN2CALL && p.gold.is_none())
+            .map(|p| p.fn_id.as_str())
+            .collect();
+        assert!(!items.is_empty() && items.len() <= nocall);
+        assert!(items.iter().all(|i| nocall_ids.contains(i.id.as_str())));
+        crate::teacher::route_todo(
+            &items_path(&fix, "false-negatives"),
+            &answers_path(&fix, "false-negatives"),
+        )
+        .unwrap();
+        // without the fix's answers, the rebuild is refused
+        let ropts = RebuildOptions {
+            v2: v2.clone(),
+            v4: v4d.clone(),
+            out: c.clone(),
+            fix: fix.clone(),
+            group: WHEN2CALL.into(),
+            seed: 7,
+            provisional: false,
+        };
+        assert!(rebuild_group(&ropts).is_err());
+        // the answers: a distractor named able on every third slate (no gold: never dropped)
+        let ans: Vec<Value> = items
+            .iter()
+            .enumerate()
+            .map(|(j, i)| json!({"id": i.id, "able": if j % 3 == 0 { vec![1] } else { vec![] }}))
+            .collect();
+        write_jsonl(&answers_path(&fix, "false-negatives"), &ans).unwrap();
+        let rep = rebuild_group(&ropts).unwrap();
+        let after = hashes(&c);
+        for (f, h) in &before {
+            if f.starts_with("records/when2call/") {
+                assert_ne!(after[f], *h, "{f}");
+            } else {
+                assert_eq!(after[f], *h, "{f}: changed");
+            }
+        }
+        assert!(rep["files checked unchanged (sha256)"]
+            .as_object()
+            .unwrap()
+            .contains_key("records/tools/train.jsonl"));
+        for split in ["train", "val"] {
+            let old: Vec<Record5> =
+                read_lines(&a.join(format!("records/when2call/{split}.jsonl"))).unwrap();
+            let new: Vec<Record5> =
+                read_lines(&c.join(format!("records/when2call/{split}.jsonl"))).unwrap();
+            assert_eq!(old.len(), new.len());
+            for (x, y) in old.iter().zip(&new) {
+                // by uid, the same slates: the same sizes, kinds and none-right slates
+                let none = |r: &Record5| r.r.target.last() == Some(&1.0);
+                assert_eq!(
+                    (&x.r.uid, x.r.opts.len(), &x.r.kind, none(x)),
+                    (&y.r.uid, y.r.opts.len(), &y.r.kind, none(y))
+                );
+                let k = by_req[y.r.request.as_str()];
+                let g = y.r.target.iter().position(|&v| v == 1.0).unwrap();
+                for (i, t) in y.r.tools.iter().enumerate() {
+                    let own = k.own.iter().any(|&o| &l.tools[o].id == t);
+                    if i == g {
+                        continue;
+                    }
+                    assert_ne!(y.roles[i], EXEMPT, "{}", y.r.uid);
+                    // an own tool is shown only in a tool-right hard slate, as v5 drew it
+                    assert!(
+                        !own || (y.r.kind == "hard" && g < y.r.tools.len()),
+                        "{}",
+                        y.r.uid
+                    );
+                }
+            }
+        }
+        // a copy whose other records differ is refused
+        let tp = c.join("records/tools/val.jsonl");
+        let mut b = std::fs::read(&tp).unwrap();
+        b.push(b'\n');
+        std::fs::write(&tp, b).unwrap();
+        assert!(rebuild_group(&ropts).is_err());
+        std::fs::remove_dir_all(root).ok();
     }
 
     /// The invented build of [`an_invented_v5_build`], kept in `SKY_ROUTE_V5_OUT` (a folder
@@ -2470,9 +2963,8 @@ mod tests {
         let mut h = hashes(&b5);
         // counts/v5-slates.json is left out: on the fixture it names a temporary path (v4's
         // absent v4_tools, counted with its folder)
-        for f in ["counts/v5-plan.json"] {
-            h.insert(f.into(), crate::secrets2::file_entry(&b5.join(f)).unwrap());
-        }
+        let f = "counts/v5-plan.json";
+        h.insert(f.into(), crate::secrets2::file_entry(&b5.join(f)).unwrap());
         let got: Vec<String> = h
             .iter()
             .map(|(k, v)| format!("{k} {}", v["sha256"].as_str().unwrap()))
