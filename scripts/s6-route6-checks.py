@@ -143,7 +143,7 @@ def markdown(rep):
                 '%.4f' % o['share spread above 0'] if o else '', '%.4f' % o['share at L6'] if o else ''))
         out += ['', '## Slates by level (L0 ... L6)', '']
         for k, e in rep['after the fix'].items():
-            out.append('- %s: %s (v5: %s)' % (k, ' '.join(map(str, e['slates by level'])),
+            out.append('- %s: %s (%s: %s)' % (k, ' '.join(map(str, e['slates by level'])), label.split("'")[0] if label != "v5's build" else 'v5',
                                              ' '.join(map(str, b.get(k, {}).get('slates by level', [])))))
         return '\n'.join(out) + '\n'
     v = rep['verdict']
