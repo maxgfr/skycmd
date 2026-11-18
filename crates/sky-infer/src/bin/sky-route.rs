@@ -7,14 +7,19 @@
 //!     token ids against the export's tokens.jsonl ({from, text, ids} per line); prints a JSON
 //!     summary, exit 1 on any difference
 //! sky-route fuse --model <model.gguf> --embed <embedding.gguf> --slates <slates.jsonl>
-//!     [--fast] [--max N] [--out dump.jsonl]
+//!     [--fast] [--max N] [--out dump.jsonl] [--render bm25-line|scores-in-options]
 //!     [--ref-fused F] [--ref-model M] [--ref-embedding E]
 //!     one JSON line per slate {uid, gold, probs, model, embedding, answer, ask}: the fused
 //!     probabilities over the tools and none, the two parts; the model at full depth (--fast:
 //!     stopped at its first exit). Slates are routing slates ({opts, state = "User: <request>"},
-//!     none last); the BM25 line is computed here (sky_infer::route). Prints a JSON summary;
-//!     each --ref-* dump (one JSON line with `probs` per slate, in slate order) adds
-//!     max_abs_diff and argmax_agree for that part.
+//!     none last); the BM25 scores are computed here (sky_infer::route) and rendered as the model
+//!     file's `skycmd-s2.route.render` says (no key: v2's line; `scores-in-options`: s6-route
+//!     v4's D4); --render overrides the file (the latency check of docs/s6-route4-prereg.md 3.4
+//!     renders v2's file by D4). Options that already carry `score <s> rank <r>; ` (a model copy
+//!     rendered by `sky-data route render`) are read back to `name: description` first, so a
+//!     slate file and its model copy give the same routing. Prints a JSON summary; each --ref-*
+//!     dump (one JSON line with `probs` per slate, in slate order) adds max_abs_diff and
+//!     argmax_agree for that part.
 //! ```
 
 #[cfg(feature = "json")]
@@ -253,6 +258,16 @@ mod imp {
 
     fn fuse(a: &Args) {
         let model = read(&a.need("--model"));
+        let render = match a.value("--render") {
+            Some(r) => route::Render::parse(&r).unwrap_or_else(|| {
+                die(format!(
+                    "--render {r}: {} or {}",
+                    route::RENDER_LINE,
+                    route::RENDER_SCORES_IN_OPTIONS
+                ))
+            }),
+            None => route::Render::of_gguf_bytes(&model).unwrap_or_else(|e| die(e)),
+        };
         let e = StaticEmbedding::from_gguf(&read(&a.need("--embed"))).unwrap_or_else(|e| die(e));
         let mut eng =
             Engine::from_gguf_with(&model, EngineOptions::default()).unwrap_or_else(|e| die(e));
@@ -281,14 +296,14 @@ mod imp {
                 .as_array()
                 .unwrap_or_else(|| die("a slate without opts"))
                 .iter()
-                .map(|o| o.as_str().unwrap_or("").to_string())
+                .map(|o| route::plain_option(o.as_str().unwrap_or("")).to_string())
                 .collect();
             let tools = &opts[..opts.len().saturating_sub(1)];
             let request = request_of(r["state"].as_str().unwrap_or(""));
             let t0 = Instant::now();
-            let state = route::state_for_options(request, &opts);
+            let (model_opts, state) = render.model_input(request, &opts);
             let pm: Vec<f64> = eng
-                .decide_raw(QType::Choice, route::INSTRUCTION, &opts, &state)
+                .decide_raw(QType::Choice, route::INSTRUCTION, &model_opts, &state)
                 .unwrap_or_else(|e| die(e))
                 .into_iter()
                 .map(f64::from)
@@ -328,7 +343,7 @@ mod imp {
         let n = slates.len().max(1) as f64;
         us.sort_by(f64::total_cmp);
         let mut summary = json!({
-            "n": slates.len(), "fast": fast, "beta": e.beta, "tau_ask3": e.tau_ask,
+            "n": slates.len(), "fast": fast, "render": render.name(), "beta": e.beta, "tau_ask3": e.tau_ask,
             "accuracy": hit as f64 / n, "accuracy_model": hit_m as f64 / n, "accuracy_embedding": hit_e as f64 / n,
             "coverage": (slates.len() - asked) as f64 / n,
             "accuracy_answered": ok_answered as f64 / (slates.len() - asked).max(1) as f64,

@@ -336,6 +336,33 @@ impl ToolRouter {
             .map_err(|e| JsError::new(&e))
     }
 
+    /// Override how the BM25 scores reach the model part: `bm25-line` (v2's line in the state)
+    /// or `scores-in-options` (s6-route v4, D4); an empty string goes back to the model file's
+    /// `skycmd-s2.route.render`.
+    #[wasm_bindgen(js_name = setRender)]
+    pub fn set_render(&mut self, render: &str) -> Result<(), JsError> {
+        if render.is_empty() {
+            self.inner.set_render(None);
+            return Ok(());
+        }
+        let r = sky_infer::route::Render::parse(render)
+            .ok_or_else(|| JsError::new(&format!("unknown rendering {render}")))?;
+        self.inner.set_render(Some(r));
+        Ok(())
+    }
+
+    /// The rendering in use (`bm25-line` or `scores-in-options`).
+    pub fn render(&self) -> String {
+        self.inner.render().name().to_string()
+    }
+
+    /// Forget the cached encodings of both parts (the next request meets its tool list for the
+    /// first time: the uncached latency of docs/s6-route4-prereg.md 3.4).
+    #[wasm_bindgen(js_name = clearCaches)]
+    pub fn clear_caches(&mut self) {
+        self.inner.clear_caches();
+    }
+
     /// The token ids of a text in the embedding part (tests, parity).
     #[wasm_bindgen(js_name = embeddingTokens)]
     pub fn embedding_tokens(&self, text: &str) -> Vec<u32> {

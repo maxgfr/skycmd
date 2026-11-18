@@ -7,9 +7,19 @@
 //! appended. The tool list is encoded once and cached on both parts: the model's static stream
 //! (the s2 engine's LRU, keyed by the question and the options) and the tools' embeddings (the
 //! last tool list). The model runs at full depth; the fast mode stops it at its first exit.
+//!
+//! s6-route v4 (`docs/s6-route4-prereg.md` §3.1, D4): the model file's `skycmd-s2.route.render`
+//! chooses how the BM25 scores reach the model part (`sky_infer::route::Render`). Without the key
+//! (v2's and v3's files) the scores are a line of the state, as before; with `scores-in-options`
+//! each tool option carries its own score and rank, so the model's options change with each
+//! request and its static stream is encoded for every request (the embedding part keeps its
+//! cache: it reads `name: description` without the scores). [`Router::set_render`] overrides the
+//! file (the latency check of §3.4 renders v2's file by D4); [`Router::clear_caches`] makes the
+//! next request meet its tool list for the first time on both parts.
 
 use serde_json::{json, Value};
 use sky_infer::embed::{self, StaticEmbedding, ToolCache};
+use sky_infer::route::Render;
 use sky_infer::{route, QType};
 
 use crate::clock;
@@ -20,6 +30,10 @@ pub struct Router {
     model: Model,
     embed: StaticEmbedding,
     tools: ToolCache,
+    /// The rendering the model file asks for.
+    file_render: Render,
+    /// The rendering in use (the file's unless overridden).
+    render: Render,
 }
 
 /// One routed request.
@@ -51,11 +65,33 @@ impl Router {
             return Err("the model part must be an s2 router file".into());
         }
         let embed = StaticEmbedding::from_gguf(embed_gguf).map_err(|e| e.to_string())?;
+        let render = Render::of_gguf_bytes(model_gguf)?;
         Ok(Router {
             model,
             embed,
             tools: ToolCache::default(),
+            file_render: render,
+            render,
         })
+    }
+
+    /// The rendering in use.
+    pub fn render(&self) -> Render {
+        self.render
+    }
+
+    /// Override the file's rendering (`None`: back to the file's).
+    pub fn set_render(&mut self, render: Option<Render>) {
+        self.render = render.unwrap_or(self.file_render);
+    }
+
+    /// Forget every cached encoding of both parts: the next request meets its tool list for the
+    /// first time.
+    pub fn clear_caches(&mut self) {
+        if let Some(e) = self.model.engine_mut().s2_engine_mut() {
+            e.clear_caches();
+        }
+        self.tools = ToolCache::default();
     }
 
     pub fn embedding(&self) -> &StaticEmbedding {
@@ -72,8 +108,9 @@ impl Router {
             return Err("at least one tool is needed".into());
         }
         let t0 = clock::now_us();
-        let options = embed::model_options(tools);
-        let state = route::state_for_options(request, &options);
+        let (options, state) = self
+            .render
+            .model_input(request, &embed::model_options(tools));
         self.model
             .set_exit_threshold(Some(if fast { 0.0 } else { 1.0 }));
         let pm: Vec<f64> = self
@@ -128,6 +165,7 @@ impl Router {
             "decision": if a.ask { "ask" } else if a.none { "none" } else { "tool" },
             "top": a.top,
             "tau_ask3": self.embed.tau_ask,
+            "render": self.render.name(),
             "model": r.model,
             "embedding": r.embedding,
             "fast": fast,

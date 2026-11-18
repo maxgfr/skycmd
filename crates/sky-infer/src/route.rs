@@ -27,6 +27,14 @@
 //! idf · tf / (tf + k1 · (1 − b + b · |d| / avgdl)) for each occurrence in the query; query tokens
 //! that no document holds add nothing. The score is written with two decimals, the rank is 1 for
 //! the highest score (ties: the earlier option first).
+//!
+//! **s6-route v4** (`docs/s6-route4-prereg.md` §3.1, D4) renders the same numbers another way,
+//! chosen by the router file's key [`RENDER_KEY`]: each tool option carries its own score and
+//! rank at the start of its text, `score <s> rank <r>; <name>: <description>`, and the state is
+//! the request alone. A file without the key (v2's and v3's) keeps the line above, byte for byte
+//! ([`Render::Line`]); `tests/fixtures/route_bm25.json` and `route_bm25_v4.json` fix both.
+//! The scores are computed on the options as given (`name: description`), never on an option
+//! that already carries a score; [`plain_option`] takes a rendered option back.
 
 /// BM25 parameters (the defaults of `bm25s`).
 pub const K1: f64 = 1.5;
@@ -41,6 +49,117 @@ pub const STOPWORDS: [&str; 33] = [
 
 /// The prefix of the line that carries the scores.
 pub const LINE_PREFIX: &str = "BM25: ";
+
+/// The GGUF key of a router file that names its rendering (s6-route v4, §3.1); absent in v2's
+/// and v3's files, which are rendered by [`Render::Line`].
+pub const RENDER_KEY: &str = "skycmd-s2.route.render";
+/// The value of [`RENDER_KEY`] for [`Render::ScoresInOptions`].
+pub const RENDER_SCORES_IN_OPTIONS: &str = "scores-in-options";
+/// The name of [`Render::Line`] on the command lines (never written in a file: a file without
+/// [`RENDER_KEY`] is rendered this way).
+pub const RENDER_LINE: &str = "bm25-line";
+
+/// How the BM25 scores reach the model part.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Render {
+    /// v2 (amendment 1): the options as given; the state is the request, then the line
+    /// `BM25: <name> score <s> rank <r>; ...`.
+    #[default]
+    Line,
+    /// v4 (D4, option (i)): each tool option is `score <s> rank <r>; <option>`; the state is
+    /// `User: <request>` alone. *None* gets no score.
+    ScoresInOptions,
+}
+
+impl Render {
+    /// From its command-line name ([`RENDER_LINE`], [`RENDER_SCORES_IN_OPTIONS`]).
+    pub fn parse(name: &str) -> Option<Render> {
+        match name {
+            RENDER_LINE => Some(Render::Line),
+            RENDER_SCORES_IN_OPTIONS => Some(Render::ScoresInOptions),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Render::Line => RENDER_LINE,
+            Render::ScoresInOptions => RENDER_SCORES_IN_OPTIONS,
+        }
+    }
+
+    /// The rendering a router file asks for: [`Render::Line`] without [`RENDER_KEY`]; an
+    /// unknown value is refused (a file the engine would misread).
+    pub fn of_gguf(g: &sky_gguf::Gguf<'_>) -> Result<Render, String> {
+        match g.get(RENDER_KEY) {
+            None => Ok(Render::Line),
+            Some(v) => match v.as_str() {
+                Some(RENDER_SCORES_IN_OPTIONS) => Ok(Render::ScoresInOptions),
+                other => Err(format!(
+                    "{RENDER_KEY} = {other:?}: this engine knows {RENDER_SCORES_IN_OPTIONS:?} (or no key)"
+                )),
+            },
+        }
+    }
+
+    /// [`Render::of_gguf`] from the bytes of a file.
+    pub fn of_gguf_bytes(bytes: &[u8]) -> Result<Render, String> {
+        let g = sky_gguf::Gguf::parse(bytes).map_err(|e| e.to_string())?;
+        Render::of_gguf(&g)
+    }
+
+    /// What the model part reads for a request and a slate's options as given (`name:
+    /// description` each, *none* last): the options and the state.
+    pub fn model_input(self, request: &str, options: &[String]) -> (Vec<String>, String) {
+        match self {
+            Render::Line => (options.to_vec(), state_for_options(request, options)),
+            Render::ScoresInOptions => {
+                let n = options.len().saturating_sub(1);
+                let tools: Vec<&str> = options[..n].iter().map(String::as_str).collect();
+                let mut opts = options_with_scores(request, &tools);
+                opts.extend(options[n..].iter().cloned());
+                (opts, format!("User: {}", request.trim()))
+            }
+        }
+    }
+}
+
+/// D4: each tool option prefixed with its BM25 score (two decimals) and rank among the slate's
+/// tool options, `score <s> rank <r>; <option>` (the score first, so that the cap on an
+/// option's tokens never removes it).
+pub fn options_with_scores(request: &str, tool_options: &[&str]) -> Vec<String> {
+    let s = bm25(request, tool_options);
+    let r = ranks(&s);
+    tool_options
+        .iter()
+        .zip(s.iter().zip(&r))
+        .map(|(o, (s, r))| format!("score {s:.2} rank {r}; {o}"))
+        .collect()
+}
+
+/// An option without the `score <s> rank <r>; ` of [`options_with_scores`] (the option itself
+/// when it carries none).
+pub fn plain_option(option: &str) -> &str {
+    let Some(rest) = option.strip_prefix("score ") else {
+        return option;
+    };
+    let Some((s, rest)) = rest.split_once(" rank ") else {
+        return option;
+    };
+    let Some((r, rest)) = rest.split_once("; ") else {
+        return option;
+    };
+    let number = |x: &str| {
+        !x.is_empty()
+            && x.chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == '-')
+    };
+    if number(s) && !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()) {
+        rest
+    } else {
+        option
+    }
+}
 
 /// The question of every routing slate (`sky_data::route::INSTRUCTION`).
 pub const INSTRUCTION: &str = "Which tool should handle the user's request?";
@@ -151,6 +270,87 @@ pub fn state_for_options(request: &str, options: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The golden slate of both renderings: v2's line and v4's scores in the options.
+    #[test]
+    fn both_renderings_of_a_fixed_slate() {
+        let opts: Vec<String> = [
+            "lights_on: Turns the lights on in a room.",
+            "weather: Gives the weather of a city.",
+            "play_music: Plays a song.",
+            NONE_OPTION,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let req = " turn on the lights in the hall ";
+        let (o, st) = Render::Line.model_input(req, &opts);
+        assert_eq!(o, opts);
+        assert_eq!(
+            st,
+            "User: turn on the lights in the hall\nBM25: lights_on score 0.38 rank 1; weather score 0.00 rank 2; play_music score 0.00 rank 3"
+        );
+        assert_eq!(st, state_for_options(req, &opts));
+        let (o, st) = Render::ScoresInOptions.model_input(req, &opts);
+        assert_eq!(
+            o,
+            vec![
+                "score 0.38 rank 1; lights_on: Turns the lights on in a room.",
+                "score 0.00 rank 2; weather: Gives the weather of a city.",
+                "score 0.00 rank 3; play_music: Plays a song.",
+                NONE_OPTION,
+            ]
+        );
+        assert_eq!(st, "User: turn on the lights in the hall");
+        for (a, b) in o.iter().zip(&opts) {
+            assert_eq!(plain_option(a), b);
+        }
+        // every number of a rendered option follows a word: two values fused per option
+        let ex = crate::num::extract(&o[0]);
+        assert_eq!(ex.values.len(), 2);
+        assert!(!ex.text.contains("[NUM][NUM]"));
+        // a slate of none alone
+        let (o, st) = Render::ScoresInOptions.model_input("hi", &opts[3..]);
+        assert_eq!((o.as_slice(), st.as_str()), (&opts[3..], "User: hi"));
+    }
+
+    #[test]
+    fn render_names_and_plain_options() {
+        for r in [Render::Line, Render::ScoresInOptions] {
+            assert_eq!(Render::parse(r.name()), Some(r));
+        }
+        assert_eq!(Render::parse("other"), None);
+        assert_eq!(Render::default(), Render::Line);
+        for keep in [
+            "score_tool: Scores a game.",
+            "score 1 rank x; a: b",
+            "score: rank 2; a",
+            "lights_on: Turns lights on.",
+        ] {
+            assert_eq!(plain_option(keep), keep);
+        }
+        assert_eq!(plain_option("score -0.00 rank 12; a: b"), "a: b");
+    }
+
+    #[test]
+    fn render_from_the_file_key() {
+        use sky_gguf::{GgufWriter, OwnedValue};
+        let file = |v: Option<OwnedValue>| {
+            let mut w = GgufWriter::new();
+            w.add_kv("general.architecture", "skycmd-s2");
+            if let Some(v) = v {
+                w.add_kv(RENDER_KEY, v);
+            }
+            w.to_bytes().unwrap()
+        };
+        assert_eq!(Render::of_gguf_bytes(&file(None)), Ok(Render::Line));
+        assert_eq!(
+            Render::of_gguf_bytes(&file(Some(RENDER_SCORES_IN_OPTIONS.into()))),
+            Ok(Render::ScoresInOptions)
+        );
+        assert!(Render::of_gguf_bytes(&file(Some("bm25-line".into()))).is_err());
+        assert!(Render::of_gguf_bytes(&file(Some(OwnedValue::F32(1.0)))).is_err());
+    }
 
     #[test]
     fn tokens_follow_scikit_learn() {

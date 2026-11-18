@@ -2,7 +2,8 @@
 // reference, and its latency, in Node.
 //
 //   node crates/sky-web/bench/route3-node.mjs model.gguf embedding.gguf slates.jsonl fused.jsonl \
-//     [--n 200] [--relaxed] [--fast] [--pkg <nodejs pkg>] [--ref-model M] [--ref-embedding E]
+//     [--n 200] [--relaxed] [--fast] [--pkg <nodejs pkg>] [--ref-model M] [--ref-embedding E] \
+//     [--render bm25-line|scores-in-options] [--uncached]
 //
 // slates.jsonl: routing slates ({opts, state = "User: <request>"}, none last); fused.jsonl: the
 // reference fused probabilities, one JSON line with `probs` per slate in slate order
@@ -15,6 +16,14 @@
 // compared with the reference; the second asks the same tool list about another request (the
 // request with " please" appended: the "cached" latency). --ref-model / --ref-embedding (dumps in
 // the same format) add the parity of each part.
+//
+// s6-route v4 (docs/s6-route4-prereg.md 3.4, G4): --render overrides the model file's
+// skycmd-s2.route.render (the latency check renders v2's file by D4: scores-in-options);
+// --uncached routes each slate once, after ToolRouter.clearCaches(), so that every request meets
+// its tool list for the first time on both parts, and reports median_us (the pair, per request),
+// with model.median_us and embedding.median_us; fused.jsonl may then be `-` (no parity, exit 0).
+// Options that carry `score <s> rank <r>; ` (a model copy of a slate file) are read back to
+// `name: description` first.
 //
 // Prints one JSON line: {n, max_abs_diff, argmax_agree, median_cached_us, median_first_us,
 // bytes_model, bytes_embedding, build, fast, model: {...}, embedding: {...}, static_hits,
@@ -34,6 +43,8 @@ let n = 200
 let relaxed = false
 let fast = false
 let nodePkg
+let render
+let uncached = false
 const refs = {}
 const files = []
 for (let i = 0; i < args.length; i++) {
@@ -43,10 +54,12 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--pkg') nodePkg = args[++i]
   else if (args[i] === '--ref-model') refs.model = args[++i]
   else if (args[i] === '--ref-embedding') refs.embedding = args[++i]
+  else if (args[i] === '--render') render = args[++i]
+  else if (args[i] === '--uncached') uncached = true
   else files.push(args[i])
 }
 if (files.length !== 4) {
-  console.error('usage: route3-node.mjs model.gguf embedding.gguf slates.jsonl fused.jsonl [--n 200] [--relaxed] [--fast] [--pkg dir] [--ref-model M] [--ref-embedding E]')
+  console.error('usage: route3-node.mjs model.gguf embedding.gguf slates.jsonl fused.jsonl|- [--n 200] [--relaxed] [--fast] [--pkg dir] [--ref-model M] [--ref-embedding E] [--render bm25-line|scores-in-options] [--uncached]')
   process.exit(2)
 }
 const [modelPath, embedPath, slatesPath, fusedPath] = files
@@ -61,13 +74,16 @@ if (nodePkg) {
 
 const jsonl = (p) => readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(0, n).map((l) => JSON.parse(l))
 const slates = jsonl(slatesPath)
-const fused = jsonl(fusedPath)
+if (fusedPath === '-' && !uncached) throw new Error('a reference is needed outside --uncached')
+const fused = fusedPath === '-' ? null : jsonl(fusedPath)
 const parts = Object.fromEntries(Object.entries(refs).map(([k, p]) => [k, jsonl(p)]))
-if (fused.length < slates.length) throw new Error('the reference is shorter than the slates')
+if (fused && fused.length < slates.length) throw new Error('the reference is shorter than the slates')
 
 const modelBytes = readFileSync(modelPath)
 const embedBytes = readFileSync(embedPath)
 const router = new mod.ToolRouter(new Uint8Array(modelBytes), new Uint8Array(embedBytes))
+if (render !== undefined) router.setRender(render)
+const plain = (o) => o.replace(/^score -?[0-9.]+ rank [0-9]+; /, '')
 
 const argmax = (v) => v.indexOf(Math.max(...v))
 const median = (v) => {
@@ -90,8 +106,40 @@ const partGap = { model: gap(), embedding: gap() }
 const t = { first: [], cached: [], model_first: [], model_cached: [], embedding_first: [], embedding_cached: [] }
 let staticHits = 0
 let toolsHits = 0
+if (uncached) {
+  const us = { pair: [], model: [], embedding: [] }
+  let hits = 0
+  slates.forEach((r, k) => {
+    const tools = JSON.stringify(r.opts.slice(0, -1).map(plain))
+    router.clearCaches()
+    const a = JSON.parse(router.route(requestOf(r.state), tools, fast))
+    if (fused) cmp(all, a.probs, fused[k].probs)
+    us.pair.push(a.micros)
+    us.model.push(a.micros_model)
+    us.embedding.push(a.micros_embedding)
+    hits += (a.static_hit ? 1 : 0) + (a.tools_hit ? 1 : 0)
+  })
+  const out = {
+    n: slates.length,
+    mode: 'uncached',
+    render: router.render(),
+    median_us: median(us.pair),
+    model: { median_us: median(us.model) },
+    embedding: { median_us: median(us.embedding) },
+    cache_hits: hits,
+    bytes_model: modelBytes.length,
+    bytes_embedding: embedBytes.length,
+    build: nodePkg ? 'nodejs' : relaxed ? 'relaxed' : 'simd128',
+    fast,
+    ...(fused ? { max_abs_diff: all.max_abs_diff, argmax_agree: all.argmax_agree } : {}),
+  }
+  console.log(JSON.stringify(out))
+  if (hits) throw new Error(`${hits} cache hits in the uncached mode`)
+  const need = Math.ceil((199 / 200) * slates.length)
+  process.exit(!fused || (all.max_abs_diff <= 1e-3 && all.argmax_agree >= need) ? 0 : 1)
+}
 slates.forEach((r, k) => {
-  const tools = JSON.stringify(r.opts.slice(0, -1))
+  const tools = JSON.stringify(r.opts.slice(0, -1).map(plain))
   const request = requestOf(r.state)
   const a = JSON.parse(router.route(request, tools, fast))
   cmp(all, a.probs, fused[k].probs)
@@ -122,6 +170,7 @@ const out = {
   bytes_embedding: embedBytes.length,
   build: nodePkg ? 'nodejs' : relaxed ? 'relaxed' : 'simd128',
   fast,
+  render: router.render(),
   model: part('model'),
   embedding: part('embedding'),
   static_hits: staticHits,

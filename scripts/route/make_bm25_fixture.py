@@ -1,5 +1,7 @@
 """Writes crates/sky-infer/tests/fixtures/route_bm25.json: invented slates scored by bm25s (the
-`bm25` baseline's library and settings), the fixture that sky_infer::route must reproduce.
+`bm25` baseline's library and settings), the fixture that sky_infer::route must reproduce; and
+route_bm25_v4.json, the same slates rendered by s6-route v4's D4 (docs/s6-route4-prereg.md 3.1:
+each tool option `score <s> rank <r>; <option>`, the state the request alone).
 Run in the pinned environment: <data>/envs/route/bin/python -I scripts/route/make_bm25_fixture.py"""
 
 import json
@@ -9,6 +11,8 @@ import bm25s
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(os.path.dirname(HERE)), "crates", "sky-infer", "tests", "fixtures", "route_bm25.json")
+OUT_V4 = os.path.join(os.path.dirname(OUT), "route_bm25_v4.json")
+NONE = "none of these tools fits the request"
 
 CASES = [
     ("turn on the lights in the hall", ["lights_on: Turns the lights on in a room.", "weather: Gives the weather of a city.", "play_music: Plays a song."]),
@@ -23,7 +27,7 @@ CASES = [
 
 
 def main():
-    cases = []
+    cases, v4 = [], []
     for q, docs in CASES:
         r = bm25s.BM25(method="lucene")
         r.index(bm25s.tokenize(docs, show_progress=False), show_progress=False)
@@ -36,12 +40,19 @@ def main():
         name = lambda o: o.split(": ", 1)[0]
         line = "BM25: " + "; ".join(f"{name(o)} score {x:.2f} rank {k}" for o, x, k in zip(docs, s, ranks))
         cases.append({"request": q, "options": docs, "scores": s, "ranks": ranks, "state": f"User: {q.strip()}\n{line}"})
+        v4.append({"request": q, "options": docs + [NONE],
+                   "model_options": [f"score {x:.2f} rank {k}; {o}" for o, x, k in zip(docs, s, ranks)] + [NONE],
+                   "state": f"User: {q.strip()}"})
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w") as f:
         json.dump({"about": "s6-route-nano: BM25 (bm25s 0.3.16, Lucene, k1 1.5, b 0.75, English stopwords) of each tool option against the request, over the slate's own options; written by scripts/route/make_bm25_fixture.py",
                    "cases": cases}, f, indent=1, ensure_ascii=False)
         f.write("\n")
-    print(f"wrote {len(cases)} cases to {OUT}")
+    with open(OUT_V4, "w") as f:
+        json.dump({"about": "s6-route v4 (docs/s6-route4-prereg.md 3.1, D4): the slates of route_bm25.json with none last, as the model reads them under skycmd-s2.route.render = scores-in-options; written by scripts/route/make_bm25_fixture.py",
+                   "cases": v4}, f, indent=1, ensure_ascii=False)
+        f.write("\n")
+    print(f"wrote {len(cases)} cases to {OUT} and {OUT_V4}")
 
 
 if __name__ == "__main__":

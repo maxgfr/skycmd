@@ -1,0 +1,131 @@
+{
+ "about": "s6-route v4 (docs/s6-route4-prereg.md 3.1, D4): the slates of route_bm25.json with none last, as the model reads them under skycmd-s2.route.render = scores-in-options; written by scripts/route/make_bm25_fixture.py",
+ "cases": [
+  {
+   "request": "turn on the lights in the hall",
+   "options": [
+    "lights_on: Turns the lights on in a room.",
+    "weather: Gives the weather of a city.",
+    "play_music: Plays a song.",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 0.38 rank 1; lights_on: Turns the lights on in a room.",
+    "score 0.00 rank 2; weather: Gives the weather of a city.",
+    "score 0.00 rank 3; play_music: Plays a song.",
+    "none of these tools fits the request"
+   ],
+   "state": "User: turn on the lights in the hall"
+  },
+  {
+   "request": "What's the weather like in Paris tomorrow? weather please",
+   "options": [
+    "get_forecast: Weather forecast for a city and a day.",
+    "weather: Current weather.",
+    "news: The latest headlines.",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 0.32 rank 2; get_forecast: Weather forecast for a city and a day.",
+    "score 0.57 rank 1; weather: Current weather.",
+    "score 0.00 rank 3; news: The latest headlines.",
+    "none of these tools fits the request"
+   ],
+   "state": "User: What's the weather like in Paris tomorrow? weather please"
+  },
+  {
+   "request": "convert 5 miles to kilometers",
+   "options": [
+    "Unit Converter: Convert units of measurement from one unit to another",
+    "convert_currency: Convert an amount between currencies.",
+    "tool_17: Converts length units.",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 0.15 rank 2; Unit Converter: Convert units of measurement from one unit to another",
+    "score 0.20 rank 1; convert_currency: Convert an amount between currencies.",
+    "score 0.00 rank 3; tool_17: Converts length units.",
+    "none of these tools fits the request"
+   ],
+   "state": "User: convert 5 miles to kilometers"
+  },
+  {
+   "request": "is it of the and to",
+   "options": [
+    "ab: the and of",
+    "cd: it is to",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 0.00 rank 1; ab: the and of",
+    "score 0.00 rank 2; cd: it is to",
+    "none of these tools fits the request"
+   ],
+   "state": "User: is it of the and to"
+  },
+  {
+   "request": "Réveille-moi à 7h",
+   "options": [
+    "alarm_set: Set an alarm for a given time.",
+    "calendar_set: Create an event.",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 0.00 rank 1; alarm_set: Set an alarm for a given time.",
+    "score 0.00 rank 2; calendar_set: Create an event.",
+    "none of these tools fits the request"
+   ],
+   "state": "User: Réveille-moi à 7h"
+  },
+  {
+   "request": "book a flight",
+   "options": [
+    "flight_book: Book a flight.",
+    "flight_book: Book a flight.",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 0.15 rank 1; flight_book: Book a flight.",
+    "score 0.15 rank 2; flight_book: Book a flight.",
+    "none of these tools fits the request"
+   ],
+   "state": "User: book a flight"
+  },
+  {
+   "request": "hello",
+   "options": [
+    "only_tool: Says nothing relevant.",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 0.00 rank 1; only_tool: Says nothing relevant.",
+    "none of these tools fits the request"
+   ],
+   "state": "User: hello"
+  },
+  {
+   "request": "get the stock price of AAPL and the stock news",
+   "options": [
+    "getStockPrice: Get the stock price of a company by its ticker.",
+    "stock_news: News about a stock.",
+    "crypto_price: Price of a cryptocurrency.",
+    "weather: Weather.",
+    "send_email: Send an email.",
+    "translate: Translate text.",
+    "calculator: Compute an expression.",
+    "none of these tools fits the request"
+   ],
+   "model_options": [
+    "score 1.44 rank 2; getStockPrice: Get the stock price of a company by its ticker.",
+    "score 1.52 rank 1; stock_news: News about a stock.",
+    "score 0.50 rank 3; crypto_price: Price of a cryptocurrency.",
+    "score 0.00 rank 4; weather: Weather.",
+    "score 0.00 rank 5; send_email: Send an email.",
+    "score 0.00 rank 6; translate: Translate text.",
+    "score 0.00 rank 7; calculator: Compute an expression.",
+    "none of these tools fits the request"
+   ],
+   "state": "User: get the stock price of AAPL and the stock news"
+  }
+ ]
+}
