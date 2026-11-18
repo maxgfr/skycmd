@@ -4,6 +4,8 @@
 
 **Amendment 1 of the same day (18/11/2026), after the rebuild and its checks, before any training (§16):** the stop rule does not fire (N6's excess +0.0025 in training, +0.0667 in validation); the records' hashes, the teacher's counts and the spread table.
 
+**Amendment 2 of the same day (18/11/2026), from the stages' outputs, before any training (§16):** the pilot's bar (0.578147), the validation baselines, the counts of T5 (2,000 slates, above the floor of 600) and its request-blind rules, reported.
+
 - **Nothing of v7 has run.** No record is rebuilt, no plan is drawn, no teacher call is made, no
   blind copy is written, no model is trained and no system is scored. To write this document:
   - no record and no request text was opened;
@@ -491,3 +493,118 @@ amendment of §4.5 with the pilot's bar, the training (`scripts/train-route7.sh`
 run.
 
 **Nothing else changes.** No bar, rule, file or choice of the frozen text moves.
+
+### Amendment 2 (18/11/2026, from the stages' outputs, before any training): the pilot's bar, the validation baselines, the counts of T5
+
+**What ran, in order** (18/11/2026, `scripts/build-route7-data.sh`; the outputs in
+`runs/s6-route7/`). No model was trained, no system read T5 or its copies, and no blind copy of
+T5 exists.
+
+- **`inputs-ok`:** `build7/` has the 45 hashes of amendment 1 (`runs/s6-route7/inputs6.json`);
+  `runs/s6-route7/inputs.ok` is written.
+- **`placeholder`:** `?`, kept from v6, is no request of v7's 200,246 training and validation
+  records and slates (`placeholder-check.json`, `"occurs": false`). Its first run stopped on a
+  defect of the kept mode, which always exited 2; it was corrected (b75f7e3) before this run.
+- **`support`, `checks-read`, `blind-val`, `baselines-val`:** below. The stage `checks-read`
+  first stopped on the checks' own exit 1, although v6 §4.4 reports them and lets none stop the
+  run; the stage now reports them and stops only on a crash (70f4a1a).
+- **`fresh`, the `fresh-tools` job, `fresh-tools`, `probes`, `counts`:** T5 built once under
+  `<data>/s6-route/toucan5/`, the counts below.
+
+**(a) The pilot's bar** (§5, v6 §5 rule 1; v5 §4.5). The validation baselines are scored by the
+frozen baseline code (`scripts/route-baselines.py`, v2's fitted values), accuracy over all 1,144
+slates of each file, *none* included (`runs/s6-route7/baselines-val.json`):
+
+| file | `potion-cos` | BM25 |
+|---|---:|---:|
+| `v_tools` | 0.7255 | 0.8549 |
+| `v_tools_masked` | 0.7325 | 0.8444 |
+| `v4_tools` | 0.7404 | 0.8322 |
+| `v4_tools_masked` | 0.7386 | 0.8313 |
+| `v5_tools` | **0.7281** | 0.8383 |
+| `v5_tools_masked` | 0.7194 | 0.8313 |
+
+- **The bar:** `potion-cos` on `v5_tools` − 0.15 = 0.728147 − 0.15 = **0.578147**
+  (`POTION_BAR=0.578147`). The pilot aborts if the model part's accuracy on `v5_tools` is below it.
+- **The change of difficulty** (reported, nothing is chosen on it): across v2's, v4's and v5's
+  constructions both baselines move by less than 0.03 on the ordinary files; masking the names
+  costs BM25 at most 0.011 and moves `potion-cos` by less than 0.01.
+- **The baselines in B0** (`runs/s6-route7/baselines-blind-*.json`, `scripts/s6-route6-blind.py
+  read`; reported, v6 §4.5): BM25 ties every option, so its blind accuracy on the 915 tool-right
+  slates is c = 1/7 = 0.1429 exactly on both files, the check of the chain; it answers *none* on
+  every blind slate. `potion-cos` reads 0.1104 on both (c − 0.0325), answers *none* on 0.919 and
+  0.932 of the blind slates, with a blind *none* gap of +0.031 and +0.014.
+
+**The support of B0** (`runs/s6-route7/support.json`, v6 §4.3): the share of tool-right records
+in which every tool option scores 0.00 is 0.42 to 0.58 in the intents group, 0.026 to 0.036 in the
+tools group and 0.021 to 0.033 in the When2Call group, by kind and split.
+
+**The checks of the other files read** (v6 §4.4, reported, none stops v7;
+`runs/s6-route7/checks-read-files.md`): v2's `v_tools` and its masked copy fail C2 and the N rules
+in 10 rules each (R4 inverse, the fewest words, 0.2550 against a tolerance of 0.1860), the cue that
+v4's table named. `v4_tools`, its masked copy and the tools group's renamed and natural copies
+fail none. C3 "fails" on `r_tools_natural`, whose slates are all tool-right by construction (no
+*none*-right slate). T2-tools (`f_tools`, read before) is not judged; its best rule is R5 inverse,
+0.3849.
+
+**(b) The counts of T5** (v6 §6, v5 §6.3; `runs/s6-route7/counts.json`, `t5-counts.json`, `test-files.json`,
+`t5-checks.md`, `t5-placeholder.json`; counted by the builder, no request read).
+
+- **The rows:** 26,134 qualifying rows read (16,477 `single-turn-original`, 9,657
+  `single-turn-diversify`). Dropped: 7,571 whose gold is within v2's cluster rule of a training or
+  validation tool, 1 repeated question, 15,609 over the cap of 10 per gold cluster, 64 over the cap
+  of 40 per server.
+- **The slates: 2,000**, above the floor of 600: **1,600 tool-right and 400 *none*-right** (none
+  share 0.2000); 1,369 from `single-turn-original` and 631 from `single-turn-diversify`.
+- **Servers and clusters:** 262 servers and 458 gold clusters. The three largest servers hold 79
+  slates (27, 26, 26), a share of **0.0395**; the three largest clusters hold 30 (10 each, the
+  cap), a share of **0.0150** (counted on `t5_tools.servers.jsonl`, uid, server and cluster only).
+- **The levels** (v5 §6.2 item 5, reported): L0 411, L1 973, L2 120, L3 246, L4 250, L5 0, L6 0.
+  C6: none of the 1,495 drawn slates is at L5 or L6.
+- **T5's chance:** every tool-right slate holds 7 tools, so **c = 1/7 = 0.142857** and the bars of
+  G6 (a) and (b) are 0.1929, with the servers' upper bound at 0.2229, as §8 says.
+- **The server-mates** (v6 §6): the tool-right slates by the number of the gold's own server's
+  tools shown, as the builder marks them (`roles`): 0: 396, 1: 225, 2: 123, 3: 175, 4: 111,
+  5: 65, 6: 505.
+- **The probe copies** (v5 §6.4): the `fresh-tools` job rewrote the descriptions of the 1,448
+  Toucan tools that a fresh slate shows (GLM-5.3-Flash, v2's prompt, names and descriptions only:
+  the items hold `id`, `name`, `description` and the split `fresh-tools`, no request); 1,448
+  answers in 74 calls, none refused, no failed batch. 1,600 tool-gold slates have one distractor
+  rewritten, in `t5_tools_rw` and `t5_tools_masked_rw`.
+- **The placeholder kept:** `?` is no request of T5's 2,000 (`t5-placeholder.json`,
+  `"occurs": false`).
+- **The files,** as the build wrote them (`runs/s6-route7/test-files.json`; the files stay in the
+  data folder, only their hashes are in the repository):
+
+| file | records | bytes | sha256 |
+|---|---:|---:|---|
+| `t5_tools.jsonl` | 2,000 | 2,985,633 | `c7586ea4bf8a686819d2be453657e36181bb5c66a7062901b74c1fe831bf2e66` |
+| `t5_tools_masked.jsonl` | 2,000 | 2,863,931 | `6a00450c028f5bc8c9116b8dd594af514591b9cf0d064e56f6ae48aebdc2a6bc` |
+| `t5_tools_rw.jsonl` | 1,600 | 2,424,920 | `4c7e7a54f385d19a0f4f7cddc87c8dd144e12a9efb7de77ded72e47866157ea5` |
+| `t5_tools_masked_rw.jsonl` | 1,600 | 2,327,427 | `39b1f68cc7d2af4ea71ba1e4290098802b74bd76f56a45d3379d91725b9d7fa9` |
+| `t5_tools.servers.jsonl` | 2,000 | 222,755 | `906ea3d5bf743c41d2af2bc679e089097fe3d0e4ad30ee882bd1d0961ff257a6` |
+
+  `test-files.json`'s own sentence names `runs/s6-route5/FRESH-OPEN` (the builder's text for
+  v5's rule); for v7 the file that opens T5 is `runs/s6-route7/FRESH-OPEN` (§14, item 6).
+
+**The request-blind rules counted on T5** (v5 §4.4's script, `runs/s6-route7/t5-checks.md`;
+reported, never judged, as v5 §6 says). The best rule of each file, against chance 1/7 and v5's
+tolerance of 0.1804:
+
+| file | tool-right slates | best rule | accuracy |
+|---|---:|---|---:|
+| `t5_tools` | 1,600 | B, the minority of (name style, period, first word form) | 0.1929 |
+| `t5_tools_masked` | 1,600 | N5 inverse, the lowest mean overlap | 0.1673 |
+| `t5_tools_rw` | 1,600 | B, the minority of name style | 0.1888 |
+| `t5_tools_masked_rw` | 1,600 | N5, the highest mean overlap | 0.1635 |
+
+- Two rules of the surface-form family (B) read above the tolerance on the unmasked copies, by
+  +0.0125 and +0.0084; they are not judged on a fresh file, and they are stated with G6.
+- **N6 on T5:** within its tolerance on both files that hold *none*-right slates (`t5_tools`:
+  0.1734 and its inverse 0.2075 against a *none* share of 0.2000; `t5_tools_masked`: 0.2086 and
+  0.2107).
+
+**What follows.** Every input of the training is fixed: the records by amendment 1, the pilot's bar
+here, the placeholder, T5 and its hashes. The head window is chosen by the script's `window` step
+(v4 §3.3's rule). Nothing else changes: no bar, rule, file or choice of the frozen text or of
+amendment 1 moves.

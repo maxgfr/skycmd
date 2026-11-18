@@ -1,0 +1,92 @@
+{
+ "intents hard train": {
+  "tool-right records": 26037,
+  "all scores 0.00": 11153,
+  "share": 0.4283519606713523
+ },
+ "intents hard val": {
+  "tool-right records": 3167,
+  "all scores 0.00": 1793,
+  "share": 0.5661509314808968
+ },
+ "intents natural train": {
+  "tool-right records": 26037,
+  "all scores 0.00": 11488,
+  "share": 0.44121826631332334
+ },
+ "intents natural val": {
+  "tool-right records": 3167,
+  "all scores 0.00": 1842,
+  "share": 0.5816229870539943
+ },
+ "intents renamed train": {
+  "tool-right records": 20830,
+  "all scores 0.00": 8678,
+  "share": 0.4166106577052328
+ },
+ "intents renamed val": {
+  "tool-right records": 2534,
+  "all scores 0.00": 1428,
+  "share": 0.56353591160221
+ },
+ "tools hard train": {
+  "tool-right records": 22020,
+  "all scores 0.00": 590,
+  "share": 0.026793823796548592
+ },
+ "tools hard val": {
+  "tool-right records": 1126,
+  "all scores 0.00": 36,
+  "share": 0.03197158081705151
+ },
+ "tools natural train": {
+  "tool-right records": 22020,
+  "all scores 0.00": 626,
+  "share": 0.028428701180744777
+ },
+ "tools natural val": {
+  "tool-right records": 1126,
+  "all scores 0.00": 41,
+  "share": 0.03641207815275311
+ },
+ "tools renamed train": {
+  "tool-right records": 17616,
+  "all scores 0.00": 459,
+  "share": 0.026055858310626703
+ },
+ "tools renamed val": {
+  "tool-right records": 901,
+  "all scores 0.00": 29,
+  "share": 0.03218645948945616
+ },
+ "when2call hard train": {
+  "tool-right records": 3967,
+  "all scores 0.00": 110,
+  "share": 0.027728762288883286
+ },
+ "when2call hard val": {
+  "tool-right records": 242,
+  "all scores 0.00": 5,
+  "share": 0.02066115702479339
+ },
+ "when2call natural train": {
+  "tool-right records": 3967,
+  "all scores 0.00": 127,
+  "share": 0.032014116460801614
+ },
+ "when2call natural val": {
+  "tool-right records": 242,
+  "all scores 0.00": 7,
+  "share": 0.028925619834710745
+ },
+ "when2call renamed train": {
+  "tool-right records": 3174,
+  "all scores 0.00": 104,
+  "share": 0.03276622558286074
+ },
+ "when2call renamed val": {
+  "tool-right records": 194,
+  "all scores 0.00": 4,
+  "share": 0.020618556701030927
+ }
+}

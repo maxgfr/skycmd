@@ -1,0 +1,203 @@
+{
+  "about": "s6-route v5 (docs/s6-route5-prereg.md, section 6): the fresh test files, counted before any system reads them",
+  "seed": 1236,
+  "rows read by subset": {
+    "single-turn-diversify": 9657,
+    "single-turn-original": 16477
+  },
+  "rows dropped, by filter": {
+    "6.2 item 1: the gold within v2's cluster rule of a training or validation tool": 7571,
+    "6.2 item 2: the same normalised question": 1,
+    "6.2 item 3: over the cap of 10 per gold cluster": 15609,
+    "6.2 item 3: over the cap of 40 per server": 64
+  },
+  "rows after the filters (before the draw)": 2889,
+  "slates": 2000,
+  "the rows of the SFT files (toucan-rows)": {
+    "about": "s6-route v4 (docs/s6-route4-prereg.md 6.1, amendment 1): the rows of Toucan's SFT files",
+    "rows by file": {
+      "/Users/maxime/Documents/Code/skycmd-data/s6-route/src/toucan/SFT/train-00000-of-00003.parquet": 39763,
+      "/Users/maxime/Documents/Code/skycmd-data/s6-route/src/toucan/SFT/train-00001-of-00003.parquet": 39762,
+      "/Users/maxime/Documents/Code/skycmd-data/s6-route/src/toucan/SFT/train-00002-of-00003.parquet": 39762
+    },
+    "rows read by subset": {
+      "irrelevant": 40000,
+      "multi-turn": 35243,
+      "single-turn-diversify": 15790,
+      "single-turn-original": 28254
+    },
+    "rows left out, by reason": {
+      "6.1: a target written Server::Tool": 4,
+      "6.1: another subset": 75243,
+      "6.1: not exactly one target tool": 17906
+    },
+    "rows kept": 26134,
+    "rows kept by subset": {
+      "single-turn-diversify": 9657,
+      "single-turn-original": 16477
+    },
+    "servers of the kept rows": 321
+  },
+  "servers": 262,
+  "gold clusters": 458,
+  "share of the slates on the three largest servers": 0.0395,
+  "slates of the ten largest servers": [
+    27,
+    26,
+    26,
+    25,
+    24,
+    24,
+    23,
+    23,
+    23,
+    20
+  ],
+  "none share": 0.2,
+  "slates by subset": {
+    "single-turn-diversify": 631,
+    "single-turn-original": 1369
+  },
+  "random fill by layer (6.2 item 5)": {
+    "drawn from L0": 1726,
+    "drawn from L1": 2590,
+    "drawn from L2": 310,
+    "drawn from L3": 759,
+    "drawn from L4": 992
+  },
+  "Toucan tools": 1770,
+  "Toucan tools within v2's cluster rule (never shown)": 247,
+  "probe job items (fresh-tools)": 1448,
+  "fewer than 600 slates (6.3: v5 is not trained)": false,
+  "slates by level (6.2 item 5, reported)": {
+    "L0": 411,
+    "L1": 973,
+    "L2": 120,
+    "L3": 246,
+    "L4": 250
+  },
+  "classes of F2 and F3": {
+    "names": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    "words": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      2,
+      2,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ]
+  },
+  "C6 (reported, not judged: 6.2)": {
+    "counts": {
+      "slates": 2000,
+      "tool-gold slates": 1600,
+      "drawn slates": 1495,
+      "slates by level": [
+        411,
+        973,
+        120,
+        246,
+        250,
+        0,
+        0
+      ],
+      "drawn slates by level": [
+        314,
+        676,
+        80,
+        201,
+        224,
+        0,
+        0
+      ]
+    },
+    "share of the drawn slates at L5 or L6": 0.0,
+    "above 0.10": false
+  },
+  "probe copies (6.4)": {
+    "fresh tools refused by moderation: 0": 1,
+    "tool-gold slates with one distractor rewritten": 1600
+  }
+}

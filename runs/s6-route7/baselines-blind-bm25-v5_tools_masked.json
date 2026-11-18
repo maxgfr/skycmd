@@ -1,0 +1,45 @@
+{
+ "slates": 1144,
+ "tool-right slates": 915,
+ "none-right slates": 229,
+ "blind accuracy": 0.14285714285714282,
+ "chance c": 0.14285714285714282,
+ "blind accuracy - c": 0.0,
+ "fewest-words share of the blind picks": 0.14285714285714282,
+ "answer with none allowed: accuracy on the tool-right slates": 0.0,
+ "answer with none allowed: accuracy": 0.20017482517482518,
+ "none share": 1.0,
+ "blind none gap": 0.0,
+ "intervals, slates resampled": {
+  "blind accuracy": [
+   0.14285714285714282,
+   0.14285714285714285
+  ],
+  "blind none gap": [
+   0.0,
+   0.0
+  ]
+ },
+ "by server-mates shown (tool-right slates)": {
+  "no server-mate shown": {
+   "tool-right slates": 886,
+   "blind accuracy": 0.14285714285714285,
+   "chance c": 0.14285714285714285
+  },
+  "server-mates shown": {
+   "tool-right slates": 29,
+   "blind accuracy": 0.14285714285714285,
+   "chance c": 0.14285714285714285
+  },
+  "0": {
+   "tool-right slates": 886,
+   "blind accuracy": 0.14285714285714285,
+   "chance c": 0.14285714285714285
+  },
+  "1 to 2": {
+   "tool-right slates": 29,
+   "blind accuracy": 0.14285714285714285,
+   "chance c": 0.14285714285714285
+  }
+ }
+}

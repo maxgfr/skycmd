@@ -1,0 +1,13 @@
+{
+  "about": "s6-route v6 (docs/s6-route6-prereg.md 4.3, 6): the placeholder taken, checked against the requests of these files",
+  "placeholder": "?",
+  "occurs": false,
+  "records": 2000,
+  "files": [
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/toucan5/fresh/t5_tools.jsonl",
+      "records": 2000,
+      "sha256": "c7586ea4bf8a686819d2be453657e36181bb5c66a7062901b74c1fe831bf2e66"
+    }
+  ]
+}

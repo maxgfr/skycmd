@@ -1,0 +1,48 @@
+{
+  "about": "s6-route v6 (docs/s6-route6-prereg.md 4.3, 6): the placeholder taken, checked against the requests of these files",
+  "placeholder": "?",
+  "occurs": false,
+  "records": 200246,
+  "files": [
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/records/intents/train.jsonl",
+      "records": 91130,
+      "sha256": "6a68f686818d592893d01178c0c8bd3f95fe5ad5817f8da1e56ef92fb81bf48b"
+    },
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/records/intents/val.jsonl",
+      "records": 11085,
+      "sha256": "b810a7fcd1dca65961d51bea0f6dc3e2820c6ff70a1290001a28385b54101490"
+    },
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/records/tools/train.jsonl",
+      "records": 77070,
+      "sha256": "47448bcfb0641fe0da57b2737185a577fb0c6520fda01fac3fd692cdb4f67463"
+    },
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/records/tools/val.jsonl",
+      "records": 3941,
+      "sha256": "488d5c9194dee948fbe2a9777684787d376a5e277b4d32b2654fef8cd2b44e73"
+    },
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/records/when2call/train.jsonl",
+      "records": 13885,
+      "sha256": "e60c0bc6ec7248cf0f91377836ddd9643d4792ace1a0e4e70eb556cd020e6978"
+    },
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/records/when2call/val.jsonl",
+      "records": 847,
+      "sha256": "9828c06af198615429b5597879aa6af05cf11dd4bdda1df7276cfd217492a30a"
+    },
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/val/v5_tools.jsonl",
+      "records": 1144,
+      "sha256": "767a6699e5c16633a2d00a87721d14de386295ada79555454b791842f210f704"
+    },
+    {
+      "file": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build7/val/v5_tools_masked.jsonl",
+      "records": 1144,
+      "sha256": "790660875170506ab28be0cabc13b59c36665b5530e850fb577716015e23d0ac"
+    }
+  ]
+}

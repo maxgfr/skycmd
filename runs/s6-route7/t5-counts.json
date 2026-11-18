@@ -1,0 +1,68 @@
+{
+ "about": "s6-route v7 (docs/s6-route7-prereg.md, amendment 2): the summary that the stage counts of scripts/build-route7-data.sh printed on 18/11/2026 (copied from its output: counts.json's keys, T5's chance c and the server-mates of the tool-right slates)",
+ "counts": {
+  "rows read by subset": {
+   "single-turn-diversify": 9657,
+   "single-turn-original": 16477
+  },
+  "rows dropped, by filter": {
+   "6.2 item 1: the gold within v2's cluster rule of a training or validation tool": 7571,
+   "6.2 item 2: the same normalised question": 1,
+   "6.2 item 3: over the cap of 10 per gold cluster": 15609,
+   "6.2 item 3: over the cap of 40 per server": 64
+  },
+  "slates": 2000,
+  "servers": 262,
+  "gold clusters": 458,
+  "share of the slates on the three largest servers": 0.0395,
+  "none share": 0.2,
+  "slates by subset": {
+   "single-turn-diversify": 631,
+   "single-turn-original": 1369
+  },
+  "slates by level (6.2 item 5, reported)": {
+   "L0": 411,
+   "L1": 973,
+   "L2": 120,
+   "L3": 246,
+   "L4": 250
+  },
+  "C6 (reported, not judged: 6.2)": {
+   "counts": {
+    "slates": 2000,
+    "tool-gold slates": 1600,
+    "drawn slates": 1495,
+    "slates by level": [
+     411,
+     973,
+     120,
+     246,
+     250,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     314,
+     676,
+     80,
+     201,
+     224,
+     0,
+     0
+    ]
+   },
+   "share of the drawn slates at L5 or L6": 0.0,
+   "above 0.10": false
+  },
+  "T5's chance c (the mean of 1/k over its tool-right slates)": 0.14285714285714285,
+  "tool-right slates by the number of the gold's server's tools shown": {
+   "0": 396,
+   "1": 225,
+   "2": 123,
+   "3": 175,
+   "4": 111,
+   "5": 65,
+   "6": 505
+  }
+ }
+}

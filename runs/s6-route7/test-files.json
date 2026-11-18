@@ -1,0 +1,18 @@
+{
+  "about": "s6-route v5: the fresh test files as the build wrote them (docs/s6-route5-prereg.md 6.2, item 6); no system reads them before runs/s6-route5/FRESH-OPEN",
+  "build": "/Users/maxime/Documents/Code/skycmd-data/s6-route/toucan5/fresh/FRESH5.json",
+  "files": {
+    "t5_tools.jsonl": "c7586ea4bf8a686819d2be453657e36181bb5c66a7062901b74c1fe831bf2e66",
+    "t5_tools.servers.jsonl": "906ea3d5bf743c41d2af2bc679e089097fe3d0e4ad30ee882bd1d0961ff257a6",
+    "t5_tools_masked.jsonl": "6a00450c028f5bc8c9116b8dd594af514591b9cf0d064e56f6ae48aebdc2a6bc",
+    "t5_tools_rw.jsonl": "4c7e7a54f385d19a0f4f7cddc87c8dd144e12a9efb7de77ded72e47866157ea5",
+    "t5_tools_masked_rw.jsonl": "39b1f68cc7d2af4ea71ba1e4290098802b74bd76f56a45d3379d91725b9d7fa9"
+  },
+  "records": {
+    "t5_tools.jsonl": 2000,
+    "t5_tools.servers.jsonl": 2000,
+    "t5_tools_masked.jsonl": 2000,
+    "t5_tools_rw.jsonl": 1600,
+    "t5_tools_masked_rw.jsonl": 1600
+  }
+}

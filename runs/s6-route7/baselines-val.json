@@ -1,0 +1,73 @@
+{
+ "about": "s6-route v6 (docs/s6-route6-prereg.md 4.5): BM25 and potion-cos by the frozen baseline code, v2's fitted values, ordinary and blind (B0); reported",
+ "accuracy": {
+  "potion-cos": {
+   "v_tools": {
+    "slates": 1144,
+    "accuracy": 0.7255244755244755
+   },
+   "v_tools_masked": {
+    "slates": 1144,
+    "accuracy": 0.7325174825174825
+   },
+   "v4_tools": {
+    "slates": 1144,
+    "accuracy": 0.7403846153846154
+   },
+   "v4_tools_masked": {
+    "slates": 1144,
+    "accuracy": 0.7386363636363636
+   },
+   "v5_tools.blind": {
+    "slates": 1144,
+    "accuracy": 0.1958041958041958
+   },
+   "v5_tools": {
+    "slates": 1144,
+    "accuracy": 0.7281468531468531
+   },
+   "v5_tools_masked.blind": {
+    "slates": 1144,
+    "accuracy": 0.19318181818181818
+   },
+   "v5_tools_masked": {
+    "slates": 1144,
+    "accuracy": 0.7194055944055944
+   }
+  },
+  "bm25": {
+   "v_tools": {
+    "slates": 1144,
+    "accuracy": 0.8548951048951049
+   },
+   "v_tools_masked": {
+    "slates": 1144,
+    "accuracy": 0.8444055944055944
+   },
+   "v4_tools": {
+    "slates": 1144,
+    "accuracy": 0.8321678321678322
+   },
+   "v4_tools_masked": {
+    "slates": 1144,
+    "accuracy": 0.8312937062937062
+   },
+   "v5_tools.blind": {
+    "slates": 1144,
+    "accuracy": 0.20017482517482518
+   },
+   "v5_tools": {
+    "slates": 1144,
+    "accuracy": 0.8382867132867133
+   },
+   "v5_tools_masked.blind": {
+    "slates": 1144,
+    "accuracy": 0.20017482517482518
+   },
+   "v5_tools_masked": {
+    "slates": 1144,
+    "accuracy": 0.8312937062937062
+   }
+  }
+ }
+}
