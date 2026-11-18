@@ -2122,3 +2122,64 @@ pub(crate) mod tests {
         assert_eq!(head_window(&[]), None);
     }
 }
+
+#[cfg(test)]
+mod frozen {
+    //! The bytes of v2's build of the invented fixture, frozen when s6-route v4's code was
+    //! written (docs/s6-route4-prereg.md 4.1: v2's stage files, plans and validation slates are
+    //! kept): any change to v2's path shows here.
+    use super::tests::{fixture, hashes, run};
+
+    #[test]
+    fn v2_build_bytes_are_frozen() {
+        let dir = std::env::temp_dir().join(format!("sky-route-frozen-{}", std::process::id()));
+        fixture(&dir);
+        run(&dir, 7);
+        // the model's copy of a validation file, by v2's rendering
+        super::render(
+            &dir.join("val/v_tools.jsonl"),
+            &dir.join("val/v_tools.model.jsonl"),
+        )
+        .unwrap();
+        let h = hashes(&dir);
+        let got: Vec<String> = h
+            .iter()
+            .map(|(k, v)| format!("{k} {}", v["sha256"].as_str().unwrap()))
+            .collect();
+        std::fs::remove_dir_all(&dir).ok();
+        println!("FROZEN\n{}", got.join("\n"));
+        assert_eq!(got.join("\n"), FROZEN.trim());
+    }
+
+    const FROZEN: &str = "
+records/intents/train.jsonl 8d9bb18c042bfc7bd3e49020a5a3c19fd20a90d49da7a10967552f6ca450adec
+records/intents/val.jsonl 892acdeb2095fe42dd6badc58a7484ac23418463dfa58fd2d4928f8d0213d21f
+records/tools/train.jsonl ff10997275f64968ec9b034902160a07c7950c895a59858e14715efda633bb4b
+records/tools/val.jsonl 6621da58425d20a5e771abb590f2b15e4b6cdc387b8e28acca1c45f1f9ad2dba
+records/when2call/train.jsonl c2c59f9fbffd815f9a6bc2fbf5acafc4ee0595d7b81b62c464c95f1deadb130f
+records/when2call/val.jsonl 4d14c4abeedc8a8890c3b28397c95a260b7d8d811489f4da9238e41aafd357ed
+stage/metatool-tools.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+stage/plan.jsonl 8cbc6ba148b03c94555f9272765ad148a990ee16be54d91eb37b9f1e75e9c5ab
+stage/requests.jsonl b8451978cf16c963657f9d10774b2743c5385b83bc638df858fa77f1776da7ae
+stage/similar.json ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+stage/texts.jsonl e3aa91d0423428a26982fcafb9c2cbca783caeeedafb60ac9371df6b70a1267c
+stage/tools.jsonl 46fee7cd69acc9bc7e3534379099f7b301e4f4e7d432bb0a9fa28fade55239e9
+teacher/false-negatives.items.jsonl d25cbdc45a3438aeb5f4253ba43571e30c3dea299f9b6bd50099558e85d4f01a
+teacher/rewrite-description.items.jsonl ab8481d991c085e7126cc356dfbbd20ab1efedc3aa1b7544851a6dbc7735e5c9
+test/t_bfcl.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+test/t_clinc.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+test/t_massive.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+test/t_metatool.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+test/t_toolrouting.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+test/t_tools.jsonl 8d5ba619ea67bcddc6ea6a1755d30b59eca8da915c9ecc781317f468a61cca0a
+test/t_tools_masked.jsonl 07e49fd0c3271f36dc7bd4e767e57f9c114001639125bc625cc5623c43f7b493
+test/t_tools_pairs.jsonl eb88839e5cad65540490df26c1a1f4a4f201d2768506db75416bb90f8be5ee93
+test/t_tools_swapped.jsonl 04e6051cbf32f09694cdc678a2ae4e436182707f50372b05fbc800c0e5a6808b
+test/t_when2call.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+val/v_tools.jsonl ceb917eb17294d81748f3c80cbdbb60c5a0e8ff4b8f9f9545c66326d032ee40c
+val/v_tools.model.jsonl 64855ad9c71ce464f5df390b3cd6cf08bf4e9d61ee31c14b0045902413681ba2
+val/v_tools_masked.jsonl 5c493a4011ef74824eb9fc15516275256d624eaeeb3c3a2d194433306f5154d7
+val/v_tools_pairs.jsonl de982cf03ba364e05f50728bc6db556e8686809f1c75516d4ed86b4fe9b463b9
+val/v_tools_swapped.jsonl 8571930afec7bdf7c5664d7e356d99b090b90a13a8aefb1379e975828a9dfecb
+";
+}

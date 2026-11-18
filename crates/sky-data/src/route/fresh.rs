@@ -642,6 +642,34 @@ mod tests {
         serde_json::from_value(m["files"].clone()).unwrap()
     }
 
+    /// v3's fresh files of the invented build, frozen when s6-route v4's code was written: any
+    /// change to v3's path shows here.
+    #[test]
+    fn v3_fresh_bytes_are_frozen() {
+        let root =
+            std::env::temp_dir().join(format!("sky-route-fresh-frozen-{}", std::process::id()));
+        let a = root.join("v2");
+        v2(&a);
+        let f = root.join("f");
+        fresh(&opts(&a, &f, 1235, 25)).unwrap();
+        let got: Vec<String> = fresh_hashes(&f)
+            .iter()
+            .map(|(k, v)| format!("{k} {v}"))
+            .collect();
+        std::fs::remove_dir_all(root).ok();
+        println!("FROZEN\n{}", got.join("\n"));
+        assert_eq!(got.join("\n"), FROZEN.trim());
+    }
+
+    const FROZEN: &str = "
+f_clinc.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+f_massive.jsonl 9708f57fd331fb7c5322922100e11fdcfb9e4976f49d73e65ade11efd72afd02
+f_metatool.jsonl e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+f_tools.clusters.jsonl a60f9724870ee139ebd0b40413d74463beb1555f993127af857d2b95aa942b01
+f_tools.jsonl 085c4f27a71e6bef4f14c935bfa321ce89eedfe29fb1b179fac6eed33528893f
+f_tools_masked.jsonl e536fdc2b4dcc2a4f0c2feb3dee4377bf5d1e7036eae5b2ad4b359787d177d6e
+";
+
     #[test]
     fn requests_seen_by_identifier_or_text() {
         let mut s = Seen::default();
