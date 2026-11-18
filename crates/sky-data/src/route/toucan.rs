@@ -1369,6 +1369,63 @@ mod tests {
         std::fs::remove_dir_all(root).ok();
     }
 
+    /// The bytes of v4's fresh test of the invented Toucan (the four test files, the servers
+    /// file and the probe job's items), frozen when s6-route v5's code was written
+    /// (`docs/s6-route5-prereg.md` 6: v5 adds `--rule v5` and changes nothing v4's rule builds).
+    #[test]
+    fn t4_bytes_are_frozen() {
+        let root =
+            std::env::temp_dir().join(format!("sky-route-toucan-frozen-{}", std::process::id()));
+        let v2 = root.join("v2");
+        fixture(&v2);
+        run(&v2, 7);
+        let t4 = root.join("t4");
+        invented(&t4);
+        stage(&t4).unwrap();
+        embed(&t4);
+        build_test(&TestOptions {
+            v2: v2.clone(),
+            t4: t4.clone(),
+            seed: T4_SEED,
+            record: None,
+        })
+        .unwrap();
+        let items: Vec<Value> = read_lines(&items_path(&t4, "rewrite-description")).unwrap();
+        let ans: Vec<Value> = items
+            .iter()
+            .map(|i| json!({"id": i["id"], "description": format!("Returns {}.", i["name"].as_str().unwrap())}))
+            .collect();
+        write_jsonl(&answers_path(&t4, "rewrite-description"), &ans).unwrap();
+        probes(&t4, T4_SEED, None).unwrap();
+        let mut got = Vec::new();
+        for f in [
+            "fresh/t4_tools.jsonl",
+            "fresh/t4_tools_masked.jsonl",
+            "fresh/t4_tools.servers.jsonl",
+            "fresh/t4_tools_rw.jsonl",
+            "fresh/t4_tools_masked_rw.jsonl",
+            "stage/tools.jsonl",
+            "stage/texts.jsonl",
+            "teacher/rewrite-description.items.jsonl",
+        ] {
+            got.push(format!("{f} {}", sha256_file(&t4.join(f)).unwrap()));
+        }
+        std::fs::remove_dir_all(&root).ok();
+        println!("FROZEN\n{}", got.join("\n"));
+        assert_eq!(got.join("\n"), T4_FROZEN.trim());
+    }
+
+    const T4_FROZEN: &str = "
+fresh/t4_tools.jsonl 3eb79c7eb636680a9b6086d8cc6eb4b112f8b798dece00a23b7c5dd491e1ae82
+fresh/t4_tools_masked.jsonl 63acf4c94156b8c48f3c5a3974bb1927cc69b4ae3a484edf9ccf221ab62453de
+fresh/t4_tools.servers.jsonl b5b44e802ed014e9518898541969872dd2129d5759beb9ad36b24877b198d049
+fresh/t4_tools_rw.jsonl 9f905902cbb412f01ef9ccbc4675adc8bdfe95d6c4dc333f26e5cfe39c87144e
+fresh/t4_tools_masked_rw.jsonl 3356023d368083b566503af993b297d12a0e954794b6900e91a54e7c80328ed5
+stage/tools.jsonl 2fce728d86fa647191ad95027a7a36ea55a1748abb08d19f1c2c9d78d942d1f9
+stage/texts.jsonl 5c1f263a3932708348a65599ae856f8efe57d7cb46e26ce92e437beea1c5b289
+teacher/rewrite-description.items.jsonl e11ff73803ea64baf3d9cbcf7bc9e7ae038f393e3848d8f381deb055e42e569c
+";
+
     fn sft_row(uuid: &str, subset: &str, targets: &str, tools: Value) -> Value {
         json!({"uuid": uuid, "subset_name": subset, "question": format!("question {uuid}"),
                "target_tools": targets, "tools": tools.to_string(), "messages": "[]"})

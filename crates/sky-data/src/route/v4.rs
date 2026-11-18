@@ -1260,6 +1260,55 @@ mod tests {
         r.target.iter().position(|&x| x == 1.0).unwrap()
     }
 
+    /// The bytes of v4's build of the invented fixture (plan, validation slates, teacher items,
+    /// records, probe copies and the model's copies), frozen when s6-route v5's code was written
+    /// (`docs/s6-route5-prereg.md`: v5 reuses v4's code and changes nothing it builds): any
+    /// change to v4's path shows here.
+    #[test]
+    fn v4_build_bytes_are_frozen() {
+        let root = std::env::temp_dir().join(format!("sky-route-v4-frozen-{}", std::process::id()));
+        let (v2, out) = (root.join("v2"), root.join("v4"));
+        fixture(&v2);
+        run(&v2, 7);
+        v2_answers(&v2);
+        v4(&v2, &out);
+        v4_answers(&out);
+        v4_slates(&v2, &out, false).unwrap();
+        let h = hashes(&out);
+        let got: Vec<String> = h
+            .iter()
+            .map(|(k, v)| format!("{k} {}", v["sha256"].as_str().unwrap()))
+            .collect();
+        std::fs::remove_dir_all(&root).ok();
+        println!("FROZEN\n{}", got.join("\n"));
+        assert_eq!(got.join("\n"), V4_FROZEN.trim());
+    }
+
+    const V4_FROZEN: &str = "
+records/intents/train.jsonl 878f82d4834c78e30ee6982c1c3e5c4ea1ef1d4caad232862e816386c078e673
+records/intents/val.jsonl 650d292be8691d833ef8f317471242a278c1d8990adefb64cadfe89e6bc05778
+records/tools/train.jsonl b2b7710e71f109948fe79f1e2fd67f62fa6ddbafcdb523220e481b32e2ff3930
+records/tools/val.jsonl f04f9188fd556340b6cbde92d90da09e899d45af630d85d35b78dfa5ee4ff019
+records/when2call/train.jsonl 06d2a4602873432d26fea77d7efb168800ab7f5d92bd9c6de320f60018be7d70
+records/when2call/val.jsonl a121b6932f9c81de672eb51b92a5d88ed81cd2de304bbe5119250e86ca5e19e9
+stage/plan4.jsonl 1a744a32b868c4a9827c4200cee269872c1e2eec320db4ba6a97f2890c219073
+teacher/rewrite-description.items.jsonl 2dfc34e8e93c3dc739193a63d088fb8ab3e2f747f3ff9bdfb7873275ede5106f
+teacher/rewrite-description.jsonl 187b7942a3b3165de0876fd58a435865f9653676c87f4a7357f05e4e936f28f4
+teacher/rewrite-description.refused.jsonl 2c40c025abc0f8382ec003ecd59f930ef070d6cd6c12bcc978961a0eca647265
+val/r_tools_natural.model.jsonl 71d46608a192a9cc3ffd872ebd5dd0471685372f19a1ceaa38b13fc50296c511
+val/r_tools_renamed.model.jsonl 2f8dfb444f4acb229d04e1b5ecb040f314c243b2b988b790b134013b46c45ad5
+val/v4_tools.jsonl 45190cf34b48335f952c6a777d11cac1dfc4108aac90805a6805c937a3c650bc
+val/v4_tools.model.jsonl d9d5a5aac186044d8d63f3ba0d04766080d3ff54180b8520dd6e2201b316b627
+val/v4_tools_masked.jsonl 0d1e4e5c8f6c738bbceb93d624090f98e6dac56e6c25bddc3653efd792a9b137
+val/v4_tools_masked.model.jsonl b70add05b965d286bd120716ac8f9629800a25e39e7245188e397ae5bd6916fc
+val/v4_tools_masked_rw.jsonl daf698c86aa17ea524dfcc1452c32a0036ca4b0768f5e73a2801d59ff9d3f927
+val/v4_tools_masked_rw.model.jsonl e11fe00938f37659297912566ec5269ada523dd5172316930d638f19d853dddd
+val/v4_tools_rw.jsonl f7d39970613912680afe4b4d90b9ab34c17739f4bd6cb243934b318a4515f078
+val/v4_tools_rw.model.jsonl de0d65f26b3f8560364b95b7f98bf25b4d2c8a482c5a971d59644eba725bbe94
+val/v_tools.model.jsonl 28bd46e9ba84444ddfab3bbbe8c798bdb8a7e0fba2dfa3d1c734fe484dbc088e
+val/v_tools_masked.model.jsonl 5e71d5bd9b5bab5889b1a1b2d6ceef52c67e78fc38459c0974463dde5d22f414
+";
+
     #[test]
     fn an_invented_v4_build() {
         let root = std::env::temp_dir().join(format!("sky-route-v4-{}", std::process::id()));
