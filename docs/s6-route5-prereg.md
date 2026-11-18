@@ -897,3 +897,248 @@ lead).
     `runs/s6-route5/FRESH-OPEN` exists and the files have the hashes of
     `runs/s6-route5/test-files.json`;
   - the Python reference of the pair under D4, for G4's parity.
+
+## Result (18/11/2026): v5 stopped at its data checks, before any training
+
+**The checks of §4.4 exit with status 1. C6 and C3 hold in every cell. C1 fails in 6 cells, C2
+fails 8 times and the N rules fail 9 times (N1 to N5 seven times in four cells, N6 in two
+families). By §4.4 and §11 a failure of C2 or of an N rule stops v5 before training, with no
+remedy: no model is trained, no fresh file is built or read, and the table is published.** The
+report and its JSON are `runs/s6-route5/checks.md` and `runs/s6-route5/checks.json`; C6 at plan
+time is `runs/s6-route5/c6-plan.md` and `c6-plan.json`; amendment 1's count is
+`runs/s6-route5/cells.json`.
+
+**What ran, in order, on 18/11/2026.** The logs are `runs/all/route5-stage1.log`,
+`runs/all/route5-teacher.log` and `runs/all/route5-build-checks.log` in the lead's worktree,
+with the three scripts that ran them; they are not committed. The code is that of 9c2da9b
+(amendment 2).
+
+1. **`embed-requests`:** 69,290 request embeddings (potion-base-2M, 64 dimensions): 63,936
+   training and 5,354 validation requests, no test or fresh request
+   (`<data>/s6-route/build5/emb/potion-requests.npy`).
+2. **`plan`, then C6 at plan time** (amendment 1, decision 1), at 16:45: C6 holds in all 24
+   cells, every one judged under amendment 2's floor of 200 drawn slates. The largest share of
+   drawn slates at L5 or L6 is 0.0903 (`when2call natural train`), then 0.0840
+   (`when2call hard val`); in the intents cells it is 0.0100 to 0.0248, below amendment 1's
+   expected 0.0214 to 0.0711; in the tools group's cells it is 0 to 0.0009.
+3. **`teacher-jobs`:** 58,985 false-negative items (54,463 training, 4,522 validation) in 2,950
+   planned calls of 20. The other 10,305 of the 69,290 hard slates matched a slate of v2 by id and
+   took v2's answer (amendment 2, reading 4). The guard let through training and validation
+   requests only.
+4. **The teacher:** GLM-5.3-Flash (MIT) through `scripts/route-teacher.sh false-negatives loop`,
+   from 16:46:10 to 18:01:35, then once more for the 14 items left, ending at 18:01:38. It wrote
+   58,984 answers, 1 item was refused by moderation, and no batch failed. That took 2,982 calls (the
+   loop sends again the items of a batch whose answers were not all valid), 9,263,123 tokens in
+   and 911,897 out, and 4,527.5 s, about 75 minutes against the 2 to 4 hours of §4.2.
+5. **`build`:** v4's rebuildable outputs under `build4/` were removed first (`build4/records`,
+   207,208 KB; `build4/stage`, 50,504 KB; ten validation files; listed in
+   `<data>/s6-route/build5/logs/v4-removed.txt`); `build4/teacher/` was kept. The build wrote
+   197,958 records: 182,085 for training (intents 91,130, tools 77,070, When2Call 13,885) and
+   15,873 for validation (11,085, 3,941 and 847). The teacher's filter:
+   - replaced 6,863 distractors (intents 1,957, tools 824, When2Call 4,082);
+   - dropped 3,537 requests whose right tool the teacher did not name as able;
+   - left 1 hard slate unfiltered, the one whose item was refused.
+
+   §4.2 expected more of both than v2's 14,497 replacements and 4,562 dropped requests; there
+   were fewer, on 58,985 items sent instead of 69,290. One replacement came from a level above its
+   slate's.
+6. **`checks`** (`scripts/s6-route5-checks.py`), ending at 18:03 with status 1. By amendment 2,
+   reading 8, a C1 or C3 failure exits 1 before a C6, C2 or N failure would exit 2. The verdict
+   records both: "defect (C1 or C3)": true, and "v5 stops before training (C6, C2 or N; no
+   remedy)": true.
+
+The disk floor of §4.7 held at every stage: 17 GB were free at the first stage and 8 to 9 GB at
+the build. The folder `build5/` holds 383 MB.
+
+**The checks.**
+
+- **C6, the cell holds:** confirmed after the build in every judged cell, with the largest share
+  0.0902 (`when2call natural train`).
+- **C3, *none*:** holds in all 14 families, with shares of 0.1983 to 0.2002 against 0.20.
+- **C5:** not computed (no fresh file).
+- **C4:** reported in `checks.json`, by role (the right option, the exempt options and the drawn
+  options).
+- **C1 fails in 6 cells:** every failure is in a training cell, and every one is on the rate of
+  the other options. The rate of the right tool is within its bar in all 19 cells.
+
+  | cell | P(rewritten given right tool) | P(rewritten given other option) | other − 0.5 | its bar |
+  |---|---:|---:|---:|---:|
+  | records intents hard train | 0.4954 | 0.4858 | −0.0142 | 0.0054 |
+  | records intents natural train | 0.5000 | 0.4851 | −0.0149 | 0.0054 |
+  | records intents renamed train | 0.5020 | 0.5056 | +0.0056 | 0.0042 |
+  | records tools hard train | 0.4993 | 0.4839 | −0.0161 | 0.0059 |
+  | records tools renamed train | 0.4986 | 0.4931 | −0.0069 | 0.0046 |
+  | records when2call hard train | 0.5105 | 0.5319 | +0.0319 | 0.0137 |
+
+  Pooled over the record cells, the rates are 0.5001 over 158,367 right tools and 0.4953 over
+  609,930 other options, within the pooled bar of 0.01.
+
+**What the six C1 failures are.** They are of the kind that §4.3 warned about ("the selection by
+shown text could move the rate of the other options away from 0.5"), not a defect of the code that
+the table shows. Six readings of the files support this:
+
+- The right tool's D1 draw is made before and without the slate, and its rate is fair in every
+  cell.
+- Only the drawn options' rate moves, and it moves in both directions: below 0.5 in the hard and
+  natural cells of the intents and tools groups, above it in `when2call hard train`.
+- The share of all tool options whose D1 draw is the rewrite, the right tools included, moves the
+  same way in each group (the build's counts, `counts/v5-slates.json`): intents training 0.4950
+  of 442,283 options, tools training 0.4941 of 373,623, When2Call training 0.5103 of 67,410. A candidate qualifies by the text its
+  draw makes it show, so the drawn options are a selected sample of draws.
+- The failures are where n is largest. The bars there are 0.0042 to 0.0137, three to six times
+  narrower than in the validation cells. Validation departures of the same size pass: tools hard
+  val −0.0173 against 0.0259, tools natural val +0.0149 against 0.0259.
+- v4 drew its distractors without the shown-text selection and had the same D1 code (`rewrite_draw`,
+  unchanged by S1). It passed C1 in every cell, with a pooled rate of other options of 0.4998.
+- Each slate's drawn options match the right tool's key at the slate's level, as the cell asks
+  ("cell consistency" in `checks.json`). There are two exceptions: 49 of 65,342 options in
+  `tools hard train` and 14 of 54,829 in `tools natural train`. That count is consistent with the
+  known difference of amendment 2, reading 7 (the Rust and Python keys differ on 20 texts of 10
+  tools whose names hold ": "), though it was not checked option by option.
+
+By §4.3, a C1 failure that comes from the selection itself cannot be fixed without changing the
+cell, which §12 forbids. **In either reading, defect or selection, the outcome is the same: C2 and
+the N rules fail with no remedy, and either failure alone stops v5 before training. No fix of C1
+could have changed it.**
+
+**C2 and N1 to N6: the failing rules.** Each pick rule is judged on the tool-gold slates of its
+cell. Chance is the mean of 1 / (number of tool options). N6 answers *none*, so its chance is the
+family's *none* share and its accuracy is read on the slates it answers *none* (amendment 2,
+decision 4).
+
+| cell or family | rule | accuracy | chance | tolerance | above chance |
+|---|---|---:|---:|---:|---:|
+| records intents hard train | R12 inverse: the most schema-like words | 0.4197 | 0.3693 | 0.3953 | +0.0504 |
+| records intents hard train | R5 most characters | 0.4007 | 0.3693 | 0.3953 | +0.0313 |
+| records intents hard train | N4 inverse: the lowest share of capitalised words | 0.4050 | 0.3693 | 0.3953 | +0.0357 |
+| records intents natural train | R12 inverse | 0.4206 | 0.3691 | 0.3951 | +0.0515 |
+| records intents renamed train | R12 inverse | 0.2033 | 0.1429 | 0.1677 | +0.0605 |
+| records intents hard val | R12 inverse | 0.4257 | 0.3726 | 0.4097 | +0.0531 |
+| records intents hard val | R5 most characters | 0.4119 | 0.3726 | 0.4097 | +0.0393 |
+| records intents hard val | N4 inverse | 0.4199 | 0.3726 | 0.4097 | +0.0473 |
+| records intents hard val | N5 inverse: the lowest mean overlap | 0.4119 | 0.3726 | 0.4097 | +0.0393 |
+| records intents natural val | R12 inverse | 0.4204 | 0.3706 | 0.4078 | +0.0498 |
+| records intents renamed val | R12 inverse | 0.2040 | 0.1429 | 0.1768 | +0.0611 |
+| records tools hard train | N2 the rarest word | 0.4182 | 0.3753 | 0.4018 | +0.0429 |
+| records tools hard train | N3 the first name in alphabetical order | 0.4037 | 0.3753 | 0.4018 | +0.0284 |
+| records when2call hard train | N4 the highest share of capitalised words | 0.4453 | 0.3693 | 0.4046 | +0.0760 |
+| records when2call hard train | N2 the rarest word | 0.4076 | 0.3693 | 0.4046 | +0.0384 |
+| N6 family when2call train other (9,918 slates) | *none* when the options spread above the median (answers 3,052) | 0.4410 | 0.2000 | 0.2345 | +0.2410 |
+| N6 family when2call val other (605 slates) | the same (answers 178) | 0.4382 | 0.2000 | 0.2800 | +0.2382 |
+
+C2's failures are all in the intents group; the tools and When2Call cells fail only N rules. The
+other 11 judged cells pass every rule, `v5_tools` and `v5_tools_masked` included (their best rule,
+N5 inverse, at 0.1730 against a tolerance of 0.1860 and a chance of 0.1429).
+
+**How many tests, and what chance alone would give.** Each of the 19 judged cells holds 56 rule
+texts (C2's 46 and N1 to N5 with their inverses; 54 in the two validation files), and N6 adds 28.
+That is 1,088 tests. At C2's tolerance, with its margin of 0.02, rules truly at chance in cells of
+these sizes would exceed it about 0.5 times in all over the 1,060 tests of the cells, in
+expectation. The 17 failures are therefore
+not explained by the number of tests. They are real departures of the data, most of them small.
+Without the margin, at 2 standard errors alone, about 2.3% of the tests (about 25) would fail by
+chance.
+
+**What the surface cell and the request anchor removed, compared with v4.** Every one of v4's 17
+failures is within its tolerance in v5:
+
+- **The tools group's hard cells: the seven surface rules.** In training six of them are within
+  0.001 of chance: R1 inverse, R2 inverse and R3 inverse at 0.3753, R4 inverse 0.3754, R12
+  0.3762 and R13 0.3744, against a chance of 0.3753 (in v4: 0.4072 to 0.4220). R5 inverse, the
+  fewest characters, is at 0.3854. On validation the largest is R5 inverse at 0.3939 against
+  0.3753 (in v4: 0.4809 against 0.3763).
+- **C4's surface gaps in the tools group's hard training slates are closed.** A final period is
+  on 0.659 of right options against 0.663 of drawn ones; the mean length is 58.8 against 59.3
+  characters; the mean count of schema-like words is 0.600 against 0.598. In v4, on validation,
+  the same gaps were 0.657 against 0.822 and 58.0 against 67.7.
+- **R11, the shortest name, in the intents group's hard cells:** 0.3851 in training (v4 0.4219)
+  and 0.4019 on validation (v4 0.4453), against chances of 0.3693 and 0.3726.
+- **R11 inverse, the longest name, in `tools natural train`:** 0.3714 against 0.3712 (v4 0.4015).
+- **N5, the right tool at the centre of its slate,** is the cue that the request anchor was
+  designed against. N5 itself is within its tolerance in every cell: in `tools hard train` it is
+  0.3763 against a chance of 0.3753. v4 did not compute N5, so this change from v4 is not
+  measured.
+
+**What remains, by group.** Each item gives its size above chance and, where the table by level
+shows it, where it comes from.
+
+- **Intents: R12 inverse in all six judged cells, +0.050 to +0.061.** The cue is made by the
+  widening:
+  - at L0 and L1 the rule ties at chance, since F6 holds there;
+  - at L2, where F6 is dropped, it is right on 0.6896 of 3,853 slates of
+    `intents natural train`, against a chance of 0.3214 (0.6639 of 495 in `intents hard val`).
+
+  A reading, not measured: a right intent with schema-like words lies in a small class of F6, its
+  slate widens to L2, and the distractors drawn there mostly have none.
+
+  The hard cells add R5 (most characters) and N4 inverse; `intents hard val` adds N5 inverse,
+  the *least* central option, the opposite of the cue the anchor was designed against (+0.039,
+  0.0021 above its tolerance).
+- **Tools: N2 (the rarest word) and N3 (the first name) in `tools hard train`, +0.043 and
+  +0.028.** N2 holds at every level (L0 0.4159 against 0.3750, L1 0.4314 against 0.3778), so it
+  comes from the request anchor rather than from the widening. A reading, not measured: the right
+  tool holds a more specific word than the generic tools nearest to the request. In
+  `tools hard val` N2 is +0.048 above chance, within the tolerance of a cell of 1,126 slates.
+- **When2Call: N4 (capitalised words) and N2 in `when2call hard train`, +0.076 and +0.038;
+  N6 in both of the group's "other" families, +0.24.**
+  - In these families the median spread is 0. When a slate's options spread over more than one
+    L0 cell, *none* is right on 0.4410 of them in training (3,052 slates) and 0.4382 on
+    validation (178), against 0.20.
+  - A reading of the construction, not measured: the no-call requests, which are *none*-right,
+    keep their own tools first and exempt (amendment 2, decision 3), and those tools need not
+    share a cell. A tool-right slate's drawn options do share one.
+
+**The sizes next to the shortcut that started this line.**
+
+- **The shortcut.** The published model part picked a rewritten distractor on 0.8311 of the masked
+  validation slates, where chance is 1/7. A rule that never reads the request and picks the fewest
+  words is right on 0.3633 of T2-tools' tool-right slates, against 0.1429: +0.22.
+- **v4.** Its largest failing rule was +0.105 above chance (the fewest characters,
+  `tools hard val`).
+- **v5's pick rules.** Their largest excesses are +0.061 in the intents, +0.043 in the tools and
+  +0.076 in When2Call: between a quarter and a third of the fewest-words cue.
+- **N6.** It is of another size. On When2Call's *none* decision it is +0.24 above the *none* share,
+  as large as the fewest-words cue, though on a different decision.
+
+**The sentences of §11 applied.**
+
+- "**C2 fails.** The surface cell does not make the slates blind. No model is trained, and the
+  table is published. The cue is described as a limit of v2's training data where it is v2's
+  construction."
+  - Every failing cue of v5 is v5's construction. R12 inverse comes from the widening of the cell.
+    The N rules of the hard cells are read on slates anchored on the request, which v2 never
+    built. N6 reads the no-call slates of amendment 2.
+  - None is v2's construction, so no new limit of v2's training data follows from v5. The limits
+    stated after v4 stand unchanged.
+- "**Another N rule fails.** A request-blind cue that the cell does not see remains." This applies
+  to N2, N3 and N4, named with their cells above.
+- **N5 fails only as its inverse,** in one cell (`intents hard val`, 0.0021 above its
+  tolerance). §11's sentence for N5 ("the right tool is the slate's centre in word overlap") does
+  not describe it: there the right tool is the slate's least central option. It is read as another
+  N rule.
+- "**N6 fails.** The spread of a slate's options over the cells tells, without the request, whether
+  *none* is right." The families are When2Call's "other" families in training and validation.
+  There is no remedy.
+
+**What stays valid and can be reused.**
+
+- **The teacher's answers:** 58,984 false-negative answers
+  (`<data>/s6-route/build5/teacher/false-negatives.jsonl`) and the one refused item, with the
+  10,305 answers of v2 that apply by id.
+- **The request embeddings** of the 69,290 training and validation requests
+  (`build5/emb/potion-requests.npy`).
+- **v5's built records and validation files as they stand,** with the table above as their
+  description: `build5/records/`, `build5/val/` (`v5_tools` and its masked and probe copies),
+  the plan and the pools under `build5/stage/`. They are not rebuilt.
+- **The code** of amendment 2.
+- **v4's teacher answers and its latency check.**
+- **Toucan, fetched and unread.** No fresh file was built (T5 does not exist). Its requests have
+  been seen by no system and no person beyond amendment 1 of v4.
+
+**What v5 does not say.** Nothing about a model: none was trained and none was scored. It does not
+say whether a model trained on these slates would use any of the cues the table names, nor whether
+the surface cell and the request anchor would have helped a model on a new family.
+
+**Next.** A sixth version is drafted in `docs/s6-route6-prereg.md`, not frozen. It trains on v5's
+data as built, publishes the data checks without letting them stop the run, and tests the trained
+model in a reading where the request is hidden.

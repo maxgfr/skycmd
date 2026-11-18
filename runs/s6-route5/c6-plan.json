@@ -1,0 +1,975 @@
+{
+ "about": "s6-route v5: C6 at plan time (docs/s6-route5-prereg.md 4.4, amendment 1), no teacher call",
+ "plan": "/Users/maxime/Documents/Code/skycmd-data/s6-route/build5/counts/v5-plan.json",
+ "bar": 0.1,
+ "cells judged from (drawn slates; amendment 2)": 200,
+ "cells": {
+  "records intents hard train": {
+   "counts": {
+    "slates": 28759,
+    "tool-gold slates": 28759,
+    "drawn slates": 24795,
+    "slates by level": [
+     4775,
+     17603,
+     4229,
+     1820,
+     0,
+     170,
+     162
+    ],
+    "drawn slates by level": [
+     3345,
+     15504,
+     3833,
+     1782,
+     0,
+     169,
+     162
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.013349465618068159,
+   "share of the drawn slates at L6 (outside the cell)": 0.006533575317604356,
+   "share of the slates of each level": [
+    0.16603498035397615,
+    0.6120866511352968,
+    0.1470496192496262,
+    0.0632845370144998,
+    0.0,
+    0.005911193017837894,
+    0.005633019228763169
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records intents hard val": {
+   "counts": {
+    "slates": 3511,
+    "tool-gold slates": 3511,
+    "drawn slates": 3008,
+    "slates by level": [
+     737,
+     1985,
+     551,
+     208,
+     0,
+     7,
+     23
+    ],
+    "drawn slates by level": [
+     508,
+     1767,
+     502,
+     201,
+     0,
+     7,
+     23
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.00997340425531915,
+   "share of the drawn slates at L6 (outside the cell)": 0.007646276595744681,
+   "share of the slates of each level": [
+    0.2099117060666477,
+    0.5653659925947023,
+    0.15693534605525492,
+    0.05924238108800912,
+    0.0,
+    0.0019937339789233835,
+    0.006550840216462546
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records intents natural train": {
+   "counts": {
+    "slates": 28759,
+    "tool-gold slates": 28759,
+    "drawn slates": 24708,
+    "slates by level": [
+     4887,
+     17548,
+     4208,
+     1791,
+     0,
+     179,
+     146
+    ],
+    "drawn slates by level": [
+     3315,
+     15532,
+     3795,
+     1742,
+     0,
+     178,
+     146
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.013113161728994658,
+   "share of the drawn slates at L6 (outside the cell)": 0.005909017322324753,
+   "share of the slates of each level": [
+    0.1699294134010223,
+    0.6101742063354081,
+    0.14631941305330506,
+    0.06227615702910393,
+    0.0,
+    0.006224138530546959,
+    0.0050766716506137205
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records intents natural val": {
+   "counts": {
+    "slates": 3511,
+    "tool-gold slates": 3511,
+    "drawn slates": 3015,
+    "slates by level": [
+     768,
+     1939,
+     573,
+     191,
+     0,
+     11,
+     29
+    ],
+    "drawn slates by level": [
+     544,
+     1725,
+     520,
+     186,
+     0,
+     11,
+     29
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.013266998341625208,
+   "share of the drawn slates at L6 (outside the cell)": 0.009618573797678276,
+   "share of the slates of each level": [
+    0.2187410994018798,
+    0.5522643121617773,
+    0.16320136713187125,
+    0.054400455710623755,
+    0.0,
+    0.0031330105383081744,
+    0.008259755055539733
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records intents removed train": {
+   "counts": {
+    "slates": 14380,
+    "tool-gold slates": 0,
+    "drawn slates": 14380,
+    "slates by level": [
+     1652,
+     8849,
+     2333,
+     1316,
+     0,
+     121,
+     109
+    ],
+    "drawn slates by level": [
+     1652,
+     8849,
+     2333,
+     1316,
+     0,
+     121,
+     109
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.015994436717663423,
+   "share of the drawn slates at L6 (outside the cell)": 0.007579972183588317,
+   "share of the slates of each level": [
+    0.1148817802503477,
+    0.6153685674547983,
+    0.16223922114047287,
+    0.09151599443671767,
+    0.0,
+    0.008414464534075104,
+    0.007579972183588317
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records intents removed val": {
+   "counts": {
+    "slates": 1756,
+    "tool-gold slates": 0,
+    "drawn slates": 1756,
+    "slates by level": [
+     274,
+     982,
+     334,
+     136,
+     0,
+     7,
+     23
+    ],
+    "drawn slates by level": [
+     274,
+     982,
+     334,
+     136,
+     0,
+     7,
+     23
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.017084282460136675,
+   "share of the drawn slates at L6 (outside the cell)": 0.013097949886104784,
+   "share of the slates of each level": [
+    0.1560364464692483,
+    0.5592255125284739,
+    0.19020501138952164,
+    0.0774487471526196,
+    0.0,
+    0.003986332574031891,
+    0.013097949886104784
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records intents renamed train": {
+   "counts": {
+    "slates": 28759,
+    "tool-gold slates": 23007,
+    "drawn slates": 28759,
+    "slates by level": [
+     11372,
+     9401,
+     5163,
+     2287,
+     0,
+     0,
+     536
+    ],
+    "drawn slates by level": [
+     11372,
+     9401,
+     5163,
+     2287,
+     0,
+     0,
+     536
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.018637643868006537,
+   "share of the drawn slates at L6 (outside the cell)": 0.018637643868006537,
+   "share of the slates of each level": [
+    0.3954240411697208,
+    0.32688897388643556,
+    0.17952640912410028,
+    0.07952293195173685,
+    0.0,
+    0.0,
+    0.018637643868006537
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records intents renamed val": {
+   "counts": {
+    "slates": 3511,
+    "tool-gold slates": 2809,
+    "drawn slates": 3511,
+    "slates by level": [
+     1288,
+     1054,
+     783,
+     299,
+     0,
+     0,
+     87
+    ],
+    "drawn slates by level": [
+     1288,
+     1054,
+     783,
+     299,
+     0,
+     0,
+     87
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.024779265166619196,
+   "share of the drawn slates at L6 (outside the cell)": 0.024779265166619196,
+   "share of the slates of each level": [
+    0.3668470521219026,
+    0.3001993733978923,
+    0.22301338649957278,
+    0.0851609228140131,
+    0.0,
+    0.0,
+    0.024779265166619196
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools hard train": {
+   "counts": {
+    "slates": 22376,
+    "tool-gold slates": 22376,
+    "drawn slates": 19061,
+    "slates by level": [
+     18693,
+     3260,
+     280,
+     129,
+     14,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     15934,
+     2767,
+     243,
+     107,
+     10,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.835404004290311,
+    0.1456918126564176,
+    0.012513407222023596,
+    0.005765105470146585,
+    0.0006256703611011798,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools hard val": {
+   "counts": {
+    "slates": 1144,
+    "tool-gold slates": 1144,
+    "drawn slates": 979,
+    "slates by level": [
+     29,
+     572,
+     380,
+     85,
+     78,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     24,
+     485,
+     329,
+     73,
+     68,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.025349650349650348,
+    0.5,
+    0.3321678321678322,
+    0.0743006993006993,
+    0.06818181818181818,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools natural train": {
+   "counts": {
+    "slates": 22376,
+    "tool-gold slates": 22376,
+    "drawn slates": 16891,
+    "slates by level": [
+     18773,
+     3168,
+     289,
+     132,
+     14,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     14220,
+     2377,
+     192,
+     92,
+     10,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.8389792634966035,
+    0.14158026456918127,
+    0.012915623882731498,
+    0.005899177690382553,
+    0.0006256703611011798,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools natural val": {
+   "counts": {
+    "slates": 1144,
+    "tool-gold slates": 1144,
+    "drawn slates": 978,
+    "slates by level": [
+     40,
+     543,
+     399,
+     84,
+     78,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     37,
+     475,
+     330,
+     75,
+     61,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.03496503496503497,
+    0.47465034965034963,
+    0.3487762237762238,
+    0.07342657342657342,
+    0.06818181818181818,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools removed train": {
+   "counts": {
+    "slates": 11188,
+    "tool-gold slates": 0,
+    "drawn slates": 11188,
+    "slates by level": [
+     9382,
+     1609,
+     131,
+     61,
+     5,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     9382,
+     1609,
+     131,
+     61,
+     5,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.8385770468358956,
+    0.14381480157311405,
+    0.011708973900607794,
+    0.005452270289595996,
+    0.000446907400786557,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools removed val": {
+   "counts": {
+    "slates": 572,
+    "tool-gold slates": 0,
+    "drawn slates": 572,
+    "slates by level": [
+     16,
+     295,
+     184,
+     38,
+     39,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     16,
+     295,
+     184,
+     38,
+     39,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.027972027972027972,
+    0.5157342657342657,
+    0.32167832167832167,
+    0.06643356643356643,
+    0.06818181818181818,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools renamed train": {
+   "counts": {
+    "slates": 22376,
+    "tool-gold slates": 17901,
+    "drawn slates": 22356,
+    "slates by level": [
+     22279,
+     50,
+     42,
+     5,
+     0,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     22259,
+     50,
+     42,
+     5,
+     0,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.9956649982123704,
+    0.002234537003932785,
+    0.0018770110833035395,
+    0.0002234537003932785,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records tools renamed val": {
+   "counts": {
+    "slates": 1144,
+    "tool-gold slates": 915,
+    "drawn slates": 1144,
+    "slates by level": [
+     1046,
+     66,
+     21,
+     10,
+     0,
+     0,
+     1
+    ],
+    "drawn slates by level": [
+     1046,
+     66,
+     21,
+     10,
+     0,
+     0,
+     1
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0008741258741258741,
+   "share of the drawn slates at L6 (outside the cell)": 0.0008741258741258741,
+   "share of the slates of each level": [
+    0.9143356643356644,
+    0.057692307692307696,
+    0.018356643356643356,
+    0.008741258741258742,
+    0.0,
+    0.0,
+    0.0008741258741258741
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records when2call hard train": {
+   "counts": {
+    "slates": 5048,
+    "tool-gold slates": 4054,
+    "drawn slates": 4272,
+    "slates by level": [
+     4389,
+     309,
+     3,
+     10,
+     0,
+     0,
+     337
+    ],
+    "drawn slates by level": [
+     3664,
+     259,
+     3,
+     9,
+     0,
+     0,
+     337
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.07888576779026217,
+   "share of the drawn slates at L6 (outside the cell)": 0.07888576779026217,
+   "share of the slates of each level": [
+    0.8694532488114105,
+    0.06121236133122029,
+    0.0005942947702060222,
+    0.0019809825673534074,
+    0.0,
+    0.0,
+    0.06675911251980983
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records when2call hard val": {
+   "counts": {
+    "slates": 319,
+    "tool-gold slates": 252,
+    "drawn slates": 262,
+    "slates by level": [
+     280,
+     17,
+     0,
+     0,
+     0,
+     0,
+     22
+    ],
+    "drawn slates by level": [
+     226,
+     14,
+     0,
+     0,
+     0,
+     0,
+     22
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.08396946564885496,
+   "share of the drawn slates at L6 (outside the cell)": 0.08396946564885496,
+   "share of the slates of each level": [
+    0.877742946708464,
+    0.05329153605015674,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.06896551724137931
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records when2call natural train": {
+   "counts": {
+    "slates": 5087,
+    "tool-gold slates": 4054,
+    "drawn slates": 3767,
+    "slates by level": [
+     4440,
+     290,
+     5,
+     12,
+     0,
+     0,
+     340
+    ],
+    "drawn slates by level": [
+     3197,
+     218,
+     4,
+     8,
+     0,
+     0,
+     340
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.09025749933634192,
+   "share of the drawn slates at L6 (outside the cell)": 0.09025749933634192,
+   "share of the slates of each level": [
+    0.8728130528798899,
+    0.05700805976017299,
+    0.000982897582071948,
+    0.0023589541969726755,
+    0.0,
+    0.0,
+    0.06683703558089248
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records when2call natural val": {
+   "counts": {
+    "slates": 311,
+    "tool-gold slates": 252,
+    "drawn slates": 222,
+    "slates by level": [
+     281,
+     17,
+     0,
+     0,
+     0,
+     0,
+     13
+    ],
+    "drawn slates by level": [
+     197,
+     12,
+     0,
+     0,
+     0,
+     0,
+     13
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.05855855855855856,
+   "share of the drawn slates at L6 (outside the cell)": 0.05855855855855856,
+   "share of the slates of each level": [
+    0.9035369774919614,
+    0.05466237942122187,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.04180064308681672
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records when2call renamed train": {
+   "counts": {
+    "slates": 4054,
+    "tool-gold slates": 3243,
+    "drawn slates": 4016,
+    "slates by level": [
+     4050,
+     1,
+     3,
+     0,
+     0,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     4012,
+     1,
+     3,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.9990133201776024,
+    0.000246669955599408,
+    0.0007400098667982239,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "records when2call renamed val": {
+   "counts": {
+    "slates": 252,
+    "tool-gold slates": 202,
+    "drawn slates": 250,
+    "slates by level": [
+     252,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "drawn slates by level": [
+     250,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "val v5_tools.jsonl": {
+   "counts": {
+    "slates": 1144,
+    "tool-gold slates": 915,
+    "drawn slates": 1144,
+    "slates by level": [
+     302,
+     457,
+     256,
+     56,
+     72,
+     1,
+     0
+    ],
+    "drawn slates by level": [
+     302,
+     457,
+     256,
+     56,
+     72,
+     1,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0008741258741258741,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.263986013986014,
+    0.3994755244755245,
+    0.22377622377622378,
+    0.04895104895104895,
+    0.06293706293706294,
+    0.0008741258741258741,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  },
+  "val v5_tools_masked.jsonl": {
+   "counts": {
+    "slates": 1144,
+    "tool-gold slates": 915,
+    "drawn slates": 1144,
+    "slates by level": [
+     302,
+     457,
+     256,
+     56,
+     72,
+     1,
+     0
+    ],
+    "drawn slates by level": [
+     302,
+     457,
+     256,
+     56,
+     72,
+     1,
+     0
+    ]
+   },
+   "judged": true,
+   "share of the drawn slates at L5 or L6": 0.0008741258741258741,
+   "share of the drawn slates at L6 (outside the cell)": 0.0,
+   "share of the slates of each level": [
+    0.263986013986014,
+    0.3994755244755245,
+    0.22377622377622378,
+    0.04895104895104895,
+    0.06293706293706294,
+    0.0008741258741258741,
+    0.0
+   ],
+   "bar": 0.1,
+   "above the bar": false,
+   "fails": false
+  }
+ },
+ "verdict": {
+  "C6 fails": [],
+  "exit": 0,
+  "meaning": [
+   "C6 holds at plan time in every judged cell: the false-negative job may run (amendment 1, decision 1)."
+  ]
+ }
+}
