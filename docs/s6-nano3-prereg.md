@@ -188,3 +188,58 @@ v3 was designed after v2's test was read, from an exploratory reading of v2's te
 - **The reading of v2's result block is not what the data show.** v2 read its names-masked number as a lost binding between each BM25 entry and its option's distinctive name; the published card of `s6-route-nano` repeats it as "one reading, not tested". Under `tool_<k>` names the model part does not read the BM25 line at all (shifting the line by one entry: 0.9489 against 0.9498 on the renamed validation records). It answers from the style of the descriptions. The disclosure of §7, "the system needs distinctive tool names", stays true, and §6 announced the names-masked failure before the reading.
 - **What it means for a user of the published files.** The accuracy read under real names stands: 0.8868 on T2-tools. Under uninformative names (`tool_1`, `tool_2`, …) the pair is worse than its embedding part alone: 0.2497 against 0.7280 on the names-masked T2-tools, so on such tool lists the embedding file alone routes better than the two files together. Under such names a distractor whose description reads like a polished rewrite attracts the model part (0.8311 above, on validation). **Under real names the diagnosis did not measure this**: whether a polished distractor description attracts the model part, or the pair, when the names are distinctive is not measured.
 - **A cue in the fresh files, measured afterwards** (`docs/s6-route4-study.md` §7, 17/11/2026; no model was run: the option texts and target positions of the already-read files were counted, and no system's output on a fresh file was read). In a slate built by v2's rule, the right tool's description is shorter, more often imperative and more often without a final period than the random fill. On T2-tools a rule that never reads the request and picks the option with the fewest words is right on 0.3633 of the slates whose answer is a tool, against a chance of 1/7 (+0.2205, 95% interval [+0.1885, +0.2524]), and the shortest in characters on 0.3849; on v2's T-tools 0.2439, on the validation slates 0.2550. It says nothing about *none*. BM25 and the embedding part compare each option with the request and cannot use such a preference (BM25's length normalisation favours a short option only when it holds the request's words); the trained model part could. So the pair's 0.8868 against BM25's 0.8169 was read on slates where only the pair could use a request-blind cue that points at the right tool. On the validation slates, where the published outputs allow the check, the pair's advantage over BM25 is not concentrated where the rule is right (+0.0213 [−0.0081, +0.0507] on those 188 slates, +0.0248 [+0.0058, +0.0438] on the 727 others; its largest gain is on the slates where *none* is right). On T2-tools that split was not computed: whether the advantage leans on the cue there is not measured. No number and no verdict changes.
+
+**Note of 18/11/2026: the request-blind reading of the published files**
+(`docs/s6-route6-prereg.md` §9.1, after v6's freeze and before its training; a reported reading
+of files already read, nothing of v6 depends on it). No number and no verdict of this file
+changes.
+
+**What was read.**
+
+- **The systems.** The published model part (`site/public/models/s6-route-nano.gguf`, v2's line
+  rendering) and the published pair (with `site/public/models/s6-route-embed.gguf`, β 0.81,
+  τ_ask 0.671047), with the pair's embedding part alone beside them.
+- **The files.** `v_tools` and `v_tools_masked` (1,144 validation slates each, 915 of them with a
+  tool right), and T2-tools and its masked copy (945 fresh slates each, 756 with a tool right).
+- **How.** Each slate had its request replaced by the placeholder `?`. That is a request that
+  matches no option, so every BM25 score in the model part's state is 0.00 and the ranks are the
+  positions. The embedding part read `?` too.
+- **What is counted.** The blind accuracy is the share of tool-right slates on which the system's
+  top option among the tool options (*none* left out) is the right tool. Chance is c = 1/7 =
+  0.1429. The blind *none* gap is the *none* answers on *none*-right slates minus those on
+  tool-right slates.
+- **The intervals.** 95%, slates resampled; on T2-tools, clusters resampled too, as v3.
+
+The script is `scripts/route6-diagnostic.sh`, and the numbers are in
+`runs/s6-route6/diagnostic.json` and `.md`.
+
+| file | the model part | the pair | blind *none* gap, model part / pair |
+|---|---:|---:|---:|
+| `v_tools` | 0.1257 [0.1043, 0.1472] | 0.1104 [0.0906, 0.1310] | +0.0085 [−0.0529, +0.0747] / +0.0461 [−0.0066, +0.0969] |
+| `v_tools_masked` | 0.0787 [0.0615, 0.0959] | 0.0699 [0.0546, 0.0864] | no *none* answer from either |
+| T2-tools | 0.1310 [0.1078, 0.1563]; clusters [0.0776, 0.1847] | 0.1402 [0.1158, 0.1658]; clusters [0.0658, 0.2311] | −0.0225 [−0.0905, +0.0418] / +0.0119 [−0.0204, +0.0432] |
+| T2-tools masked | 0.0489 [0.0341, 0.0645] | 0.0503 [0.0346, 0.0655] | no *none* answer from either |
+
+**What the numbers mean.**
+
+- **The tool options.** Shown a slate without its request, in the format it was trained on,
+  neither the published model part nor the pair picks the right tool among the tools more often
+  than chance. That holds with real names and with masked names, on validation and on T2-tools.
+  Every interval holds 1/7 or lies below it, and under masked names both pick the right tool
+  less often than chance.
+- **The cue of `docs/s6-route4-study.md` §7.** The pair's blind picks on T2-tools are the slate's
+  fewest-words option on 0.1548, near chance. That is the cue that rule follows; it is right on
+  0.3633 of those slates.
+- **The blind *none* gap.** Without the request, neither system's *none* answer depends on
+  whether *none* is right: every gap's interval holds zero. Under masked names neither answers
+  *none* at all.
+- **The bare reading (B1), the options with no score and no state line, reported.** This is a
+  format the model part never met in training. It reads as follows:
+  - on `v_tools` it is at 0.0951, below chance;
+  - on T2-tools it picks the right tool on 0.2632, slates [0.2316, 0.2945] and clusters
+    [0.1376, 0.3891]: above chance on the slate interval, while the cluster interval holds 1/7.
+
+  The model part's blind preference therefore depends on the format it is read in, and the B0
+  reading is the one in its training format.
+- **The limit.** These readings measure what the systems do when the request says nothing. They
+  do not measure a cue used jointly with the request.

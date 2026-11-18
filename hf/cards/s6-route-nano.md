@@ -142,6 +142,7 @@ among answered requests at τ_ask with coverage ≥ 0.70 is not met (0.9433 at c
   weak: below potion-cos on every other source (MetaTool, CLINC150, tool-routing-data, When2Call,
   the held-out MASSIVE scenarios, and BFCL by little, 0.7205 against 0.7250, where BM25 is at
   0.8295).
+- **Read with the request hidden** (18/11/2026, files already read; [diagnostic](https://github.com/maxgfr/skycmd/blob/main/runs/s6-route6/diagnostic.md)): with the request replaced by `?` and a BM25 line of zeros, it picks the right tool among the tools on 0.1257 [0.1043, 0.1472] of `v_tools` and 0.1310 [0.1078, 0.1563] of T2-tools (clusters [0.0776, 0.1847]), against a chance of 0.1429, and below chance under masked names (0.0787 and 0.0489), with blind *none* gaps of +0.0085 [−0.0529, +0.0747] and −0.0225 [−0.0905, +0.0418]: in its own format it does not answer from the options alone; with the options bare (no score, no line, a format it never saw) it is at 0.2632 [0.2316, 0.2945] on T2-tools (clusters [0.1376, 0.3891]), so its blind preference depends on the format, and none of these readings measures a cue used together with the request.
 
 ## How to ask it
 
