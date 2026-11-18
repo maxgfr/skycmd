@@ -41,6 +41,8 @@
     "task": "general",
     "full_depth": true,
     "gate": "passed",
+    "gate_note": "0.480 on the typed-decisions bench, above the majority class (0.398) that its gate asked it to beat, an ECE of 0.0479 (guard 0.08) and no game more than 5% below s3-pico. A constant answer per task passes this gate too: answering each question with its most common training answer scores 0.4815",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s6-s6-nano-s6-micro-general-purpose-decisions-and-games-pre-registered",
     "params": 1486225,
     "bytes": 715136,
     "file": "s6-nano.gguf"
@@ -65,6 +67,8 @@
     "task": "secrets",
     "full_depth": true,
     "gate": "passed",
+    "gate_note": "On its synthetic bench, from our own generator, it beat a gitleaks-style rule scanner: secret 0.9990 against 0.977, service 0.9795 against 0.787. Measured after publication on 719 real files with no secret, it flags 59.8% of them at p ≥ 0.9: it is not a scanner, do not use it on real files",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-secrets-pico-api-key-and-secret-detection-pre-registered",
     "params": 445345,
     "bytes": 250272,
     "file": "s6-secrets-pico.gguf"

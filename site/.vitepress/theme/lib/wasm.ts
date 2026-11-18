@@ -76,11 +76,12 @@ export interface ModelEntry {
   task?: string
   /** Published at full depth: the file's exit thresholds are 1, so early exit is off. */
   full_depth?: boolean
-  /** The pre-registered gate of the model, for the s6 models: `passed`, or `failed`, in which case
-   * its file is published as a result, not for use (owner's decision of 15/11/2026). Every list
-   * says so, and no picker selects a failed model by default. */
+  /** The gate of the model, fixed before it was trained (the s6 models and s4-micro): `passed`, or
+   * `failed`, in which case its file is published as a result, not for use (owner's decision of
+   * 15/11/2026). Every list says so, and no picker selects a failed model by default. Absent for a
+   * model published without a gate. The verdict notice (lib/gate.ts) shows both verdicts. */
   gate?: 'passed' | 'failed'
-  /** The gate and the numbers, in one line (shown next to a failed model). */
+  /** The gate and the numbers, in one line (the verdict notice's note, with no final period). */
   gate_note?: string
   /** Where the result is written (a section of BENCH.md). */
   gate_url?: string

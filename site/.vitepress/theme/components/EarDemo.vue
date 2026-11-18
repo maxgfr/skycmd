@@ -9,7 +9,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { engineLabel, formatInt, isFailed, loadManifest, loadWasm, type ModelEntry, type WasmEngine } from '../lib/wasm'
+import { gateNotice } from '../lib/gate'
 import { formatSize } from '../lib/size'
+import GateNotice from './GateNotice.vue'
 
 const RATE = 16000
 const WINDOW = 163840 // 128 frames of 80 ms = 10.24 s
@@ -60,6 +62,8 @@ const SAMPLES = [
 ]
 
 const entry = ref<ModelEntry | null>(null)
+/** The verdict notice of the model (lib/gate.ts). */
+const verdict = computed(() => gateNotice(entry.value, entry.value?.name))
 const engine = ref<WasmEngine | null>(null)
 const status = ref('Loading…')
 const error = ref('')
@@ -312,11 +316,7 @@ onBeforeUnmount(() => {
       <a href="https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md">pre-registered gates</a>.
     </p>
     <template v-else>
-      <p v-if="isFailed(entry)" class="ear-failed">
-        <strong>{{ entry!.name }} failed its pre-registered gate: published as a result, not for use.</strong>
-        <template v-if="entry!.gate_note"> {{ entry!.gate_note }}.</template>
-        <template v-if="entry!.gate_url"> <a :href="entry!.gate_url">The result</a>.</template>
-      </p>
+      <GateNotice v-if="verdict" :notice="verdict" class="ear-verdict" />
       <p class="ear-status">{{ status }}</p>
       <div class="ear-controls">
         <button :disabled="!engine" @click="running === 'mic' ? stop() : startMic()">
@@ -372,7 +372,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .ear { border: 1px solid var(--vp-c-divider); border-radius: 8px; padding: 16px; margin: 16px 0; }
 .ear-note { margin: 0; }
-.ear-failed { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; background: var(--vp-c-danger-soft); }
+.ear-verdict { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; }
 .ear-status { margin: 0 0 12px; color: var(--vp-c-text-2); font-size: 0.9em; }
 .ear-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .ear-controls button {

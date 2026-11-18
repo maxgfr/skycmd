@@ -2,9 +2,10 @@
 // A Hugging Face Space for one skycmd model. `space.json`, shipped next to the page, names the
 // model and the demos to show; the model file and the wasm module are part of the Space, and
 // everything runs in the browser.
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import EarDemo from '../.vitepress/theme/components/EarDemo.vue'
 import ForecastView from '../.vitepress/theme/components/ForecastView.vue'
+import GateNotice from '../.vitepress/theme/components/GateNotice.vue'
 import LiveDecide from '../.vitepress/theme/components/LiveDecide.vue'
 import LiveProof from '../.vitepress/theme/components/LiveProof.vue'
 import MemoryDemo from '../.vitepress/theme/components/MemoryDemo.vue'
@@ -12,6 +13,7 @@ import PlayGame from '../.vitepress/theme/components/PlayGame.vue'
 import RouterDemo from '../.vitepress/theme/components/RouterDemo.vue'
 import SecretsVerifyDemo from '../.vitepress/theme/components/SecretsVerifyDemo.vue'
 import TurnDemo from '../.vitepress/theme/components/TurnDemo.vue'
+import { gateNotice } from '../.vitepress/theme/lib/gate'
 import { loadManifest } from '../.vitepress/theme/lib/wasm'
 
 interface SpaceConfig {
@@ -33,8 +35,9 @@ interface SpaceConfig {
   notes?: string[]
   /** Game shown first (game Spaces): flappy, rescue, dodge or doom. */
   game?: string
-  /** The model's pre-registered gate (from the manifest). A failed model's Space opens with a
-   * notice that says so, with the numbers and the link to the result. */
+  /** The model's pre-registered gate (from the manifest). The Space of a model with a gate opens
+   * with a notice that gives its verdict, passed or failed, with the numbers and the link to the
+   * result; a model published without a gate has none. */
   gate?: 'passed' | 'failed'
   gate_note?: string
   gate_url?: string
@@ -45,6 +48,8 @@ const failed = ref('')
 /** A game Space whose model also answers free-text questions (manifest `task: general`, s6-nano). */
 const general = ref(false)
 const SITE = 'https://maxgfr.github.io/skycmd'
+/** The verdict notice, first in the header (lib/gate.ts). */
+const verdict = computed(() => gateNotice(cfg.value))
 
 const DECISION = [
   {
@@ -114,11 +119,7 @@ onMounted(async () => {
     <template v-else-if="cfg">
       <header>
         <h1>{{ cfg.title }}</h1>
-        <p v-if="cfg.gate === 'failed'" class="space-failed">
-          <strong>Failed its pre-registered gate: published as a result, not for use.</strong>
-          <template v-if="cfg.gate_note"> {{ cfg.gate_note }}.</template>
-          <template v-if="cfg.gate_url"> <a :href="cfg.gate_url">The result</a>.</template>
-        </p>
+        <GateNotice v-if="verdict" :notice="verdict" class="space-verdict" />
         <p class="tagline">{{ cfg.tagline }}</p>
         <p class="links">
           <a :href="cfg.model_repo">Model card</a> ·

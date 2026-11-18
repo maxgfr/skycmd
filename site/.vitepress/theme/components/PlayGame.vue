@@ -21,7 +21,9 @@ import {
   type SkyWeb,
   type WasmEngine,
 } from '../lib/wasm'
+import { gateNotice } from '../lib/gate'
 import { formatSize } from '../lib/size'
+import GateNotice from './GateNotice.vue'
 
 const GAMES: { kind: GameKind; title: string; blurb: string }[] = [
   {
@@ -142,6 +144,8 @@ let runner: GameRunner | null = null
 
 const game = computed(() => GAMES.find((g) => g.kind === kind.value)!)
 const selectedEntry = computed(() => models.value.find((m) => m.file === selected.value) ?? null)
+/** The verdict notice of the selected model, passed or failed (none without a gate). */
+const verdict = computed(() => gateNotice(selectedEntry.value, selectedEntry.value?.name))
 const selectedFamily = computed<Family | null>(() => (selectedEntry.value ? familyOf(selectedEntry.value) : null))
 /** The models trained on the current game: the others would play it at random. */
 const playable = computed(() => models.value.filter((m) => playsGame(m, kind.value)))
@@ -420,11 +424,7 @@ function pct(p: number) {
     <p v-if="status" class="status">{{ status }}</p>
     <p v-else-if="oracleOn && !error" class="status">No model loaded: the game's coded oracle is playing (it reads the full simulator).</p>
     <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="mode === 'ai' && engine && isFailed(selectedEntry)" class="failed">
-      <strong>{{ selectedEntry!.name }} failed its pre-registered gate: published as a result, not for use.</strong>
-      <template v-if="selectedEntry!.gate_note"> {{ selectedEntry!.gate_note }}.</template>
-      <template v-if="selectedEntry!.gate_url"> <a :href="selectedEntry!.gate_url">The result</a>.</template>
-    </p>
+    <GateNotice v-if="mode === 'ai' && engine && verdict" :notice="verdict" class="verdict" />
 
     <div class="layout">
       <div
@@ -659,12 +659,11 @@ function pct(p: number) {
 .ghost:hover {
   border-color: var(--vp-c-brand-1);
 }
-.failed {
+.verdict {
   margin: 8px 0 0;
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 14px;
-  background: var(--vp-c-danger-soft);
 }
 .status,
 .error {

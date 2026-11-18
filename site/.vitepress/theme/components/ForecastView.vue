@@ -24,7 +24,9 @@ import {
   type WasmForecaster,
 } from '../lib/forecast'
 import { formatInt } from '../lib/wasm'
+import { gateNotice, type GateNotice as Notice } from '../lib/gate'
 import { formatSize } from '../lib/size'
+import GateNotice from './GateNotice.vue'
 
 type ModelKey = 's6-cast2-pico' | 's6-cast-pico' | 'TinyCast' | 'Timestral-5M' | 'Seasonal naive'
 
@@ -76,6 +78,10 @@ const shownKeys = computed(() => MODEL_KEYS.filter((k) => !isCast(k) || !!entryO
 const failedOf = (k: ModelKey) => entryOf(k)?.gate === 'failed'
 /** The listed forecasters that failed their gate (published as results, not for use). */
 const failedEntries = computed(() => MODEL_KEYS.filter(failedOf).map((k) => entryOf(k)!))
+/** Their notices (lib/gate.ts), each saying that the model starts unticked. */
+const failedNotices = computed(() =>
+  failedEntries.value.map((e) => gateNotice(e, e.name, 'It starts unticked; tick it to see how it forecasts.') as Notice),
+)
 
 /** The full series of the selected source. */
 const series = computed<number[]>(() => {
@@ -341,11 +347,7 @@ function latency(us: number): string {
 
 <template>
   <div class="forecast">
-    <p v-for="e in failedEntries" :key="e.name" class="failed">
-      <strong>{{ e.name }} failed its pre-registered gate: published as a result, not for use.</strong>
-      <template v-if="e.gate_note"> {{ e.gate_note }}.</template> It starts unticked; tick it to see how it forecasts.
-      <template v-if="e.gate_url"> <a :href="e.gate_url">The result</a>.</template>
-    </p>
+    <GateNotice v-for="n in failedNotices" :key="n.lead" :notice="n" class="verdict" />
     <div class="toolbar">
       <label class="field">
         <span>Series</span>
@@ -575,12 +577,11 @@ input.seed {
   color: var(--vp-c-danger-1);
   border-color: var(--vp-c-danger-1);
 }
-.failed {
+.verdict {
   margin: 0 0 12px;
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 14px;
-  background: var(--vp-c-danger-soft);
 }
 .key {
   display: inline-block;

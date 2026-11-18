@@ -20,13 +20,13 @@ import {
   formatInt,
   formatMicros,
   gateSuffix,
-  isFailed,
   loadEngine,
   loadManifest,
   questionModels,
   type ModelEntry,
   type WasmEngine,
 } from '../lib/wasm'
+import { gateNotice } from '../lib/gate'
 import { formatSize } from '../lib/size'
 import { DEMO_CASES, type DemoCase } from '../lib/demo-cases'
 import {
@@ -37,6 +37,7 @@ import {
   type SecretQuestion,
   type SecretQuestionId,
 } from '../lib/s6-cases'
+import GateNotice from './GateNotice.vue'
 
 type Mode = 'playground' | 'tools' | 'triage' | 'guard' | 's6' | 'secrets'
 type QT = 'choice' | 'score' | 'noul'
@@ -92,6 +93,8 @@ const adaptive = ref(true)
 
 const models = ref<ModelEntry[]>([])
 const model = ref<ModelEntry | null>(null)
+/** The verdict notice of the selected model, passed or failed (none without a gate). */
+const verdict = computed(() => gateNotice(model.value, model.value?.name))
 const engine = ref<WasmEngine | null>(null)
 const status = ref('Loading the model…')
 const answer = ref<Answer | null>(null)
@@ -358,11 +361,7 @@ function caseLabel(c: DemoCase) {
       <span v-else-if="model && model.full_depth" class="live-note">full depth, as published</span>
     </div>
 
-    <p v-if="model && isFailed(model)" class="live-banner live-failed">
-      <strong>{{ model.name }} failed its pre-registered gate: published as a result, not for use.</strong>
-      <template v-if="model.gate_note"> {{ model.gate_note }}.</template>
-      <template v-if="model.gate_url"> <a :href="model.gate_url">The result</a>.</template>
-    </p>
+    <GateNotice v-if="verdict" :notice="verdict" class="live-banner" />
 
     <p v-if="lang === 'fr'" class="live-banner">
       s5 est un petit modèle anglais ; il n'a pas de version française, voir
@@ -706,9 +705,6 @@ function caseLabel(c: DemoCase) {
 }
 .live-safe {
   background: var(--vp-c-tip-soft);
-}
-.live-failed {
-  background: var(--vp-c-danger-soft);
 }
 .live-cards {
   display: grid;

@@ -31,7 +31,10 @@ paragraph the Space's README prints first (s6-route: its disclosure).
 
 A model whose manifest entry has `"gate": "failed"` failed its pre-registered gate and is
 published as a result (owner's decision of 15/11/2026): its card says so in its first lines, and
-its Space opens with the same notice (space.json `gate`, `gate_note`, `gate_url`).
+its Space opens with the same notice (space.json `gate`, `gate_note`, `gate_url`). The Space of a
+model whose entry has `"gate": "passed"` opens with a notice of the same structure that says it
+passed (its README too, unless the entry of hf/spaces.json has a `readme_notice`); a model with
+no `gate` was published without one and gets no verdict notice.
 """
 import argparse
 import json
@@ -50,6 +53,9 @@ def space_readme(user: str, s: dict, entry: dict) -> str:
     failed = f"{s['readme_notice']}\n\n" if s.get("readme_notice") else ""
     if entry.get("gate") == "failed":
         failed = (f"**Failed its pre-registered gate: published as a result, not for use.** "
+                  f"{entry.get('gate_note', '')}. [The result]({entry.get('gate_url', '')}).\n\n")
+    elif entry.get("gate") == "passed" and not failed:
+        failed = (f"**Passed its pre-registered gate.** "
                   f"{entry.get('gate_note', '')}. [The result]({entry.get('gate_url', '')}).\n\n")
     return f"""---
 title: {m}
