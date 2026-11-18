@@ -67,6 +67,14 @@ path_of() {
     f_tools | f_tools_masked) echo "$data/build/fresh/$1.jsonl" ;;
   esac
 }
+# split_of <name>: the split its records carry, which sky-eval reads (--split; its default is
+# test): `val` for v_tools, `fresh` for T2-tools, as v3's reading passed it (scripts/route-eval3.sh)
+split_of() {
+  case "$1" in
+    v_tools | v_tools_masked) echo val ;;
+    f_tools | f_tools_masked) echo fresh ;;
+  esac
+}
 
 if [ "$dry" != 1 ]; then
   kb=$(df -Pk "$data" | awk 'NR == 2 { print $4 }')
@@ -86,13 +94,14 @@ fi
 
 for f in "${files[@]}"; do
   src=$(path_of "$f")
+  split=$(split_of "$f")
   open=()
   case "$f" in f_*) open=(--open runs/s6-nano3/FRESH-OPEN) ;; esac
   x "$D" route blind --in "$src" --out "$out/$f" --placeholder "$runs/placeholder.json" --render bm25-line \
     ${open[@]+"${open[@]}"}
-  x "$B/sky-eval" "$model" --records "$out/$f.blind.model.jsonl" --split val --max 100000 --exit-threshold 1.0 \
+  x "$B/sky-eval" "$model" --records "$out/$f.blind.model.jsonl" --split "$split" --max 100000 --exit-threshold 1.0 \
     --dump-probs "$out/$f.blind.dump.jsonl" --json "$out/$f.blind.eval.json"
-  x "$B/sky-eval" "$model" --records "$out/$f.blind-bare.model.jsonl" --split val --max 100000 --exit-threshold 1.0 \
+  x "$B/sky-eval" "$model" --records "$out/$f.blind-bare.model.jsonl" --split "$split" --max 100000 --exit-threshold 1.0 \
     --dump-probs "$out/$f.blind-bare.dump.jsonl" --json "$out/$f.blind-bare.eval.json"
   x "$B/sky-route" fuse --model "$model" --embed "$embed" --slates "$out/$f.blind.jsonl" --out "$out/pair_$f.blind.jsonl"
 done
