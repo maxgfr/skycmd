@@ -131,9 +131,13 @@ not validate: our port with flip reads 0.8576 / 0.6822 where 0.880 / 0.722 are p
   `us_births/M/short` (1.572) and `m4_hourly/H/short` (1.513).
 - **On Chronos-ZS**, which its design never read, it beats the seasonal naive and stays behind the
   port on both metrics.
-- **Not reported:** the coverage by quantile level and the window-level diagnostics that the
-  pre-registration promised. They are computed from per-window forecast dumps, which were removed
-  after scoring to free disk space; `sky-cast-eval run` rebuilds them from this file.
+- **Per window** (reported, not gated; computed on 18/11/2026 from forecast dumps rebuilt with
+  `sky-cast-eval run` after they had been removed to free disk space, and checked to give back the
+  published scores exactly). Coverage of the 80% interval: 0.800 at the short term, 0.578 at the
+  medium and 0.522 at the long (the port 0.819, 0.643, 0.547), so its intervals are too narrow
+  beyond the short term. Its scaled error is 1.07 to 1.27 times the port's at every tenth of the
+  horizon, and 1.12 to 1.20 times it whether or not a period is detected in the history: the loss
+  to the port is spread over every lead time and every kind of window.
 
 ## Size and speed
 
