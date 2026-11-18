@@ -20,6 +20,7 @@ import {
   Tally,
   argmax,
   askLine,
+  episodeLine,
   formatInterval,
   formatShare,
   frameLine,
@@ -115,6 +116,13 @@ test('the words of a frame', () => {
 function probe(file: string): { passes: number; memory: boolean; score: number; buckets: number[] }[] {
   return JSON.parse(readFileSync(join(runs, file), 'utf8'))
 }
+
+test('the episode line gives its total once', () => {
+  assert.equal(episodeLine(0, 0, 8, false), 'This episode asks 8 questions')
+  assert.equal(episodeLine(1, 1, 8, false), 'This episode so far: 1 of 1 question right (it asks 8 in all)')
+  assert.equal(episodeLine(2, 3, 8, false), 'This episode so far: 2 of 3 questions right (it asks 8 in all)')
+  assert.equal(episodeLine(4, 8, 8, true), 'This episode: 4 of 8 questions right')
+})
 
 test('the test numbers of the published files are the ones of their result files', () => {
   const sleep = probe('test/sleep-s0/recall.json')

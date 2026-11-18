@@ -148,6 +148,16 @@ export function askLine(f: Frame): string {
   return `door ${f.door} was shown ${f.delay} ${frames} earlier (delay bucket ${BUCKET_LABELS[f.bucket]})`
 }
 
+/** The score line of the episode being played: its total once, at the end ("4 of 8 questions
+ * right"), and before it how many questions were asked so far and how many the episode holds. */
+export function episodeLine(right: number, asked: number, planned: number, finished: boolean): string {
+  const q = (n: number) => (n === 1 ? 'question' : 'questions')
+  if (!finished && asked === 0) return `This episode asks ${planned} ${q(planned)}`
+  return finished
+    ? `This episode: ${right} of ${asked} ${q(asked)} right`
+    : `This episode so far: ${right} of ${asked} ${q(asked)} right (it asks ${planned} in all)`
+}
+
 /** The index of the largest probability (the first on ties, as the probe plays it). */
 export function argmax(p: number[]): number {
   let b = 0

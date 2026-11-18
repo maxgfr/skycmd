@@ -29,6 +29,7 @@ import {
   TEST_SEED0,
   Tally,
   askLine,
+  episodeLine,
   formatInterval,
   formatShare,
   frameLine,
@@ -370,9 +371,8 @@ const testNote = computed(() => TEST_SEED0.sleep[batchPasses.value])
             The episode has {{ frames.length }} frames and {{ plannedAsks }} questions. Press “Next frame” or “Play”.
           </p>
           <p class="mem-meta">
-            This episode: {{ episodeRight }} of {{ episodeAsks.length }} questions right so far
-            <template v-if="finished"> (of {{ plannedAsks }})</template>; a model without memory is right about one time
-            in four.
+            {{ episodeLine(episodeRight, episodeAsks.length, plannedAsks, finished) }}; a model without memory is right
+            about one time in four.
           </p>
         </div>
       </section>

@@ -86,7 +86,7 @@ export default defineConfig({
           { text: 'Live: your own questions', link: '/live/' },
           { text: 'Router: pick a tool', link: '/router/' },
           { text: 'Forecast: time series', link: '/forecast/' },
-          { text: 'Listen: audio (failed gate)', link: '/ear/' },
+          { text: 'Listen: audio', link: '/ear/' },
           { text: 'Secrets verifier (failed gate)', link: '/secrets-verify/' },
           { text: 'Memory (failed gate)', link: '/memory/' },
         ],
