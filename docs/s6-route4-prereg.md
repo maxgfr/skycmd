@@ -528,3 +528,127 @@ model. v4's training, validation and test slates are built against it (D7, §6.2
 lead).** §10, "The bar against MiniLM is relaxed": "the one family outside its training families
 that v3 read" became "the one tool family outside its training families that v3 read" (v3 also
 read CLINC150 and MASSIVE, which are intent sets, not tool lists). Nothing else changes.
+
+**Amendment 1 (18/11/2026, decided by the lead, before any computation of v4: no data of v4
+built, no teacher call, no model trained, no fresh file built and no system scored on a Toucan
+row).** It replaces what the pinned files or the frozen tolerances could not do, and fixes the
+readings of the code before anything runs. Only the files' structure was read to write it
+(`sky-data route toucan-schema`, which prints no text; and `toucan-rows` and `toucan-stage`
+into a scratch folder outside the data folder, whose outputs were counted, not read, and
+deleted).
+
+1. *Toucan's row source (§6.1).* The pinned SFT config (`SFT/train-0000{0,1,2}-of-00003.parquet`
+   at `0df3cf37`, 425,496,735 bytes, fetched and checked against the Hub's hashes on 18/11/2026,
+   `<data>/MANIFEST4.json`) has **no `metadata` column and no server column**. Facts read from
+   the files:
+   - 119,287 rows (39,763, 39,762 and 39,762; 40 row groups each); six columns, every one a UTF-8
+     string: `uuid`, `subset_name`, `question`, `target_tools`, `tools`, `messages`. The
+     119,287 uuids are distinct.
+   - `subset_name`: `irrelevant` 40,000; `multi-turn` 35,243; `single-turn-original` 28,254;
+     `single-turn-diversify` 15,790.
+   - `target_tools` is one string of comma-separated tool names. In the two single-turn subsets:
+     one target on 26,138 rows (16,480 and 9,658), two on 13,677, three on 4,217, four on 11,
+     five on 1.
+   - `tools` is a JSON string: the list of the row's tools, each
+     `{type, function: {name, description, parameters}}` (287 distinct shapes, all of this form;
+     1 to more than 50 tools a row). Each listed name is `<server>-<tool>`: a server's slug, a
+     hyphen, and the name `target_tools` uses. Of the 26,138 one-target rows, the target equals
+     no listed name exactly (0 rows). It is the end `-<target>` of exactly one listed name on
+     26,134 rows; the 4 others write their target `Server::Tool`. On the 26,134 rows every tool
+     of the list carries the same prefix.
+   - The prefix gives **321 distinct servers**, with 340 distinct tool lists (sha256 of the
+     sorted names); 14 servers appear with more than one list, and no list belongs to two
+     servers. The 26,134 rows list 1,770 distinct tools (name and cut description); 198
+     key-like strings are masked in their descriptions.
+
+   The rule that replaces "as listed in the row's server metadata":
+   - A row qualifies when it is of `single-turn-original` or `single-turn-diversify`, its
+     `target_tools` holds exactly one name (after the whitespace rule of `cut_description`'s
+     `collapse_ws`), and exactly one tool of the row's own `tools` list is named
+     `<prefix>-<that name>`. Its right tool is that tool. Every other row is dropped and counted.
+   - **The server of a row is that prefix** (the case where a server identity can be derived
+     holds). It is the server of the 40-per-server cap (§6.2, item 3), of "the other tools of its
+     server" (§6.2, item 5) and of the bootstrap that resamples servers (§7, the headline of §8).
+   - A tool is shown as `target_tools` names it, its server's prefix removed, with
+     `function.description` cut by `cut_description` and key-like strings masked. The prefix is
+     left out because it is not the tool's own name and would be a request-blind cue: in a slate
+     whose distractors come first from the gold's own server, the prefix of the slate's majority
+     would point at the gold's server.
+   - Toucan's tools, for the clusters among themselves, the random fill, the surface cells and
+     their length quintiles, are the 1,770 tools of the qualifying rows' lists.
+   - The parser stops, with the row's uuid, on a row whose `tools` is not such a list, on a tool
+     of a qualifying row without its server's prefix, and on a repeated uuid
+     (`sky-data route toucan-rows`).
+
+   Everything else of §6 stands: the cluster rule against v2's tools, the deduplication, the caps
+   of 10 per gold cluster and 40 per server, the 2,000 slates, the 600-slate floor, the
+   within-cell fill, the *none* rule, the probe copies, the hashes. The counts and the
+   request-blind rules on the built files go into a later amendment, before any scoring (§6.3).
+
+2. *C1's tolerance (§4.4).* The frozen bars (0.01 in a cell of at least 1,000 tool-gold slates,
+   0.03 elsewhere) fail on chance alone under D1's independent draws. In a cell of about 1,100
+   slates the difference of the two rates has a standard deviation of about 0.017, so 0.01 fails
+   about 56% of such cells. A cell of about 230 slates against 0.03 fails about 40%. They are
+   replaced, before any data is built, by:
+   - in every judged cell, each of the two rates, P(rewritten | right tool) over its n right
+     tools and P(rewritten | other tool option) over its n other tool options, satisfies
+     |rate − 0.5| ≤ 3 × √(0.25 / n);
+   - over the tool-gold slates of every record cell pooled, both rates are within 0.01 of 0.5.
+
+   The cells read for C1 are the (group, kind, split) cells of the records that have tool-gold
+   slates: three groups, two splits and three kinds (natural, hard, renamed), **18 cells**, 36
+   rates. At 3 standard errors a fair rate fails with probability 0.0027. If all 18 cells are
+   judged (each has at least 200 tool-gold slates), the chance of at least one spurious failure
+   is 1 − (1 − 0.0027)^36 ≈ **0.093** (≈ 0.047 if only one rate per cell were read). The pooled
+   bar is about 7 standard errors of the pooled rate of right tools (about 150,000 of them), so
+   it does not fail by chance. The rate, its spread and z of the difference stay reported per
+   cell (`scripts/s6-route4-checks.py`).
+
+3. *Readings fixed before any computation* (the lead's decisions of 18/11/2026):
+   - **R8 and R9** are the four classes of §4.4. The rules of `scripts/s6-route4-blind.py` on
+     the name's case style (five classes, Pascal apart from other) are tagged R8 and R9, so the
+     remedy covers them. Its rules that are R1 to R5 and R10 to R13 word for word are counted
+     once.
+   - **C3** is judged on the renamed slates (none on round(0.20 n) of them) and on the other
+     slates (within one slate of 0.20 n) of each group and split, and on each validation slate
+     file (round(0.20 n)); the share by kind and by number of options is reported.
+   - **The two caps of §6.2, item 3** are applied in one pass over the rows ordered by sha256 of
+     the text (then the row's id): a row is kept when its gold cluster holds fewer than 10 kept
+     rows and its server fewer than 40.
+   - **The remedy's length quintiles** (§4.4) are taken over all tools of v4's pools (the
+     training and validation pools of route/tools and When2Call, and the intents).
+   - **`v4_tools_rw`** (§4.5) keeps the diagnosis's rule: every slate of `v4_tools` with a
+     distractor that has a rewrite, the *none*-gold slates included; the pilot's probe reading
+     counts the tool-gold slates. The **t4 probe copies** (§6.4) hold the tool-gold slates only.
+   - **The 50 ms rule of §3.4** reads the pair's median per request
+     (`route3-node.mjs --uncached --render scores-in-options`: both parts meet the tool list for
+     the first time); the model part's median is reported.
+   - **The latency check runs as its own stage, before the build**
+     (`scripts/build-route4-data.sh latency`, after `teacher-jobs`, which writes `v4_tools`, and
+     before `build`, which renders the records by the option it takes).
+   - **The engine-label fallback (ii') is not written.** If the latency check takes it, v4
+     stops there and an amendment decides.
+
+4. *Code (§14), as it stands.* Written: D1 to D7 and `v4_tools` (`sky-data route v4-plan`,
+   `v4-slates`, in `crates/sky-data/src/route/v4.rs`), the Toucan builder (`route toucan-rows`,
+   `toucan-stage`, `toucan`, `toucan-probes`), the `fresh-tools` guard of `sky-data teacher`,
+   D4 in `sky_infer::route` with `tests/fixtures/route_bm25_v4.json`, the engine and the sky-web
+   router reading `skycmd-s2.route.render`, the uncached mode of `route3-node.mjs`,
+   `s2-decide --keep-checkpoints`, `scripts/s6-route4-checks.py`, `scripts/s6-route4-pilot.py`,
+   `scripts/build-route4-data.sh`, `scripts/train-route4.sh`, the `v4val` split of
+   `scripts/route-baselines.py` (potion-cos on `v4_tools`, for the bar of the pilot rule),
+   `scripts/route/pins.json` and `DATA_LICENSES.md`.
+   - Still to do **before training**: the WASM module rebuilt from this tree for the latency
+     stage (`scripts/build-wasm.sh`); the amendment that writes the pilot's bar (potion-cos on
+     `v4_tools` − 0.15); the counts amendment of §6.3 (the 600-slate floor is read before
+     training).
+   - Still to write **before the gate**:
+     - `scripts/s6-route4-fit.py` (β and τ_ask4 on `v4_tools`) and the new embedding file that
+       stores them;
+     - the t4 split of `scripts/route-eval.sh` and `scripts/route-baselines.py`, refused until
+       `runs/s6-route4/FRESH-OPEN` exists and the files have the hashes of
+       `runs/s6-route4/test-files.json`;
+     - the Python reference of the pair under D4 for G4's parity (`scripts/s6-route3-reference.py`
+       reads dumps, so it needs D4-rendered model dumps on T4);
+     - `scripts/s6-route4-gate.py` and `scripts/test_s6_route4_gate.py` (§8, the headline, the
+       readings).
