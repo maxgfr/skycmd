@@ -133,6 +133,186 @@ pub fn rows(inputs: &[PathBuf], out: &Path) -> Result<Value> {
     )
 }
 
+/// The skeleton of a JSON value: its types and keys, every string, number and boolean replaced
+/// by its type, arrays by the set of their elements' skeletons (no text of the value).
+pub fn skeleton(v: &Value, depth: usize) -> String {
+    if depth == 0 {
+        return "...".into();
+    }
+    match v {
+        Value::Null => "null".into(),
+        Value::Bool(_) => "bool".into(),
+        Value::Number(_) => "num".into(),
+        Value::String(_) => "str".into(),
+        Value::Array(a) => {
+            let set: BTreeSet<String> = a.iter().map(|x| skeleton(x, depth - 1)).collect();
+            format!("[{}]", set.into_iter().collect::<Vec<_>>().join(" | "))
+        }
+        Value::Object(o) => {
+            let parts: Vec<String> = o
+                .iter()
+                .map(|(k, x)| match k.as_str() {
+                    // parameter names are the tool's own: their skeleton only says it has some
+                    "properties" => format!("{k}: {{..}}"),
+                    _ => format!("{k}: {}", skeleton(x, depth - 1)),
+                })
+                .collect();
+            format!("{{{}}}", parts.join(", "))
+        }
+    }
+}
+
+/// A string column holding JSON: the parsed value, or the string itself when it does not parse.
+fn json_field(v: &Value) -> Value {
+    match v {
+        Value::String(t) => serde_json::from_str(t).unwrap_or_else(|_| v.clone()),
+        _ => v.clone(),
+    }
+}
+
+/// The structure of the SFT files, for the amendment of 6.1 (no request, no description and no
+/// name is printed): the columns and their types, the rows by subset, the skeletons of
+/// `target_tools` and `tools` with their counts, the uuids' uniqueness, the shape of the tool
+/// names (separators), and the rows of the two subsets with exactly one target tool that names
+/// exactly one tool of their own `tools` list.
+pub fn schema(inputs: &[PathBuf]) -> Result<Value> {
+    let mut files = BTreeMap::new();
+    let mut by_subset = Counts::new();
+    let mut tt_skel = Counts::new();
+    let mut tools_skel = Counts::new();
+    let mut tt_len = Counts::new();
+    let mut uuids: HashSet<String> = HashSet::new();
+    let mut dup = 0usize;
+    let mut q = Counts::new();
+    let mut lists: HashSet<String> = HashSet::new();
+    let mut lists_one: HashSet<String> = HashSet::new();
+    let mut tools_per_row = Counts::new();
+    let mut names = Counts::new();
+    for p in inputs {
+        let reader = parquet::file::reader::SerializedFileReader::new(
+            std::fs::File::open(p).with_context(|| format!("open {}", p.display()))?,
+        )?;
+        use parquet::file::reader::FileReader;
+        let md = reader.metadata();
+        let cols: Vec<Value> = md
+            .file_metadata()
+            .schema_descr()
+            .columns()
+            .iter()
+            .map(|c| {
+                json!({"column": c.path().string(), "physical": format!("{:?}", c.physical_type()),
+                             "logical": format!("{:?}", c.logical_type())})
+            })
+            .collect();
+        files.insert(
+            p.display().to_string(),
+            json!({"rows": md.file_metadata().num_rows(), "row groups": md.num_row_groups(), "columns": cols}),
+        );
+        crate::hf::for_each_parquet_row(p, &SFT_COLUMNS, |v| {
+            let subset = v["subset_name"]
+                .as_str()
+                .unwrap_or("<not a string>")
+                .to_string();
+            bump(&mut by_subset, &subset);
+            if let Some(u) = v["uuid"].as_str() {
+                if !uuids.insert(u.to_string()) {
+                    dup += 1;
+                }
+            }
+            let tt = json_field(&v["target_tools"]);
+            bump(&mut tt_skel, skeleton(&tt, 4));
+            let targets: Vec<String> = match &tt {
+                Value::Array(a) => a
+                    .iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect(),
+                Value::String(t) => t
+                    .split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect(),
+                _ => Vec::new(),
+            };
+            bump(
+                &mut tt_len,
+                format!("{subset}: {} target(s)", targets.len()),
+            );
+            let tl = json_field(&v["tools"]);
+            bump(&mut tools_skel, skeleton(&tl, 5));
+            let tool_names: Vec<String> = tl
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|t| {
+                            t["function"]["name"]
+                                .as_str()
+                                .or_else(|| t["name"].as_str())
+                                .map(super::collapse_ws)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            bump(&mut tools_per_row, format!("{}", tool_names.len().min(50)));
+            for n in &tool_names {
+                bump(
+                    &mut names,
+                    if n.contains("::") {
+                        "names with ::"
+                    } else if n.contains("__") {
+                        "names with __"
+                    } else if n.contains('.') {
+                        "names with ."
+                    } else if n.contains('/') {
+                        "names with /"
+                    } else {
+                        "names without a separator"
+                    },
+                );
+            }
+            let mut sorted = tool_names.clone();
+            sorted.sort();
+            let key = sha256_hex(sorted.join("\n").as_bytes());
+            lists.insert(key.clone());
+            if SUBSETS.contains(&subset.as_str()) {
+                if targets.len() == 1 {
+                    let t = super::collapse_ws(&targets[0]);
+                    let m = tool_names.iter().filter(|n| **n == t).count();
+                    bump(
+                        &mut q,
+                        match m {
+                            0 => "one target, not in its own tools list",
+                            1 => "one target, exactly one tool of its own tools list (qualifies)",
+                            _ => "one target, named by several tools of its list",
+                        },
+                    );
+                    if m == 1 {
+                        lists_one.insert(key);
+                    }
+                    if t.contains("::") {
+                        bump(&mut q, "one target written Server::Tool");
+                    }
+                } else {
+                    bump(&mut q, format!("{} targets", targets.len()));
+                }
+            }
+            Ok(())
+        })?;
+    }
+    Ok(json!({
+        "files": files,
+        "rows by subset_name": by_subset,
+        "target_tools: skeletons": tt_skel,
+        "target_tools: targets per row": tt_len,
+        "tools: skeletons (depth 5)": tools_skel.into_iter().map(|(k, v)| (k.chars().take(600).collect::<String>(), v)).collect::<BTreeMap<_, _>>(),
+        "tools: tools per row (50: 50 or more)": tools_per_row,
+        "tool names by separator": names,
+        "uuids": {"distinct": uuids.len(), "repeated": dup},
+        "rows of the two subsets": q,
+        "distinct tool lists (sha256 of the sorted names), all rows": lists.len(),
+        "distinct tool lists among the qualifying rows": lists_one.len(),
+    }))
+}
+
 /// The tools of a stage: every server tool, by id, and the servers that list each.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct StagedTool {

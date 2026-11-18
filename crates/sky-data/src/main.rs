@@ -273,6 +273,12 @@ enum RouteStep {
         #[arg(long)]
         out: PathBuf,
     },
+    /// s6-route v4 (6.1): the structure of the SFT files only (columns, types, subsets,
+    /// skeletons of target_tools and tools, uuids, qualifying rows); no text is printed.
+    ToucanSchema {
+        #[arg(long, value_delimiter = ',', required = true)]
+        input: Vec<PathBuf>,
+    },
     /// s6-route v4, fresh test step 2: the tool table and the texts to embed
     /// (scripts/route-embed.py --build <t4>), from <t4>/stage/rows.jsonl.
     ToucanStage {
@@ -1198,6 +1204,7 @@ fn main() -> Result<()> {
                 RouteStep::ToucanRows { input, out } => {
                     sky_data::route::toucan::rows(&input, &out)?
                 }
+                RouteStep::ToucanSchema { input } => sky_data::route::toucan::schema(&input)?,
                 RouteStep::ToucanStage { t4 } => sky_data::route::toucan::stage(&t4)?,
                 RouteStep::Toucan { v2, t4, record } => {
                     use sky_data::route::toucan as tc;
