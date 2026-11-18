@@ -144,6 +144,29 @@ disk_floor() {
   fi
   note "$((kb / 1024 / 1024)) GB free on the volume of $data (floor $min_free GB)"
 }
+# reported <out.json> <command...>: a check that is reported and never stops (4.4): its exit is
+# accepted when the report it wrote says the same exit (v5's checks exit 1 when a check fails);
+# any other exit, or no report, is a crash and stops the stage
+# BEGIN reported
+reported() {
+  local out=$1 st=0 said
+  shift
+  if [ "$dry" = 1 ]; then
+    x "$@"
+    return
+  fi
+  rm -f "$out"
+  nice -n 19 "$@" || st=$?
+  [ "$st" = 0 ] && return
+  said=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["verdict"]["exit"])' "$out" 2>/dev/null || echo none)
+  if [ "$said" = "$st" ]; then
+    note "the checks report failures (exit $st, $out): reported, they do not stop (4.4)"
+  else
+    echo "the check crashed (exit $st, its report says $said): $*" >&2
+    exit "$st"
+  fi
+}
+# END reported
 # hashes <want.json> <dir> <out.json> [<files that may differ>...]: every file of want against dir
 hashes() {
   python3 -I - "$@" <<'EOF'
@@ -421,7 +444,7 @@ support() {
 
 checks_read() {
   need support.done support
-  x python3 -I scripts/s6-route5-checks.py --requests "$v2/stage/requests.jsonl" --tools "$v2/stage/tools.jsonl" \
+  reported "$runs/checks-read-files.json" python3 -I scripts/s6-route5-checks.py --requests "$v2/stage/requests.jsonl" --tools "$v2/stage/tools.jsonl" \
     --pools "$b6/stage/pools5.json" --plan-counts "$b6/counts/v5-plan.json" --val "$v2/val/v_tools.jsonl" "$v2/val/v_tools_masked.jsonl" \
     "$b4/val/v4_tools.jsonl" "$b4/val/v4_tools_masked.jsonl" "$b6/val/r_tools_renamed.model.jsonl" \
     "$b6/val/r_tools_natural.model.jsonl" --fresh "$v2/fresh/f_tools.jsonl" "$v2/fresh/f_tools_masked.jsonl" \
@@ -521,7 +544,7 @@ probes() {
 counts() {
   need probes.done probes
   local f=$t5/fresh st=0
-  x python3 -I scripts/s6-route5-checks.py --requests "$v2/stage/requests.jsonl" --tools "$v2/stage/tools.jsonl" \
+  reported "$runs/t5-checks.json" python3 -I scripts/s6-route5-checks.py --requests "$v2/stage/requests.jsonl" --tools "$v2/stage/tools.jsonl" \
     --pools "$b6/stage/pools5.json" --fresh "$f/t5_tools.jsonl" "$f/t5_tools_masked.jsonl" "$f/t5_tools_rw.jsonl" \
     "$f/t5_tools_masked_rw.jsonl" --fresh-manifest "$f/FRESH5.json" --out "$runs/t5-checks.json" --md "$runs/t5-checks.md"
   if [ "$dry" = 1 ]; then
