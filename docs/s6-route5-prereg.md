@@ -736,3 +736,164 @@ filter is not applied, so the counts are an upper bound):
    - **C6 fails only after the build.** The false-negative replacements pushed slates out of their
      cells. v5 stops before training, and the counts are published with the teacher's
      replacements.
+
+**Amendment 2 (18/11/2026, decided by the lead, before any build of v5).** The code of §14 was
+written after amendment 1, and its readings of the text were put to the lead. Nothing of v5 has
+been computed: no request is embedded, no plan or slate is built, no teacher call is made and no
+model is run. Two read-only checks ran on the pools, and neither embedded or read a request:
+
+- the cut points and keys of the catalogue (`real_pools_are_read`, an ignored test of
+  `crates/sky-data/src/route/v5.rs`);
+- reading 7 below, which compares the Rust and the Python readings of the six features.
+
+This amendment changes the removed copies, C6's floor and the hard slates without a tool gold. It
+adds one judged rule, N6, and fixes the readings of the code. Nothing else changes.
+
+**The decisions.**
+
+1. **A removed copy shows its source slate's text** (D5).
+   - **The rule.** A removed copy is its source slate (natural or hard) without the right tool,
+     and one more distractor in the right tool's place.
+     - **The text.** Every option shows the text it shows in the source slate. D1's draw is keyed
+       by the request and the source slate's kind (`route/rewrite/<request>/natural/<tool>` or
+       `.../hard/<tool>`), not by `removed`.
+     - **The extra.** It is drawn in the absent right tool's cell, on the source slate's text,
+       from the source slate's level, or from the next level once that one is used up.
+     - **The copy's level** is the highest of three: its source slate's level, the level its own
+       minimum needs (amendment 1, decision 2: the minimum counts the extra), and the level its
+       extra came from.
+     - **The test-like twins.** The removed twin of a renamed slate, of a `v5_tools` slate and of
+       a T5 slate takes its extra from its slate's own level in the same way. Its text was already
+       its slate's.
+     - **The records.** Each removed copy carries the field `from`, its source slate's kind.
+   - **Why.** If a removed slate's shown texts were redrawn, its options would sit less tightly in
+     one cell than a normal slate's. "The options look heterogeneous, so the answer is none" would
+     then be a cue that needs no request.
+   - **What it replaces.** v4 drew the copy's texts under the kind `removed`, and v5's code did the
+     same. That draw is replaced; D1 is unchanged for every other kind.
+2. **C6 judges every cell with at least 200 drawn slates,** the removed cells included.
+   - For C6 the floor counts drawn slates, not tool-gold slates. A drawn slate is defined as in
+     §4.4 and reading 1.
+   - The floor of 200 tool-gold slates of v4 §4.4 stays for C1, C2 and N1 to N6.
+   - **Why.** A removed cell holds no tool-gold slate. Under v4's floor C6 could never judge it,
+     although amendment 1 counted the removed cells' expected shares (0.0295 and 0.0330 for the
+     intents).
+3. **The hard slate of a request without a tool gold** (When2Call's no-call requests).
+   - **The rule.**
+     - The request's own tools come first and are exempt, as in v2 and as decision 1 of the
+       freeze says for every slate.
+     - The drawn distractors that complete the slate are the candidates nearest to the request
+       within the first own tool's cell, at the slate's level.
+     - The minimum counts the drawn distractors only.
+     - The false-negative filter applies to every option, as in v2. An own tool that the teacher
+       names able is replaced from the slate's replacement sequence and becomes a drawn
+       distractor.
+   - **Why.** The request's own tools are what a real tool list holds (O24). v5's code had left
+     them out of the hard slates, because §4.3's list of exempt tools names the natural and
+     test-like slates only.
+4. **N6, *none* from the spread of the options (new, judged; no remedy).**
+   - **The statistic: the spread.**
+     - A slate with k ≥ 1 tool options has the spread 1 − M/k. M is the largest number of its
+       tool options whose shown texts have one L0 key.
+     - The key is F1 to F6 of §4.3, with the plan's cut points, read on the option text with D4's
+       score and rank taken off.
+     - It replaces the count of distinct cells at L0 that the lead's draft named. That count grows
+       with k, and the slates of one family hold 2 to 8 options. The spread is a share, and D5
+       keeps a removed slate's k equal to its source slate's.
+   - **The families.** A (group, kind, split) cell of removed slates holds no tool-right slate, so
+     a rule that answers *none* cannot be read there. N6 is read instead on C3's families (v4,
+     amendment 1, item 3):
+     - for each group and split of the records, the renamed slates;
+     - for each group and split of the records, the other slates (natural, hard, removed and
+       no-call together);
+     - each validation file (`v5_tools`, `v5_tools_masked`).
+
+     Every slate of a family counts, tool-right and *none*-right alike.
+   - **The rule and its inverse.**
+     - The rule answers *none* when the slate's spread is above the family's median spread.
+     - Its inverse answers *none* when the spread is below the median.
+     - A slate at the median gets no answer from either.
+   - **Accuracy, chance and the bar.**
+     - A rule's accuracy is the share of *none*-right slates among the m slates it answers
+       *none*.
+     - Chance is π, the family's share of *none*-right slates (0.20 by C3).
+     - A rule fails when its accuracy exceeds **π + 0.02 + 2·√(π(1 − π)/m)** in a family of at
+       least 200 tool-gold slates. This is C2's tolerance with c = π and n = m.
+     - There are about 14 families, so N6 adds at most 28 tests.
+   - **Reported with it, not judged.** For each group and split, the share of options in the modal
+     L0 cell of each removed slate is set against the slate it comes from. The table gives both
+     means, their paired difference and its standard error. Under decision 1 the two differ only
+     by the extra, which lies in the right tool's cell.
+   - **On T5,** N6 and the table are reported, not judged, with the cut points over Toucan's tools
+     (`FRESH5.json`).
+   - **What a failure would mean** (§11, added): **N6 fails.** The spread of a slate's options over
+     the cells tells, without the request, whether *none* is right. No model is trained, and the
+     table is published, naming the families. There is no remedy.
+
+**Readings fixed before any computation** (the code's readings of the text, confirmed by the
+lead).
+
+1. **A drawn slate** has at least one drawn distractor. A one-tool hard slate (the right tool
+   alone) is not one, although §4.4's list names "every hard slate".
+2. **The renamed kind's cell** is read on the `tool_<k>` names: F1 is snake, and F2 is the class
+   of a name of 6 or 7 characters.
+   - The plan stops if `tool_1` and `tool_10` fall in different length classes.
+   - On the pools they do not: both are in class 0, and F2's cut points are 13, 17, 20 and 25
+     characters.
+3. **A false-negative replacement** takes, in order:
+   - the rest of the request's 16 nearest tools within the cell;
+   - then the cell's random fill at the slate's level;
+   - then the random fill at each next level.
+
+   The slate's level becomes the highest level that any of its drawn distractors came from.
+4. **v2's answers are reused by id.** Only answers are reused: an item that v2's moderation refused
+   is sent again.
+   - Every hard slate of one tool (the right tool alone) is v2's and matches. So the job holds
+     about one seventh fewer items than 69,290.
+   - The plan prints the exact number of items (`counts/v5-plan.json`, "teacher items").
+5. **Words and pools.**
+   - A word of N2 and N5 is a run of letters, lowercased.
+   - N2's pool for the intents joins both sources' intents; v2 keeps one pool per source.
+   - `v5_tools`, its copies and T5 read N2 on the tools group's training pool.
+6. **T5 keeps v4's stream labels** (`route/t4-tools/...`). The rows drawn, the removed set and the
+   slate and masked streams are those T4 would have used; only item 5 of §6.2 changes.
+7. **F6 folds ASCII case only.** Python's `re.I` also folds K, ſ, İ and ı.
+   - On the pools' 55,900 texts (27,950 tools, each in its original and its rewrite), the Rust
+     reading (`sky-data`) and the Python reading (`scripts/s6-route5-checks.py`) of F1 to F6
+     differ on **20 texts of 10 tools** (F1 on 4 texts, F2 on 16, F3 on 7, F5 on 18; F4 and F6
+     on none).
+   - **Every difference comes from a name that holds ": ",** for example a name of the form
+     "Seasonal Goal Analysis: Scoring First". `sky-data` reads the tool's name and description.
+     The checks, like every rule of v4, split the option text at its first ": ". The F6 folding
+     makes no difference on the pools.
+   - These 10 tools are kept as they are; the difference is stated here.
+   - The check: `scripts/s6-route5-checks.py --compare-keys`, on the keys that
+     `real_pools_are_read` writes outside the data folder.
+8. **A defect exits first.** A C1 or C3 defect exits 1 before a C6, C2 or N failure exits 2.
+9. **Facts of the catalogue,** read by the same check:
+   - 27,950 tools and 55,900 texts; no rewrite is refused;
+   - F2's cut points are 13, 17, 20 and 25 characters, and F3's are 8, 9, 11 and 13 words;
+   - the tools training pool has 1,223 non-empty cells among the originals and 793 among the
+     rewrites, as amendment 1's count found.
+
+**The code (§14), as it stands.**
+
+- **Written:**
+  - items 1 to 7 and 9;
+  - item 8 in part: `scripts/train-route5.sh` and `scripts/s6-route5-pilot.py`;
+  - this amendment's changes: the removed copies' text, C6's floor, the no-call hard slates, N6
+    and its reported table.
+- **Still to do before training:**
+  - the stages of `scripts/build-route5-data.sh`, run by the lead;
+  - the amendment of §4.5 that writes the pilot's bar from `baselines-val`;
+  - the counts amendment of §6.3, after `fresh`, the `fresh-tools` teacher job (about 100 to 150
+    calls), `probes` and `counts`;
+  - the head window (`scripts/train-route5.sh window`).
+- **Still to write before the gate:**
+  - `scripts/s6-route5-fit.py` (β and τ_ask5 on `v5_tools`) and the embedding file that stores
+    them;
+  - `scripts/s6-route5-gate.py` and `scripts/test_s6_route5_gate.py`;
+  - the t5 split of `scripts/route-eval.sh` and `scripts/route-baselines.py`, refused until
+    `runs/s6-route5/FRESH-OPEN` exists and the files have the hashes of
+    `runs/s6-route5/test-files.json`;
+  - the Python reference of the pair under D4, for G4's parity.

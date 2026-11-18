@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests of scripts/s6-route5-checks.py on invented slates: each planted cue of N1 to N5 is caught,
+"""Tests of scripts/s6-route5-checks.py on invented slates: each planted cue of N1 to N6 is caught,
 cue-free slates pass, C6 reads the same bar at plan time and after the build, the exit statuses.
 Run: python3 -I scripts/test_s6_route5_checks.py (from the repository root)."""
 import collections
@@ -81,6 +81,17 @@ def failing_n(rep):
 
 def failing_all(rep):
     return [r['rule'] for r in rep['C2'] + rep['N'] if r['fails']]
+
+
+# every name and description length in class 0: a key differs by F1, F4, F5 or F6 only
+CLASSES = {'names': [0] * 64, 'words': [0] * 40}
+
+
+def write_classes(d):
+    p = os.path.join(d, 'v5-plan.json')
+    with open(p, 'w') as f:
+        json.dump({'classes of F2 and F3': CLASSES, 'C6 cells': []}, f)
+    return p
 
 
 def counts(drawn_by_level, slates=None, tool_gold=1000):
@@ -224,8 +235,11 @@ class C6(unittest.TestCase):
         above = checks.c6_of(counts([899, 0, 0, 0, 0, 50, 51]))
         self.assertTrue(above['fails'])
         self.assertAlmostEqual(above['share of the drawn slates at L6 (outside the cell)'], 0.051)
-        # a cell of fewer than 200 tool-gold slates is reported, not judged
-        self.assertFalse(checks.c6_of(counts([10, 0, 0, 0, 0, 0, 90], tool_gold=150))['fails'])
+        # amendment 2, decision 2: C6 judges a cell of at least 200 drawn slates, a removed cell
+        # (no tool-gold slate) included; fewer drawn slates are reported, not judged
+        self.assertFalse(checks.c6_of(counts([10, 0, 0, 0, 0, 0, 90], tool_gold=1000))['fails'])
+        removed = checks.c6_of(counts([150, 0, 0, 0, 0, 0, 50], tool_gold=0))
+        self.assertTrue(removed['judged'] and removed['fails'])
         # slates without a drawn distractor do not count
         c = counts([900, 0, 0, 0, 0, 50, 50], slates=2000)
         c['slates by level'][6] += 1000
@@ -291,7 +305,11 @@ class Build(unittest.TestCase):
                     recs.append(r)
             self.write(d, recs)
             out = os.path.join(d, 'checks.json')
-            self.assertEqual(checks.main(['--build', d, '--out', out, '--md', out + '.md']), 0)
+            pc = write_classes(d)
+            # N6 reads the plan's classes: --build without them is refused
+            with self.assertRaises(SystemExit):
+                checks.main(['--build', d, '--out', out])
+            self.assertEqual(checks.main(['--build', d, '--plan-counts', pc, '--out', out, '--md', out + '.md']), 0)
             with open(out) as f:
                 v = json.load(f)['verdict']
             self.assertEqual(v['meaning'], [checks.MEANING['pass']])
@@ -299,7 +317,7 @@ class Build(unittest.TestCase):
             for r in recs[:400]:
                 r['cell_level'] = 6
             self.write(d, recs)
-            self.assertEqual(checks.main(['--build', d, '--out', out]), 2)
+            self.assertEqual(checks.main(['--build', d, '--plan-counts', pc, '--out', out]), 2)
             with open(out) as f:
                 v = json.load(f)['verdict']
             self.assertTrue(v['C6 fails'] and not v['C2 fails'] and not v['N fails'])
@@ -313,14 +331,78 @@ class Build(unittest.TestCase):
                 opts = [option(rng, i, words=6) + (' v2 3' if i == g else '') for i in range(7)]
                 cue.append(slate(rng, 'q%d' % j, opts, g, none=j % 5 == 0))
             self.write(d, cue)
-            self.assertEqual(checks.main(['--build', d, '--out', out]), 2)
+            self.assertEqual(checks.main(['--build', d, '--plan-counts', pc, '--out', out]), 2)
             with open(out) as f:
                 v = json.load(f)['verdict']
             self.assertIn('N1', {x['tag'] for x in v['N fails']})
             self.assertIn(checks.MEANING['N'], v['meaning'])
             # a defect (C3: the renamed share off by one slate): exit 1 first
             self.write(d, [r for r in recs if r['uid'] != 'renamed0'])
-            self.assertEqual(checks.main(['--build', d, '--out', out]), 1)
+            self.assertEqual(checks.main(['--build', d, '--plan-counts', pc, '--out', out]), 1)
+
+    def n6_build(self, d, scattered):
+        """1,600 natural slates (the right tool and its drawn distractors in its cell, a third of
+        the distractors off it), and 400 removed copies (none right): as amendment 2 says (the
+        source's options and texts, one extra in the right tool's cell), or with options scattered
+        over the cells."""
+        rng = random.Random(12)
+        base = lambda i, period=True, style=STYLES[0]: option(rng, i, words=5, period=period, style=style,
+                                                               first='Gets')
+        recs = []
+        for j in range(1600):
+            g = rng.randrange(7)
+            opts = [base(i) if i == g or rng.random() < 0.67 else base(i, period=False) for i in range(7)]
+            r = slate(rng, 'q%d' % j, opts, g)
+            r['uid'], r['request'] = 'q%d/natural' % j, 'q%d' % j
+            recs.append(r)
+            if j < 400:
+                ro = list(opts)
+                if scattered:
+                    ro = [base(i, period=rng.random() < 0.5, style=rng.choice(STYLES[:3])) for i in range(7)]
+                else:
+                    ro[g] = base(g)
+                rr = slate(rng, 'q%d' % j, ro, 0, none=True)
+                rr.update({'uid': 'q%d/removed' % j, 'request': 'q%d' % j, 'kind': 'removed', 'from': 'natural'})
+                recs.append(rr)
+        self.write(d, recs)
+        out = os.path.join(d, 'checks.json')
+        st = checks.main(['--build', d, '--plan-counts', write_classes(d), '--out', out, '--md', out + '.md'])
+        with open(out) as f:
+            return st, json.load(f)
+
+    def test_n6_removed_slates_as_amendment_2_says_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            st, rep = self.n6_build(d, False)
+            fam = rep['N6 families']['records tools train other']
+            self.assertAlmostEqual(fam['none share (chance)'], 0.2)
+            self.assertEqual([r['fails'] for r in fam['rules']], [False, False])
+            self.assertNotIn('N6', {x['tag'] for x in rep['verdict']['N fails']})
+            t = rep['removed slates against their sources (reported; amendment 2)']['tools train']
+            self.assertEqual(t['pairs'], 400)
+            self.assertAlmostEqual(t['difference (removed - source)'], 0.0)
+
+    def test_n6_scattered_removed_slates_are_caught(self):
+        with tempfile.TemporaryDirectory() as d:
+            st, rep = self.n6_build(d, True)
+            self.assertEqual(st, 2)
+            fam = rep['N6 families']['records tools train other']
+            self.assertTrue(fam['rules'][0]['fails'], fam)
+            self.assertIn('N6', {x['tag'] for x in rep['verdict']['N fails']})
+            self.assertIn(checks.MEANING['N6'], rep['verdict']['meaning'])
+            t = rep['removed slates against their sources (reported; amendment 2)']['tools train']
+            self.assertLess(t['difference (removed - source)'], -5 * t['its standard error'])
+
+    def test_spread_and_the_key_as_sky_data_reads_it(self):
+        # the expectations of the Rust test `the_six_features`, read by this script
+        k = checks.key5('get_x: Gets the data of a given list.', CLASSES)
+        self.assertEqual(k, ('snake', 0, 0, True, 0, 2))
+        self.assertEqual(checks.key5('x: Gets metadata, listing and IDs.', CLASSES)[5], 1)
+        self.assertEqual(checks.key5('x: Based on the API parameters: JSON.', CLASSES)[5], 2)
+        for d, form in (('Gets the weather.', 0), ('Address book.', 2), ('Get the weather.', 1),
+                        ('get the weather.', 2), ('Get-weather now', 2), ('', 2)):
+            self.assertEqual(checks.key5('n: ' + d if d else 'n', CLASSES)[4], form, d)
+        r = {'opts': ['a_b: Gets x.', 'c_d: Gets y.', 'e f: Gets z', NONE]}
+        self.assertAlmostEqual(checks.spread(r, CLASSES), 1 / 3)
 
     def test_n2_reads_the_groups_training_pool(self):
         with tempfile.TemporaryDirectory() as d:

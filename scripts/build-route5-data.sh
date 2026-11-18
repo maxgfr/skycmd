@@ -25,7 +25,7 @@
 #                   with their sizes in the log; then sky-data route v5-slates: the false-negative
 #                   filter, the records, the probe copies and the model's copies (refused until the
 #                   teacher has answered every item)
-#   checks          scripts/s6-route5-checks.py: C6 confirmed, C1 to C5, C2 and N1 to N5 judged on the
+#   checks          scripts/s6-route5-checks.py: C6 confirmed, C1 to C5, C2 and N1 to N6 judged on the
 #                   records and on v5_tools and its masked copy; writes checks.passed only when every
 #                   judged check holds; a failing rule stops v5 before training (no remedy)
 #   baselines-val   4.5: BM25 and potion-cos by the frozen baseline code (v2's fitted values) on

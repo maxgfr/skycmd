@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The data checks of s6-route v5 (docs/s6-route5-prereg.md 4.4, with amendment 1), no model.
+"""The data checks of s6-route v5 (docs/s6-route5-prereg.md 4.4, with amendments 1 and 2), no model.
 
 Standard library only; run with `python3 -I`. v4's checks (scripts/s6-route4-checks.py, with the
-rules of scripts/s6-route4-blind.py) are imported as they are; v5 adds C6, the rules N1 to N5,
+rules of scripts/s6-route4-blind.py) are imported as they are; v5 adds C6, the rules N1 to N6 (N6: amendment 2),
 the restrictions to the exempt and to the drawn options, the tables by level and the distractor
 counts. No remedy.
 
@@ -16,21 +16,27 @@ counts. No remedy.
       [--val <b5>/val/v5_tools.jsonl ...] [--fresh <t5>/fresh/t5_tools.jsonl ...] \\
       [--fresh-manifest <t5>/fresh/FRESH5.json] --out <report.json> [--md <table.md>]
       the checks on the built records, in this order: C6 (confirmed with the same bar), then C1 to
-      C5 as v4 (amendment 1's tolerances), then C2 and N1 to N5 judged in every judged cell; exit:
+      C5 as v4 (amendment 1's tolerances), then C2 and N1 to N6 judged in every judged cell (with
+      --build, --plan-counts is required: N6 reads the plan's classes); exit:
 
-  0  every judged check holds (C6, C1, C3, C2, N1 to N5);
+  s6-route5-checks.py --compare-keys <keys.jsonl>
+      amendment 2, reading 7: the keys `sky-data` computed for the pools' texts (the ignored test
+      `real_pools_are_read` writes the file outside the data folder) against this script's
+      reading; prints the counts that differ, exit 1 when any does.
+
+  0  every judged check holds (C6, C1, C3, C2, N1 to N6);
   1  C1 or C3 fails: the build has a defect, fixed before anything else (4.4; C1: see 4.3);
-  2  C6, a rule of C2 or one of N1 to N5 fails in a judged cell: the build stops and v5 stops
-     before training, with the table published; there is no remedy (4.4, 11).
+  2  C6, a rule of C2 or one of N1 to N6 fails in a judged cell: the build stops and v5 stops
+     before training, with the table published; there is no remedy (4.4, 11, amendment 2).
 
 Cells: every (group, kind, split) of `<build>/records/<group>/<split>.jsonl` and each file of
 --val, judged from 200 tool-gold slates (v4); the --fresh files (T5, 6.2) are reported and never
 judged.
 
-- C6, the cell holds (4.4): in every judged cell, at most 0.10 of the drawn slates (a slate with
-  at least one drawn distractor, tool-right and none-right alike) were built at L5 or L6; L6
-  ("outside the cell") is reported apart. The same function reads the plan's counts and the built
-  records.
+- C6, the cell holds (4.4): in every cell of at least 200 drawn slates (amendment 2, decision 2:
+  the removed cells included), at most 0.10 of the drawn slates (a slate with at least one drawn
+  distractor, tool-right and none-right alike) were built at L5 or L6; L6 ("outside the cell") is
+  reported apart. The same function reads the plan's counts and the built records.
 - N1 to N5 (4.4), each with its inverse, on the option texts with D4's score and rank taken off,
   judged with C2's tolerance c + 0.02 + 2 sqrt(c(1 - c)/n):
   N1 the description with the highest share of digit characters;
@@ -42,6 +48,17 @@ judged.
   N4 the description with the highest share of capitalised words after its first word;
   N5 the description with the highest mean Jaccard overlap of its lowercased word set with the
      other tool options of the slate.
+- N6, none from the spread of the options (amendment 2), judged with the same tolerance on the
+  families of C3 (per group and split, the renamed slates, and the other slates; each validation
+  file), every slate of the family, tool-right and none-right: a slate's spread is 1 minus the
+  largest share of its tool options that show one L0 key (the six features of 4.3 on the text as
+  shown, the plan's classes of F2 and F3). The rule answers none when the spread is above the
+  family's median spread (its inverse: below it); its accuracy is the share of none-right slates
+  among the slates it answers none, against the chance pi, the family's share of none-right
+  slates, with the tolerance pi + 0.02 + 2 sqrt(pi (1 - pi) / m), m the slates it answers none.
+  Judged in a family of at least 200 tool-gold slates. Reported with it: the share of options in
+  the modal L0 cell of each removed slate against the slate it comes from (mean, difference and
+  its standard error).
 - Reported, not judged: C2 and N1 to N5 on two restrictions of each tool-right slate (the right
   option with the exempt options only, and with the drawn options only, where each holds at least
   two options; R7 reads the option's position in the whole slate), and by level; C4 for the right
@@ -78,11 +95,12 @@ DRAWN, EXEMPT, RIGHT = 'drawn', 'exempt', 'right'
 def c6_of(counts, judged=None):
     """C6 on one cell's counts ({'slates', 'tool-gold slates', 'drawn slates', 'slates by level',
     'drawn slates by level'}): the share of the drawn slates at L5 or L6 against 0.10. The cell is
-    judged from 200 tool-gold slates (v4), unless `judged` says otherwise (the fresh files)."""
+    judged from 200 drawn slates (amendment 2, decision 2), unless `judged` says otherwise (the
+    fresh files)."""
     d = counts['drawn slates']
     by = counts['drawn slates by level']
     share = (by[5] + by[6]) / d if d else 0.0
-    j = counts['tool-gold slates'] >= MIN_JUDGED if judged is None else judged
+    j = d >= MIN_JUDGED if judged is None else judged
     return {'counts': counts, 'judged': j, 'share of the drawn slates at L5 or L6': share,
             'share of the drawn slates at L6 (outside the cell)': by[6] / d if d else 0.0,
             'share of the slates of each level': [x / max(counts['slates'], 1) for x in counts['slates by level']],
@@ -291,6 +309,99 @@ def consistency(recs, classes):
     return {'drawn options of tool-right slates below L6': n, 'not matching the right option at the level': bad}
 
 
+# --------------------------------------------------------------------------- N6 (amendment 2)
+
+def spread(r, classes):
+    """1 minus the largest share of a slate's tool options that show one L0 key (None without a
+    tool option)."""
+    keys = [key5(o, classes) for o in r['opts'][:-1]]
+    if not keys:
+        return None
+    return 1 - max(collections.Counter(keys).values()) / len(keys)
+
+
+def median(v):
+    v = sorted(v)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def n6(recs, classes, judged=True):
+    """N6 on a family of slates: none answered when the spread is above the median (and, the
+    inverse, below it); the share of none-right slates among those answers, against pi."""
+    rows = [(spread(r, classes), c4.is_none(r)) for r in recs]
+    rows = [(x, nn) for x, nn in rows if x is not None]
+    n = len(rows)
+    tool_gold = sum(not nn for _, nn in rows)
+    out = {'slates': n, 'tool-gold slates': tool_gold, 'judged': judged and tool_gold >= MIN_JUDGED, 'rules': []}
+    if not n:
+        return out
+    pi = sum(nn for _, nn in rows) / n
+    med = median([x for x, _ in rows])
+    out.update({'none share (chance)': pi, 'median spread': med})
+    for label, pick in (('N6 none when the options spread above the median', lambda x: x > med),
+                        ('N6 inverse: none when the options spread below the median', lambda x: x < med)):
+        ans = [nn for x, nn in rows if pick(x)]
+        m = len(ans)
+        acc = sum(ans) / m if m else 0.0
+        tol = pi + C2_MARGIN + 2 * math.sqrt(pi * (1 - pi) / m) if m else 1.0
+        out['rules'].append({'rule': label, 'tag': 'N6', 'answered none': m, 'accuracy': acc, 'chance': pi,
+                             'tolerance': tol, 'above tolerance': acc > tol, 'fails': out['judged'] and acc > tol})
+    return out
+
+
+def modal_share(r, classes):
+    s_ = spread(r, classes)
+    return None if s_ is None else 1 - s_
+
+
+def removed_against_source(recs, classes):
+    """Reported (amendment 2, decision 1): the share of options in the modal L0 cell of each
+    removed slate against the slate it comes from (its field `from`), paired."""
+    by = {r['uid']: r for r in recs}
+    d = []
+    for r in recs:
+        if r.get('kind') != 'removed' or not r.get('from'):
+            continue
+        src = by.get('%s/%s' % (r['request'], r['from']))
+        a, b = modal_share(r, classes), modal_share(src, classes) if src else None
+        if a is not None and b is not None:
+            d.append((a, b))
+    n = len(d)
+    if not n:
+        return {'pairs': 0}
+    diffs = [a - b for a, b in d]
+    mean = sum(diffs) / n
+    sd = math.sqrt(sum((x - mean) ** 2 for x in diffs) / (n - 1)) if n > 1 else 0.0
+    return {'pairs': n, 'removed: share in the modal cell': sum(a for a, _ in d) / n,
+            'source: share in the modal cell': sum(b for _, b in d) / n,
+            'difference (removed - source)': mean, 'its standard error': sd / math.sqrt(n)}
+
+
+def compare_keys(path):
+    """Amendment 2, reading 7: the keys of sky-data (`real_pools_are_read`) against key5."""
+    with open(path, encoding='utf-8') as f:
+        head = json.loads(f.readline())
+        classes = head['classes of F2 and F3']
+        styles = head['styles']
+        n, differ, by = 0, 0, collections.Counter()
+        tools = set()
+        names = ('F1', 'F2', 'F3', 'F4', 'F5', 'F6')
+        for line in f:
+            x = json.loads(line)
+            k = x['key']
+            rust = (styles[k[0]], k[1], k[2], bool(k[3]), k[4], k[5])
+            py = key5(x['option'], classes)
+            n += 1
+            if rust != py:
+                differ += 1
+                tools.add(x['id'])
+                for nm, a, b in zip(names, rust, py):
+                    by[nm] += a != b
+    return {'texts': n, 'texts whose keys differ': differ, 'tools whose keys differ': len(tools),
+            'by feature': dict(by)}
+
+
 # ------------------------------------------------------------------------------------ a cell
 
 def restricted(F_list, golds, recs, part):
@@ -391,8 +502,11 @@ MEANING = {
           'in word overlap. No model is trained, and the table is published (11).',
     'N': 'Another N rule fails: a request-blind cue that the cell does not see remains. No model is trained, and '
          'the table is published, naming the rule and the cells (11).',
+    'N6': 'N6 fails: the spread of a slate\'s options over the cells tells whether none is right, without the '
+          'request. No model is trained, and the table is published, naming the families; there is no remedy '
+          '(amendment 2).',
     'defect': 'C1 or C3 fails: the build has a defect and is fixed before anything else (4.4; C1: 4.3).',
-    'pass': 'Every judged check holds: C6, C1, C3, C2 and N1 to N5.',
+    'pass': 'Every judged check holds: C6, C1, C3, C2 and N1 to N6.',
 }
 
 
@@ -405,11 +519,13 @@ def plan_report(counts_json):
          'meaning': [MEANING['C6 plan']] if fails else ['C6 holds at plan time in every judged cell: the '
                                                         'false-negative job may run (amendment 1, decision 1).']}
     return {'about': 's6-route v5: C6 at plan time (docs/s6-route5-prereg.md 4.4, amendment 1), no teacher call',
-            'plan': counts_json, 'bar': C6_BAR, 'cells judged from (tool-gold slates)': MIN_JUDGED,
+            'plan': counts_json, 'bar': C6_BAR, 'cells judged from (drawn slates; amendment 2)': MIN_JUDGED,
             'cells': cells, 'verdict': v}
 
 
 def run(build, requests, tools, pools, plan_counts, val, fresh, fresh_manifest):
+    if build and not plan_counts:
+        raise SystemExit('--build needs --plan-counts: N6 reads the plan\'s classes of F2 and F3 (amendment 2)')
     srcmap = c4.tool_sources(requests)
     dfs = frequency_classes(tools, pools)
     classes = None
@@ -436,10 +552,32 @@ def run(build, requests, tools, pools, plan_counts, val, fresh, fresh_manifest):
         c = cell_report5(p, c4.load(p), srcmap, dfs.get('tools', {}), classes)
         c['kind'] = 'val'
         cells['val ' + os.path.basename(p)] = c
+    fresh_classes = None
+    if fresh_manifest and os.path.exists(fresh_manifest):
+        with open(fresh_manifest, encoding='utf-8') as f:
+            fresh_classes = json.load(f).get('counts', {}).get('classes of F2 and F3')
+    fresh_recs = {}
     for p in fresh or []:
-        c = cell_report5(p, c4.load(p), srcmap, dfs.get('tools', {}), None, judged=False)
+        fresh_recs[p] = c4.load(p)
+        c = cell_report5(p, fresh_recs[p], srcmap, dfs.get('tools', {}), None, judged=False)
         c['kind'] = 'fresh (reported, never judged)'
         cells['fresh ' + os.path.basename(p)] = c
+    # N6 (amendment 2) on the families of C3, and the removed slates against their sources
+    families, removed_table = {}, {}
+    if classes:
+        by_gs = collections.defaultdict(lambda: {'renamed': [], 'other': []})
+        for (g, kind, split), recs in records.items():
+            by_gs[(g, split)]['renamed' if kind == 'renamed' else 'other'].extend(recs)
+        for (g, split), d in sorted(by_gs.items()):
+            for part, recs in d.items():
+                if recs:
+                    families['records %s %s %s' % (g, split, part)] = n6(recs, classes)
+            removed_table['%s %s' % (g, split)] = removed_against_source(d['other'], classes)
+        for p in val or []:
+            families['val ' + os.path.basename(p)] = n6(c4.load(p), classes)
+    if fresh_classes:
+        for p, recs in fresh_recs.items():
+            families['fresh ' + os.path.basename(p)] = n6(recs, fresh_classes, judged=False)
     # C6 first (4.4): whether C2 and N1 to N5 are read on cell-matched slates at all
     c6_fail = [k for k, c in cells.items() if c['C6']['fails']]
     c3 = c4.none_share_checks(cells, records)
@@ -464,6 +602,7 @@ def run(build, requests, tools, pools, plan_counts, val, fresh, fresh_manifest):
     c3_fail = [x['cell'] for x in c3 if x['fails']]
     c2_fail = [(k, r['rule'], r['tag']) for k, c in cells.items() for r in c['C2'] if r['fails']]
     n_fail = [(k, r['rule'], r['tag']) for k, c in cells.items() for r in c.get('N', []) if r['fails']]
+    n_fail += [(k, r['rule'], r['tag']) for k, f in families.items() for r in f['rules'] if r['fails']]
     c5 = None
     if fresh_manifest and os.path.exists(fresh_manifest):
         with open(fresh_manifest, encoding='utf-8') as f:
@@ -482,7 +621,9 @@ def run(build, requests, tools, pools, plan_counts, val, fresh, fresh_manifest):
         meaning.append(MEANING['C2'])
     if any(t == 'N5' for _, _, t in n_fail):
         meaning.append(MEANING['N5'])
-    if any(t != 'N5' for _, _, t in n_fail):
+    if any(t == 'N6' for _, _, t in n_fail):
+        meaning.append(MEANING['N6'])
+    if any(t not in ('N5', 'N6') for _, _, t in n_fail):
         meaning.append(MEANING['N'])
     if not meaning:
         meaning.append(MEANING['pass'])
@@ -496,8 +637,10 @@ def run(build, requests, tools, pools, plan_counts, val, fresh, fresh_manifest):
     return {'about': 's6-route v5: the data checks of docs/s6-route5-prereg.md 4.4 (no model)',
             'rules': {'C6': 'at most %.2f of the drawn slates of a judged cell at L5 or L6' % C6_BAR,
                       'C1': '|rate - 0.5| <= 3 sqrt(0.25 / n) per cell and rate; pooled |rate - 0.5| <= 0.01 (v4, amendment 1)',
-                      'C2 and N1 to N5': 'c + 0.02 + 2 sqrt(c(1-c)/n)', 'cells judged from': MIN_JUDGED},
-            'cells': cells, 'C1 pooled': c1_pooled, 'C3': c3, 'C5': c5, 'verdict': verdict}
+                      'C2 and N1 to N6': 'c + 0.02 + 2 sqrt(c(1-c)/n) (N6: c the none share, n the slates answered none)', 'cells judged from (tool-gold slates; C6: drawn slates)': MIN_JUDGED},
+            'cells': cells, 'N6 families': families,
+            'removed slates against their sources (reported; amendment 2)': removed_table,
+            'C1 pooled': c1_pooled, 'C3': c3, 'C5': c5, 'verdict': verdict}
 
 
 def markdown(rep, top=5):
@@ -530,6 +673,20 @@ def markdown(rep, top=5):
             c['C6']['share of the drawn slates at L5 or L6'], '%+.4f' % c1 if c1 is not None else '',
             best['rule'] if best else '', '%.4f' % best['accuracy'] if best else '',
             '%.4f' % best['tolerance'] if best else '', sum(r['fails'] for r in rules)))
+    out += ['', '## N6 (amendment 2)', '', '| family | slates | none share | median spread | rule | answered none | accuracy | tolerance | fails |',
+            '|---|---:|---:|---:|---|---:|---:|---:|---|']
+    for k, f in rep.get('N6 families', {}).items():
+        for r in f['rules']:
+            out.append('| %s | %d | %.4f | %.4f | %s | %d | %.4f | %.4f | %s |' % (
+                k, f['slates'], f['none share (chance)'], f['median spread'], r['rule'], r['answered none'],
+                r['accuracy'], r['tolerance'], r['fails']))
+    out += ['', '## Removed slates against their sources (reported)', '',
+            '| group split | pairs | removed: modal share | source: modal share | difference | SE |', '|---|---:|---:|---:|---:|---:|']
+    for k, t in rep.get('removed slates against their sources (reported; amendment 2)', {}).items():
+        if t.get('pairs'):
+            out.append('| %s | %d | %.4f | %.4f | %+.4f | %.4f |' % (
+                k, t['pairs'], t['removed: share in the modal cell'], t['source: share in the modal cell'],
+                t['difference (removed - source)'], t['its standard error']))
     out += ['', '## C3', '', '| cell | slates | none | share | fails |', '|---|---:|---:|---:|---|']
     out += ['| %s | %d | %d | %.4f | %s |' % (x['cell'], x['slates'], x['none'], x['share'], x['fails'])
             for x in rep['C3']]
@@ -545,6 +702,7 @@ def markdown(rep, top=5):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--plan', help="C6 at plan time: <b5>/counts/v5-plan.json")
+    ap.add_argument('--compare-keys', help="amendment 2, reading 7: the keys sky-data wrote for the pools' texts")
     ap.add_argument('--build')
     ap.add_argument('--requests')
     ap.add_argument('--tools', help="N2: v2's stage/tools.jsonl (the original descriptions)")
@@ -553,9 +711,15 @@ def main(argv=None):
     ap.add_argument('--val', nargs='*', default=[])
     ap.add_argument('--fresh', nargs='*', default=[])
     ap.add_argument('--fresh-manifest')
-    ap.add_argument('--out', required=True)
+    ap.add_argument('--out')
     ap.add_argument('--md')
     a = ap.parse_args(argv)
+    if not a.compare_keys and not a.out:
+        ap.error('--out is required')
+    if a.compare_keys:
+        res = compare_keys(a.compare_keys)
+        print(json.dumps(res))
+        return 1 if res['texts whose keys differ'] else 0
     if a.plan:
         if a.build or a.val or a.fresh:
             ap.error('--plan reads the plan\'s counts alone')

@@ -819,6 +819,7 @@ fn with_levels(recs: &[RouteRecord], meta: &[(u8, Vec<String>)]) -> Vec<Record5>
             r: r.clone(),
             cell_level: *l,
             roles: roles.clone(),
+            from: None,
         })
         .collect()
 }
@@ -975,6 +976,7 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
         .iter()
         .map(|x| surface::cell(&x.tool.name, &x.tool.desc, &sorted))
         .collect();
+    let mut classes5 = Value::Null;
     let (table, keys5) = match o.rule {
         Rule::V4 => (Vec::new(), Vec::new()),
         Rule::V5 => {
@@ -988,6 +990,8 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
                 .iter()
                 .map(|x| cuts.key(&x.tool.name, &x.tool.desc).index() as u16)
                 .collect();
+            classes5 = json!({"names": surface::Cuts::classes(&cuts.names),
+                              "words": surface::Cuts::classes(&cuts.words)});
             (surface::level_table(), k)
         }
     };
@@ -1221,6 +1225,7 @@ pub fn build_test(o: &TestOptions) -> Result<Value> {
             "slates by level (6.2 item 5, reported)".into(),
             json!(by_level),
         );
+        c.insert("classes of F2 and F3".into(), classes5);
         c.insert(
             "C6 (reported, not judged: 6.2)".into(),
             json!({"counts": c6, "share of the drawn slates at L5 or L6": c6.share_l5_l6(),
@@ -1296,6 +1301,7 @@ pub fn probes(t4: &Path, seed: u64, record: Option<&Path>, rule: Rule) -> Result
                     r,
                     cell_level: 0,
                     roles: Vec::new(),
+                    from: None,
                 })
                 .collect(),
             Rule::V5 => read_lines(&dir.join(f))?,

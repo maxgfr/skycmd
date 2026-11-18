@@ -593,8 +593,10 @@ impl World<'_> {
                 format!("{gs} {sp}: natural slates of another size than v2's"),
             );
         }
-        // D5: one more distractor of the natural rule in the gold's place, in the gold's cell, at
-        // the level the removed copy needs (amendment 1: its minimum counts the extra)
+        // D5: one more distractor of the natural rule in the gold's place, in the gold's cell, on
+        // the natural slate's text, drawn from the natural slate's level (amendment 2, decision
+        // 1); the copy's level is also the one its own minimum needs (amendment 1: the minimum
+        // counts the extra)
         let natural_removed = match gold {
             None => None,
             Some(g) => {
@@ -602,7 +604,8 @@ impl World<'_> {
                 let mut t: Vec<usize> = s.iter().copied().filter(|&x| x != g).collect();
                 let want = t.len() + 1;
                 let okg = |x: usize| x != g && ok(x);
-                let le = fill_levels(&mut t, want, lr, &mut nc, src, pool, &mut rng, &okg);
+                let from = natural.level;
+                let le = fill_levels(&mut t, want, from, &mut nc, src, pool, &mut rng, &okg);
                 let (mut v, mut flags) = (s.clone(), nat_flags.clone());
                 let gp = v.iter().position(|&x| x == g).unwrap();
                 if t.len() == want {
@@ -625,9 +628,27 @@ impl World<'_> {
             }
         };
 
-        // ---- the hard slate: v2's size and stream; the 16 candidates nearest to the request
-        // within the cell, the right tool excluded (S1′)
-        let need = p.hard.len().saturating_sub(g1);
+        // ---- the hard slate: v2's size and stream; the right tool, or for a request without a
+        // tool gold its own tools first (exempt: amendment 2, decision 3); then the 16 candidates
+        // nearest to the request within the cell, the right tool excluded (S1′)
+        let size = p.hard.len();
+        let base: Vec<usize> = match gold {
+            Some(g) => vec![g],
+            None => {
+                let mut b: Vec<usize> = Vec::new();
+                for &t in &k.own {
+                    if b.len() >= size {
+                        break;
+                    }
+                    if !b.contains(&t) && ok(t) {
+                        b.push(t);
+                    }
+                }
+                b
+            }
+        };
+        let nb = base.len();
+        let need = size.saturating_sub(nb);
         let sh = Shown::D1(D1::new(self.seed, &p.id, "hard"));
         let (kf, df) = (self.key_fn(sh), self.draw_fn(sh));
         let mut hc = Cell::new(
@@ -660,9 +681,10 @@ impl World<'_> {
             slates::draw_options(&mut rng),
             slates::draw_options(&mut rng),
         );
-        let mut seq: Vec<usize> = gold.into_iter().chain(near.iter().copied()).collect();
-        let mut seq_lv: Vec<u8> = vec![lh; near.len()];
-        let want = g1 + need + MORE;
+        let mut seq: Vec<usize> = base.clone();
+        seq.extend(near.iter().copied().filter(|t| !base.contains(t)));
+        let mut seq_lv: Vec<u8> = vec![lh; seq.len() - nb];
+        let want = nb + need + MORE;
         if seq.len() < want {
             if lh < surface::L6 {
                 bump(
@@ -675,11 +697,12 @@ impl World<'_> {
             ));
         }
         seq.truncate(want);
-        seq_lv.truncate(want - g1);
-        let body = &seq[g1..];
+        seq_lv.truncate(want - nb);
+        let body = &seq[nb..];
         let take = need.min(body.len());
-        let mut hard: Vec<usize> = gold
-            .into_iter()
+        let hard: Vec<usize> = base
+            .iter()
+            .copied()
             .chain(body[..take].iter().copied())
             .collect();
         let hard_level = seq_lv[..take].iter().copied().fold(lh, u8::max);
@@ -689,11 +712,11 @@ impl World<'_> {
                 format!("{gs} {sp}: hard slates of another size than v2's"),
             );
         }
-        rng.shuffle(&mut hard);
         let hard_more = ids(&body[take..]);
         let hard_more_levels = seq_lv[take..].to_vec();
+        let (hard, hard_flags) = shuffled(hard, nb, &mut rng);
         let hard_p = Planned {
-            drawn: hard.iter().map(|&t| Some(t) != gold).collect(),
+            drawn: hard_flags,
             level: hard_level,
             tools: ids(&hard),
         };
@@ -829,10 +852,12 @@ pub fn test_like(
         s.retain(|&t| t != g);
         fixed -= 1;
         let okg = |t: usize| t != g && ok(t);
-        let from = lr.max(level);
+        // the extra from the slate's own level, on its text (amendment 2, decision 1); the
+        // twin's level is also the one its own minimum needs
+        let from = level;
         level = fill_levels(&mut s, slates::TEST_TOOLS, from, cell, src, pool, rng, &okg)
             .into_iter()
-            .fold(from, u8::max);
+            .fold(lr.max(level), u8::max);
     }
     let (s, drawn) = shuffled(s, fixed, rng);
     let slate = Slate::new(s, if removed.is_some() { None } else { gold });
@@ -861,6 +886,10 @@ pub struct Record5 {
     /// Per tool option: `right`, `exempt` (one of the request's own tools, shown whatever its
     /// cell) or `drawn` (a drawn distractor, within the cell).
     pub roles: Vec<String>,
+    /// A removed copy (D5): the kind of the slate it comes from (`natural` or `hard`), whose
+    /// text it shows (amendment 2, decision 1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
 }
 
 pub const RIGHT: &str = "right";
@@ -915,8 +944,10 @@ impl LevelCounts {
         (self.drawn_by_level[5] + self.drawn_by_level[6]) as f64 / self.drawn.max(1) as f64
     }
 
+    /// C6's cells (amendment 2, decision 2): at least 200 drawn slates, the removed cells
+    /// included.
     pub fn judged(&self) -> bool {
-        self.tool_gold >= MIN_JUDGED
+        self.drawn >= MIN_JUDGED
     }
 }
 
@@ -1020,6 +1051,7 @@ pub fn filter_hard(
                             );
                         }
                         hard.tools[i] = t;
+                        hard.drawn[i] = true;
                         hard.level = hard.level.max(lv);
                     }
                     None => bump(
@@ -1076,6 +1108,15 @@ struct Pick {
 }
 
 impl Pick {
+    /// The kind of the slate a removed copy comes from.
+    fn from(&self) -> Option<&'static str> {
+        match self.which {
+            Which::NaturalRemoved => Some("natural"),
+            Which::HardRemoved => Some("hard"),
+            _ => None,
+        }
+    }
+
     fn planned<'a>(&self, f: &'a [Option<Final>]) -> &'a Planned {
         let f = f[self.req].as_ref().unwrap();
         match self.which {
@@ -1478,7 +1519,7 @@ pub fn plan(o: &PlanOptions) -> Result<Value> {
         "counts": counts,
         "the slates as planned, chosen as the build chooses them (no request dropped, no distractor named)": sel,
         "C6 bar": C6_BAR,
-        "C6 cells judged from (tool-gold slates)": MIN_JUDGED,
+        "C6 cells judged from (drawn slates; amendment 2)": MIN_JUDGED,
         "C6 cells": c6_json(&cells),
         "v5_tools": {"slates": main.len(), "removed": main.iter().filter(|r| r.r.kind == "removed").count()},
         "teacher items": {"false-negatives": items.len(), "calls of 20": items.len().div_ceil(20),
@@ -1559,6 +1600,7 @@ fn v5_tools(
             r: vcx.record(V5_TOOLS, "val", k.r.id.clone(), kind, k, &s),
             cell_level: level,
             roles: rl.clone(),
+            from: None,
         });
         let mut rng = vcx.rng(&format!("route/{V5_TOOLS}/masked/{}", k.r.id));
         let m = slates::masked(&s, |t| l.tools[t].desc.clone(), &mut rng);
@@ -1573,6 +1615,7 @@ fn v5_tools(
             ),
             cell_level: level,
             roles: rl,
+            from: None,
         });
     }
     Ok((main, masked))
@@ -1670,6 +1713,7 @@ pub fn slates(o: &SlatesOptions) -> Result<Value> {
                 p,
                 pl,
                 pk.kind,
+                pk.from(),
                 &uid_of(p, pk),
                 masked,
                 &tools,
@@ -1827,6 +1871,7 @@ fn record(
     p: &Plan5,
     pl: &Planned,
     kind: &str,
+    from: Option<&str>,
     uid: &str,
     masked: Option<Rng>,
     tools: &[Tool],
@@ -1850,7 +1895,9 @@ fn record(
         let mut desc = t.desc.clone();
         let mut flag = false;
         bump(c, "tool options");
-        if v4::rewrite_draw(seed, &p.id, kind, id) {
+        // D1 by the request and the kind of the slate whose text the record shows: a removed
+        // copy shows its source slate's (amendment 2, decision 1)
+        if v4::rewrite_draw(seed, &p.id, from.unwrap_or(kind), id) {
             bump(c, "drawn for the rewrite");
             if let Some(d) = rw.text.get(id) {
                 desc = d.clone();
@@ -1892,6 +1939,7 @@ fn record(
         },
         cell_level: pl.level,
         roles: roles(&pl.drawn, gold),
+        from: from.map(str::to_string),
     })
 }
 
@@ -1921,6 +1969,26 @@ mod tests {
         let (cuts, keys) = keys_of(&l, &rw, &cat).unwrap();
         let plans: Vec<Plan> = read_lines(&stage(&v2).join("plan.jsonl")).unwrap();
         assert!(plans.iter().all(|p| p.split == "train" || p.split == "val"));
+        // amendment 2, reading 7: the keys of every text, for scripts/s6-route5-checks.py
+        // --compare-keys (SKY_ROUTE_V5_KEYS: a file outside the data folder)
+        if let Ok(path) = std::env::var("SKY_ROUTE_V5_KEYS") {
+            let mut rows = vec![json!({
+                "classes of F2 and F3": {"names": surface::Cuts::classes(&cuts.names),
+                                         "words": surface::Cuts::classes(&cuts.words)},
+                "styles": surface::STYLES,
+            })];
+            for &t in &cat {
+                let tool = &l.tools[t];
+                let mut texts = vec![tool.desc.clone()];
+                texts.extend(rw.text.get(&tool.id).cloned());
+                for d in texts {
+                    let k = cuts.key(&tool.name, &d);
+                    rows.push(json!({"id": tool.id, "option": option_text(&tool.name, &d),
+                                     "key": [k.style, k.name_q, k.words_q, k.period as u8, k.form, k.schema]}));
+                }
+            }
+            write_jsonl(Path::new(&path), &rows).unwrap();
+        }
         let distinct =
             |pool: &[usize], k: &[u16]| pool.iter().map(|&t| k[t]).collect::<HashSet<_>>().len();
         let intents: Vec<usize> = pools.intents.values().flatten().copied().collect();
@@ -2522,16 +2590,24 @@ mod tests {
             for (i, (role, id)) in r.roles.iter().zip(&r.r.tools).enumerate() {
                 assert_eq!(role == RIGHT, Some(i) == gold, "{}", r.r.uid);
                 if role == EXEMPT {
-                    // the request's own tools, shown whatever their cell; none in a hard slate
+                    // the request's own tools, shown whatever their cell; in a hard slate only
+                    // without a tool gold (amendment 2, decision 3)
                     assert!(own.contains(id.as_str()), "{}", r.r.uid);
-                    assert!(!r.r.uid.ends_with("/hard"), "{}", r.r.uid);
+                    assert!(
+                        !r.r.uid.ends_with("/hard") || k.gold.is_none(),
+                        "{}",
+                        r.r.uid
+                    );
                     exempt += 1;
                 }
             }
-            // D1 is v4's draw: the rewrite where the draw says so and the tool has one
+            // D1 is v4's draw: the rewrite where the draw says so and the tool has one; a
+            // removed copy draws as the slate it comes from (amendment 2, decision 1)
+            assert_eq!(r.from.is_some(), r.r.kind == "removed", "{}", r.r.uid);
+            let d1_kind = r.from.as_deref().unwrap_or(&r.r.kind);
             for (i, id) in r.r.tools.iter().enumerate() {
                 let want =
-                    v4::rewrite_draw(7, &r.r.request, &r.r.kind, id) && rw.text.contains_key(id);
+                    v4::rewrite_draw(7, &r.r.request, d1_kind, id) && rw.text.contains_key(id);
                 assert_eq!(r.r.rewritten.as_ref().unwrap()[i], want, "{}", r.r.uid);
             }
             // a slate below L6: every drawn option matches the right tool's key, as shown, at
@@ -2562,6 +2638,60 @@ mod tests {
             l0 > 100 && checked > 100 && exempt > 50 && widened > 0,
             "{l0} {checked} {exempt} {widened}"
         );
+        // amendment 2, decision 1: a removed copy shows its source slate's options, as shown,
+        // minus the right tool, and one extra in its place
+        let by_uid: HashMap<&str, &Record5> = all.iter().map(|r| (r.r.uid.as_str(), r)).collect();
+        let mut copies = 0;
+        for r in all.iter().filter(|r| r.r.kind == "removed") {
+            let from = r.from.as_deref().unwrap();
+            let src = by_uid[format!("{}/{from}", r.r.request).as_str()];
+            let g = src.r.target.iter().position(|&x| x == 1.0).unwrap();
+            if src.r.tools.len() != r.r.tools.len() {
+                // no distractor left (a small pool): the source slate without its gold, as v4
+                let mut want = src.r.tools.clone();
+                want.remove(g);
+                assert_eq!(r.r.tools, want, "{}", r.r.uid);
+                continue;
+            }
+            for i in (0..r.r.tools.len()).filter(|&i| i != g) {
+                assert_eq!(r.r.tools[i], src.r.tools[i]);
+                assert_eq!(
+                    sky_infer::route::plain_option(&r.r.opts[i]),
+                    sky_infer::route::plain_option(&src.r.opts[i]),
+                    "{}",
+                    r.r.uid
+                );
+                assert_eq!(r.roles[i], src.roles[i]);
+            }
+            assert_eq!(r.roles[g], DRAWN);
+            assert!(r.cell_level >= src.cell_level);
+            copies += 1;
+        }
+        assert!(copies > 100, "{copies}");
+        // amendment 2, decision 3: without a tool gold, the hard slate holds the request's own
+        // tools first, as v2's did
+        let mut nocall = 0;
+        for p in plans.iter().filter(|p| p.gold.is_none()) {
+            let p2 = v2_plans.iter().find(|x| x.id == p.id).unwrap();
+            let own: HashSet<&str> = by_req[p.id.as_str()]
+                .own
+                .iter()
+                .map(|&t| l.tools[t].id.as_str())
+                .collect();
+            for (t, d) in p.hard.tools.iter().zip(&p.hard.drawn) {
+                assert_eq!(!d, own.contains(t.as_str()), "{}", p.id);
+            }
+            for t in p2.hard.iter().filter(|t| own.contains(t.as_str())) {
+                assert!(p.hard.tools.contains(t), "{}", p.id);
+            }
+            nocall += 1;
+        }
+        assert!(nocall > 10);
+        // amendment 2, decision 2: C6 judges the cells of at least 200 drawn slates
+        for c in srep["C6 cells"].as_array().unwrap() {
+            let drawn = c["counts"]["drawn slates"].as_u64().unwrap();
+            assert_eq!(c["judged"].as_bool().unwrap(), drawn >= 200, "{c}");
+        }
         // the request's own tools of v2's natural slates are kept, at v2's sizes
         let ix: HashMap<&str, &Plan> = v2_plans.iter().map(|p| (p.id.as_str(), p)).collect();
         for p in &plans {
