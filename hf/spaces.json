@@ -246,5 +246,21 @@
     "color_to": "gray",
     "tagline": "A 702 KB ternary model that plays a Doom-like shooter from 14 numbers (Freedoom art).",
     "short_description": "702 KB model playing a Doom-like shooter"
+  },
+  {
+    "space_name": "skycmd",
+    "kind": "hub",
+    "title": "skycmd",
+    "emoji": "🗂️",
+    "color_from": "indigo",
+    "color_to": "green",
+    "tagline": "Every skycmd demo in one place. Pick a model to open its demo, which says first whether the model passed or failed its gate.",
+    "short_description": "Every skycmd demo in one place, with its verdict",
+    "notes": [
+      "{models} models, each with the demo of its own Space: {passed} passed their gate, {failed} failed it and are published as results, and {ungated} were published without a gate.",
+      "Each demo opens with its model's verdict, as in its own Space. The badges of this list are those of the site's Models page, which also mark a pass on a second look or on a generated bench only.",
+      "Everything runs in your browser: a Rust inference engine compiled to WebAssembly reads the model files of this Space, and a model's files are downloaded only when its demo is opened. Nothing is sent to a server.",
+      "Each demo links to its model's own Space. The project site, maxgfr.github.io/skycmd, has the same demos with the results behind them."
+    ]
   }
 ]

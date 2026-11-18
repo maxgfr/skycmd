@@ -37,6 +37,16 @@ training" for a gate with no pre-registration document, s4-micro's). The Space o
 model whose entry has `"gate": "passed"` opens with a notice of the same structure that says it
 passed (its README too, unless the entry of hf/spaces.json has a `readme_notice`); a model with
 no `gate` was published without one and gets no verdict notice.
+
+The entry with `"kind": "hub"` has no `model`: its `space_name` (skycmd) names the global Space
+`<user>/skycmd`, which has no model repository and no card. It gathers every demo: the app, the
+wasm modules once, the full manifest, the union of the files the other Spaces ship (no file
+twice; forecast.json keeps the forecasters those Spaces keep), and a `space.json` that holds the
+`space.json` of each model's own Space. Its notes and its README count the manifest's models and
+gates when it is assembled (`{models}`, `{passed}`, `{failed}`, `{ungated}` in its notes); its
+README lists the models by verdict. `--only skycmd` selects it; `--space-only` changes nothing
+for it. The script prints its total size and its largest files, and stops if the total is above
+1 GB or a file is larger than the largest one a model's own Space already ships.
 """
 import argparse
 import json
@@ -146,33 +156,71 @@ def assemble(user: str, s: dict, manifest: list, space_only: bool = False) -> tu
         if not s.get("space", True):
             return model_dir, None
 
+    copy_app(space_dir)
+    entries, keep = copy_demo_files(s, manifest, space_dir)
+    (space_dir / "models" / "manifest.json").write_text(json.dumps(entries, indent=2) + "\n")
+    if s["kind"] == "forecast":
+        write_forecast(space_dir, keep)
+    (space_dir / "space.json").write_text(json.dumps(space_config(user, s, entry), indent=2, ensure_ascii=False) + "\n")
+    (space_dir / "README.md").write_text(space_readme(user, s, entry))
+    return (None if space_only else model_dir), space_dir
+
+
+def key(s: dict) -> str:
+    """The name of an entry of hf/spaces.json: its model, or the `space_name` of the hub."""
+    return s.get("model") or s["space_name"]
+
+
+def copy_app(space_dir: Path) -> None:
+    """The demo app (target/hf-space-app) and the two wasm modules with their glue."""
     shutil.copytree(APP, space_dir)
     shutil.copytree(PUBLIC / "pkg", space_dir / "pkg", ignore=shutil.ignore_patterns(".gitignore", "package.json", "README.md"))
-    (space_dir / "models").mkdir()
+
+
+def copy_demo_files(s: dict, manifest: list, space_dir: Path) -> tuple[list, list]:
+    """Copies what the demo of a model's Space reads (its model files and those of its
+    `extra_models`, a word list, the Freedoom textures of a game, the sample clips of an ear
+    Space, the forecasters and the demo series of a forecast Space) into `space_dir`, which may
+    already hold the files of another Space (the hub): a file is then written once, at its one
+    path. Returns the manifest entries of the Space and the forecast.json models it keeps."""
+    m = s["model"]
+    (space_dir / "models").mkdir(exist_ok=True)
     names = [m] + s.get("extra_models", [])
     entries = [e for e in manifest if e["name"] in names]
     for e in entries:
         for f in model_files(e) + ([e["dictionary"]] if e.get("dictionary") else []):
             shutil.copy2(PUBLIC / "models" / f, space_dir / "models" / f)
-    (space_dir / "models" / "manifest.json").write_text(json.dumps(entries, indent=2) + "\n")
     if s["kind"] == "game":
-        shutil.copytree(PUBLIC / "doom", space_dir / "doom")
+        shutil.copytree(PUBLIC / "doom", space_dir / "doom", dirs_exist_ok=True)
     if s["kind"] == "ear":
-        shutil.copytree(PUBLIC / "ear", space_dir / "ear")
+        shutil.copytree(PUBLIC / "ear", space_dir / "ear", dirs_exist_ok=True)
+    keep = []
     if s["kind"] == "forecast":
         # the model and TinyCast (Apache-2.0, with its NOTICE); Timestral-5M stays on the site
         doc = json.loads((PUBLIC / "models" / "forecast.json").read_text())
         keep = [f for f in doc["models"] if f["name"] in (m, "TinyCast")]
-        (space_dir / "models" / "ref").mkdir()
+        (space_dir / "models" / "ref").mkdir(exist_ok=True)
         for f in keep:
             for rel in (f["file"], f.get("notice")):
                 if rel:
                     shutil.copy2(PUBLIC / "models" / rel, space_dir / "models" / rel)
-        doc["models"] = keep
-        (space_dir / "models" / "forecast.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
-        (space_dir / "forecast").mkdir()
+        (space_dir / "forecast").mkdir(exist_ok=True)
         shutil.copy2(PUBLIC / "forecast" / "demo-series.json", space_dir / "forecast" / "demo-series.json")
-    cfg = {
+    return entries, keep
+
+
+def write_forecast(space_dir: Path, keep: list) -> None:
+    """forecast.json with the forecasters of `keep` only, in its own order."""
+    doc = json.loads((PUBLIC / "models" / "forecast.json").read_text())
+    names = {f["name"] for f in keep}
+    doc["models"] = [f for f in doc["models"] if f["name"] in names]
+    (space_dir / "models" / "forecast.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+
+
+def space_config(user: str, s: dict, entry: dict) -> dict:
+    """The `space.json` of a model's Space (site/space/hub.ts, `SpaceConfig`)."""
+    m = s["model"]
+    return {
         "model": m,
         "title": m,
         "tagline": s["tagline"],
@@ -186,15 +234,136 @@ def assemble(user: str, s: dict, manifest: list, space_only: bool = False) -> tu
         "gate_note": entry.get("gate_note"),
         "gate_url": entry.get("gate_url"),
     }
+
+
+def model_spaces(spaces: list) -> list:
+    """The entries of hf/spaces.json that have a model and a Space: the demos of the hub."""
+    return [s for s in spaces if s.get("model") and s.get("space", True)]
+
+
+def gate_counts(manifest: list) -> dict:
+    """The manifest's models, and how many passed their gate, failed it or have none."""
+    passed = sum(1 for e in manifest if e.get("gate") == "passed")
+    failed = sum(1 for e in manifest if e.get("gate") == "failed")
+    return {"models": len(manifest), "passed": passed, "failed": failed, "ungated": len(manifest) - passed - failed}
+
+
+def hub_notes(hub: dict, manifest: list) -> list[str]:
+    """The notes of the hub, with the counts of the manifest in their `{...}` fields."""
+    counts = gate_counts(manifest)
+    return [n.format(**counts) for n in hub.get("notes", [])]
+
+
+# The hub's README: the models under their verdict, as the manifest gives it.
+VERDICTS = [
+    ("passed", "Passed its gate"),
+    ("failed", "Failed its gate, published as a result"),
+    (None, "Published without a gate"),
+]
+
+
+def hub_readme(user: str, hub: dict, spaces: list, manifest: list) -> str:
+    shown = model_spaces(spaces)
+    by_name = {e["name"]: e for e in manifest}
+    models = "".join(f"  - {user}/{s['model']}\n" for s in shown)
+    notes = "".join(f"- {n}\n" for n in hub_notes(hub, manifest))
+    groups = ""
+    for gate, title in VERDICTS:
+        rows = [s for s in shown if by_name[s["model"]].get("gate") == gate]
+        if not rows:
+            continue
+        groups += f"\n## {title} ({len(rows)})\n\n" + "".join(
+            f"- [{s['model']}](https://huggingface.co/spaces/{user}/{s['model']}): {s['short_description']}\n" for s in rows
+        )
+    return f"""---
+title: {hub["title"]}
+emoji: {hub["emoji"]}
+colorFrom: {hub["color_from"]}
+colorTo: {hub["color_to"]}
+sdk: static
+app_file: index.html
+pinned: false
+license: apache-2.0
+short_description: {json.dumps(hub["short_description"], ensure_ascii=False)}
+models:
+{models}---
+
+# {hub["title"]}
+
+{hub["tagline"]}
+
+{notes}{groups}
+Everything runs in your browser: a Rust inference engine compiled to WebAssembly (relaxed SIMD
+where the browser supports it, else SIMD128) reads the GGUF files shipped with this Space. A
+model's files are downloaded only when its demo is opened. Nothing is sent to a server.
+
+- Project site: [maxgfr.github.io/skycmd](https://maxgfr.github.io/skycmd)
+- Code: [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd)
+"""
+
+
+def assemble_hub(user: str, hub: dict, spaces: list, manifest: list) -> Path:
+    """Assembles target/hf/<space_name>/space: the global Space, which opens the demo of every
+    model's Space on demand (site/space/HubView.vue)."""
+    base = OUT / key(hub)
+    if base.exists():
+        shutil.rmtree(base)
+    space_dir = base / "space"
+    copy_app(space_dir)
+    by_name = {e["name"]: e for e in manifest}
+    kept, demos = [], []
+    for s in model_spaces(spaces):
+        _, keep = copy_demo_files(s, manifest, space_dir)
+        kept += keep
+        demos.append({
+            "config": space_config(user, s, by_name[s["model"]]),
+            "models": [s["model"]] + s.get("extra_models", []),
+            "space_url": f"https://huggingface.co/spaces/{user}/{s['model']}",
+        })
+    (space_dir / "models" / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    if kept:
+        write_forecast(space_dir, kept)
+    cfg = {
+        "kind": "hub",
+        "title": hub["title"],
+        "tagline": hub["tagline"],
+        "notes": hub_notes(hub, manifest),
+        "spaces": demos,
+    }
     (space_dir / "space.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
-    (space_dir / "README.md").write_text(space_readme(user, s, entry))
-    return (None if space_only else model_dir), space_dir
+    (space_dir / "README.md").write_text(hub_readme(user, hub, spaces, manifest))
+    return space_dir
+
+
+def mb(n: int) -> str:
+    return f"{n / 1e6:.1f} MB"
+
+
+def check_hub_size(space_dir: Path, spaces: list, manifest: list) -> None:
+    """Prints the hub's total size and its largest files; stops if the total is above 1 GB or if
+    a file is larger than the largest file a model's own Space ships (the files of the hub are
+    stored as those Spaces store theirs)."""
+    files = sorted((p for p in space_dir.rglob("*") if p.is_file()), key=lambda p: p.stat().st_size, reverse=True)
+    total = sum(p.stat().st_size for p in files)
+    print(f"  {len(files)} files, {mb(total)} in all; the largest:")
+    for p in files[:5]:
+        print(f"    {mb(p.stat().st_size):>9}  {p.relative_to(space_dir)}")
+    single = 0
+    for s in model_spaces(spaces):
+        for e in (e for e in manifest if e["name"] in [s["model"]] + s.get("extra_models", [])):
+            for f in model_files(e) + ([e["dictionary"]] if e.get("dictionary") else []):
+                single = max(single, (PUBLIC / "models" / f).stat().st_size)
+    if total > 1e9:
+        raise SystemExit(f"the hub is {mb(total)}, above 1 GB: stopped before changing how files are stored")
+    if files and files[0].stat().st_size > single:
+        raise SystemExit(f"{files[0].relative_to(space_dir)} ({mb(files[0].stat().st_size)}) is larger than any file a "
+                         f"model's own Space ships ({mb(single)}): stopped before changing how files are stored")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="assemble under target/hf, upload nothing")
-    ap.add_argument("--only", default="", help="comma-separated model names")
+    ap.add_argument("--only", default="", help="comma-separated model names (skycmd: the global Space)")
     ap.add_argument("--user", default="", help="namespace (default: the logged-in user)")
     ap.add_argument("--space-only", action="store_true",
                     help="assemble and upload the Space only: the model repo (and its engine/ folder) is left untouched")
@@ -216,7 +385,20 @@ def main() -> None:
     spaces = json.loads((ROOT / "hf" / "spaces.json").read_text())
     only = {x for x in a.only.split(",") if x}
     for s in spaces:
-        if only and s["model"] not in only:
+        if only and key(s) not in only:
+            continue
+        if s["kind"] == "hub":
+            # the global Space: no model repository, so --space-only changes nothing here
+            space_dir = assemble_hub(user, s, spaces, manifest)
+            print(f"assembled {key(s)}: {space_dir} (the global Space, no model repository)")
+            check_hub_size(space_dir, spaces, manifest)
+            if api is None:
+                continue
+            repo = f"{user}/{key(s)}"
+            api.create_repo(repo, repo_type="space", space_sdk="static", exist_ok=True)
+            api.upload_folder(repo_id=repo, repo_type="space", folder_path=space_dir,
+                              commit_message="Publish every skycmd demo", delete_patterns=["assets/*"])
+            print(f"published https://huggingface.co/spaces/{repo}")
             continue
         model_dir, space_dir = assemble(user, s, manifest, space_only=a.space_only)
         if model_dir is None and space_dir is None:
