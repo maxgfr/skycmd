@@ -3,6 +3,13 @@
 //! ```text
 //! sky-route embed-gguf --dump <export dir> --out <embedding.gguf>
 //!     the embedding file from the export of scripts/s6-route3-embed-export.py
+//! sky-route embed-params --embed <embedding.gguf> --fit <fit.json> --out <embedding.gguf>
+//!     --name <general.name> [--tau-key tau_ask6] [--params-from <text>]
+//!     s6-route v7 (docs/s6-route7-prereg.md §14): a copy of the embedding file with the fit's
+//!     beta and ask threshold (`beta`, and the `tau` of the --tau-key of fit.json, `tau_ask6` as
+//!     scripts/s6-route6-fit.py writes it) in place of v3's, every other key and every tensor
+//!     byte for byte (sky_infer::embed::with_route_params); refuses --out = --embed, so the
+//!     published file is never written; prints {out, bytes, from, from_bytes, beta, tau_ask}
 //! sky-route tokens --embed <embedding.gguf> --in <tokens.jsonl>
 //!     token ids against the export's tokens.jsonl ({from, text, ids} per line); prints a JSON
 //!     summary, exit 1 on any difference
@@ -188,6 +195,55 @@ mod imp {
         );
     }
 
+    fn embed_params(a: &Args) {
+        let src = a.need("--embed");
+        let out = a.need("--out");
+        let same = |x: &str, y: &str| {
+            std::fs::canonicalize(x)
+                .ok()
+                .zip(std::fs::canonicalize(y).ok())
+                .is_some_and(|(p, q)| p == q)
+        };
+        if out == src || same(&src, &out) {
+            die("--out must be a new file: the embedding file read is never written");
+        }
+        let fit = json_file(&a.need("--fit"));
+        let tau_key = a.value("--tau-key").unwrap_or_else(|| "tau_ask6".into());
+        let beta = fit["beta"]
+            .as_f64()
+            .unwrap_or_else(|| die("fit.json: no beta"));
+        // v3's rule writes {tau, accuracy, coverage} (scripts/s6-route3-fit.py tau_ask)
+        let t = &fit[&tau_key];
+        let tau = t
+            .as_f64()
+            .or_else(|| t["tau"].as_f64())
+            .unwrap_or_else(|| die(format!("fit.json: no {tau_key} (a number or {{tau}})")));
+        let bytes = read(&src);
+        let mut meta = vec![(
+            "general.name".to_string(),
+            OwnedValue::from(a.need("--name").as_str()),
+        )];
+        if let Some(p) = a.value("--params-from") {
+            meta.push((
+                "skycmd-embed.route.params_from".to_string(),
+                OwnedValue::from(p.as_str()),
+            ));
+        }
+        let copy = embed::with_route_params(&bytes, beta, tau, &meta).unwrap_or_else(|e| die(e));
+        if let Some(parent) = std::path::Path::new(&out).parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&out, &copy).unwrap_or_else(|e| die(format!("{out}: {e}")));
+        if read(&src) != bytes {
+            die(format!("{src} changed while it was read"));
+        }
+        println!(
+            "{}",
+            json!({"out": out, "bytes": copy.len(), "from": src, "from_bytes": bytes.len(),
+                   "beta": beta, "tau_ask": tau, "tau_key": tau_key})
+        );
+    }
+
     fn tokens(a: &Args) {
         let e = StaticEmbedding::from_gguf(&read(&a.need("--embed"))).unwrap_or_else(|e| die(e));
         let rows = jsonl(&a.need("--in"));
@@ -365,10 +421,11 @@ mod imp {
         let a = Args(argv[1..].to_vec());
         match cmd.as_str() {
             "embed-gguf" => embed_gguf(&a),
+            "embed-params" => embed_params(&a),
             "tokens" => tokens(&a),
             "fuse" => fuse(&a),
             other => die(format!(
-                "unknown command {other} (embed-gguf, tokens, fuse)"
+                "unknown command {other} (embed-gguf, embed-params, tokens, fuse)"
             )),
         }
     }

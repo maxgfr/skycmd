@@ -195,6 +195,79 @@ impl EmbedSpec {
     }
 }
 
+/// s6-route v7 (`docs/s6-route7-prereg.md` §14; v6 §14 item 8): an embedding file with the
+/// pair's fitted values replaced. `bytes` is an embedding file (the published
+/// `s6-route-embed.gguf`); the copy keeps every key, in its order and with its type, and every
+/// tensor byte for byte, except β ([`keys::BETA`]), the ask threshold ([`keys::TAU_ASK`], the
+/// key keeps its v3 name `tau_ask3`: the engine reads it there) and the keys of `meta` (set or
+/// added, e.g. `general.name`). The copy is loaded before it is returned, and everything it routes
+/// with except β and τ_ask must read as the original's.
+pub fn with_route_params(
+    bytes: &[u8],
+    beta: f64,
+    tau_ask: f64,
+    meta: &[(String, OwnedValue)],
+) -> Result<Vec<u8>> {
+    if !(beta.is_finite() && beta > 0.0 && (0.0..=1.0).contains(&tau_ask)) {
+        return Err(Error::Format(format!(
+            "beta {beta} and tau_ask {tau_ask}: beta > 0 and 0 <= tau_ask <= 1"
+        )));
+    }
+    let g = Gguf::parse(bytes)?;
+    let before = StaticEmbedding::from_gguf(bytes)?;
+    let mut w = GgufWriter::new().with_alignment(g.alignment);
+    let typed = |old: &sky_gguf::Value<'_>, x: f64| match old {
+        sky_gguf::Value::F32(_) => OwnedValue::F32(x as f32),
+        _ => OwnedValue::F64(x),
+    };
+    for (k, v) in &g.kvs {
+        if *k == "general.alignment" {
+            continue;
+        }
+        let value = if *k == keys::BETA {
+            typed(v, beta)
+        } else if *k == keys::TAU_ASK {
+            typed(v, tau_ask)
+        } else if let Some((_, m)) = meta.iter().find(|(m, _)| m == k) {
+            m.clone()
+        } else {
+            OwnedValue::from_value(v)
+        };
+        w.add_kv(*k, value);
+    }
+    for (k, m) in meta {
+        if !g.kvs.iter().any(|(e, _)| e == k) {
+            w.add_kv(k.clone(), m.clone());
+        }
+    }
+    for t in &g.tensors {
+        w.add_tensor(t.name, &t.dims, t.dtype, g.tensor_bytes(t).to_vec())?;
+    }
+    let out = w.to_bytes()?;
+    let after = StaticEmbedding::from_gguf(&out)?;
+    let same = after.dim == before.dim
+        && after.codes == before.codes
+        && after.scales == before.scales
+        && after.vocab == before.vocab
+        && after.unk_id == before.unk_id
+        && after.prefix == before.prefix
+        && after.max_chars == before.max_chars
+        && after.max_length == before.max_length
+        && after.normalize == before.normalize
+        && after.added == before.added
+        && after.space == before.space
+        && after.punct == before.punct
+        && after.theta == before.theta
+        && after.temperature == before.temperature;
+    let close = |a: f64, b: f64| (a - b).abs() <= 1e-6 * b.abs().max(1.0);
+    if !same || !close(after.beta, beta) || !close(after.tau_ask, tau_ask) {
+        return Err(Error::Format(
+            "the copy does not read as the original with the new beta and tau_ask".into(),
+        ));
+    }
+    Ok(out)
+}
+
 /// A loaded static embedding (tokenizer, packed table, the router's fitted values).
 pub struct StaticEmbedding {
     dim: usize,
@@ -748,6 +821,11 @@ mod tests {
     /// A tiny embedding: a vocabulary of a few words, an ASCII-only normaliser (upper case to
     /// lower case, `é` to `e`, U+200B deleted, U+4E00 padded), dimension 4.
     pub(crate) fn tiny() -> StaticEmbedding {
+        StaticEmbedding::from_gguf(&tiny_bytes()).unwrap()
+    }
+
+    /// The file of [`tiny`].
+    pub(crate) fn tiny_bytes() -> Vec<u8> {
         let vocab: Vec<String> = [
             "[PAD]", "[UNK]", "[CLS]", "[SEP]", "turn", "on", "the", "light", "##s", "cafe", "!",
             "un", "##aff", "##able", "一", "weather",
@@ -810,7 +888,7 @@ mod tests {
             tau_ask: 0.67,
             meta: vec![("general.name".into(), OwnedValue::from("tiny"))],
         };
-        StaticEmbedding::from_gguf(&spec.to_gguf().unwrap()).unwrap()
+        spec.to_gguf().unwrap()
     }
 
     #[test]
@@ -870,6 +948,52 @@ mod tests {
         let want = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
         assert_eq!(np_sum_f32(&x), want);
         assert_eq!(np_sum_f32(&[1.0, 2.0]), 3.0);
+    }
+
+    #[test]
+    fn route_params_replaced_and_nothing_else() {
+        let e = tiny();
+        let bytes = tiny_bytes();
+        assert_eq!(StaticEmbedding::from_gguf(&bytes).unwrap().beta, e.beta);
+        let meta = vec![
+            (
+                "general.name".to_string(),
+                OwnedValue::from("s6-route7-embed"),
+            ),
+            (
+                "skycmd-embed.route.params_from".to_string(),
+                OwnedValue::from("runs/s6-route7/fit.json"),
+            ),
+        ];
+        let out = with_route_params(&bytes, 1.37, 0.71, &meta).unwrap();
+        let c = StaticEmbedding::from_gguf(&out).unwrap();
+        assert!((c.beta - 1.37).abs() < 1e-12 && (c.tau_ask - 0.71).abs() < 1e-12);
+        assert_eq!(c.name(), "s6-route7-embed");
+        assert_eq!((c.theta, c.temperature), (e.theta, e.temperature));
+        // the same vectors, the same tokens, the same probabilities before the fusion
+        for text in ["Turn on the lights!", "un café", "weather"] {
+            assert_eq!(c.token_ids(text), e.token_ids(text));
+            assert_eq!(c.embed(text), e.embed(text));
+        }
+        assert_eq!(
+            c.probs("turn on", &["light", "weather"]),
+            e.probs("turn on", &["light", "weather"])
+        );
+        // every key of the original, in its order; the tensors byte for byte
+        let (g0, g1) = (Gguf::parse(&bytes).unwrap(), Gguf::parse(&out).unwrap());
+        let k0: Vec<&str> = g0.kvs.iter().map(|(k, _)| *k).collect();
+        let k1: Vec<&str> = g1.kvs.iter().map(|(k, _)| *k).collect();
+        assert_eq!(&k1[..k0.len()], &k0[..]);
+        assert_eq!(k1[k0.len()..], ["skycmd-embed.route.params_from"]);
+        for (t0, t1) in g0.tensors.iter().zip(&g1.tensors) {
+            assert_eq!(t0.name, t1.name);
+            assert_eq!(g0.tensor_bytes(t0), g1.tensor_bytes(t1));
+        }
+        // the input is untouched, and the same values give the same file
+        assert_eq!(bytes, tiny_bytes());
+        assert_eq!(out, with_route_params(&bytes, 1.37, 0.71, &meta).unwrap());
+        assert!(with_route_params(&bytes, 0.0, 0.5, &[]).is_err());
+        assert!(with_route_params(&bytes, 1.0, 1.5, &[]).is_err());
     }
 
     #[test]
