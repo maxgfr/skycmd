@@ -1,0 +1,466 @@
+# s6-route v5 (v4 with every distractor drawn in the right tool's surface cell): pre-registration
+
+**DRAFT of 18/11/2026: not frozen; the lead freezes it by a dated commit before any computation of v5.**
+
+- **Nothing of v5 exists yet:** no data built, no teacher call, no model trained, no fresh file.
+  To write this draft, no data file was opened. It reads only v4's published report
+  (`runs/s6-route4/checks.md`, `checks.json`) and the result block at the end of
+  `docs/s6-route4-prereg.md`.
+- **v5 is v4 with one change (S1, §2) and its consequences.** Everything else is inherited from
+  `docs/s6-route4-prereg.md`, as frozen on 17/11/2026 with its amendment 1 of 18/11/2026, section
+  by section.
+  - "As v4 §x" means that v4's text applies word for word, with v4's names replaced by v5's:
+    - `v4_tools` becomes `v5_tools`, and T4 becomes T5;
+    - `runs/s6-route4*` becomes `runs/s6-route5*`, and `models/s6-route4` becomes
+      `models/s6-route5`;
+    - the `route4` scripts become the `route5` scripts of §14.
+  - Only what changes is restated here, and every bar that changes is given as a number.
+- **Fixed later, by rules written here, each before any training:**
+  - the head window, as v4 §3.3;
+  - the pilot's bar, as v4 §5, read on `v5_tools`;
+  - the counts amendment of §6.3, as v4 §6.3.
+
+**Why this experiment.** v4 stopped at its data checks before any training (the result block of
+`docs/s6-route4-prereg.md`). Request-blind rules pick the right tool well above chance in two
+places, and the one remedy of v4 §4.4 was not open:
+
+- **The hard slates.** In the tools group, the right tool is shorter, more often without a final
+  period and more often imperative than its nearest neighbours: fewest characters 0.4809 against a
+  chance of 0.3763 on validation. In the intents group the right tool has the shortest name (0.4219
+  against 0.3721 in training).
+- **The natural fill of the tools group,** where the longest name wins (0.4015 against 0.3709).
+
+v4's remedy could not have reached the hard slates in any case: they are not a random fill. v5
+draws every distractor of every kind of slate, the hard slates included, within the right tool's
+surface cell, defined on the features those rules read. It adds request-blind rules that the cell
+does not use, judged with the same tolerance. If one of them fails, v5 stops, with no remedy.
+
+## 1. The question
+
+As v4 §1, read on T5-tools (§6) in place of T4-tools.
+
+## 2. What changes from v4, and why
+
+| # | change | evidence | where it is checked |
+|---|---|---|---|
+| S1 | **Every drawn distractor of every kind of slate is drawn within the right tool's surface cell** (§4.3): the natural fill, the renamed slates, the refills of D5, the hard slates (the nearest tools by the embedding among the tools of the cell), the false-negative replacements, the test-like validation slates and the fresh test's fill | v4's checks: 17 failing rules in five cells (R1 to R5, R11, R12, R13); C4's surface gaps in the hard cells (result block of v4) | §4.4 C2 |
+| S1a | **A new false-negative job** on the new hard slates of the training and validation requests | the hard slates change, so v2's 69,290 answers no longer cover them | §4.2 |
+| S1b | **New test-like validation slates `v5_tools`** (seed 1238) for the fits and the pilot | `v4_tools` was filled by D7 without the cell | §4.3 |
+| S1c | **The fresh test's fill aligned with the cell** (v4 §6.2, item 5) | one cell definition in training, validation and test | §6.2 |
+| S1d | **New request-blind rules N1 to N5, judged; no remedy** | the cell removes the listed cues by construction only for the categorical features; the next cue would be one the cell does not see | §4.4 |
+| S1e | **The baselines' validation accuracy on `v5_tools`, `v4_tools` and `v_tools`**, reported | a cell that conditions distractors on the gold changes difficulty in ways no rule sees | §4.5 |
+
+**Not changed:** v4 §2's D1 to D7 as amended, except that D7's source-first order now applies
+inside the cell (§4.3). Also unchanged: everything that v4 §2 lists as "not changed", with the
+graph, the initialisation, the prompt, the rendering of D4, the embedding part, the fusion and the
+ask rule of v4 §3.
+
+## 3. The system
+
+- **§3.1 to §3.3 and §3.5:** as v4.
+- **§3.4, the rendering: option (i), kept from v4's latency check, which is not run again.**
+  - **v4's measurement:** a median of 24,622 µs per request, against a bar of 50,000 µs. It used v2's
+    graph, the same weights' shape and the same rendering (scores in the option text), at a head
+    window of 320 (`runs/s6-route4/latency-check.json`).
+  - **Why it carries over.** S1 changes which tools a slate shows. It does not change what is
+    rendered or how much: an option keeps its 48-token cap, a slate keeps 8 options, and the head
+    window that v5's records can need is 160, 256 or 320 by v4 §3.3's rule. v4 measured at 320,
+    the largest of the three.
+  - **G4 still decides.** It measures the pair on T5-tools with the same 60 ms bar (§8).
+  - **If v5's build ever changes the rendering** (a new key, a longer option, a window above
+    320), the check of v4 §3.4 runs again, as its own stage, before the build.
+
+## 4. Data (`sky-data route`, extended)
+
+### 4.1 What is kept
+
+As v4 §4.1, with three exceptions:
+
+- **The hard slates change.** The plan's draws (the sizes of the natural and hard slates, the
+  stream `route/plan/<id>`) are kept. The list of nearest tools is the 16 nearest (`NEAREST`, v2's
+  reserve) among the candidates of the gold's cell (§4.3), by the same potion-base-2M cosine
+  between option texts (v2's readings, item 11).
+- **v2's false-negative answers apply only by id.** An answer applies where a new hard slate's
+  `fn_id` equals v2's: the same request and the same tools.
+- **v2's and v4's rewrites are reused:** 14,263 and 13,687 answers. Every tool of the pools has one
+  (v4's plan found 13,687 tools without one, and all were answered).
+
+### 4.2 The teacher
+
+GLM-5.3-Flash (MIT), through `scripts/route-teacher.sh`, under amendments 1 and 3 of
+`docs/s6-gen-prereg.md`.
+
+- **The `false-negatives` job,** v2's prompt word for word (v2 §4.5, readings item 16). Its items
+  are the training and validation requests whose new hard slate has no answer by id. The teacher
+  sees the request and the tools of its hard slate, numbered, without *none* and without being told
+  which is right.
+  - **Expected:** at most 69,290 items, one per request with a hard slate, as v2's job
+    (`build/teacher/false-negatives.items.jsonl`: 69,290 items, 69,288 answered, 2 refused). That
+    is **about 3,465 calls of 20**, fewer by the hard slates that S1 leaves unchanged.
+  - **The time:** v4's rewrite job did 685 calls in 1,384.7 s. A false-negative item is about four
+    times larger (577 bytes on average against 154 for a rewrite item, in v2's item files), so about
+    2 to 4 hours of calls, in one or two usage windows.
+  - **Who sees what:** the teacher sees training and validation requests only. The guard of
+    `sky-data teacher` refuses any item that holds a request of a test or fresh file.
+  - **The rule of v2 stands:** each distractor the teacher names is replaced by the next tool of
+    the gold's 16 nearest in its cell that is not in the slate. A request where the teacher does not
+    name the right tool as able is dropped with all its slates and counted. A request whose item
+    moderation refuses keeps its hard slate unfiltered and is counted.
+- **The `fresh-tools` job,** as v4 §4.2 (the probe copies only, about 100 to 150 calls).
+- **No `rewrite-description` job:** nothing to rewrite (§4.1).
+- **Never a test request,** as v4 §4.2.
+
+### 4.3 The surface cell (S1) and the slate kinds
+
+**The features.** They are read on the option as shown: the name, and the description after
+`cut_description`, which is the rewrite where D1's draw says so. Six features:
+
+| | feature | classes | the rules of v4 §4.4 it targets |
+|---|---|---|---|
+| F1 | name style | five: snake, camel, Pascal, spaced, other (`name_style` of `scripts/s6-route4-blind.py`; R8's four classes are a coarsening of it) | R8, R9, blind's style rules |
+| F2 | name length in characters | quintiles | R11 |
+| F3 | description length in words | quintiles | R4, R5 |
+| F4 | final period | yes, no | R1, R3, R9 |
+| F5 | first-word form | three: a capitalised word in -s, not -ss (R2's `third`); imperative (R13's `imperative`); other | R2, R3, R13 |
+| F6 | schema-like words (R12's list) | three: 0, 1, 2 or more | R12 |
+
+- **The cut points.** The quintiles' cut points are the 20th, 40th, 60th and 80th percentiles over
+  every text that a training or validation slate of v5 can show: the original and the rewrite of
+  every tool of the training and validation pools of route/tools and When2Call, and of the intents.
+  This is amendment 1's reading for v4's remedy, extended to the rewrites. A value equal to a cut
+  point goes to the lower class.
+- **The number of cells:** 5 × 5 × 5 × 2 × 3 × 3 = 2,250.
+- **The cell of a candidate, under D1.** D1's draw is per (request, kind, tool) and never reads the
+  gold (v4 §4.3), so it is drawn for every candidate before the slate is drawn. A candidate's cell
+  is the cell of the text it would show.
+- **The anchor of a slate without a tool gold.** When2Call's requests without a call, and every
+  removed slate's source, are anchored on a tool:
+  - for a removed slate (D5), the absent gold: the extra distractor of D5 comes from the gold's cell;
+  - for a request without a tool gold, its first own tool.
+
+  So every slate, whether a tool or *none* is right, is drawn around one cell.
+
+**The levels (the widening order).** The candidates of a kind are the pool's tools that pass the
+kind's distractor filter (v4 §4.3, unchanged). A slate is built at the lowest level at which its
+candidates matching the anchor's key hold **at least 16 tools**:
+
+| level | the key |
+|---|---|
+| L0 | F1 to F6, exact |
+| L1 | F2 and F3 within one class of the anchor's; F1, F4, F5, F6 exact |
+| L2 | L1 without F6 |
+| L3 | L2 without F5 |
+| L4 | L3 without F1 |
+| L5 | L4 without F2: F3 within one class, and F4 |
+| L6 | the kind's filter alone: v4's rule (D7's order for a random fill, the nearest tools for a hard slate) |
+
+- **Why this order.** The features are dropped in the order of the smallest gaps in v4's C4
+  table. The final period and the description's length are kept to the end: they carry the largest
+  gaps in the hard cells (validation: a final period on 0.657 against 0.822, 58.0 characters
+  against 67.7).
+- **Why 16.** It is the reserve of v2's hard plan. A random fill then never draws its 6 or 7
+  distractors from fewer than 16 tools.
+- **Counted and reported.** Every slate records its level (field `cell_level`). The build counts
+  slates by group, kind, split and level. C2 and N1 to N5 are also reported by level (§4.4).
+  Widening is not a failure, and no slate is dropped for it.
+
+**The kinds.** As v4 §4.3, with S1 in each:
+
+| kind | the drawn distractors |
+|---|---|
+| natural | the random fill: the candidates of the gold's cell at its level, those of the gold's source first (D7), then the rest of the cell |
+| hard | the gold and the nearest tools to it by potion-base-2M cosine among the candidates of its cell at its level; the false-negative filter applied; replacements from the same list |
+| removed | as v4 (D5): the extra distractor from the source slate's rule, in the absent gold's cell |
+| renamed | `slates::test_slate` with the random fill of the natural kind, then `slates::masked` |
+| `v5_tools`, `v5_tools_masked` | the 1,144 validation requests of `v_tools`, one slate each by v2's test rule with the fill of the natural kind, 20% removed, the sources' descriptions (no rewrite), **seed 1238** |
+
+- **Not drawn, so not filtered by the cell:** the request's own tools, that is, the conversation's
+  other tools in the natural and test-like slates, and in T5 the other tools of the gold's server.
+  They are shown as the test rule shows them, so that training, validation and test follow one
+  rule. This is a choice for the lead (O24).
+- **What the cell removes by construction, and what it does not.**
+  - **The categorical features.** In a slate built at L0 whose distractors are all drawn, every tool
+    option shares the gold's F1, F4, F5 and F6 values and its F2 and F3 classes. Every rule that
+    reads only F1, F4 or F5 then ties across all tool options and scores exactly chance on that
+    slate. These are R1, R2, R3, R8, R9, R13, their inverses, and blind's minority and majority
+    rules on style, period and first-word form.
+  - **The counting rules, R4, R5, R11 and R12, are not removed.** Within one class an argmin can
+    still prefer the gold. F2 and F3 bound the gap to the width of a class. F6 makes R12 tie only
+    within its classes 0 and 1. R5, on characters, is bounded only through F3, on words.
+  - **The other cases.** Own tools, and slates built at L1 or above, tie only on the features
+    their level keeps.
+  - So every rule of v4 §4.4 is still judged.
+
+### 4.4 Checks before any training, on the new data alone (no model)
+
+As v4 §4.4 with amendment 1: the cells, the 200-slate floor, C1 with amendment 1's bars, C2 with
+its rules and its tolerance **c + 0.02 + 2·√(c(1 − c)/n)**, C3, C4 and C5. The following changes:
+
+- **N1 to N5, new request-blind rules, judged with C2's tolerance in every judged cell.** None of
+  them is used to define the cell. Each reads the option texts with the score and rank of D4 taken
+  off, as C2 does, and each comes with its inverse.
+  - **N1 digits:** the option whose description has the highest share of digit characters.
+  - **N2 the rarest word:** the option whose description holds the word of lowest frequency class.
+    The class is ⌊log₂ df⌋, where df is the number of descriptions of the group's training pool
+    (originals) that hold the word, after lowercasing, over alphabetic tokens. A word absent from
+    the pool is class 0, and ties count as in C2.
+  - **N3 the first name:** the option whose name comes first in alphabetical order (case-folded,
+    then by code point).
+  - **N4 capitals:** the option whose description has the highest share of capitalised words after
+    its first word.
+  - **N5 centrality:** the option whose description has the highest mean word overlap (Jaccard of
+    lowercased word sets) with the other tool options of the slate.
+- **Not proposed:**
+  - the number of parameters in the tool's schema: the option text shows the name and the
+    description only (v4 §3.1), so no system can read it;
+  - the position after shuffling: R7 already judges it in every cell.
+- **The risk of N5, stated now.** In a hard slate the distractors are the gold's nearest
+  neighbours, not each other's, so the gold can be the most central option by the construction of
+  the hard kind itself. That holds for v2's, v4's and v5's builds alike, and the cell does not
+  change it. If N5 fails, v5 stops. That is the intended reading: a model can learn such a cue, and
+  the test-like slates do not carry it (O26).
+- **Tests on chance alone.** The ten new rule texts (N1 to N5 and their inverses) add about 190
+  tests to the 19 judged cells. The tolerance's margin of 0.02 is 1.4 standard errors in a cell of
+  about 1,100 slates, and about 0.6 in a cell of 200.
+- **The remedy is removed.** If any rule of C2 or N1 to N5 fails in a judged cell, the build stops
+  and v5 stops before training, with the table published. If C1 or C3 fails, the build has a defect
+  and is fixed before anything else, as v4.
+- **Reported, not judged:**
+  - C2 and N1 to N5 by level, in every cell;
+  - the share of slates of each level;
+  - for each cell, the number of distinct tools used as distractors and the largest share of one
+    tool among them, since a small cell can show the same few tools over and over (§4.5).
+
+### 4.5 The difficulty, reported (S1e)
+
+A construction that conditions the distractors on the gold's surface changes the slates in ways
+that no request-blind rule measures:
+
+- **Harder.** Distractors of the same surface as the gold make slates harder for any system that
+  reads the surface.
+- **Easier.** Where a cell is small, the same tools come back as distractors around every gold of
+  that cell. A model can learn which tools are rarely right, and no rule that reads one slate sees
+  it.
+- **A different training-to-test relation.** T2-tools, read for G5, was built by v2's fill from
+  the whole pool, not by the cell. A model trained on cell-matched slates meets a different mix
+  there.
+
+To make the change of difficulty visible, BM25 and `potion-cos` are scored by the frozen baseline
+code (`scripts/route-baselines.py`, v2's fitted values) on `v_tools`, `v4_tools` and `v5_tools`,
+and on their masked copies. The results are written in the amendment that sets the pilot's bar,
+before the pilot. They are reported, not judged, and nothing is chosen on them.
+
+### 4.6 Validation readings and leakage
+
+- **Validation readings:** as v4 §4.5, from `v5_tools`: `v5_tools_rw`, `v5_tools_masked_rw`, and
+  the renamed and natural validation records of the tools group.
+- **Leakage:** as v4 §4.6.
+
+## 5. The run (`scripts/train-route5.sh`)
+
+As v4 §5: the smoke, one pilot of 20 working minutes, the main run of 120, the calibration,
+export, τ_ask and the fit of β and τ_ask5 on `v5_tools`, then the evaluation. Readings at every
+kept checkpoint of the pilot are as v4, on `v5_tools`, `v5_tools_masked` and the two probe copies,
+with `v4_tools` and `v_tools` reported.
+
+**The pilot rule:**
+
+1. **Abort** if the model part's accuracy on `v5_tools` is below `potion-cos` on `v5_tools` −
+   **0.15**. The value of `potion-cos` on `v5_tools` is written in the amendment of §4.5.
+2. **Abort** if the rewritten distractor is the answer on more than **0.30** of the tool-gold
+   slates of `v5_tools_masked_rw`.
+3. Nothing else is chosen on the pilot.
+
+## 6. The fresh test files (T5)
+
+As v4 §6 and amendment 1, item 1, with the same source, commit, row rule and seed 1236. The
+filters, the caps (10 per gold cluster, 40 per server), the 2,000 slates, the 20% removed and the
+600-slate floor are unchanged. T4 was never built, so no file is replaced.
+
+- **§6.2, item 5, the one change.** "Random Toucan tools of other servers by the same filter,
+  drawn within the gold's surface cell" now means v5's cell (§4.3):
+  - the features F1 to F6 on the Toucan tool as shown (no rewrite in T5);
+  - the quintiles of F2 and F3 over Toucan's 1,770 tools (amendment 1, item 1);
+  - the levels L0 to L6 with the minimum of 16 candidates.
+
+  The fall-back that v4 wrote (the nearest length quintile with the same style and end, then the
+  same style alone) is replaced by these levels. The other tools of the gold's server come first,
+  unfiltered, as in v4.
+- **Counted on the built file and written in the counts amendment before any scoring:** the rules
+  of §4.4 (C2 and N1 to N5), on the option texts and the target's position only, and the slates by
+  level. They are reported, not judged: a rule above its tolerance is reported with the gate and
+  does not change the file.
+- **Files:** `t5_tools.jsonl`, `t5_tools_masked.jsonl`, `t5_tools_rw.jsonl`,
+  `t5_tools_masked_rw.jsonl` and `t5_tools.servers.jsonl`. Their hashes go to
+  `runs/s6-route5/test-files.json`, and `runs/s6-route5/FRESH-OPEN` follows v4 §6.3.
+
+## 7. Evaluation
+
+As v4 §7, on T5-tools, its masked copy and the two probe copies, and on T2-tools for G5. The
+systems are v4's, and the published s6-route pair (v3) is included for comparison.
+
+## 8. Gate (every condition must hold)
+
+As v4 §8, with T5-tools in place of T4-tools and no bar moved:
+
+- **G1:** the pair − BM25 and the pair − `potion-cos-4bit` each have the lower bound of the 95%
+  slate bootstrap above 0, and the pair is above its model part.
+- **G2:** (a) ≤ **0.1929** and paired ≤ **+0.03**; (b) the pair ≥ `potion-cos-4bit` − **0.02**;
+  (c) *none* on **0.10 to 0.30** of the masked slates.
+- **G3:** ECE ≤ **0.05**.
+- **G4:** parity max |Δp| ≤ 1e-3 with the same answer on ≥ 199 of 200 slates, a median ≤
+  **60 ms**, and ≤ 4,000,000 bytes.
+- **G5:** T2-tools ≥ **0.8668**.
+
+The headline (servers resampled), the report's sentence and the announced goals are as v4 §8.
+
+## 9. Reported, not gated
+
+As v4 §9, plus:
+
+- the slates by level, and C2 and N1 to N5 by level;
+- the baselines of §4.5 on the three validation files;
+- the distinct-distractor counts of §4.4;
+- the teacher's counts of the false-negative job (items, calls, refused, dropped requests,
+  replaced distractors).
+
+## 10. Disclosure (written into every place that reports v5)
+
+As v4 §10, plus:
+
+- **v5 was designed after v4's data checks were read.** The full table (`runs/s6-route4/checks.md`,
+  the five highest rules of every cell) and the C4 surface table (`checks.json`) were seen. The
+  cell's features, its classes and the order of its levels were chosen from them, after the failing
+  rules were known. N1 to N5 were chosen after that reading, as rules the cell does not use.
+- **The hard slates of v2's training data carried request-blind cues** (v4's result block). They
+  are disclosed in the cards of `s6-route` and `s6-route-nano`.
+- **The teacher sees about 69,000 new items** of training and validation requests, each with its
+  hard slate, as in v2.
+- **Toucan's files were fetched for v4 and no row text was read** (amendment 1 of v4). The draft
+  opened no data file.
+
+## 11. What a failure would mean
+
+As v4 §11, with its first point replaced and one point added:
+
+- **The data checks stop the build (§4.4, C2 or N1 to N5).** The surface cell does not make the
+  slates blind. No model is trained, and the table is published.
+  - If the failing rules are in the hard cells only, the next question is the hard slate's
+    construction itself (nearest to the gold), which needs its own pre-registration.
+  - The cue is described as a limit of v2's training data where it is v2's construction.
+- **G5 fails alone:** training on cell-matched slates cost accuracy on a file built by v2's fill
+  (§4.5). The result is reported as such; it is not a replacement.
+
+## 12. Forbidden
+
+As v4 §12, plus:
+
+- changing the cell's features, its classes, its minimum of 16 or its levels after any check has
+  run;
+- moving a rule between "judged" and "reported" after the freeze;
+- adding a remedy;
+- using v4's built records (`<data>/s6-route/build4/records/`) or its slate files for any choice of
+  v5 before the freeze, beyond the published report;
+- running the latency check of v4 §3.4 again and taking option (ii') from it, unless §3 says the
+  rendering has changed.
+
+## 13. Cost
+
+| item | amount |
+|---|---|
+| teacher | the false-negative job: ≤ 69,290 items, **≈ 3,465 calls** of 20, ≈ 2 to 4 h (§4.2); the `fresh-tools` job ≈ 100 to 150 calls; no rewrite job |
+| CPU | the plan with the cells and the nearest tools within a cell ≈ 10 to 20 min; the build and the checks ≈ 10 min (v4's latency stage, build and checks took 2 min 22 s together); the baselines on the three validation files ≈ 5 min; Toucan read, embedding and clustering ≈ 20 min; the pilot readings ≈ 15 min; the baselines on T5 and T2 ≈ 20 min |
+| GPU | as v4: smoke 3 + pilot 20 + main 120 + calibration and export 5 + evaluation 15 ≈ **163 working minutes**; ≈ 23 if the pilot rule aborts |
+| disk | a new build ≈ 0.3 GB (v4's build folder is 273 MB); checkpoints ≈ 1.1 GB; evaluation ≈ 0.1 GB; Toucan's 0.43 GB is already on disk: **≈ 1.5 GB new**. About 5.5 GiB were free on 18/11/2026, so space has to be freed or found before the build (§17, question 6) |
+
+## 14. Code to write before any run (by file)
+
+**Reused as is.** All of the following stay as written for v4:
+
+- D1 (`rewrite_draw`), D3, D5, D7 and the *none* share of `crates/sky-data/src/route/v4.rs`;
+- the readers `sky-data route toucan-rows` and `toucan-stage`;
+- the `fresh-tools` guard of `sky-data teacher`;
+- D4 in `sky_infer::route` with its fixture, and the `skycmd-s2.route.render` key in the engine
+  and in the sky-web router;
+- the uncached mode of `route3-node.mjs`;
+- `s2-decide --keep-checkpoints`;
+- `scripts/s6-route4-blind.py`'s features and rules;
+- `scripts/route-teacher.sh`, whose `false-negatives` mode is v2's.
+
+**To write:**
+
+1. **`crates/sky-data/src/route/v4.rs`, module `surface`:** F2, F5 and F6, the cut points over
+   both texts of every tool, the key at each level, and `cell_level` on every record. Unit tests:
+   - every L0 slate's drawn options share the gold's key;
+   - the levels widen in order, and the minimum of 16 is honoured;
+   - D1's draw is unchanged by S1 (the same draw for the same request, kind and tool);
+   - the removed slates are drawn around the absent gold's cell;
+   - determinism under the seed.
+2. **`crates/sky-data/src/route/v5.rs` (new), with `sky-data route v5-plan` and `v5-slates`:**
+   - the hard plan with the nearest tools within the cell (the stream `route/plan/<id>` kept);
+   - the items of the `false-negatives` job for every hard slate whose `fn_id` has no answer, with
+     answers reused by id;
+   - `v5_tools` and its copies (seed 1238);
+   - the build counts by level.
+3. **`crates/sky-data/src/route/toucan.rs`:** item 5 of §6.2 by v5's cell (`--rule v5`), and the
+   files `t5_*`.
+4. **`scripts/s6-route5-checks.py` and `scripts/test_s6_route5_checks.py`:** v4's checks imported
+   as they are, plus N1 to N5 judged, the tables by level, the distractor counts, and no remedy
+   (exit 2 on any failing rule).
+5. **`scripts/build-route5-data.sh`:** the stages `teacher-jobs` (the false-negative items),
+   `build`, `checks`, `baselines-val` (§4.5), `fresh`, `probes` and `counts`. There is no `fetch`
+   stage (Toucan is on disk, checked against `MANIFEST4.json`) and no `latency` stage (§3.4).
+6. **`scripts/route-baselines.py`:** a `v5val` split.
+7. **`scripts/train-route5.sh`, `scripts/s6-route5-pilot.py`, `scripts/s6-route5-fit.py`,
+   `scripts/s6-route5-gate.py` and `scripts/test_s6_route5_gate.py`:** from v4's, with the names
+   given at the top of this file. Also the t5 split of `scripts/route-eval.sh`, refused until `FRESH-OPEN`, and the Python
+   reference under D4 for G4.
+8. **`DATA_LICENSES.md`:** the new false-negative answers (GLM-5.3-Flash, MIT, a filter of the
+   training and validation hard slates).
+
+## 15. Choices (the value proposed for the freeze; the alternative is recorded)
+
+| | choice | proposed | alternatives | why |
+|---|---|---|---|---|
+| O21 | the cell's features | F1 to F6 | v4's three (style, period, word quintile); adding a digit in the name | each targets a rule that failed in v4, or its neighbour; R10 (digits) failed nowhere and stays judged |
+| O22 | the length classes | quintiles | tertiles (fewer widenings, a wider residual); deciles (a narrower residual, most slates widened) | v4's §6.2 used quintiles |
+| O23 | the minimum and the levels | 16 candidates; L0 to L6 in the order of §4.3 | 8 candidates for random fills and 16 for hard slates | one rule for every kind; 16 is the hard plan's reserve |
+| O24 | the request's own tools | shown unfiltered, as the test rule shows them | filtered by the cell too | one rule in training, validation and test; v4's T4 kept the server's own tools unfiltered |
+| O25 | the cell of an option under D1 | the text as shown | the source's description (as v4's remedy code) | the rules read the shown text; see the risk to C1 below |
+| O26 | N5 (centrality) | judged | reported only | it is the cue that the hard kind's construction may carry; judging it may stop v5 on a cue that v2 and v4 had too |
+| O27 | the false-negative job | on every new hard slate of training and validation | the hard slates unfiltered (v2's fallback when moderation refuses) | false negatives teach noise (v2 §2) |
+| O28 | `v5_tools` seed | 1238 | | the next free seed after v3's 1235, T4's 1236 and `v4_tools`' 1237 |
+
+**The risk to C1 of O25.** A distractor qualifies when the text it would show matches the gold's
+key, so whether a distractor is rewritten can follow whether the gold is: a rewritten gold tends to
+draw rewritten distractors. P(rewritten | right tool) stays 0.5 by D1. P(rewritten | other tool
+option) is 0.5 only if the rewrites and the originals spread over the cells alike. C1 judges both
+rates as v4 did, and a failure is a defect of the build. O25's alternative (the source's text) keeps
+C1 by construction but gives ties only on the options that D1 did not rewrite.
+
+## 16. Why not relax the tolerance instead
+
+The tolerance of C2 was frozen on 17/11/2026, before any data of v4 existed. Moving it after its
+checks had failed would choose the bar from the result it judges. The failures are not marginal
+either: in the hard cells of the tools group, the best rule is 0.045 above chance in training and
+0.105 on validation. A margin of about +0.05 that a rule reading no request can find in thousands of
+slates is the kind of signal a model trained for two hours on those slates can also find. Whether
+it would have is not known, since no model was trained.
+
+## 17. Questions for the lead (before the freeze)
+
+1. **O24:** are the request's own tools (the conversation's tools; in T5 the gold's server's
+   tools) exempt from the cell, or filtered by it?
+2. **O25:** is the cell read on the text as shown (risk to C1), or on the source's description?
+3. **O26:** is N5 judged, knowing that it may stop v5 on the hard kind's construction itself?
+4. **O22 and O23:** quintiles and a minimum of 16, or another trade-off between a narrower residual
+   and fewer widened slates?
+5. **The fresh test's name:** the files are named `t5_*` because item 5 of §6.2 changed. Is that
+   right, or should they keep v4's `t4_*` names, given that no `t4_*` file was ever built?
+6. **Disk:** v5 needs about 1.5 GB new against about 5.5 GiB free on 18/11/2026. Which files may be
+   removed? For example, v4's build records under `<data>/s6-route/build4/records/` can be rebuilt
+   from the plan; the teacher's answers must be kept.
+
+## 18. Amendments
+
+None (draft).
