@@ -4,6 +4,8 @@
 
 **Amendment 1 of the same day (18/11/2026), before any computation of v6 (§17):** the fix of §4.8 is extended to every slate of the When2Call group, none of which shows an exempt tool any more.
 
+**Amendment 2 of the same day (18/11/2026), before any computation of v6 (§17):** the readings of the code fixed before any computation (a drawn own tool is a drawn tool; the engine unchanged, the pair's B1 dropped; the placeholder; the stages; G4's input; what remains before the gate).
+
 - **Nothing of v6 exists yet:** no model trained, no record rebuilt, no fresh file built, no
   teacher call, no system scored, no blind copy written. To write this document:
   - no record and no request was opened;
@@ -889,3 +891,80 @@ kind shows an exempt tool.
 **Disclosure** (§10, added). The extension follows v5's table, as the fix did. It was decided
 after the frozen fix was compared with the table's counts by level and by gold, and before
 anything of v6 ran.
+
+### Amendment 2 (18/11/2026, decided by the lead, before any computation of v6): readings of the code fixed before any computation
+
+**Nothing of v6 has run.** The code of §14 is written (branch `route6-code`). No record has been
+rebuilt, no teacher call made, no blind copy written, no model trained and no system scored. The
+published diagnostic of §9.1 has not run either.
+
+One count was made to write this amendment, read-only: point 1 below, on v5's plan and on v2's
+tool lists. It opened no request text and wrote nothing in the data folder.
+
+The code's readings of the frozen text and of amendment 1, as the lead decided them:
+
+1. **A drawn tool that is one of the request's own tools.**
+   - **The count.** 5 of the 4,306 tool-right hard slates of the When2Call group show one of the
+     request's own tools (other than the right tool) as a drawn distractor, within the right
+     tool's cell. It was counted read-only on v5's plan (`build5/stage/plan5.jsonl`, the tools of
+     each hard slate) against v2's tool lists (`build/stage/requests.jsonl`, each request's own
+     tools).
+   - **The decision.** These 5 slates keep v5's candidates, tools and false-negative answers, as
+     the code does. Amendment 1's purpose is that no tool is shown *because* it is the request's
+     own: no exempt tool. A tool that the draw itself selects within the cell is a drawn tool like
+     any other.
+   - **The literal reading,** "the request's own tools … are not shown in this group, in any
+     kind", would have changed those 5 slates. Their items would then have gone to the teacher
+     again (about 5 more than the 1,043), and a request dropped by the teacher would have moved
+     the uids that the rebuild keeps.
+   - **What does change.** In the natural, renamed and no-call hard slates of the group, the
+     request's own tools other than the right tool are neither exempt nor candidates.
+2. **The engine is not changed.** `crates/sky-infer` is not modified; item 1 of §14 is replaced.
+   - **B0** is read through the existing paths:
+     - the blind copy rendered by the model file's own rendering (`sky-data route blind`), read by
+       `sky-eval --dump-probs`;
+     - the blind plain file read by `sky-route fuse`, which computes every score from the
+       placeholder (all 0.00) and gives the embedding part the placeholder.
+   - **B1** is read for the model part only, by `sky-eval` on the bare file
+     (`<stem>.blind-bare.model.jsonl`).
+   - **The pair's B1 is not read in v6.** It was reported only. It would need a rendering `bare`
+     in `sky-route fuse`, an engine change that the gate does not need, so it is dropped. §7's
+     "B1 for the model part and the pair" and §9's B1 readings are reduced to the model part.
+   - The pilot, the diagnostic of §9.1 and G6 read the pair in B0, as frozen.
+3. **The placeholder** is `?`, then `…`, then `-` (§4.3).
+   - The check (`sky-data route blind --check-placeholder`) takes the first of the three that
+     equals no training or validation request after trimming. It stops only if all three occur.
+   - The one taken is written once, in `runs/s6-route6/placeholder.json`, and kept for every file,
+     T5 included.
+   - If the diagnostic of §9.1 runs first, it takes the placeholder on v5's build, whose requests
+     are v6's. The stage `placeholder` then checks it against v6's records and does not choose
+     again. The counts amendment checks it against T5's requests (`--keep`).
+4. **The stages of `scripts/build-route6-data.sh`.**
+   - **The order:** `blind-val` runs before `baselines-val`, since the blind baselines read the
+     blind copies.
+   - **`inputs-ok`.** It checks `build6/` against the hashes that the amendment of §4.8 lists
+     (`runs/s6-route6/inputs6.json`), before training. Only then is `runs/s6-route6/inputs.ok`
+     written.
+   - **The fix's teacher files** live under `build6/fix/teacher/` (`false-negatives.items.jsonl`,
+     `false-negatives.jsonl`, `false-negatives.refused.jsonl`), with the fix's plan under
+     `build6/fix/stage/`. The teacher files copied from v5 under `build6/teacher/` keep their
+     hashes of §4.1. The lead runs the job with
+     `BUILD=<data>/s6-route/build6/fix scripts/route-teacher.sh false-negatives loop`.
+5. **G4's input** is one JSON from the engine's bench, with these fields:
+   - `max_abs_diff`: the largest |Δp| against the Python reference;
+   - `argmax_agree` and `n`: the slates with the same answer, out of the slates compared;
+   - `median_ms`: the median per request, WASM SIMD128;
+   - `bytes`: the two files as shipped.
+
+   The bars are those of §8: ≤ 1e-3, ≥ 199 of 200, ≤ 60 ms, ≤ 4,000,000 bytes.
+6. **What remains to write before the gate,** so that §14 is complete. Written so far, items 0,
+   2, 4 to 7, 9 and 10, as this amendment reads them; items 3 and 8 in part. Still to write:
+   - the embedding file that stores β and τ_ask6, after `scripts/s6-route6-fit.py`;
+   - the t5 split of `scripts/route-eval.sh` and `scripts/route-baselines.py`, refused until
+     `runs/s6-route6/FRESH-OPEN` exists and the files have the hashes of
+     `runs/s6-route6/test-files.json`, with its `blind` step: the blind copies of T5-tools and of
+     its masked copy, the dumps in B0 and B1 (B1: the model part only), and the fused dumps in B0;
+   - the Python reference of the pair under D4, for G4's parity;
+   - the bench that writes G4's JSON in the form of point 5.
+
+**Nothing else changes.** No bar, rule, file or choice of the frozen text or of amendment 1 moves.
