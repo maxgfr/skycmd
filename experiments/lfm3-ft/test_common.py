@@ -330,6 +330,121 @@ class LocalMode(unittest.TestCase):
         L.memory_update(rec, None, None, None)  # nothing readable: nothing changes
         self.assertEqual(rec, {"mps_driver_peak": 9, "mps_current_peak": 4, "available_min": 400})
 
+    def test_lora_choice_follows_amendment_1(self):
+        """Rule 1 (peft on MPS) first, rule 2 (mlx-vlm) only when rule 1 failed, else no method."""
+        import local as L
+
+        peft = {"lora_ok": True, "per_device": 4, "grad_accum": 8}
+        mlx = {"lora_ok": True, "per_device": 8, "grad_accum": 4}
+        self.assertEqual(L.lora_choice(peft, mlx), {"lora_method": "peft-mps", "per_device": 4, "grad_accum": 8, "ok": True})
+        self.assertEqual(L.lora_choice({"lora_ok": False}, mlx)["lora_method"], "mlx-vlm")
+        self.assertEqual(L.lora_choice({"lora_ok": False}, mlx)[("per_device")], 8)
+        self.assertEqual(L.lora_choice({"lora_ok": False}, {"lora_ok": False}),
+                         {"lora_method": None, "per_device": None, "grad_accum": None, "ok": False})
+        self.assertFalse(L.lora_choice({"lora_ok": False}, None)["ok"])  # no mlx-lora.json: nothing validated
+
+    def test_parse_swap_used(self):
+        import local as L
+
+        self.assertEqual(L.parse_swap_used("total = 8448,00M  used = 7198,94M  free = 1249,06M  (encrypted)"), 7198.94)
+        self.assertEqual(L.parse_swap_used("total = 0.00M  used = 0.00M  free = 0.00M"), 0.0)
+        with self.assertRaises(ValueError):
+            L.parse_swap_used("")
+
+    def test_guarded_stops_a_child_that_swaps(self):
+        """The swap guard: a child whose swap grows past the limit is killed; one that stays under it ends."""
+        import local as L
+
+        class Child:
+            def __init__(self, polls):
+                self.polls, self.returncode, self.killed = polls, None, False
+
+            def poll(self):
+                if self.killed or self.polls == 0:
+                    self.returncode = -9 if self.killed else 0
+                    return self.returncode
+                self.polls -= 1
+                return None
+
+            def kill(self):
+                self.killed = True
+
+            def wait(self):
+                self.returncode = -9
+
+        swaps = iter([700.0, 900.0, 3100.0, 9000.0])  # the bound is on the swap in use, not on its growth
+        child = Child(polls=10)
+        g = L.guarded(["x"], swap_max_mb=3072, load_max=8, read_swap=lambda: next(swaps), read_level=lambda: 40,
+                      read_load=lambda: 2.0, popen=lambda cmd: child, sleep=lambda s: None)
+        self.assertTrue(g["stopped_by_guard"].startswith("swap") and child.killed)
+        self.assertEqual((g["swap_start_mb"], g["swap_peak_mb"], g["memory_free_pct_min"]), (700.0, 3100.0, 40))
+        loads = iter([1.0, 3.0, 8.5])
+        child = Child(polls=10)
+        g = L.guarded(["x"], swap_max_mb=3072, load_max=8, read_swap=lambda: 100.0, read_level=lambda: None,
+                      read_load=lambda: next(loads), popen=lambda cmd: child, sleep=lambda s: None)
+        self.assertEqual((g["stopped_by_guard"], g["load_peak"]), ("load 8.50", 8.5))
+        calm = iter([100.0] * 5)
+        g = L.guarded(["x"], swap_max_mb=3072, load_max=8, read_swap=lambda: next(calm), read_level=lambda: None,
+                      read_load=lambda: 1.0, popen=lambda cmd: Child(polls=2), sleep=lambda s: None)
+        self.assertIsNone(g["stopped_by_guard"])
+        self.assertEqual(g["returncode"], 0)
+
+    def test_try_batches_falls_back_to_4(self):
+        """Batch 8 stopped by the guard (or out of memory): batch 4 is tried, and its record is the result."""
+        import local as L
+
+        with tempfile.TemporaryDirectory() as d:
+            out = lambda n: os.path.join(d, f"try-{n}.json")  # noqa: E731
+            with open(out(4), "w") as f:
+                f.write('{"stale": true}')  # left by an earlier run: removed before the attempt
+            seen = []
+
+            def run(cmd):
+                n = int(cmd[-1])
+                seen.append(n)
+                if n == 4:
+                    with open(out(4), "w") as f:
+                        json.dump({"trained": True, "ok": True}, f)
+                return {"stopped_by_guard": "swap 3500 MB" if n == 8 else None}
+
+            calm = lambda: (True, 0.0, 500.0)  # noqa: E731
+            attempts, child = L.try_batches("smoke-lora-try", "rev", out, run=run, wait=calm)
+            self.assertEqual(seen, [8, 4])
+            self.assertEqual((child["per_device"], child["grad_accum"]), (4, 8))
+            self.assertIsNone(attempts["8"]["child"])
+
+            def none_fit(cmd):
+                with open(out(int(cmd[-1])), "w") as f:
+                    json.dump({"trained": False, "error": "out of memory"}, f)
+                return {"stopped_by_guard": None}
+
+            attempts, child = L.try_batches("smoke-lora-try", "rev", out, run=none_fit, wait=calm)
+            self.assertIsNone(child)
+            self.assertEqual(sorted(attempts), ["4", "8"])
+
+            # The swap does not come back under the bound after batch 8: batch 4 is not run, nothing is chosen.
+            settles = iter([(True, 0.0, 500.0), (False, 1200.0, 2900.0)])
+            seen.clear()
+            attempts, child = L.try_batches("smoke-lora-try", "rev", out, run=run, wait=lambda: next(settles))
+            self.assertEqual((seen, child), ([8], None))
+            self.assertIn("2900 MB", attempts["4"]["not_run"])
+
+    def test_settle_waits_for_the_swap(self):
+        import local as L
+
+        swaps = iter([2500.0, 2300.0, 1900.0])
+        self.assertEqual(L.settle(limit_mb=2048, wait=60, period=10, read_swap=lambda: next(swaps), sleep=lambda s: None),
+                         (True, 20.0, 1900.0))
+        self.assertEqual(L.settle(limit_mb=2048, wait=30, period=10, read_swap=lambda: 2500.0, sleep=lambda s: None),
+                         (False, 30.0, 2500.0))
+
+    def test_fits_is_the_recommended_working_set(self):
+        import local as L
+
+        self.assertTrue(L.fits(10, 10))
+        self.assertFalse(L.fits(11, 10))
+        self.assertFalse(L.fits(None, 10))
+
     def test_drop_weights_keeps_the_rest(self):
         """The smoke's merged model, once reloaded: its weights are removed and recorded, the rest is kept."""
         import hashlib
