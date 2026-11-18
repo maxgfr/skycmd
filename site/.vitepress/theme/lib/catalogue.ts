@@ -97,7 +97,6 @@ export const GROUPS: Record<GroupId, { title: string; verb: string }> = {
 }
 
 const HF = 'https://huggingface.co/maxgfr/'
-const DOCS = 'https://github.com/maxgfr/skycmd/blob/main/docs/'
 
 export const CATALOGUE: CatalogueEntry[] = [
   // Works: use it
@@ -312,6 +311,24 @@ export const CATALOGUE: CatalogueEntry[] = [
     source: ['site/results/index.md#s6-ear-nano-failed', 'site/public/models/manifest.json'],
   },
   {
+    id: 's6-cast2-pico',
+    name: 's6-cast2-pico',
+    group: 'results',
+    status: 'failed',
+    statusNote: 'It missed G1, both GIFT-Eval bars; G2 holds (its MASE is under the seasonal naive at each term).',
+    purpose: 'Forecasts the next 64 steps of a time series as nine deciles, with the periods it detects in the history as an extra input.',
+    size: '149 KB',
+    manifest: ['s6-cast2-pico'],
+    brings:
+      'A periodicity front end narrowed the gap and did not close it: nGMASE 0.8847 and nWQL 0.6190 on GIFT-Eval, against bars of 0.838 and 0.587, where s6-cast-pico scored 0.9471 and 0.6646 and our TinyCast port scores 0.7918 and 0.5622 without flip.',
+    caveat:
+      'A result, not a forecaster to use: our TinyCast port forecasts better on GIFT-Eval and on Chronos-ZS. GIFT-Eval is partly in-sample for its design choices.',
+    try: { link: '/forecast/', label: 'the Forecast page, where it is unticked by default' },
+    get: HF + 's6-cast2-pico',
+    read: { link: '/results/#s6-cast2-pico-failed', label: 'its section of Results' },
+    source: ['site/results/index.md#s6-cast2-pico-failed', 'hf/cards/s6-cast2-pico.md', 'site/public/models/manifest.json'],
+  },
+  {
     id: 's6-cast-pico',
     name: 's6-cast-pico',
     group: 'results',
@@ -376,18 +393,7 @@ export const CATALOGUE: CatalogueEntry[] = [
     source: ['hf/cards/s1-pico.md', 'site/public/models/manifest.json'],
   },
 
-  // In progress: no numbers before a result
-  {
-    id: 's6-cast-v2',
-    name: 's6-cast v2',
-    group: 'progress',
-    status: 'progress',
-    purpose: 'Forecasts time series, as s6-cast-pico tried to.',
-    brings:
-      "Whether the same encoder becomes a usable zero-shot forecaster with a computed-periodicity front end, training data that covers GIFT-Eval's frequency bands and more training time. Not run yet.",
-    read: { link: DOCS + 's6-cast2-prereg.md', label: 'its pre-registration' },
-    source: ['docs/s6-cast2-prereg.md', 'site/results/index.md (In short)'],
-  },
+  // In progress: no numbers before a result (none at the moment; s6-cast v2 was read on 18/11/2026)
 ]
 
 export function entriesOf(group: GroupId): CatalogueEntry[] {

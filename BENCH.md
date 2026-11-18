@@ -514,6 +514,48 @@ Pre-registration: [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md), gate in §
 - **By domain**, MASE / WQL: Econ/Fin 1.018 / 0.901, Energy 1.080 / 0.800, Healthcare 0.760 / 0.614, Nature 0.862 / 0.467, Sales 0.753 / 0.457, Transport 0.833 / 0.644, Web/CloudOps 0.983 / 0.662; our TinyCast port 0.894 / 0.841, 0.882 / 0.661, 0.735 / 0.639, 0.757 / 0.358, 0.734 / 0.445, 0.669 / 0.510, 0.750 / 0.562. Healthcare is the only domain where its WQL is below TinyCast's. The worst configurations are `solar/10T/long` and `solar/10T/medium` (MASE ratios 2.729 and 2.282, against 0.973 and 0.955 for our TinyCast port).
 - **Not measured by the run:** the latency, the mean number of exits used on GIFT-Eval (the calibration gives 3.64 of 4 on its synthetic windows) and the gap to Timestral-5M, whose GIFT-Eval scores are not in the repository.
 
+## s6-cast2-pico (s6-cast v2): a forecaster with a periodicity front end, pre-registered, gate failed
+
+Pre-registration: [`docs/s6-cast2-prereg.md`](docs/s6-cast2-prereg.md), gate in §8, amendments 1 to 3 (all before training) and its result block of 18/11/2026. Results: [`runs/s6-cast2-pico/GATE.md`](runs/s6-cast2-pico/GATE.md) and `gate.json` next to it, the checks `checks.json`, the latencies `runs/s6-cast2-pico/latency/`, the pilot `runs/s6-cast2-pilot/choice.json`; the scores `data/gift-eval-out/{s6-cast2-pico,s6-cast2-pico-flip,tinycast-noflip}/summary.json` (`scripts/gift-eval.py score`); logs `runs/all/cast2-train.log` and `runs/all/cast2-gate.log`.
+
+**Failed on G1.** On GIFT-Eval (97 configurations, the gated model without flip) nGMASE **0.8847** and nWQL **0.6190**, where G1 asked for ≤ 0.838 and ≤ 0.587. G2 holds: the MASE ratio to the seasonal naive is under 1.00 at each term (short 0.833, medium 0.928, long 0.988). G3 was dropped before training (amendment 2: the Chronos-ZS harness did not reproduce the published port), so G1 and G2 were read on the benchmark that shaped the design, and Chronos-ZS is reported. It failed its gate; its file is published as a result (owner's decision of 15/11/2026): `site/public/models/s6-cast2-pico.gguf`, the calibrated file the gate read (148,512 bytes, sha256 `30cbee8e846bc47d0876d9d77e3460278e58025cf01b6a5390b79b999215959f`). By §11 of the pre-registration, the s6-cast line stops and the forecaster the project offers is the TinyCast port; no v3 is planned on GIFT-Eval.
+
+**Disclosure** (§10). v2 was designed after reading v1's GIFT-Eval results on the same 97 configurations, window by window: where it lost, by band, term, domain, seasonality, context length and horizon. GIFT-Eval is therefore partly in-sample for v2's design choices, though not for its weights: no GIFT-Eval series is trained on. TinyCast's authors make the same disclosure about their own design and treat Chronos-ZS as the cleaner test.
+
+**Model and recipe.** v1's graph (d 96, 2 blocks × 2 loops, an exit after each loop, patches of 32 points, 2,048 points of context, 64 per pass, nine deciles) with a zero-parameter front end: TinyCast's period detector on every context feeds sine and cosine phase channels of up to 4 periods into each patch, and a value-space seasonal draft (the lag copy and the phase-binned mean) is projected into each decoder query. 377,568 parameters, ternary. Training data: v1's synthetic generators with six added periods, sign flip and time reversal at 0.5, v1's real series and 1,011 USCRN sub-hourly series (NOAA, public domain; 8,282,112 points, no matching informative run against either benchmark), real share 0.6 drawn by GIFT-Eval's band weights; the second, weekly and monthly bands had no real series and got synthetic stand-ins. The pilot (3,000 steps each) kept the TinyCast teacher (validation pinball 0.045361 against 0.045963 without). One run of 720 working minutes, **377,082 steps**, AdamW at 3e-3, batch 256, QAT over the last 20 %, EMA 0.999, seed 1, no restart; brake modes duty 0.95 (55:5) and 0.5 (45:15), 20 cooling pauses. Exported: the EMA (final ternary validation pinball 0.0435 against 0.0443 for the last weights), exit tolerance 0.012839192 from the calibration on 2,000 synthetic windows.
+
+| model | nGMASE | nWQL | nMSIS |
+|---|---:|---:|---:|
+| s6-cast-pico (v1), without flip | 0.9471 | 0.6646 | 0.7190 |
+| v1, with flip | 0.9099 | 0.6417 | 0.6860 |
+| **s6-cast2-pico (v2), without flip** (the gated model) | **0.8847** | **0.6190** | 0.6848 |
+| v2, with flip | 0.8692 | 0.6071 | 0.6735 |
+| gate G1: FLAIR, training-free (TinyCast paper) | 0.838 | 0.587 | |
+| TinyCast, our port, with flip | 0.7856 | 0.5570 | 0.5781 |
+| TinyCast, our port, without flip | 0.7918 | 0.5622 | 0.5865 |
+| seasonal naive, our harness | 0.9999 | 0.8876 | 2.6778 |
+
+- **Against v1 and the port.** v2 closes 0.365 of v1's gap to the port on MASE and 0.402 on WQL (sum of log ratios over the 97 configurations). It stays +0.0929 nGMASE and +0.0568 nWQL from the port without flip, +0.1107 and +0.0740 from the published TinyCast. 2,017 windows in 12 configurations are forecast by the seasonal naive, as for v1.
+- **By term** (MASE / WQL ratio to the seasonal naive): short 0.833 / 0.610, medium 0.928 / 0.624, long 0.988 / 0.637; v1 0.860 / 0.638, 1.046 / 0.696, 1.105 / 0.706; the port 0.756 / 0.571, 0.806 / 0.534, 0.848 / 0.546.
+- **By band** (MASE / WQL): second 0.926 / 0.692, sub-hourly 0.936 / 0.653, hourly 0.870 / 0.569, daily 0.770 / 0.490, weekly 0.937 / 0.737, monthly and coarser 0.907 / 0.878. Better than v1 in the first four, worse in the weekly and monthly bands (v1 0.908 / 0.729 and 0.878 / 0.850).
+- **By domain** (MASE / WQL): Econ/Fin 0.984 / 0.876, Energy 1.003 / 0.746, Healthcare 0.825 / 0.678, Nature 0.825 / 0.414, Sales 0.749 / 0.455, Transport 0.772 / 0.603, Web/CloudOps 0.861 / 0.593; our TinyCast port 0.894 / 0.841, 0.882 / 0.661, 0.735 / 0.639, 0.757 / 0.358, 0.734 / 0.445, 0.669 / 0.510, 0.750 / 0.562. Healthcare is worse than v1 (0.760 / 0.614). The port's MASE is lower in every term, band and domain.
+- **Above the seasonal naive on MASE in 31 of the 97 configurations**, the worst `ett2/W/short` (1.626), `us_births/M/short` (1.572) and `m4_hourly/H/short` (1.513).
+- **Chronos-ZS** (27 tasks, reported, not gated; the harness did not validate: the port with flip reads 0.8576 / 0.6822 where 0.880 / 0.722 are published): v2 relative MASE 0.9014 and WQL 0.7143, the port without flip 0.8598 and 0.6928, the seasonal naive 1.0000.
+- **Not reported:** the coverage by quantile level, the window-level splits and the horizon profile of §9. Their tables in `GATE.md` and `diagnostics.json` have no row: the script reads the per-window forecast dumps, which were removed from `data/gift-eval-out/` after scoring to free disk space. They can be rebuilt from the published files with `sky-cast-eval run`; that has not been done.
+
+**Latency and size** (`runs/s6-cast2-pico/latency/`, 18/11/2026, Apple M5, one core, after the training had ended; one synthetic series, `tsi` seed 7, with a 2,048-point history, 1,000 forecasts per line). Median (p95) in µs:
+
+| model | file | native, 64 steps | WASM, 64 steps | native, 720 steps | WASM, 720 steps |
+|---|---:|---:|---:|---:|---:|
+| s6-cast-pico (v1), full depth | 142,912 bytes | 799 (870) | 1,545 (1,908) | 9,826 (10,474) | 17,922 (19,230) |
+| **s6-cast2-pico (v2), full depth** | **148,512 bytes** | **838** (906) | **1,636** (1,955) | 10,367 (11,158) | 19,346 (22,060) |
+| v2, calibrated exits | 148,512 bytes | 842 (904) | 1,528 (1,650) | | 18,232 (19,463) |
+| TinyCast, our port | 595,840 bytes | 21,531 (23,189) | 39,998 (41,530) | 164,760 (171,634) | 309,243 (375,050) |
+
+On GIFT-Eval the calibrated file used 3.334 exits of 4 on average (369,313 windows). The sentence of §8: v2 at 838 µs and 148,512 bytes against the port's 21,531 µs and 595,840 bytes, nGMASE 0.8847 against 0.7856: the port forecasts better; take it unless size or speed decide.
+
+**Incidents** (none changes a number; details in the result block). The chain stopped twice on a full disk: during v2's GIFT-Eval forecasts (81 configurations finished by the log, no v2 score printed; the evaluation was started again from its beginning), and in the Chronos-ZS scoring of v2 (eight per-task lines printed, no summary; the Chronos step and the gate were started again). v2's GIFT-Eval scoring ran once, to its end.
+
 ## s6-secrets-verify-pico (s6-secrets v2): a verifier of rule candidates, pre-registered, gate failed
 
 Pre-registration: [`docs/s6-secrets2-prereg.md`](docs/s6-secrets2-prereg.md), gate in §8, amendments 1 to 8 (all before the run) and its result block of 15/11. Results: [`runs/s6-secrets2/eval-test/results.md`](runs/s6-secrets2/eval-test/results.md) and `gate.json` next to it (the test, opened once), `runs/s6-secrets2/eval-validation/results.md` (the validation rehearsal), the freeze of the generator [`runs/s6-secrets2/generator.json`](runs/s6-secrets2/generator.json), and the run's report and logs in `runs/s6-secrets-verify-pico/` (`report.md`, `pretrain.log`, `decide.log`).

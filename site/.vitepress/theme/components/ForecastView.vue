@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // The /forecast/ page: pick a series, forecast it in the browser with every published forecaster
 // (s6-cast and TinyCast in wasm, Timestral-5M in onnxruntime-web, seasonal naive), and compare the
-// median and the 10–90 % band, the latency and, in backtest mode, the MASE. An s6-cast that failed
-// its gate (`gate` in forecast.json) is listed under a notice with its numbers and starts unticked.
+// median and the 10–90 % band, the latency and, in backtest mode, the MASE. Each s6-cast of
+// forecast.json (s6-cast2-pico, s6-cast-pico) gets its own line, and only when forecast.json lists
+// it (a Space lists one); one that failed its gate (`gate`) is listed under a notice with its
+// numbers and starts unticked.
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   coverage,
@@ -24,11 +26,18 @@ import {
 import { formatInt } from '../lib/wasm'
 import { formatSize } from '../lib/size'
 
-type ModelKey = 's6-cast' | 'TinyCast' | 'Timestral-5M' | 'Seasonal naive'
+type ModelKey = 's6-cast2-pico' | 's6-cast-pico' | 'TinyCast' | 'Timestral-5M' | 'Seasonal naive'
 
-// Series colors: categorical slots 1–4, light and dark steps (validated for both modes).
-const SLOT: Record<ModelKey, number> = { 's6-cast': 1, TinyCast: 2, 'Timestral-5M': 3, 'Seasonal naive': 4 }
-const MODEL_KEYS: ModelKey[] = ['s6-cast', 'TinyCast', 'Timestral-5M', 'Seasonal naive']
+// Series colors: categorical slots 1–5, light and dark steps (validated for both modes).
+const SLOT: Record<ModelKey, number> = {
+  's6-cast2-pico': 1,
+  's6-cast-pico': 5,
+  TinyCast: 2,
+  'Timestral-5M': 3,
+  'Seasonal naive': 4,
+}
+const MODEL_KEYS: ModelKey[] = ['s6-cast2-pico', 's6-cast-pico', 'TinyCast', 'Timestral-5M', 'Seasonal naive']
+const isCast = (k: ModelKey) => k.startsWith('s6-cast')
 const SYNTH = [
   { kind: 'tsi', label: 'Trend + seasons + noise' },
   { kind: 'sarima', label: 'SARIMA process' },
@@ -46,7 +55,8 @@ const csv = ref('')
 const horizon = ref(64)
 const backtest = ref(true)
 const enabled = ref<Record<ModelKey, boolean>>({
-  's6-cast': true,
+  's6-cast2-pico': true,
+  's6-cast-pico': true,
   TinyCast: true,
   'Timestral-5M': false,
   'Seasonal naive': true,
@@ -59,8 +69,10 @@ const wasmModels = new Map<string, WasmForecaster>()
 let onnx: OnnxForecaster | null = null
 let runId = 0
 
-const entryOf = (k: ModelKey) => entries.value.find((e) => (k === 's6-cast' ? e.name.startsWith('s6-cast') : e.name === k))
+const entryOf = (k: ModelKey) => entries.value.find((e) => e.name === k)
 const available = (k: ModelKey) => k === 'Seasonal naive' || !!entryOf(k)
+/** The lines shown: every model but an s6-cast that forecast.json does not list. */
+const shownKeys = computed(() => MODEL_KEYS.filter((k) => !isCast(k) || !!entryOf(k)))
 const failedOf = (k: ModelKey) => entryOf(k)?.gate === 'failed'
 /** The listed forecasters that failed their gate (published as results, not for use). */
 const failedEntries = computed(() => MODEL_KEYS.filter(failedOf).map((k) => entryOf(k)!))
@@ -298,7 +310,7 @@ function fmt(v: number): string {
 // --- results table --------------------------------------------------------------------------
 
 const rows = computed(() =>
-  MODEL_KEYS.map((k) => {
+  shownKeys.value.map((k) => {
     const e = entryOf(k)
     const r = results.value[k]
     let maseV: number | null = null
@@ -370,7 +382,7 @@ function latency(us: number): string {
       placeholder="Numbers separated by commas, spaces or new lines (NaN for a missing value), oldest first"
     />
     <div class="models" role="group" aria-label="Models">
-      <label v-for="k in MODEL_KEYS" :key="k" class="model" :class="{ off: !available(k) }">
+      <label v-for="k in shownKeys" :key="k" class="model" :class="{ off: !available(k) }">
         <!-- a model that is not published stays enabled (it runs as soon as it ships) but shows unchecked -->
         <input
           type="checkbox"
@@ -380,7 +392,7 @@ function latency(us: number): string {
         />
         <span class="key" :class="`s${SLOT[k]}`" aria-hidden="true" />
         <span>{{ k }}</span>
-        <span v-if="!available(k)" class="badge">{{ k === 's6-cast' ? 'not published' : 'not in this demo' }}</span>
+        <span v-if="!available(k)" class="badge">{{ isCast(k) ? 'not published' : 'not in this demo' }}</span>
         <span v-else-if="failedOf(k) && !loading[k]" class="badge failed-badge">{{ entryOf(k)!.name }} · failed its gate</span>
         <span v-else-if="loading[k]" class="badge">{{ loading[k] }}</span>
         <span v-else-if="k === 'Timestral-5M' && !enabled[k]" class="badge">{{ formatSize(entryOf(k)!.bytes) }}, on demand</span>
@@ -445,13 +457,13 @@ function latency(us: number): string {
           <td><span class="key" :class="`s${SLOT[r.key]}`" />{{ r.key }}<span v-if="r.result?.exits" class="muted"> · {{ r.result.exits }}</span></td>
           <td class="num">{{ r.params == null ? '—' : r.params === 0 ? '0' : formatInt(r.params) }}</td>
           <td class="num">{{ r.bytes == null ? '—' : r.bytes === 0 ? '—' : formatSize(r.bytes) }}</td>
-          <td class="num">{{ r.result ? latency(r.result.micros) : r.available ? '—' : r.key === 's6-cast' ? 'not published' : 'not in this demo' }}</td>
+          <td class="num">{{ r.result ? latency(r.result.micros) : r.available ? '—' : isCast(r.key) ? 'not published' : 'not in this demo' }}</td>
           <td v-if="backtest" class="num">{{ r.mase == null ? '—' : r.mase.toFixed(3) }}</td>
           <td v-if="backtest" class="num">{{ r.cov == null ? '—' : `${Math.round(r.cov * 100)} %` }}</td>
           <td>
             <a v-if="r.entry" :href="r.entry.url" target="_blank" rel="noopener">{{ r.entry.license }}</a>
             <span v-else-if="r.key === 'Seasonal naive'" class="muted">no model</span>
-            <span v-else class="muted">{{ r.key === 's6-cast' ? 'Apache-2.0' : '—' }}</span>
+            <span v-else class="muted">{{ isCast(r.key) ? 'Apache-2.0' : '—' }}</span>
           </td>
         </tr>
       </tbody>
@@ -471,6 +483,7 @@ function latency(us: number): string {
   --s2: #eb6834;
   --s3: #1baf7a;
   --s4: #eda100;
+  --s5: #e87ba4;
   --ink: var(--vp-c-text-1);
   --ink-2: var(--vp-c-text-2);
   --muted: #898781;
@@ -483,6 +496,7 @@ function latency(us: number): string {
   --s2: #d95926;
   --s3: #199e70;
   --s4: #c98500;
+  --s5: #d55181;
   --grid: #2c2c2a;
 }
 .toolbar,
@@ -581,6 +595,7 @@ input.seed {
 .key.s2 { background: var(--s2); }
 .key.s3 { background: var(--s3); }
 .key.s4 { background: var(--s4); }
+.key.s5 { background: var(--s5); }
 .history-key { background: var(--ink-2); }
 .truth-key { background: var(--ink); }
 .status,
@@ -640,11 +655,13 @@ svg {
 .median.s2 { stroke: var(--s2); }
 .median.s3 { stroke: var(--s3); }
 .median.s4 { stroke: var(--s4); }
+.median.s5 { stroke: var(--s5); }
 .band { stroke: none; opacity: 0.12; }
 .band.s1 { fill: var(--s1); }
 .band.s2 { fill: var(--s2); }
 .band.s3 { fill: var(--s3); }
 .band.s4 { fill: var(--s4); }
+.band.s5 { fill: var(--s5); }
 .tip {
   position: absolute;
   top: 8px;

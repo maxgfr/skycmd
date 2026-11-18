@@ -1,6 +1,21 @@
 {
-  "about": "Forecasters of the /forecast/ page. s6-cast-pico failed its gate (docs/s6-cast-prereg.md, BENCH.md): its file is published as a result (owner's decision of 15/11/2026), listed with gate \"failed\", and starts unticked.",
+  "about": "Forecasters of the /forecast/ page. s6-cast-pico (docs/s6-cast-prereg.md) and s6-cast2-pico (docs/s6-cast2-prereg.md) failed their gates (BENCH.md): their files are published as results (owner's decision of 15/11/2026), listed with gate \"failed\", and start unticked.",
   "models": [
+    {
+      "name": "s6-cast2-pico",
+      "kind": "gguf",
+      "file": "s6-cast2-pico.gguf",
+      "params": 377568,
+      "bytes": 148512,
+      "license": "Apache-2.0",
+      "notice": "",
+      "url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast2-pico-s6-cast-v2-a-forecaster-with-a-periodicity-front-end-pre-registered-gate-failed",
+      "credit": "skycmd (trained from scratch in Rust)",
+      "gift_eval": { "nGMASE": 0.8847, "nWQL": 0.6190, "source": "measured, data/gift-eval-out/s6-cast2-pico/summary.json" },
+      "gate": "failed",
+      "gate_note": "On GIFT-Eval it scored nGMASE 0.8847 and nWQL 0.6190, where its gate G1 asked for 0.838 and 0.587 (v1: 0.9471 and 0.6646; our TinyCast port without flip: 0.7918 and 0.5622); G2 holds, its MASE ratio to the seasonal naive is under 1.00 at each term (short 0.833, medium 0.928, long 0.988)",
+      "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast2-pico-s6-cast-v2-a-forecaster-with-a-periodicity-front-end-pre-registered-gate-failed"
+    },
     {
       "name": "s6-cast-pico",
       "kind": "gguf",
