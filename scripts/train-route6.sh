@@ -24,7 +24,9 @@
 #   amendment of 4.5: potion-cos on v5_tools - 0.15)   EMBED   RESUME=1   SMOKE=1   DRY_RUN=1
 # For a later version over this one (scripts/train-route7.sh): ROUTE_TAG (default s6-route6: the
 # folders runs/<tag>, runs/<tag>-pilot, models/<tag>, the name <tag>-nano and the guard's files
-# runs/<tag>/inputs.ok and runs/<tag>/placeholder.json).
+# runs/<tag>/inputs.ok and runs/<tag>/placeholder.json). SKY_BIN: a folder of release binaries
+# already built (sky-train, sky-eval, sky-route, gguf-set), read only; nothing is built then.
+# SKY_CPU=1: sky-train runs MLX on the CPU (--cpu), for a smoke that must not touch the GPU.
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
@@ -37,8 +39,9 @@ if [ -z "${SKY_BRAKE_FILE:-}" ]; then
 fi
 export SKY_BRAKE_FILE
 dry=${DRY_RUN:-0}
-B=$CARGO_TARGET_DIR/release
-T=$B/sky-train
+B=${SKY_BIN:-$CARGO_TARGET_DIR/release}
+T=("$B/sky-train")
+[ -n "${SKY_CPU:-}" ] && T+=(--cpu)
 E=$B/sky-eval
 R=$B/sky-route
 tag=${ROUTE_TAG:-s6-route6}
@@ -180,7 +183,7 @@ window() {
     cfg=$run/truncation/s6-micro-$w.json
     x python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1])); c["max_head_tokens"] = int(sys.argv[3]); json.dump(c, open(sys.argv[2], "w"), indent=2)' \
       runs/recipe/configs/s6-micro.json "$cfg" "$w"
-    x "$T" s2-truncation --config "$cfg" --tokenizer "$tok" --records "$records" --per-source 1000000000 \
+    x "${T[@]}" s2-truncation --config "$cfg" --tokenizer "$tok" --records "$records" --per-source 1000000000 \
       --json "$run/truncation/micro-$w.json"
   done
   note "the rule of 3.3 on the three reports: $run/window.json"
@@ -232,12 +235,12 @@ decide() {
   local dir=$1 minutes=$2 every=$3 lr
   lr=$(rate)
   note "sky-train s2-decide must offer --keep-checkpoints (docs/s6-route4-prereg.md 14, item 5; reused by v5)"
-  if [ "$dry" != 1 ] && ! "$T" s2-decide --help | grep -q -- '--keep-checkpoints'; then
+  if [ "$dry" != 1 ] && ! "${T[@]}" s2-decide --help | grep -q -- '--keep-checkpoints'; then
     echo "this sky-train has no s2-decide --keep-checkpoints (prereg 14, item 5): the pilot cannot keep its checkpoints" >&2
     exit 1
   fi
   [ -n "${RESUME:-}" ] || x rm -rf "$dir/decide"
-  logged "$dir/decide.log" "$T" s2-decide --config "$dir/config.json" --init "$dir/init" --tokenizer "$tok" \
+  logged "$dir/decide.log" "${T[@]}" s2-decide --config "$dir/config.json" --init "$dir/init" --tokenizer "$tok" \
     --records "$records" --weights "$weights" --batch "$batch" --minutes "$minutes" --qat-frac 0.9 \
     --loop-dropout 0.25 --length-pool 16 --pad-to 32 --step-mem-gb 3 --no-compile --seed 0 \
     --checkpoint-minutes "$every" --keep-checkpoints \
@@ -249,8 +252,8 @@ decide() {
 read_ckpt() {
   local ck=$1 dir=$2 f
   x mkdir -p "$dir"
-  x "$T" s2-calibrate --run "$ck" --records "$val/v5_tools.model.jsonl"
-  x "$T" s2-export --run "$ck" --format ternary --out "$dir/model.gguf"
+  x "${T[@]}" s2-calibrate --run "$ck" --records "$val/v5_tools.model.jsonl"
+  x "${T[@]}" s2-export --run "$ck" --format ternary --out "$dir/model.gguf"
   x "$B/gguf-set" "$dir/model.gguf" "$dir/full-depth.gguf" skycmd-s2.exit_threshold.choice=1 skycmd-s2.exit_threshold.score=1 \
     skycmd-s2.exit_threshold.noul=1 skycmd-s2.route.render=str:scores-in-options
   for f in v5_tools v5_tools_masked v5_tools_rw v5_tools_masked_rw r_tools_renamed r_tools_natural v4_tools v_tools; do
@@ -323,8 +326,8 @@ if s["abort"] and not sys.argv[2]:
 
 export_() {
   x mkdir -p "$m"
-  x "$T" s2-calibrate --run "$run/decide/last" --records "$val/v5_tools.model.jsonl"
-  x "$T" s2-export --run "$run/decide/last" --format ternary --out "$model"
+  x "${T[@]}" s2-calibrate --run "$run/decide/last" --records "$val/v5_tools.model.jsonl"
+  x "${T[@]}" s2-export --run "$run/decide/last" --format ternary --out "$model"
   x "$B/gguf-set" "$model" "$run/full-depth.gguf" skycmd-s2.exit_threshold.choice=1 skycmd-s2.exit_threshold.score=1 \
     skycmd-s2.exit_threshold.noul=1 skycmd-s2.route.render=str:scores-in-options
   x "$E" "$run/full-depth.gguf" --records "$val/v5_tools.model.jsonl" --split val --max 100000 --exit-threshold 1.0 \
@@ -346,7 +349,7 @@ for s in "${steps[@]}"; do
     *) echo "unknown step $s (window, pilot, main, export)" >&2; exit 2 ;;
   esac
 done
-[ "$dry" = 1 ] || nice -n 19 cargo build -q --release -p sky-train -p sky-gguf -p sky-infer
+[ "$dry" = 1 ] || [ -n "${SKY_BIN:-}" ] || nice -n 19 cargo build -q --release -p sky-train -p sky-gguf -p sky-infer
 for s in "${steps[@]}"; do
   disk_floor
   case "$s" in
