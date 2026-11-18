@@ -265,6 +265,11 @@ enum RouteStep {
         /// or `none` (no slate of the When2Call group shows an exempt tool).
         #[arg(long, default_value = "all")]
         when2call_exempt: String,
+        /// s6-route v7 (docs/s6-route7-prereg.md): `own` (the default: v6's anchors) or
+        /// `nearest` (a no-call slate of the When2Call group without an own tool in the pool is
+        /// anchored on the pool tool nearest to the request).
+        #[arg(long, default_value = "own")]
+        when2call_anchor: String,
     },
     /// s6-route v5, step 4 (after BUILD=<out> scripts/route-teacher.sh false-negatives): the
     /// false-negative filter, the records of every kind (<out>/records/<group>/{train,val}.jsonl,
@@ -287,6 +292,9 @@ enum RouteStep {
         /// The fix's folder (its stage/plan5.jsonl, val/ and teacher/), with --only-group.
         #[arg(long)]
         fix: Option<PathBuf>,
+        /// More folders whose teacher answers apply by id (s6-route v7: v6's fix).
+        #[arg(long, value_delimiter = ',')]
+        also: Vec<PathBuf>,
     },
     /// s6-route v6 (4.8, amendment 1): the fix's teacher items, the hard slates of --group
     /// without a tool gold and without an answer by id (<fix>/teacher/false-negatives.items.jsonl).
@@ -300,6 +308,9 @@ enum RouteStep {
         fix: PathBuf,
         #[arg(long, default_value = "when2call")]
         group: String,
+        /// More folders whose teacher answers apply by id (s6-route v7: v6's fix).
+        #[arg(long, value_delimiter = ',')]
+        also: Vec<PathBuf>,
     },
     /// s6-route v6 (docs/s6-route6-prereg.md 4.3): the request-blind copies of a slate file:
     /// <stem>.blind.jsonl (the request replaced by the placeholder, the options plain),
@@ -1279,6 +1290,7 @@ fn main() -> Result<()> {
                     v4,
                     out,
                     when2call_exempt,
+                    when2call_anchor,
                 } => {
                     use sky_data::route::v5;
                     if cli.seed != sky_data::route::v4::V2_SEED {
@@ -1292,12 +1304,18 @@ fn main() -> Result<()> {
                         "none" => true,
                         x => anyhow::bail!("--when2call-exempt {x}: all or none"),
                     };
+                    let when2call_anchor_nearest = match when2call_anchor.as_str() {
+                        "own" => false,
+                        "nearest" => true,
+                        x => anyhow::bail!("--when2call-anchor {x}: own or nearest"),
+                    };
                     v5::plan(&v5::PlanOptions {
                         v2,
                         v4,
                         out,
                         seed: cli.seed,
                         when2call_none,
+                        when2call_anchor_nearest,
                     })?
                 }
                 RouteStep::V5Slates {
@@ -1307,6 +1325,7 @@ fn main() -> Result<()> {
                     provisional,
                     only_group,
                     fix,
+                    also,
                 } => {
                     use sky_data::route::v5;
                     if cli.seed != sky_data::route::v4::V2_SEED {
@@ -1329,6 +1348,7 @@ fn main() -> Result<()> {
                             out,
                             fix,
                             group,
+                            also,
                             seed: cli.seed,
                             provisional,
                         })?,
@@ -1340,7 +1360,8 @@ fn main() -> Result<()> {
                     base,
                     fix,
                     group,
-                } => sky_data::route::v5::fix_items(&v2, &base, &fix, &group)?,
+                    also,
+                } => sky_data::route::v5::fix_items(&v2, &base, &fix, &group, &also)?,
                 RouteStep::Blind {
                     input,
                     out,

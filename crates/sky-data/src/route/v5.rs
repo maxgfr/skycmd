@@ -342,6 +342,10 @@ pub struct PlanOptions {
     /// s6-route v6 (amendment 1): `false` (`--when2call-exempt all`, v5's slates) or `true`
     /// (`none`: no exempt tool in the When2Call group).
     pub when2call_none: bool,
+    /// s6-route v7 (`docs/s6-route7-prereg.md`): `false` (`--when2call-anchor own`, v6's slates)
+    /// or `true` (`nearest`: a no-call slate of the When2Call group whose request has no own
+    /// tool in the pool is anchored on the pool tool nearest to the request).
+    pub when2call_anchor_nearest: bool,
 }
 
 /// The two keys each tool can show, as shown in real names and under `tool_<k>` names.
@@ -367,6 +371,8 @@ struct World<'a> {
     tool_of_row: HashMap<usize, usize>,
     /// `--when2call-exempt none` (s6-route v6).
     w2c_none: bool,
+    /// `--when2call-anchor nearest` (s6-route v7).
+    w2c_nearest: bool,
 }
 
 /// The sha256 of v2's plan and of its ids, which the request embeddings must have been written
@@ -524,6 +530,25 @@ impl World<'_> {
         })
     }
 
+    /// The pool tool nearest to request `req_row` (the cosine of their embeddings; of equal
+    /// cosines, the lowest tool id).
+    fn nearest_tool(&self, pool: &[usize], req_row: usize) -> Option<usize> {
+        let q = self.comb.row(self.tool_rows + req_row);
+        let mut best: Option<(f32, usize)> = None;
+        for &t in pool {
+            let Some(r) = self.l.row[t] else { continue };
+            let c = cluster::dot(q, self.comb.row(r));
+            let better = match best {
+                None => true,
+                Some((bc, bt)) => c > bc || (c == bc && self.l.tools[t].id < self.l.tools[bt].id),
+            };
+            if better {
+                best = Some((c, t));
+            }
+        }
+        best.map(|(_, t)| t)
+    }
+
     fn source(&self, pool_name: &str, source: &str) -> &[usize] {
         self.by_source
             .get(&(pool_name.to_string(), source.to_string()))
@@ -561,8 +586,18 @@ impl World<'_> {
         let shown_own: &[usize] = if strip { &[] } else { &k.own };
         let not_own = |t: usize| !(strip && Some(t) != gold && k.own.contains(&t));
         let okn = |t: usize| ok(t) && not_own(t);
-        // the anchor: the right tool, else the request's first own tool (4.3)
-        let anchor = gold.or_else(|| k.own.first().copied());
+        // the anchor: the right tool, else the request's first own tool (4.3); s6-route v7, with
+        // `--when2call-anchor nearest`: a no-call request of the When2Call group with no own tool
+        // in the pool takes the pool tool nearest to the request (potion-base-2M cosine on the
+        // request embeddings, ties by tool id)
+        let mut anchor = gold.or_else(|| k.own.first().copied());
+        if anchor.is_none() && self.w2c_nearest && k.r.group == WHEN2CALL {
+            anchor = self.nearest_tool(pool, req_row);
+            bump(
+                &mut counts,
+                format!("{gs} {sp}: no-call slates anchored on the tool nearest to the request"),
+            );
+        }
         let ids = |v: &[usize]| v.iter().map(|&t| l.tools[t].id.clone()).collect::<Vec<_>>();
         let own_ok = shown_own
             .iter()
@@ -1430,6 +1465,7 @@ pub fn plan(o: &PlanOptions) -> Result<Value> {
         tool_rows,
         tool_of_row,
         w2c_none: o.when2call_none,
+        w2c_nearest: o.when2call_anchor_nearest,
     };
     // every request's plan, on threads (the result does not depend on their number)
     let threads = std::thread::available_parallelism()
@@ -1940,6 +1976,8 @@ pub struct RebuildOptions {
     pub fix: PathBuf,
     /// The group rebuilt (`when2call`).
     pub group: String,
+    /// More folders whose `teacher/` answers apply by id (s6-route v7: v6's fix).
+    pub also: Vec<PathBuf>,
     pub seed: u64,
     pub provisional: bool,
 }
@@ -1982,7 +2020,11 @@ pub fn rebuild_group(o: &RebuildOptions) -> Result<Value> {
         missing,
         from_v2,
         refused,
-    } = filtered(&plans, &[&o.out, &o.fix], &o.v2, Some(&needed))?;
+    } = {
+        let mut dirs: Vec<&Path> = vec![&o.out, &o.fix];
+        dirs.extend(o.also.iter().map(PathBuf::as_path));
+        filtered(&plans, &dirs, &o.v2, Some(&needed))?
+    };
     if missing > 0 && !o.provisional {
         bail!(
             "the teacher has not answered every false-negative item ({missing} missing): \
@@ -2124,12 +2166,21 @@ fn hard_shown(base: &Path, group: &str) -> Result<HashSet<String>> {
 /// answer in the copy (`base`), in the fix or in v2's build. A hard slate of the group with a
 /// tool gold and no answer is refused (amendment 1: their tools and answers are v5's). Writes
 /// `<fix>/teacher/false-negatives.items.jsonl`.
-pub fn fix_items(v2: &Path, base: &Path, fix: &Path, group: &str) -> Result<Value> {
+pub fn fix_items(
+    v2: &Path,
+    base: &Path,
+    fix: &Path,
+    group: &str,
+    also: &[PathBuf],
+) -> Result<Value> {
     let plans: Vec<Plan5> = read_lines(&stage(fix).join(PLAN5))?;
     let shown_hard = hard_shown(base, group)?;
     let staged: Vec<FnItem> = read_lines(&fix.join(FN_STAGED))?;
     let mut answered: HashSet<String> = HashSet::new();
-    for d in [base, fix, v2] {
+    for d in [base, fix, v2]
+        .into_iter()
+        .chain(also.iter().map(PathBuf::as_path))
+    {
         let p = answers_path(d, "false-negatives");
         answered.extend(read_or_empty::<Able>(&p)?.into_iter().map(|x| x.id));
     }
@@ -2727,6 +2778,7 @@ mod tests {
             out: out.into(),
             seed: 7,
             when2call_none: false,
+            when2call_anchor_nearest: false,
         }
     }
 
@@ -2890,7 +2942,7 @@ mod tests {
         }
         assert!(checked > 5 && nearest == checked, "{nearest} of {checked}");
         // the fix's items: the no-call hard slates without an answer, nothing else
-        let rep = fix_items(&v2, &c, &fix, WHEN2CALL).unwrap();
+        let rep = fix_items(&v2, &c, &fix, WHEN2CALL, &[]).unwrap();
         let items: Vec<FnItem> = read_lines(&items_path(&fix, "false-negatives")).unwrap();
         assert_eq!(rep["items"].as_u64().unwrap() as usize, items.len());
         let nocall_ids: HashSet<&str> = p6
@@ -2946,6 +2998,7 @@ mod tests {
             out: c.clone(),
             fix: fix.clone(),
             group: WHEN2CALL.into(),
+            also: Vec::new(),
             seed: 7,
             provisional: false,
         };
@@ -3058,6 +3111,142 @@ mod tests {
         assert_eq!(got.join("\n"), V5_FROZEN.trim());
     }
 
+    /// s6-route v7 (`docs/s6-route7-prereg.md`): `--when2call-anchor nearest` anchors a no-call
+    /// slate of the When2Call group without an own tool in the pool on the pool tool nearest to
+    /// the request; every other plan is v6's.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn the_when2call_anchor_of_v7() {
+        let root = std::env::temp_dir().join(format!("sky-route-v7-{}", std::process::id()));
+        let (v2, v4d, a) = (root.join("v2"), root.join("v4"), root.join("b5"));
+        fixture(&v2);
+        run(&v2, 7);
+        v4_rewrites(&v2, &v4d);
+        v5_run(&v2, &v4d, &a);
+        let (f6, f7) = (root.join("fix6"), root.join("fix7"));
+        for f in [&f6, &f7] {
+            copy_tree(&a.join("emb"), &f.join("emb"));
+        }
+        plan(&PlanOptions {
+            when2call_none: true,
+            ..opts(&v2, &v4d, &f6)
+        })
+        .unwrap();
+        let rep = plan(&PlanOptions {
+            when2call_none: true,
+            when2call_anchor_nearest: true,
+            ..opts(&v2, &v4d, &f7)
+        })
+        .unwrap();
+        let p6: Vec<Plan5> = read_lines(&stage(&f6).join(PLAN5)).unwrap();
+        let p7: Vec<Plan5> = read_lines(&stage(&f7).join(PLAN5)).unwrap();
+        let l = build::load(&v2).unwrap();
+        let asg = build::assign(&l).unwrap();
+        let kept = asg.kept();
+        let by_req: HashMap<&str, &Kept> = kept.iter().map(|k| (k.r.id.as_str(), k)).collect();
+        let pools = Pools::new(&asg, &kept);
+        let cat = catalogue(&pools);
+        let rw = rewrites(&v2, &v4d, &cat, &l).unwrap();
+        let (_, keys) = keys_of(&l, &rw, &cat).unwrap();
+        let reqm = Matrix::read_npy(&f7.join(REQ_EMB)).unwrap();
+        let pot = &l.potion;
+        let mut unanchored = 0;
+        for (i, (x, y)) in p6.iter().zip(&p7).enumerate() {
+            let k = by_req[x.id.as_str()];
+            if !(x.group == WHEN2CALL && x.gold.is_none() && k.own.is_empty()) {
+                // every anchored plan, and every plan of the other groups, is v6's
+                assert_eq!(
+                    serde_json::to_string(x).unwrap(),
+                    serde_json::to_string(y).unwrap()
+                );
+                continue;
+            }
+            unanchored += 1;
+            // v6: no anchor, outside the cell
+            assert_eq!(
+                (x.natural.level, x.hard.level),
+                (surface::L6, surface::L6),
+                "{}",
+                x.id
+            );
+            let (_, pool) = pools.of(k);
+            let q = reqm.row(i);
+            // the anchor: the pool tool nearest to the request, ties by id
+            let anchor = pool
+                .iter()
+                .copied()
+                .filter(|&t| l.row[t].is_some())
+                .max_by(|&s, &t| {
+                    let (cs, ct) = (
+                        cluster::dot(q, pot.row(l.row[s].unwrap())),
+                        cluster::dot(q, pot.row(l.row[t].unwrap())),
+                    );
+                    cs.total_cmp(&ct).then(l.tools[t].id.cmp(&l.tools[s].id))
+                })
+                .unwrap();
+            let ok = |t: usize| !k.exclude.contains(&t) && asg.allowed(WHEN2CALL, &k.split, t);
+            for (kind, pl) in [("natural", &y.natural), ("hard", &y.hard)] {
+                assert!(pl.level < surface::L6, "{} {kind}: a cell at last", y.id);
+                let d1 = D1::new(7, &y.id, kind);
+                let shown = |t: usize| {
+                    surface::Key::from_index(if keys.rw[t] != keys.orig[t]
+                        && d1.draw(&l.tools[t].id)
+                    {
+                        keys.rw[t]
+                    } else {
+                        keys.orig[t]
+                    } as usize)
+                };
+                let ka = shown(anchor);
+                // every tool drawn, within the anchor's cell at the slate's level
+                for t in &pl.tools {
+                    let ti = l.index[t];
+                    assert!(
+                        surface::match_level(ka, shown(ti)) <= pl.level,
+                        "{} {kind}",
+                        y.id
+                    );
+                }
+                assert!(pl.drawn.iter().all(|&d| d));
+                if kind == "hard" {
+                    // the tools nearest to the request within that cell (the anchor a candidate)
+                    let mut cands: Vec<(f32, usize)> = pool
+                        .iter()
+                        .copied()
+                        .filter(|&t| ok(t) && surface::match_level(ka, shown(t)) <= pl.level)
+                        .map(|t| (cluster::dot(q, pot.row(l.row[t].unwrap())), t))
+                        .collect();
+                    cands.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+                    let top: HashSet<&str> = cands
+                        .iter()
+                        .take(NEAREST)
+                        .map(|(_, t)| l.tools[*t].id.as_str())
+                        .collect();
+                    assert!(
+                        pl.tools.iter().all(|t| top.contains(t.as_str())),
+                        "{}",
+                        y.id
+                    );
+                }
+            }
+            assert_eq!(x.natural.tools.len(), y.natural.tools.len());
+            assert_eq!(x.hard.tools.len(), y.hard.tools.len());
+        }
+        assert!(
+            unanchored > 0,
+            "the fixture holds no-call requests without an own tool"
+        );
+        let n: usize = rep["counts"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter(|(k, _)| k.ends_with("anchored on the tool nearest to the request"))
+            .map(|(_, v)| v.as_u64().unwrap() as usize)
+            .sum();
+        assert_eq!(n, unanchored);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
     /// The bytes of v6's fix on the invented fixture (`--when2call-exempt none`, the fix's items
     /// and the rebuild of the When2Call group by uid), frozen when s6-route v7's code was written
     /// (`docs/s6-route7-prereg.md`: the default of its switch keeps v6's bytes).
@@ -3081,7 +3270,7 @@ mod tests {
             ..opts(&v2, &v4d, &fix)
         })
         .unwrap();
-        fix_items(&v2, &c, &fix, WHEN2CALL).unwrap();
+        fix_items(&v2, &c, &fix, WHEN2CALL, &[]).unwrap();
         let items: Vec<FnItem> = read_lines(&items_path(&fix, "false-negatives")).unwrap();
         let ans: Vec<Value> = items
             .iter()
@@ -3095,6 +3284,7 @@ mod tests {
             out: c.clone(),
             fix: fix.clone(),
             group: WHEN2CALL.into(),
+            also: Vec::new(),
             seed: 7,
             provisional: false,
         })
