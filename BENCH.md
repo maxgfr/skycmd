@@ -291,7 +291,7 @@ Pre-registration: [`docs/s5-prereg.md`](docs/s5-prereg.md) and its three amendme
 
 ## skycmd-s6 (s6-nano, s6-micro): general-purpose decisions and games, pre-registered
 
-Pre-registration: [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), its gates in §6 and its amendments 1 to 17. Results: `runs/s6-nano/eval/results.md` and `runs/s6-micro/eval/results.md` (`scripts/s6-gate.py`), with the JSON files next to them; for the second version of s6-micro, [`runs/s6-micro2/runs/s6-micro/eval/results.md`](runs/s6-micro2/runs/s6-micro/eval/results.md) and the files next to it, committed.
+Pre-registration: [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), its gates in §6 and its amendments 1 to 17. Results: [`runs/s6-nano/eval/results.md`](runs/s6-nano/eval/results.md) and [`runs/s6-micro/eval/results.md`](runs/s6-micro/eval/results.md) (`scripts/s6-gate.py`; s6-micro here is the file published as s6-micro-v1), with the JSON files next to them, committed on 19/11/2026 (the evaluation dumps `dump-*.jsonl` are not); for the second version of s6-micro, [`runs/s6-micro2/runs/s6-micro/eval/results.md`](runs/s6-micro2/runs/s6-micro/eval/results.md) and the files next to it, committed.
 
 **Two versions of s6-micro.** The first (v1, published as `s6-micro-v1`) failed its ECE guard. The second (v2, published as `s6-micro`) was pre-registered after that reading (amendment 12: 360 minutes of decision training instead of 180, everything else the same) and passed the same gate on the same test records (amendment 17). Its pass is therefore a second look at these test sets, not a first one. Below, "s6-micro" without a version is v1 where the text predates v2.
 
@@ -366,7 +366,7 @@ The relaxed build is 1.26x faster on the bench questions and 1.24x on a Flappy f
 
 ## s6-secrets-pico: API-key and secret detection, pre-registered
 
-Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate in §6, amendments 1 to 6. Results: `runs/s6-secrets-pico/report.md` (`s2-eval`), the rule scanner's score `runs/s6-secrets-pico/baseline.txt` (written before any training), and the run log `runs/all/secrets-train.log`.
+Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate in §6, amendments 1 to 6. Results: [`runs/s6-secrets-pico/report.md`](runs/s6-secrets-pico/report.md) (`s2-eval`), the rule scanner's score [`runs/s6-secrets-pico/baseline.txt`](runs/s6-secrets-pico/baseline.txt) (written before any training), both committed on 19/11/2026, and the run log `runs/all/secrets-train.log` (not committed).
 
 **Not a scanner.** The gate below is passed on a synthetic bench. On real files with no secret, measured after publication, the model flags 59.8% of the files at p ≥ 0.9 and 49.4% at p ≥ 0.999 ([real text](#real-text-1411-after-publication), amendment 6). It is published as the result of its pre-registration, not as a tool: do not use it to scan real files.
 
@@ -432,7 +432,7 @@ Amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md). The pub
 
 ## s6-ear-nano: first run, gates failed
 
-Pre-registration: [`docs/s6-ear-prereg.md`](docs/s6-ear-prereg.md), gates in §6, amendments 2 to 4. Gate file: `runs/s6-ear-nano/eval/gate.json` (`scripts/ear-gate.py gate`); measurements: `runs/s6-ear-nano/eval/eval-{full,crc,control}.json` and `runs/all/ear-train.log`.
+Pre-registration: [`docs/s6-ear-prereg.md`](docs/s6-ear-prereg.md), gates in §6, amendments 2 to 4. Gate file: [`runs/s6-ear-nano/eval/gate.json`](runs/s6-ear-nano/eval/gate.json) (`scripts/ear-gate.py gate`); measurements: `runs/s6-ear-nano/eval/eval-{full,crc,control}.json`, committed on 19/11/2026 with the other JSON files of that folder, and `runs/all/ear-train.log` (not committed). The gate file holds the v1 harness's bar of 0.8518, corrected to 0.9263 below.
 
 - **Model.** 1,532,449 parameters, ternary, 899,200 bytes; without Parallax (not adopted by the ablation) instead of the 1,615,681 of the pre-registration. Smart Turn v3.2 has 8M, 5.2 times more.
 - **Runs** (working minutes, throttled mode). Mimi pretraining: 48,626 steps; codebook-0 accuracy on masked val frames 0.2196 against a technical bar of 0.00488. Decision training: 48,205 steps, after a first run of 31,480 steps was discarded for a memory defect before any evaluation (amendment 4). The control without Mimi pretraining: 49,131 steps.
@@ -494,7 +494,7 @@ Pre-registration: [`docs/s6-ear2-prereg.md`](docs/s6-ear2-prereg.md), the gate i
 
 ## s6-cast-pico: probabilistic forecasting, pre-registered, gate failed
 
-Pre-registration: [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md), gate in §6, amendments 1 to 8. Results: `data/gift-eval-out/s6-cast-pico/summary.json` (`scripts/gift-eval.py score`), with `all_results.csv` next to it and the same files for the flipped model, our TinyCast port and our seasonal naive; run logs `runs/all/cast-{pilot,train,export,eval}.log`. The final report of the run is [`docs/big-run-report.md`](docs/big-run-report.md).
+Pre-registration: [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md), gate in §6, amendments 1 to 8. Results: `data/gift-eval-out/s6-cast-pico/summary.json` (`scripts/gift-eval.py score`), with `all_results.csv` next to it and the same files for the flipped model, our TinyCast port and our seasonal naive; the model's two files are copied to [`runs/s6-cast-pico/gift-eval/`](runs/s6-cast-pico/gift-eval/summary.json) with its training arguments `runs/s6-cast-pico/args.json` (committed on 19/11/2026); run logs `runs/all/cast-{pilot,train,export,eval}.log`. The final report of the run is [`docs/big-run-report.md`](docs/big-run-report.md).
 
 **Model and recipe.** The s6 encoder on patches of 32 points: 2 blocks × 2 loops, an exit after each loop, d 96, context 2,048 points, horizon 64, nine deciles. 369,792 parameters (`cast-train.log`), without Parallax or XSA, which the recipe did not adopt (`runs/recipe/recipe.json`), instead of the 388,320 of the pre-registration. AdamW at 3e-3, batch 256, QAT over the last 20 %, EMA 0.999, seed 1, TinyCast as teacher on 50 % of the windows with a weight annealed from 0.5 to 0. The pilots (3,000 steps each) kept 3e-3 (validation pinball 0.05089, against 0.05121 at 1e-3 and 0.05788 at 1e-2) and the teacher (0.05076 against 0.050891 without). Ternary GGUF of the EMA weights (validation pinball 0.0431, against 0.0442 for the last weights): 142,912 bytes, exit tolerance 0.0128 from the calibration on 2,000 synthetic windows.
 

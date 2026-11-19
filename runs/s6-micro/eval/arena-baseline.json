@@ -1,0 +1,149 @@
+{
+  "model": "site/public/models/s3-pico.gguf",
+  "arch": "skycmd-s2",
+  "exit_threshold": 1.0,
+  "flappy": {
+    "model": {
+      "episodes": 30,
+      "mean_score": 200.0,
+      "rescue_rate": 0.0,
+      "kill_rate": 0.0,
+      "completion_rate": 0.0,
+      "crashes": 0,
+      "vetoes": 0,
+      "aborts": 0,
+      "safe_aborts": 0,
+      "mean_steps": 21300.0
+    },
+    "oracle": {
+      "episodes": 30,
+      "mean_score": 200.0,
+      "rescue_rate": 0.0,
+      "kill_rate": 0.0,
+      "completion_rate": 0.0,
+      "crashes": 0,
+      "vetoes": 0,
+      "aborts": 0,
+      "safe_aborts": 0,
+      "mean_steps": 21300.0
+    },
+    "decisions": 639000,
+    "p50_us": 67.292,
+    "p95_us": 69.5,
+    "mean_layers_used": 4.0,
+    "exit_counts": [
+      0,
+      0,
+      0,
+      639000
+    ]
+  },
+  "rescue": {
+    "model": {
+      "episodes": 30,
+      "mean_score": 3.0,
+      "rescue_rate": 1.0,
+      "kill_rate": 0.0,
+      "completion_rate": 1.0,
+      "crashes": 0,
+      "vetoes": 0,
+      "aborts": 0,
+      "safe_aborts": 0,
+      "mean_steps": 39.266666412353516
+    },
+    "oracle": {
+      "episodes": 30,
+      "mean_score": 3.0,
+      "rescue_rate": 1.0,
+      "kill_rate": 0.0,
+      "completion_rate": 1.0,
+      "crashes": 0,
+      "vetoes": 0,
+      "aborts": 0,
+      "safe_aborts": 0,
+      "mean_steps": 37.70000076293945
+    },
+    "decisions": 1178,
+    "p50_us": 150.708,
+    "p95_us": 176.083,
+    "mean_layers_used": 4.0,
+    "exit_counts": [
+      0,
+      0,
+      0,
+      1178
+    ]
+  },
+  "dodge": {
+    "model": {
+      "episodes": 30,
+      "mean_score": 9.466666221618652,
+      "rescue_rate": 0.0,
+      "kill_rate": 0.0,
+      "completion_rate": 0.8666666746139526,
+      "crashes": 0,
+      "vetoes": 14,
+      "aborts": 4,
+      "safe_aborts": 4,
+      "mean_steps": 2053.10009765625
+    },
+    "oracle": {
+      "episodes": 30,
+      "mean_score": 9.466666221618652,
+      "rescue_rate": 0.0,
+      "kill_rate": 0.0,
+      "completion_rate": 0.8666666746139526,
+      "crashes": 0,
+      "vetoes": 0,
+      "aborts": 4,
+      "safe_aborts": 4,
+      "mean_steps": 2041.2332763671875
+    },
+    "decisions": 20558,
+    "p50_us": 13.625,
+    "p95_us": 81.625,
+    "mean_layers_used": 4.0,
+    "exit_counts": [
+      0,
+      0,
+      0,
+      20558
+    ]
+  },
+  "doom": {
+    "model": {
+      "episodes": 30,
+      "mean_score": 3.2666666507720947,
+      "rescue_rate": 0.0,
+      "kill_rate": 0.7716535329818726,
+      "completion_rate": 1.0,
+      "crashes": 0,
+      "vetoes": 10,
+      "aborts": 0,
+      "safe_aborts": 0,
+      "mean_steps": 533.7999877929688
+    },
+    "oracle": {
+      "episodes": 30,
+      "mean_score": 3.2666666507720947,
+      "rescue_rate": 0.0,
+      "kill_rate": 0.7716535329818726,
+      "completion_rate": 1.0,
+      "crashes": 0,
+      "vetoes": 1,
+      "aborts": 0,
+      "safe_aborts": 0,
+      "mean_steps": 522.7333374023438
+    },
+    "decisions": 4026,
+    "p50_us": 222.666,
+    "p95_us": 228.417,
+    "mean_layers_used": 4.0,
+    "exit_counts": [
+      0,
+      0,
+      0,
+      4026
+    ]
+  }
+}

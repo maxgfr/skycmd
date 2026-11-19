@@ -1,0 +1,52 @@
+{
+  "model": "models/s6-ear-nano/s6-ear-nano-crc.gguf",
+  "n_params": 1532449,
+  "split": "test",
+  "sources": {
+    "all": {
+      "n": 38417,
+      "accuracy": 0.5874222349480699,
+      "nll": 0.7158880807446661,
+      "ece": 0.008917861599653085,
+      "mean_layers": 3.4247338417887914,
+      "early_exit_rate": 0.21092224796314132,
+      "median_us": 3416.875
+    },
+    "ear:keyword": {
+      "n": 4890,
+      "accuracy": 0.8756646216768916,
+      "nll": 0.38839441575353667,
+      "ece": 0.010620129553330701,
+      "mean_layers": 1.1321063394683026,
+      "early_exit_rate": 0.970961145194274,
+      "median_us": 453.584
+    },
+    "ear:keyword_zs:en": {
+      "n": 1000,
+      "accuracy": 0.21,
+      "nll": 2.3211921585745974,
+      "ece": 0.06318841630965472,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 1264.5
+    },
+    "ear:keyword_zs:fr": {
+      "n": 1000,
+      "accuracy": 0.133,
+      "nll": 2.3223712098724554,
+      "ece": 0.059595585115253924,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 1304.208
+    },
+    "ear:turn_end": {
+      "n": 31527,
+      "accuracy": 0.5690995020141466,
+      "nll": 0.6648098562021741,
+      "ece": 0.010188178570765797,
+      "mean_layers": 3.743838614520887,
+      "early_exit_rate": 0.10641672217464396,
+      "median_us": 3949.625
+    }
+  }
+}

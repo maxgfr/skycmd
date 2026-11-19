@@ -1,0 +1,12 @@
+{
+  "n": 31527,
+  "accuracy": 0.8518412789037968,
+  "precision": 0.7831937952642662,
+  "recall": 0.971333927888903,
+  "f1": 0.8671766144396735,
+  "positive_rate": 0.4979224157071716,
+  "median_ms": 31.490916037000716,
+  "model": "pipecat-ai/smart-turn-v3/smart-turn-v3.2-cpu.onnx",
+  "revision": "f766f81d3cfdf7737ac64aad813d91bbfd56bf93",
+  "records": "data/ear/jev/turn_end.jsonl"
+}

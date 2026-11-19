@@ -1,0 +1,25 @@
+{
+  "model": "models/s6-nano/skycmd-s6-nano-g3-ternary.gguf",
+  "n_params": 1486225,
+  "split": "test",
+  "sources": {
+    "all": {
+      "n": 2000,
+      "accuracy": 0.631,
+      "nll": 0.9511045229424319,
+      "ece": 0.03310966458171606,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 1044.875
+    },
+    "zs_banking77": {
+      "n": 2000,
+      "accuracy": 0.631,
+      "nll": 0.9511045229424319,
+      "ece": 0.03310966458171606,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 1044.875
+    }
+  }
+}
