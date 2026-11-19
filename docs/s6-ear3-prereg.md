@@ -531,6 +531,26 @@ None at the freeze (19/11/2026).
 14. **The listening check's sample** (§3.7, optional), drawn among the eligible validation records, the cross-check's population: per class, the 100 records of smallest key (a hash seeded with 7), collected shard by shard while the shard's WAVs exist (`LABELCHECK=1`).
 15. **A measurement on training data, written down with its date** (allowed by the rules at the top). On 19/11/2026, the parser was tested on real bytes: one training session of `shard-000150.tar` (924 s; downloaded into a temporary folder and deleted, no record kept). It gave 567 candidate pauses: 162 dropped because A's utterance was a backchannel, 10 overlaps, 14 with nobody within 4 s, 0 ties, 0 near a redaction, and **365 holds against 16 ends of turn** (4.2%). The gains were 0.715 and 0.748, the bleed ratios 0.97 and 0.42 (both kept), the energy VAD's speech share 0.260 and 0.224 (both speaking 0.018); after the cleaning, channel 1 had 45 floor takes, 61 backchannels and 207 other runs (shorter than 1 s and not isolated). Nothing is changed for it; the lead reads it before the first stage (see the end of the code's report).
 
+**A measurement on training data, 19/11/2026, before the first stage; it changes nothing by itself.** Asked by the lead to size the label balance of point 15 under both detectors. One whole shard, `shard-000000.tar` (sha256 `f9a44412…`, the listing's), was downloaded into a temporary folder; each session was checked against `splits.json` and only its **5 training sessions** (4.4 h) were decoded, its 3 validation sessions skipped unread. Both paths ran with the stages' own code (`sky-data conv-measure`, a separate tool, and `scripts/turn-vadcheck.py` with Silero v6.2.3, sha256 `1a153a22…` as point 13); the shard and every derived file were then deleted, only these counts kept. No session was dropped by the session rules.
+
+| | energy VAD and policy (§3.2) | Silero (§3.7) |
+|---|---:|---:|
+| candidate pauses | 3,325 | 2,196 |
+| dropped: A's utterance a backchannel | 815 | 413 |
+| dropped: overlap | 52 | 160 |
+| dropped: nobody within 4 s | 78 | 45 |
+| dropped: tie | 0 | 2 |
+| dropped: near a redaction | 19 | 15 |
+| holds | 2,233 | 1,361 |
+| ends of turn | 128 | 200 |
+| end-of-turn share | **0.054** | **0.128** |
+
+Cleaned speech runs (pooled over the sessions; channel 0 / channel 1): energy 1,732 / 1,979 runs, median 470 / 450 ms, 90th percentile 1,340 / 1,340 ms, floor takes 313 / 350, backchannels 294 / 260, speech share 0.233 / 0.260; Silero 1,115 / 1,273 runs, median 896 / 1,120 ms, 90th percentile 3,296 / 3,392 ms, floor takes 510 / 683, backchannels 224 / 189, speech share 0.345 / 0.400.
+
+§3.7's cross-check on these training sessions (the method of the bar, not its validation reading): of 2,361 eligible energy records, **1,175 have no Silero offset within 150 ms** and 84 are matched to an offset Silero's path drops: **unconfirmed share 0.533** (bar ≤ 0.30). On the 1,102 pairs both label, **agreement 0.962** (Wilson 95% [0.949, 0.972]; bar ≥ 0.85). Energy label × Silero label: hold × hold 1,002, hold × eot 42, eot × hold 0, eot × eot 58. Silero's offsets come later than the energy VAD's: median + 90 ms (5th to 95th percentile + 34 to + 132 ms) over the matched pairs.
+
+Two variants of the energy path, **not adopted**, to size the effect: (i) silences under 300 ms filled (instead of 150 ms) in the runs that decide floor takes and backchannels, the offsets unchanged: 2,137 holds, 155 ends of turn (share 0.068); drops 873 backchannel, 90 overlap, 50 nobody, 20 redaction. (ii) B's floor takes read from Silero's runs, the offsets and A's runs from the energy path: 2,076 holds, 188 ends of turn (share 0.083); drops 815 backchannel, 185 overlap, 41 nobody, 20 redaction.
+
 ## 15. Choices (the first value of each line is the one taken at the freeze; the alternative is recorded)
 
 | | choice | proposed | alternatives | why the proposal |
