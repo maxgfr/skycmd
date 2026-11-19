@@ -40,13 +40,14 @@ and numbers are in [docs/compat.md](https://github.com/maxgfr/skycmd/blob/main/d
 | s6-micro (games and free-text questions; second version, passed its gate on a second look after v1 failed, see [results](/results/#s6-micro-v2-passed-on-a-second-look)) | s6, ternary, full depth | 5.6M | [s6-micro.gguf](https://maxgfr.github.io/skycmd/models/s6-micro.gguf) (2.4 MB) | skycmd engine only |
 | s6-secrets-pico (secret detection on its synthetic bench, its four questions only; not a scanner: it flags 59.8% of clean real files at p ≥ 0.9, see [results](/results/#s6-secrets-real-text)) | s6, ternary, full depth | 445K | [s6-secrets-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-pico.gguf) (250 KB) | skycmd engine only |
 | s6-route (a tool from a run-time list; two files fused, passed its gate on fresh slates with a system defined after v2's test was read; it needs distinctive tool names, see [results](/results/#s6-route-passed)) | the s6-route-nano file and potion-base-2M packed to 4 bits (MIT), `ToolRouter` | 5.6M + a static embedding | [s6-route-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-route-nano.gguf) (2.4 MB) and [s6-route-embed.gguf](https://maxgfr.github.io/skycmd/models/s6-route-embed.gguf) (1.3 MB) | skycmd engine only (`ToolRouter` in WASM, `sky-route fuse` natively) |
+| s6-ear2-nano (end of turn from the last 4 s of audio; passed its gate, and weaker on real conversations, see [results](/results/#s6-ear2-nano-passed)) | `skycmd-turn`, ternary | 1.3M | [s6-ear2-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-ear2-nano.gguf) (632 KB) | skycmd engine only (`TurnDetector` in WASM, `sky-turn` natively) |
 
 Every model is also on Hugging Face with its model card and a demo Space that runs in the browser:
-[s6-route](https://huggingface.co/maxgfr/s6-route) (once uploaded), [s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-micro](https://huggingface.co/maxgfr/s6-micro), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
+[s6-route](https://huggingface.co/maxgfr/s6-route), [s6-ear2-nano](https://huggingface.co/maxgfr/s6-ear2-nano), [s6-nano](https://huggingface.co/maxgfr/s6-nano), [s6-micro](https://huggingface.co/maxgfr/s6-micro), [s6-secrets-pico](https://huggingface.co/maxgfr/s6-secrets-pico), [s5-lite](https://huggingface.co/maxgfr/s5-lite), [s4-micro](https://huggingface.co/maxgfr/s4-micro),
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
-**Failed their gates, published as results.** These six s6 models failed their pre-registered
+**Failed their gates, published as results.** These eight s6 models failed their pre-registered
 gates; each file is published as a result (owner's decision of 15/11/2026), not for use. The
 verdicts do not change, and each card opens with the failure and its numbers:
 
@@ -58,17 +59,20 @@ verdicts do not change, and each card opens with the failure and its numbers:
 | s6-cast2-pico (forecasting, v2) | failed: nGMASE 0.8847 (bar 0.838), nWQL 0.6190 (bar 0.587) on GIFT-Eval | 377,568 | [s6-cast2-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-cast2-pico.gguf) (149 KB) | skycmd engine only (`Forecaster`) |
 | s6-secrets-verify-pico (one rule candidate in its context) | failed G1 on its every-repository reading: line F1 0.8561 against 0.7332 + 0.15; the six other gates held | 445,345 | [s6-secrets-verify-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-verify-pico.gguf) (250 KB) | skycmd engine only |
 | s6-route-nano (a tool from a run-time list, with a BM25 line in its state) | failed G1 against BM25 (0.8395 against 0.8500 on tools never seen in training) and G4 (38.9 ms per request in WASM against 2 ms) | 5,587,201 | [s6-route-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-route-nano.gguf) (2.4 MB) | skycmd engine only |
+| s6-route7-nano (s6-route v7: the same pair, its model part trained again on rebuilt data) | failed G1 against BM25 on fresh tools of a new family (0.5610 against 0.5675), G2, G3 (ECE 0.1845 against 0.05) and G6 (0.1969 with the request hidden, against at most 0.1929) | 5,587,201 + a static embedding | [s6-route7-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-route7-nano.gguf) (2.4 MB) and [s6-route7-embed.gguf](https://maxgfr.github.io/skycmd/models/s6-route7-embed.gguf) (1.3 MB) | skycmd engine only (`ToolRouter`) |
+| s6-sleep3-nano (s6-nano with a fast-weight memory) | failed H1 (sleep +0.0030 [−0.0010, +0.0068], a lower bound above 0 asked) and H2 (Flappy 15.87 against 71.05 for its control); its memory is used (`recall` +0.2452 over the control) | 1,611,505 | [s6-sleep3-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-sleep3-nano.gguf) (752 KB) and its control [s6-sleep3-nano-control.gguf](https://maxgfr.github.io/skycmd/models/s6-sleep3-nano-control.gguf) (715 KB) | skycmd engine only |
 
-On Hugging Face: [s6-micro-v1](https://huggingface.co/maxgfr/s6-micro-v1),
-[s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano) and
-[s6-cast-pico](https://huggingface.co/maxgfr/s6-cast-pico) with a demo Space,
+On Hugging Face, each with a demo Space (every published model gets a Space, failed gates
+included: owner's decision of 17/11/2026): [s6-micro-v1](https://huggingface.co/maxgfr/s6-micro-v1),
+[s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano),
+[s6-cast-pico](https://huggingface.co/maxgfr/s6-cast-pico),
+[s6-cast2-pico](https://huggingface.co/maxgfr/s6-cast2-pico),
 [s6-secrets-verify-pico](https://huggingface.co/maxgfr/s6-secrets-verify-pico) (its demo proposes
-candidates with a simplified rule, not secretgate's engine) and
-[s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (its demo runs the file alone) and
-[s6-cast2-pico](https://huggingface.co/maxgfr/s6-cast2-pico) with a
-demo Space each once uploaded: every published model gets a Space, failed gates included (owner's
-decision of 17/11/2026). Its file, fused with a static
-embedding, is the model part of s6-route, which passed its own gate (above).
+candidates with a simplified rule, not secretgate's engine),
+[s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (its demo runs the file alone; the
+file, fused with a static embedding, is the model part of s6-route, which passed its own gate,
+above) and [s6-sleep3-nano](https://huggingface.co/maxgfr/s6-sleep3-nano) (with its control);
+[s6-route7-nano](https://huggingface.co/maxgfr/s6-route7-nano) once uploaded.
 
 Next to s6-cast-pico and s6-cast2-pico, the [Forecast](/forecast/) page runs two reference forecasters, which are not ours and keep their own licenses:
 

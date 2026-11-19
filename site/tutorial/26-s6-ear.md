@@ -2,7 +2,7 @@
 
 *Code ready and tested end to end on a small sample (3 November 2026). The first s6-ear-nano was trained in November 2026 and failed three of its four gates: it failed its gate; its file is published as a result (owner's decision of 15/11/2026). The [result](#the-first-run-three-gates-failed) is at the end of this chapter.*
 
-Every model so far reads its state as text. s6-ear reads **audio**: the last 10 seconds of speech, at 16 kHz. It answers typed questions about them with the same engine, the same GGUF format, the same early exits and the same WASM build as the game models. These are the decisions a voice agent needs every 80 ms: has the speaker finished, which word was said, and later whether to keep listening, acknowledge, speak or yield.
+Every model so far reads its state as text. s6-ear reads **audio**: the last 10 seconds of speech, at 16 kHz. It answers typed questions about them with the same engine, the same GGUF format, the same early exits and the same WASM build as the game models. These are the decisions a voice agent needs every 80 ms: has the speaker finished, which word was said, and (designed, never run) whether to keep listening, acknowledge, speak or yield.
 
 ## The idea: keep the semantic tokens, drop the codec
 
@@ -65,8 +65,8 @@ The pretraining stack has no token table at all, and the 2,048-class head is dro
 | "Has the speaker finished their turn?" | noul | Smart Turn's data (23 languages, French included) |
 | "Which word was said?", 12 options | choice | Speech Commands v0.02, the standard benchmark |
 | the same question on **words never trained on** | choice, 10 options | MSWC, English and French: 50 words per language held out |
-| later: "What should I do now?" (listen, backchannel, speak, yield) | choice | AMI, by a pre-registered rule |
-| later: questions about the content | noul / choice | GLM-5.3-flash reads the LibriSpeech *transcripts*, and s6-ear learns to answer from the *audio* |
+| designed, never run: "What should I do now?" (listen, backchannel, speak, yield) | choice | AMI, by a pre-registered rule (the AMI downloader was not written) |
+| designed, never run: questions about the content | noul / choice | GLM-5.3-flash reads the LibriSpeech *transcripts*, and s6-ear learns to answer from the *audio* (no transcript was labelled) |
 
 The last row is **cross-modal distillation**. The teacher that already labels text for s6-nano also labels what was said, and the student learns to answer from the sound. That replaces the spoken-intent datasets, which are all non-commercial (Speech-MASSIVE, SLURP).
 
@@ -130,5 +130,8 @@ Trained in November 2026 in a throttled mode, so the budgets count working minut
 - **It did not transfer.** The control, starting from random weights, is more accurate on every set: in this run, the Mimi pretraining brought nothing to the decisions.
 - **The verdicts do not change at the conformal thresholds.** There the model uses 3.42 of its 4 passes on average.
 - **Not computed by the run:** the precision and recall of its end-of-turn answers, which the pre-registration asks for. Smart Turn v3.2 has 0.783 and 0.971.
+- **Latency, read afterwards from the run files** ([final report](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md)): 3,435 µs per decision natively (median over all test sources) and 6,696 µs in WASM (median over 20 test clips).
 
 It failed its gate; its file is published as a result (owner's decision of 15/11/2026), as evaluated: the [Listen](/ear/) page loads it under a notice with these numbers and answers at full depth. Its control is not published.
+
+**The second version passed.** s6-ear2-nano does one job, end of turn, as a 632 KB student of Smart Turn v3.2 that reads the last 4 s of audio: 0.8993 on the same 31,527 test clips (bar 0.85; the teacher 0.9260 through the same fixed harness), a false cut-off of 0.0847 and 2.39 ms per decision in WASM. It is weaker on real conversations, where it answers "finished" on 0.5253 of the real ends of turn of eot-bench at its cautious threshold ([results](/results/#s6-ear2-nano-passed), [the article](/articles/a-632-kb-end-of-turn-detector)).

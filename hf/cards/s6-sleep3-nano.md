@@ -113,6 +113,11 @@ is not known.
   Training), and the memory was never read zeroed at this size, so H0 rests on the control alone
   ([docs/s6-sleep4-diagnosis.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-diagnosis.md)
   and the note of 17/11 at the end of the pre-registration).
+- **The fourth version's first check failed (18/11/2026):** K3 trained the memory with the base
+  frozen, at the nano size on training sequences, and `recall` stayed at 0.2579 and 0.2546 over
+  the last 100 `recall` steps of seeds 0 and 1, against a bar of 0.95 and a chance of 0.25
+  ([docs/s6-sleep4-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-prereg.md)
+  §15). Whether v4 goes on is the owner's decision; nothing about this file changes.
 
 ## How to ask it
 

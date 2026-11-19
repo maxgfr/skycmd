@@ -70,7 +70,11 @@ Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
 - **At its conformal thresholds** (a separate file, not published) the model uses 3.42 of its 4
   passes on average (early exit on 21.1% of the questions), with the same verdicts.
 - **Not computed by the run:** the precision and recall of its end-of-turn answers, which the
-  pre-registration asks for (Smart Turn v3.2: precision 0.783, recall 0.971), and the latency.
+  pre-registration asks for (Smart Turn v3.2: precision 0.783, recall 0.971).
+- **Latency, read afterwards from the run files**
+  ([docs/big-run-report.md](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md)):
+  3,435 µs per decision natively (median over all test sources) and 6,696 µs in WASM (median over
+  20 test clips).
 
 ## What it does well, and badly
 

@@ -26,6 +26,11 @@ tags:
 > 15/11/2026, item 9 of the pre-registration's amendments); the verdict does not change. Numbers:
 > [BENCH.md, section s6-cast-pico](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast-pico-probabilistic-forecasting-pre-registered-gate-failed).
 
+> **Its second version failed too.** [s6-cast2-pico](https://huggingface.co/{{USER}}/s6-cast2-pico),
+> with a computed-periodicity front end, scored nGMASE 0.8847 and nWQL 0.6190 on the same benchmark
+> (18/11/2026), against the same bars. By its pre-registration the s6-cast line stops there: the
+> forecaster the project offers is the TinyCast port.
+
 **A 143 KB ternary probabilistic forecaster built on the s6 encoder.** 369,792 parameters. Given
 up to 2,048 past points it returns nine quantiles (the deciles) for each of the next 64 steps, and
 longer horizons by rolling out, with an exit after each loop.
@@ -70,7 +75,10 @@ forecast by the seasonal naive, in both passes.
 - **Worst configurations:** `solar/10T/long` and `solar/10T/medium`, MASE ratios 2.729 and 2.282,
   against 0.973 and 0.955 for our TinyCast port.
 - **Not measured by the run:** the latency, the mean number of exits used on GIFT-Eval (the
-  calibration gives 3.64 of 4 on its synthetic windows) and the gap to Timestral-5M.
+  calibration gives 3.64 of 4 on its synthetic windows) and the gap to Timestral-5M. The latency
+  was measured later, with its second version's gate (18/11/2026, one synthetic series with a
+  2,048-point history, one core of an Apple M5, median of 1,000 forecasts of 64 steps at full
+  depth): 799 µs natively and 1,545 µs in WASM.
 
 ## Architecture
 

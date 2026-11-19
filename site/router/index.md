@@ -36,4 +36,4 @@ On 945 fresh requests about tools never seen in training, **s6-route** picks the
 
 The pre-registration, with the system, the gate and the reading: [`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md). The engine: `ToolRouter` in `crates/sky-web/src/router.rs`, and natively `sky-route fuse` ([install](/install/)).
 
-The story of the three versions, two failures and then this pass, is told in an article: [A 3.7 MB tool router built on a MacBook](/articles/a-3-7-mb-tool-router).
+The story of the line, two failures, then this pass, then four versions that tried to retrain its model part and closed the line, is told in an article: [A 3.7 MB tool router built on a MacBook](/articles/a-3-7-mb-tool-router).

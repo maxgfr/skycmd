@@ -61,7 +61,7 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <ModelCatalogue lessons />
 
-<p class="home-more"><a href="./models/#results">Every failed gate and its lesson</a> · <a href="./articles/">Articles: two of these stories told in full</a></p>
+<p class="home-more"><a href="./models/#results">Every failed gate and its lesson</a> · <a href="./articles/">Articles: four of these stories told in full, and an overview</a></p>
 
 </section>
 
