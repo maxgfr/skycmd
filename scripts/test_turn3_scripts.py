@@ -31,6 +31,8 @@ def load(name, file):
 guard = load("turn3_guard", "turn3-guard.py")
 vad = load("turn_vadcheck", "turn-vadcheck.py")
 lc = load("turn_labelcheck", "turn-labelcheck.py")
+# the line of parity-node.mjs --turn on the 20 clips of §7, within tolerance
+PARITY = {"mode": "turn", "n": 20, "max_abs_diff": 3e-7, "same_decision": 20, "tau50": 0.5, "median_wasm_us": 2400.0}
 
 
 def f32_wav(path, x):
@@ -58,6 +60,10 @@ class Guard(unittest.TestCase):
             (run / "parity").mkdir()
             for f in ("parity.json", "parity-conv.json"):
                 (run / "parity" / f).write_text("{}")
+            with self.assertRaises(guard.Refused):  # a parity file without its measurement (amendment 3)
+                guard.open_tests(run, model)
+            for f in ("parity.json", "parity-conv.json"):
+                (run / "parity" / f).write_text(json.dumps(PARITY) + "\n")
             with self.assertRaises(guard.Refused):  # nothing read before the tests are open
                 guard.check(run, model, "eval")
             rec = guard.open_tests(run, model)
@@ -77,6 +83,116 @@ class Guard(unittest.TestCase):
             r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "turn3-guard.py"), "check", "--run", str(run),
                                 "--model", str(model), "--stage", "gate"], capture_output=True, text=True)
             self.assertEqual(r.returncode, 3)
+
+    def test_the_parity_must_be_a_complete_measurement(self):
+        """Amendment 3: a crashed parity run (an empty, unparsable or short file) is refused before any test
+        is opened; a complete measurement that misses the tolerance is a result, left to G3."""
+        with tempfile.TemporaryDirectory() as d:
+            run, model = Path(d, "run"), Path(d, "m.gguf")
+            model.write_bytes(b"GGUF v3")
+            (run / "harness3").mkdir(parents=True)
+            (run / "harness3" / "check.json").write_text(json.dumps({"passed": True, "checked": "t"}))
+            (run / "latency").mkdir()
+            (run / "latency" / "latency.json").write_text(json.dumps({"measured": "t"}))
+            (run / "parity").mkdir()
+            good = json.dumps(PARITY) + "\n"
+            (run / "parity" / "parity.json").write_text(good)
+            cli = [sys.executable, "-I", os.path.join(HERE, "turn3-guard.py")]
+            for bad in ("", "Error: wasm trap\n    at probEndPcm\n", "{not json\n",
+                        json.dumps({**PARITY, "n": 19, "same_decision": 19}) + "\n",
+                        json.dumps({"mode": "turn", "n": 20}) + "\n"):
+                (run / "parity" / "parity-conv.json").write_text(bad)
+                with self.assertRaises(guard.Refused, msg=repr(bad)):
+                    guard.open_tests(run, model)
+                self.assertFalse((run / "TEST-OPEN").exists())
+                r = subprocess.run(cli + ["parity", "--run", str(run)], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 3, repr(bad))
+                self.assertIn("refused:", r.stderr)
+            (run / "parity" / "parity-conv.json").unlink()
+            with self.assertRaises(guard.Refused):
+                guard.parity(run)
+            # a measured miss: complete, so it passes here and G3 reads it as failed
+            (run / "parity" / "parity-conv.json").write_text(json.dumps({**PARITY, "max_abs_diff": 2e-3, "same_decision": 18}) + "\n")
+            par = guard.parity(run)
+            self.assertFalse(par["parity-conv.json"]["passed"])
+            self.assertTrue(par["parity.json"]["passed"])
+            r = subprocess.run(cli + ["parity", "--run", str(run)], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            guard.open_tests(run, model)
+            self.assertTrue((run / "TEST-OPEN").exists())
+
+
+def conv_shard(conv, tag, val, test, scored, stored=None):
+    """A shard of the conversation folder: its report (`written`), `scored` teacher records of its
+    validation and test records, and the store's manifest (the first `stored` of them, default all)."""
+    (conv / "store").mkdir(parents=True, exist_ok=True)
+    (conv / f"conv-{tag}.json").write_text(json.dumps({"written": {"train": 7, **({"val": val} if val else {}),
+                                                                   **({"test": test} if test else {})}}))
+    ids = [f"s{tag}:0:{k}" for k in range(val + test)]
+    with open(conv / "store" / f"manifest-{tag}.jsonl", "w") as f:
+        f.write(json.dumps({"id": f"s{tag}:1:9", "split": "train"}) + "\n")
+        for k, i in enumerate(ids[: len(ids) if stored is None else stored]):
+            f.write(json.dumps({"id": i, "split": "val" if k < val else "test"}) + "\n")
+    if val + test:
+        (conv / f"teacher-conv-{tag}.jsonl").write_text("".join(json.dumps({"id": i, "logit": 0.1, "prob": 0.52}) + "\n"
+                                                                for i in ids[:scored]))
+    (conv / f"teacher-conv-{tag}.done").write_text(json.dumps({"shard": tag, "records": scored}) + "\n")
+
+
+class TeacherCheck(unittest.TestCase):
+    def test_a_shard_with_missing_records_is_caught(self):
+        with tempfile.TemporaryDirectory() as d:
+            conv = Path(d)
+            conv_shard(conv, "00000", 3, 2, 5)
+            conv_shard(conv, "00001", 0, 0, 0)  # training sessions only: nothing to score
+            conv_shard(conv, "00002", 4, 0, 4, stored=2)  # the caps evicted two: still complete
+            cli = [sys.executable, "-I", os.path.join(HERE, "turn3-guard.py"), "teacher", "--conv", str(conv)]
+            rows = guard.teacher(conv)
+            self.assertTrue(all(r["ok"] for r in rows), rows)
+            r = subprocess.run(cli, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("3 shards, 0 incomplete", r.stdout)
+            # the old code's lost tails: a .done with 0 records for a shard that wrote 6
+            conv_shard(conv, "00003", 4, 2, 0)
+            (conv / "teacher-conv-00003.jsonl").unlink()
+            # and a shard scored short, and one never scored
+            conv_shard(conv, "00004", 5, 0, 3)
+            conv_shard(conv, "00005", 1, 1, 2)
+            (conv / "teacher-conv-00005.done").unlink()
+            bad = {r["shard"]: r for r in guard.teacher(conv) if not r["ok"]}
+            self.assertEqual(sorted(bad), ["00003", "00004", "00005"])
+            self.assertEqual((bad["00003"]["expected"], bad["00003"]["records"], bad["00003"]["unscored"]), (6, 0, 6))
+            self.assertIn("2 fewer records", bad["00004"]["why"])
+            self.assertIn("not scored", bad["00005"]["why"])
+            r = subprocess.run(cli, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 3)
+            self.assertIn("6 shards, 3 incomplete", r.stdout)
+            self.assertIn("00003         6         0", r.stdout)
+
+    def test_the_teacher_refuses_lost_tails(self):
+        tt = load("turn_teacher", "turn-teacher.py")
+        with tempfile.TemporaryDirectory() as d:
+            conv = Path(d)
+            conv_shard(conv, "00001", 0, 0, 0)
+            (conv / "teacher-conv-00001.done").unlink()
+            a = Namespace(records=str(conv), tag="00001", procs=1)
+            self.assertEqual(tt.run_records(a), 0)  # no validation or test record: 0, rightly
+            self.assertEqual(json.loads((conv / "teacher-conv-00001.done").read_text())["records"], 0)
+            conv_shard(conv, "00002", 2, 1, 0)
+            (conv / "teacher-conv-00002.done").unlink()
+            with self.assertRaises(SystemExit) as cm:  # 3 records written, their tails gone
+                tt.run_records(Namespace(records=str(conv), tag="00002", procs=1))
+            self.assertIn("tails are gone", str(cm.exception.code))
+            self.assertFalse((conv / "teacher-conv-00002.done").exists())
+            # a tail list that does not match the shard's report
+            (conv / "tails-00002.jsonl").write_text(json.dumps({"id": "x", "index": 0, "split": "val"}) + "\n")
+            with self.assertRaises(SystemExit):
+                tt.run_records(Namespace(records=str(conv), tag="00002", procs=1))
+            # a .done that disagrees with the report: refused, and the tails are kept
+            (conv / "teacher-conv-00002.done").write_text(json.dumps({"shard": "00002", "records": 0}) + "\n")
+            with self.assertRaises(SystemExit):
+                tt.run_records(Namespace(records=str(conv), tag="00002", procs=1))
+            self.assertTrue((conv / "tails-00002.jsonl").exists())
 
 
 class Vadcheck(unittest.TestCase):

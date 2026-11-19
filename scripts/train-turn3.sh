@@ -48,8 +48,9 @@
 #   file as exported); eval, eotbench, conv-test and gate are each run once.
 #
 # Environment:
-#   TURN3_DATA=/Users/maxime/Documents/Code/skycmd-data/s6-ear3   v3's data folder (outside the repository)
-#   TURN_DATA=/Users/maxime/Documents/Code/skycmd-data/s6-ear2    v2's (its train/ and test/ stores, reused)
+#   TURN3_DATA=<main checkout>/../skycmd-data/s6-ear3   v3's data folder (outside the repository; the main
+#                       checkout is found through git, so a worktree resolves to the same folder; printed at start)
+#   TURN_DATA=<main checkout>/../skycmd-data/s6-ear2    v2's (its train/ and test/ stores, reused)
 #   EAR=data/ear        v1's data (clips/smart-turn.jsonl, jev/turn_end.jsonl and the test WAVs they name)
 #   V2_CKPT=$TURN_DATA/checkpoints/last-ema   v2's EMA checkpoint (sha256 in runs/s6-ear3-nano/init.json)
 #   V2_MODEL=site/public/models/s6-ear2-nano.gguf   v2's file (its sha256 is checked)
@@ -88,9 +89,14 @@ D=$B/sky-data
 S=$B/sky-turn
 name=s6-ear3-nano
 cfg=configs/$name.json
-v2data=${TURN_DATA:-/Users/maxime/Documents/Code/skycmd-data/s6-ear2}
-data=${TURN3_DATA:-/Users/maxime/Documents/Code/skycmd-data/s6-ear3}
+# the data folders sit beside the main checkout (../skycmd-data), found through git's common folder so that
+# a worktree under .claude/worktrees/ resolves to the same place; TURN3_DATA and TURN_DATA come first
+git_common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$PWD/.git")
+data_root=$(cd "$git_common/../.." && pwd)/skycmd-data
+v2data=${TURN_DATA:-$data_root/s6-ear2}
+data=${TURN3_DATA:-$data_root/s6-ear3}
 [ -n "$smoke" ] && data=${sky_out}data
+echo "== data: $data (v2's: $v2data)"
 ear=${EAR:-data/ear}
 v2_ckpt=${V2_CKPT:-$v2data/checkpoints/last-ema}
 v2_model=${V2_MODEL:-site/public/models/s6-ear2-nano.gguf}
@@ -207,6 +213,15 @@ test_guard() {
       die "the tests are refused (scripts/turn3-guard.py): $1" 3
   fi
 }
+# the teacher's recorded opinion complete on every shard (amendment 3; read-only): a table, exit 3 otherwise
+teacher_guard() {
+  if [ "$dry" = 1 ]; then
+    x python3 -I scripts/turn3-guard.py teacher --conv "$conv"
+  else
+    python3 -I scripts/turn3-guard.py teacher --conv "$conv" ||
+      die "== technical failure: the teacher's recorded opinion is incomplete (the shards above); rescore or rebuild them, then run the stage again (amendment 3)" 3
+  fi
+}
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 v2_file() {
   if [ "$dry" != 1 ]; then
@@ -224,9 +239,11 @@ tag5() { printf '%05d' "$1"; }
 # the recipe's optimizer flags (OPT), as scripts/train-turn.sh reads them
 opt=()
 recipe() {
-  local OPT='' LR_SCALE='' CONFIG=''
+  local OPT='' LR_SCALE='' CONFIG='' env_sh
   if [ -f runs/recipe/recipe.json ]; then
-    eval "$(python3 -I scripts/s6-adopt.py env s6-ear-nano)"
+    # on its own line, so that a failure of s6-adopt.py stops the script (set -e) instead of an empty eval
+    env_sh=$(python3 -I scripts/s6-adopt.py env s6-ear-nano)
+    eval "$env_sh"
   elif [ "$dry" = 1 ]; then
     note "no runs/recipe/recipe.json: the commands below show the default options"
     OPT=--no-muon
@@ -322,6 +339,7 @@ teacher_conv() {
     done
     [ "$missing" = 0 ] || die "a shard's recorded opinion is missing: its tails are gone; rebuild the shard"
   fi
+  teacher_guard
   done_ teacher-conv
 }
 
@@ -384,7 +402,10 @@ fresh_or_resume() {
   if [ "$dry" != 1 ] && [ -f "$dir/last/state.json" ] && [ -z "${RESUME:-}" ] && [ -z "$smoke" ]; then
     die "$dir already holds a run: RESUME=1 continues it after a technical failure (§6.7)"
   fi
-  if [ -n "$smoke" ] && [ -z "${RESUME:-}" ]; then x rm -rf "$dir"; fi
+  # SMOKE=1 only: the run folder also holds the stages' markers and the gate's inputs, so only the trainer's
+  # outputs go there; the other folders are the trainer's alone
+  if [ -n "$smoke" ] && [ -z "${RESUME:-}" ] && [ "$dir" = "$run" ]; then x rm -rf "$dir"/{last,last-ema,pre-qat,args.json,log.jsonl,started.json,train.log}
+  elif [ -n "$smoke" ] && [ -z "${RESUME:-}" ]; then x rm -rf "$dir"; fi
   return 0
 }
 
@@ -412,6 +433,8 @@ committed() {
 smoke_() {
   need harness3
   [ -n "$smoke" ] || committed
+  # the GPU stages start only on a complete teacher opinion (amendment 3; SMOKE=1 has no teacher pass)
+  [ -n "$smoke" ] || teacher_guard
   recipe
   local c f
   # §6.3: 2,000 records of each source
@@ -546,12 +569,21 @@ wasm() {
   fi
   x "$S" "$model" --records "$ear/jev/turn_end.jsonl" --split "$eval_split" --max 20 --out "$p/native.jsonl"
   x "$S" "$model" --records "$conv/parity/records.jsonl" --split test --max 20 --out "$p/native-conv.jsonl"
+  # parity-node.mjs exits 1 both when it crashes and when a complete measurement misses |dp| <= 1e-4 or a
+  # decision, so its status (kept through tee by pipefail) is reported and the files decide (amendment 3):
+  # a complete measurement, passed or not, goes to G3; anything else stops here, without the marker
+  local st=0 st_conv=0
   if [ "$dry" = 1 ]; then
     x node crates/sky-web/bench/parity-node.mjs --turn --pkg "$pkg" "$model" "$p/native.jsonl"
     x node crates/sky-web/bench/parity-node.mjs --turn --pkg "$pkg" "$model" "$p/native-conv.jsonl"
+    x python3 -I scripts/turn3-guard.py parity --run "$run"
   else
-    nice -n 19 node crates/sky-web/bench/parity-node.mjs --turn --pkg "$pkg" "$model" "$p/native.jsonl" | tee "$p/parity.json" || true
-    nice -n 19 node crates/sky-web/bench/parity-node.mjs --turn --pkg "$pkg" "$model" "$p/native-conv.jsonl" | tee "$p/parity-conv.json" || true
+    rm -f "$p/parity.json" "$p/parity-conv.json"
+    nice -n 19 node crates/sky-web/bench/parity-node.mjs --turn --pkg "$pkg" "$model" "$p/native.jsonl" | tee "$p/parity.json" || st=$?
+    nice -n 19 node crates/sky-web/bench/parity-node.mjs --turn --pkg "$pkg" "$model" "$p/native-conv.jsonl" | tee "$p/parity-conv.json" || st_conv=$?
+    note "parity-node.mjs exit status: $st (Smart Turn clips), $st_conv (conversation records)"
+    python3 -I scripts/turn3-guard.py parity --run "$run" ||
+      die "== technical failure: the WASM parity was not measured in full ($p); fix it and run the wasm stage again, no test is opened (amendment 3)" 3
   fi
   done_ wasm
 }

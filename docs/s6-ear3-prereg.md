@@ -588,6 +588,29 @@ The old statistics (offset matching, matched agreement, unconfirmed share, time 
 - **The stop rule does not fire**: both amended bars hold on this training shard, so the stages run and §3.7's bar is read on the validation sessions.
 - **The ends of turn change 2 keeps**, from the two shards measured (274 ends of turn and 4,840 eligible records in 11 training sessions, 24.9 and 440 a session): about 22,400 among about 396,000 eligible training records (so 120,000 = about 22,400 + 97,600 holds), about 2,800 in validation and about 2,800 in test.
 
+**Amendment 3 (19/11/2026, written before any GPU stage and before any test is read; no v3 model or score exists).** Technical fixes to the scripts, found by a review of the code. Each one makes a technical failure stop the build as a technical failure, where before it could become a silent wrong input or a final verdict. **No method, bar, threshold, label, record or choice changes.**
+
+1. **The WASM parity (§7, G3 of §9).** The `wasm` stage of `scripts/train-turn3.sh` discarded the exit status of the parity runs and wrote its marker anyway, and `scripts/turn3-guard.py open` only checked that the parity files existed. A crashed run left an empty file, the tests were opened (once only), and G3 failed on it. Now:
+   - `parity-node.mjs --turn` exits 1 both when it crashes and when a complete measurement misses, so its status is kept and reported, and the files decide;
+   - each file must hold the tool's result line for the 20 clips or records of §7: `n` ≥ 20, a finite `max_abs_diff` and a `same_decision` count (`scripts/turn3-guard.py parity`);
+   - a missing, empty, unparsable or short file stops the stage without its marker, and `open` refuses it before any test is opened;
+   - a complete measurement that misses |Δp| ≤ 1e-4 or a decision is a result, not a technical failure: it passes this check, and G3 reads it as failed (§9, §12).
+2. **The recipe.** A failure of `scripts/s6-adopt.py env` was hidden inside an `eval`, and the training stages would then have run with empty optimiser options. It now stops the script.
+3. **Partial inputs to the gate (§8, §9).** `scripts/turn-gate.py gate3` reported missing clips and cuts but did not refuse them. Outside a smoke run it now writes no verdict and exits 1 ("technical failure: partial input, no verdict written"), with no `GATE.md` or `GATE.json`, when any of these is true:
+   - test (a) has fewer than its 31,527 clips (§8.2), or a clip has no v3 probability;
+   - test (b) has a number of §8.3 spans other than the count the harness check recorded before any model read them (§8.1 item 3), or a reading is missing: v3 or v2 at an ask inside a span, v3 at d = 0, or Smart Turn at + 0.2 s on a span of §8.3;
+   - test (c), when given, has a test record without its v3 or v2 reading at an ask inside it, or without the teacher's opinion (§8.4);
+   - a parity file is not a complete measurement (point 1), or v3's or v2's file is missing (G3).
+4. **The teacher's recorded opinion (§5).**
+   - `scripts/turn-teacher.py --records` wrote a `.done` with 0 records when a shard's tails were missing, so a shard whose tails were lost looked like a shard with no validation or test records, and the stage's error could never fire. It now compares the tails with the validation and test records the shard wrote (`conv-<tag>.json`, `written`: each such record has a tail). Missing or short tails are an error. A `.done` that disagrees with the shard's count is refused, and the tails are kept.
+   - A read-only check, `python3 -I scripts/turn3-guard.py teacher --conv <data>/conv`, compares each shard's teacher records with that count. It also lists the store's validation and test records that have no opinion, and exits 3 on any incomplete shard. The `teacher-conv` stage runs it before its marker. The `smoke` stage runs it before any training, so no GPU stage starts on incomplete teacher data.
+5. **The rehearsal (`SMOKE=1` only).** The `train` stage of a rehearsal removed the whole run folder, with the rehearsal's markers and gate inputs. It now removes only the trainer's outputs. A real run is untouched: the line runs only under `SMOKE=1`.
+6. **The data folders.** The defaults of `TURN3_DATA` and `TURN_DATA` (and `TURN_DATA` of `scripts/train-turn.sh`) were absolute paths on the owner's machine. They are now `../skycmd-data/` beside the main checkout, found through git, so a worktree resolves to the same folder: the same folders as before on the owner's machine. The environment variables still come first, and the folder is printed at start.
+
+**The stages already run.** `conv-data`, `st-extend`, `eotbench-data`, `teacher-conv`, `crosscheck`, `bleed` and `harness3` ran, or are running, with the code of commit `4857ed7`. These fixes change nothing those stages compute. The one place where that code could lose data without saying so (point 4) is checked after the fact: the read-only check reads the teacher's output before `smoke`, and `smoke` runs it again itself. When this amendment was written, the check read the folder as it then stood: 151 shards, 81,681 teacher records for the 81,681 validation and test records written, and the store's 50,000 validation and test records each with an opinion. That reading does not replace the check run before `smoke`.
+
+**A build stopped by one of these refusals is a technical failure.** Its cause is fixed and the stage is run again, as the rules on technical failures allow (§6.7, §13). It is never a result. A refused gate writes no score. If the output of a test-reading stage was partial, its marker is removed and the stage is run again once the cause is fixed: no test score has been read at that point. The report says so.
+
 ## 15. Choices (the first value of each line is the one taken at the freeze; the alternative is recorded)
 
 | | choice | proposed | alternatives | why the proposal |

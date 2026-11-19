@@ -40,7 +40,7 @@
 #             (scripts/turn-gate.py), into runs/s6-ear2-nano/GATE.md and gate.json
 #
 # Environment:
-#   TURN_DATA=/Users/maxime/Documents/Code/skycmd-data/s6-ear2   the data folder (outside the
+#   TURN_DATA=<main checkout>/../skycmd-data/s6-ear2   the data folder (printed at start; outside the
 #                       repository): test/, train/, shards/ (transient), eotbench/, hf/
 #   EAR=data/ear        v1's data (clips/smart-turn.jsonl and the test WAVs it names)
 #   MIN_FREE_GB=8       free disk the data steps always leave (§3.4)
@@ -86,7 +86,12 @@ D=$B/sky-data
 S=$B/sky-turn
 name=s6-ear2-nano
 cfg=configs/$name.json
-data=${TURN_DATA:-/Users/maxime/Documents/Code/skycmd-data/s6-ear2}
+# the data folder sits beside the main checkout (../skycmd-data), found through git's common folder so that
+# a worktree under .claude/worktrees/ resolves to the same place; TURN_DATA comes first
+repo=$(cd "$(dirname "$0")/.." && pwd)
+git_common=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$repo/.git")
+data=${TURN_DATA:-$(cd "$git_common/../.." && pwd)/skycmd-data/s6-ear2}
+echo "== data: $data"
 ear=${EAR:-data/ear}
 run=${sky_out}runs/$name
 pilot_dir=${sky_out}runs/s6-ear2-pilot
