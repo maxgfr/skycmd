@@ -90,7 +90,7 @@ repositories, each holding its GGUF and card; none holds a training checkpoint).
 | s6-route7-nano (v7, 19/11) | yes, failed | yes | the route line is closed: no v8 (`docs/s6-route7-prereg.md` §11 and the result block); its data is on the Hub as skycmd-route7, uploaded on 19/11 (3.6) |
 | s6-sleep v1, v2 | no model (stopped) | **no** for v1's sequences | `runs/s6-sleep/seq` is the default `SEQ` of v3 and v4 (`scripts/train-sleep3.sh`, `scripts/train-sleep4.sh` line 60) |
 | s6-sleep3-nano (v3) | yes, failed | **no** | v4 cites its run folder (`docs/s6-sleep4-prereg.md`, lines 42 and 100) |
-| s6-sleep v4 | no model: K3 failed (18/11); K1 decided on 19/11, not run yet | **no** | K1 is next; v4 stops at K1 if K1 fails |
+| s6-sleep v4 | no model: K3 failed (18/11); K1 decided on 19/11 (`docs/s6-sleep4-prereg.md`, amendment 2), queued, not run yet | **no** | K1 is next, on both seeds; v4 stops at K1 if its bar fails, and after a pass nothing runs until a further amendment |
 | LFM3 S1/S2 router | not a trained model (failed) | yes, since 19/11 | the fine-tune, the only reader of `runs/lfm3-s1s2`, was closed on 19/11 |
 | LFM3 fine-tune | closed on 19/11, nothing trained (`docs/lfm3-ft-prereg.md`, amendment 8) | yes | nothing reads `data/lfm3` any more |
 | §7 flexible weights | closed without running on 19/11 (`docs/weights-prereg.md`, amendment 1) | yes | nothing was computed; nothing reads its inputs |
@@ -433,7 +433,7 @@ the Hub and the site.
   skycmd-ear, identical); `data/ear/wav/smart-turn`, copies of a public test set whose upstream is
   on the Hub (G2); `skycmd-data/s6-ear2` (G3), which is not on the Hub, so under the owner's rule
   it goes only after an upload or by a decision like the one taken for v1's features on 19/11.
-- When s6-sleep v4 ends (it stops at K1 if K1 fails): `data/decisions`, `distill`, `games` and
+- When s6-sleep v4 ends (it stops at K1 if K1's bar fails; after a pass, only a further amendment can extend it): `data/decisions`, `distill`, `games` and
   `numeric` are on the Hub, identical (section 2), except G7: `typed_decisions_train` and
   `typed_decisions_bench` and their GLM-5.3-Flash label rows (5,640 and 4,063), which exist only
   here; the checkpoints of `runs/s6-nano*` (section 5, `g1` and `g2` only to rebuild the DAgger
