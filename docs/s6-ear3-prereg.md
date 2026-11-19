@@ -459,6 +459,7 @@ v3 passes if all of these hold.
 - **The demo.** The variable trailing silence was motivated by the microphone demo (`turn.ts`), through the code, not through any test set.
 - **The training data.** v3's study measured the trailing silence of 3,160 of v2's training clips.
 - **Smart Turn's test is still partly in-sample for the design**, as v2's disclosure says. v3 adds no reading of it before the gate.
+- **The label cross-check and the caps were amended after a measurement on five training sessions** (amendment 2, 19/11/2026), before any validation or test session was read: the cross-check reads Silero's label at the energy record's instant instead of matching offsets, and the caps keep every end-of-turn record.
 
 **What it means.**
 
@@ -550,6 +551,34 @@ Cleaned speech runs (pooled over the sessions; channel 0 / channel 1): energy 1,
 §3.7's cross-check on these training sessions (the method of the bar, not its validation reading): of 2,361 eligible energy records, **1,175 have no Silero offset within 150 ms** and 84 are matched to an offset Silero's path drops: **unconfirmed share 0.533** (bar ≤ 0.30). On the 1,102 pairs both label, **agreement 0.962** (Wilson 95% [0.949, 0.972]; bar ≥ 0.85). Energy label × Silero label: hold × hold 1,002, hold × eot 42, eot × hold 0, eot × eot 58. Silero's offsets come later than the energy VAD's: median + 90 ms (5th to 95th percentile + 34 to + 132 ms) over the matched pairs.
 
 Two variants of the energy path, **not adopted**, to size the effect: (i) silences under 300 ms filled (instead of 150 ms) in the runs that decide floor takes and backchannels, the offsets unchanged: 2,137 holds, 155 ends of turn (share 0.068); drops 873 backchannel, 90 overlap, 50 nobody, 20 redaction. (ii) B's floor takes read from Silero's runs, the offsets and A's runs from the energy path: 2,076 holds, 188 ends of turn (share 0.083); drops 815 backchannel, 185 overlap, 41 nobody, 20 redaction.
+
+**Amendment 2 (19/11/2026, the lead's decision on the measurement above; written before the first stage and before any validation or test session is read; defined after a measurement on five training sessions, which every page reporting v3 discloses, §11).** Two changes, nothing else.
+
+*Why.* The second bar of §3.7 assumed that an energy pause with no Silero offset within 150 ms is a suspicious record ("breaths, noise, bleed") whose label is unknown. The measurement shows another cause. The energy detector, the deployed one, whose pauses are the question v3 asks (D1), hears less speech than Silero (speech share 0.233 / 0.260 against 0.345 / 0.400; runs of median 470 / 450 ms against 896 / 1,120 ms), so it asks during speech that Silero hears as continuing: 1,175 of 2,361 eligible energy records had no Silero offset within 150 ms, and Silero's offsets came a median 90 ms later. For such a record the matching by offsets gives no answer, although an independent detector can still answer the label's own question at that instant: who speaks next. The agreement bar (0.85) keeps its value; what changes is that it is computed on every eligible energy record, not on the matched minority (1,102 of 2,361), which is what the second bar was protecting. Ends of turn are rare under both detectors (0.054 energy, 0.128 Silero), so the caps keep them all.
+
+*Change 1, the cross-check of §3.7: the instant label.* For each eligible energy record (channel A, offset o), the label is read from Silero's cleaned speech runs of both channels at the instant o, by §3.2's rule and drops and the same code. The only new definition is A's pause as Silero sees it:
+
+- if a Silero run of A covers o (it starts at or before o and ends after it) or ends within 150 ms before o, the pause starts at that run's end, o_s (o_s > o when the run covers o); otherwise o_s = o;
+- r is A's next Silero onset after o_s; t_B is the onset of B's first Silero floor take at or after o (not o_s); the 4 s horizon runs from o;
+- the label, the backchannel drop (on A's Silero utterance ending at or holding o), the overlap at o, the tie, nobody within 4 s and the redaction drops are §3.2's.
+
+Two cases the definition leaves open are settled here, the second in the conservative direction:
+
+- **A heard speaking for 1.0 s or more after o** (o_s − o ≥ 1.0 s, a floor take's length of A's own speech, with no 150 ms silence): A holds the floor at that instant: a **hold**, after the same drops. Without this, a record in which A goes on talking for more than 4 s would fall under "nobody within 4 s", although A is the one speaking.
+- **B's floor take begins while A is still heard** (o ≤ t_B < o_s): both speak at once, the label is not clean: a **drop, counted as an overlap**.
+
+So A trailing off for 300 ms and B then taking the floor is an end of turn, and A going on for seconds is a hold.
+
+The bars become, both required, else the build stops before any training as §3.7 says:
+
+- **agreement ≥ 0.85**, the share of the eligible energy records whose instant label is not a drop where it equals the energy label;
+- **the share of eligible energy records whose instant label is a drop ≤ 0.30** (the old second bar's role: the agreement must speak for at least 70% of the data).
+
+The old statistics (offset matching, matched agreement, unconfirmed share, time differences) stay computed and reported, deciding nothing. Reported, deciding nothing: the 2 × 2 table on all records, the agreement by class, the share of end-of-turn records in which Silero hears A still speaking at o + 0.2 s (the first ask) and the median of A's remaining speech (o_s − o) in them. Unconfirmed or disagreeing records stay in the data with the energy label: Silero selects and relabels nothing.
+
+*Change 2, the caps of §3.2 item 8.* Each cap keeps every eligible end-of-turn record of its split and draws the holds uniformly without replacement (the same seeded keys, seed 3) up to the same total: 120,000 training, 20,000 validation and 30,000 test records. If a split had more ends of turn than its cap, its ends of turn would be drawn the same way up to the cap and it would keep no hold; this is not expected. Sampling was already 0.5 per class (§3.6), so only the number of distinct end-of-turn records changes. Shard by shard (amendment 1, point 1): every eligible end-of-turn record is written; the holds keep the `cap` smallest keys while the shards come, so the store holds at most the cap plus the ends of turn until `fetch-conv --finalize`, which keeps the cap − (ends of turn) smallest hold keys. From the measurement (25.6 ends of turn and 472 eligible records per training session), about 23,000 ends of turn are expected among about 425,000 eligible training records (so 120,000 = about 23,000 + 97,000 holds), and about 2,900 in each of the validation and test splits (about 112 and 113 sessions). The totals do not change, so neither does the disk of §3.8, except about 1.3 GB more while the training records are built. The store's class ratio is no longer the natural one; the natural counts are written to `CONV.json` (`counts.eligible`) and reported.
+
+*A stop rule, written before the measurement that follows.* The amended cross-check is first measured on training data of the same kind: one training shard, its training sessions only. If that measurement is under either amended bar, v3 is not built: it stops here, and that is its result. If it is above both, the stages run, and the bar is read on the validation sessions as §3.7 says.
 
 ## 15. Choices (the first value of each line is the one taken at the freeze; the alternative is recorded)
 
