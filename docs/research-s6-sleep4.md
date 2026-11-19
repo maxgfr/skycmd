@@ -149,6 +149,24 @@ Research date: 19 November 2026. This file reviews published work on making smal
 
 ---
 
+## 15. Outcome (added on 19/11/2026, after K1's reading)
+
+This section was added after the review; sections 0 to 14 are unchanged. The numbers come from `runs/s6-sleep4/stage1/k1.json`, read in `docs/s6-sleep4-prereg.md` §16. The project's lead ran K1 on both seeds, as amendment 2 of the pre-registration decided, not on seed 0 alone as section 13.2 proposed, and did not run the key-overlap reading.
+
+**What K1 read.** v3's recipe with everything trained, 1,310 steps, seeds 0 and 1, read on each step's own training batch before its update (not a held-out test). Over the last 100 `recall` steps the answer was right on 0.8442 of the questions at seed 0 (1,019 `recall` steps; S90 never reached) and 1.0000 at seed 1 (1,000 steps; S90 at `recall` step 465, S95 at 516). The bar was 0.95 on both seeds, so K1 failed and v4 stopped there. Seed 1 sat at about 0.56 to 0.60 for about 150 `recall` steps, then jumped to 0.99 between steps 401 and 500. Seed 0 sat at about 0.57 to 0.61 from step 451 to 750, then rose to 0.85 in its window 951-1000 and 0.88 over its last 19 steps, still rising when the budget ended. On both plateaus the short delays (1 to 4 frames) were at 0.73 to 0.80 and the long ones (17 to 32) at 0.36 to 0.40. With the memory off, the same weights stayed at about 0.25 throughout on both seeds.
+
+**Against the review's predictions.**
+
+- **Plateau, then an abrupt transition with a seed-dependent time (section 0, section 13.1, second row; section 11): matches.** Both seeds show a long plateau and then a fast rise, at different times. This is the pattern the review named as the closest match. It does not say what sets the time; section 11 already said that nothing fetched predicts it for this model.
+- **Lock-in that depends on the seed (section 0; the first row of section 13.1, from [2]): consistent, not measured.** One seed locked in within the budget and one had not finished. Two runs cannot estimate a share of seeds.
+- **Section 13.2's two cases for seed 0: neither holds as written.** Seed 0 did not reach the bar and did not cross S90, so the first case ("budget and transition timing") is not shown on it. It did not "stay near v3's level" either (v3's seed 0 was at 0.41 over the last 50 `recall` steps of its phase A; K1's seed 0 ended at 0.85 to 0.88), so the second case ("interference gains weight") does not hold as written. Its long delays still lag (0.68 to 0.73 against 0.95 to 0.96 at 1 to 4 frames in its last windows).
+- **Section 13.3, "K1 failing while the long delays still lag would point to a curriculum design outside v4": the condition is met on seed 0, and seed 1 qualifies it.** On seed 1 the same recipe, with no curriculum, brought the longest delays to 1.000 on its training batches. **[Inference]** At this size and budget, the lag of the long delays on seed 0 looks at least in part like a later transition, not a wall that only a curriculum breaks. One seed does not settle it, and a curriculum was not tested.
+- **The frozen base (section 13.1, fourth row; section 12):** K3 had already failed. With everything trained on the same batches, both seeds left chance, which fits the reading that the frozen base was the obstacle there. K1 does not test the review's explanation of why (representations that do not separate doors and colours).
+
+**What this does not change.** Nothing here is about a held-out test, sleep (H1) or the games (H2), and no model comes out of K1. v4 is closed. Any further attempt, such as longer training on both seeds or a delay curriculum, would be a new pre-registration, and none is decided.
+
+---
+
 ## Sources
 
 1. Boesch, Wee. *Anatomy of Associative Recall in Fixed-State Recurrences: A Matched-State Decomposition, an Interference Wall, and a Curriculum That Breaks It* (2026). https://arxiv.org/abs/2609.16183

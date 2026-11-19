@@ -2,7 +2,7 @@
 
 **Frozen on 17/11/2026 by the lead, before any computation and before the code of §11 is written; every later change is a dated amendment that precedes the computation it concerns.** No line of v4's code is written, no v4 check has run, no v4 model exists. Every element below was checked against the code at the commit of the draft; what the code cannot do today is listed in §11, and nothing of §3 or §4 may run before it is written and tested. The values that had to be chosen are in §12, each with its reason and its alternative; the lead's decisions at the freeze are in §13.
 
-**State on 19/11/2026.** K3 failed on both seeds on 18/11/2026 and the frozen route is closed (§15). By amendment 2 (§14), written on 19/11/2026 before K1 runs, v4 goes on to K1 and to K1 only: if K1 fails on either seed, v4 stops at K1 and that reading is its result; if K1 passes on both seeds, nothing further runs until the lead writes the next amendment. K1 has not run.
+**State on 19/11/2026 (evening).** K3 failed on both seeds on 18/11/2026 and the frozen route is closed (§15). By amendment 2 (§14), written on 19/11/2026 before K1 runs, v4 goes on to K1 and to K1 only: if K1 fails on either seed, v4 stops at K1 and that reading is its result; if K1 passes on both seeds, nothing further runs until the lead writes the next amendment. **K1 was read on 19/11/2026 and failed** (§16): `ask_acc` over the last 100 `recall` steps of its training batches 0.8442 on seed 0 and 1.0000 on seed 1, against 0.95 on both seeds. v4 stopped at K1, that reading is its result, and v4 is closed.
 
 This file is short where it can be: **v4 is v3 (`docs/s6-sleep3-prereg.md`) trained to the end of its learning curve, with checks at the nano size first.** Everything v3, v2 (`docs/s6-sleep2-prereg.md`) and v1 (`docs/s6-sleep-prereg.md`) wrote stands unless this file changes it: the memory (v2 §4 with v3's T1 and T2), the probes (v1 §3), the readers (v2 §5.2), the hypotheses (v1 §7), the gate (v1 §8, v2 §7), the export and the parity of `sky-infer`. There is no pico pilot: v3's pilot stands as read (amendment 2 of v3). Names: `s6-sleep4-*`; outputs go to `runs/s6-sleep4/`.
 
@@ -431,3 +431,63 @@ The figures per check are §3.7's: K1 54 per seed, K2 27 per factor, the confirm
 **State on 18/11/2026 (evening).** The code of K1, K2, the confirmation, K5 and the preserved route (§11 items 3 and 6, and their parts of item 7 and item 8) is **not written** on `main`. No check has run since K3. Whether v4 goes on past K3 is the owner's decision, and it has not been taken. If v4 stops here, it ends at K3 with this reading, and that is a result. Here is what the reading supports, and no more. At the nano size, with v3's recipe and the base frozen, the memory did not reach K1's bar on either seed within about 1,000 `recall` steps: the answer stayed at chance (0.2579 and 0.2546). What the memory retrieves became linearly decodable for the colour only in part, on one seed (`aux_acc` 0.38 on seed 0, at chance on seed 1). With the memory on, the answer gained 0.03 over the same weights without it, and the gain did not depend on the delay, so the memory gave no sign of holding the colour across the delay. The reading does not show that the memory stores and returns the colour while a frozen base fails to use it: that would need the colour decoded well above chance, and the auxiliary heads did not decode it.
 
 **State on 19/11/2026.** The owner's decision is taken, and amendment 2 (§14) records it. v4 goes on to K1 and to K1 only. Points 2 to 4 of "The rule that applies" above, and the costs after them, are replaced for what comes next by that amendment. K1's code is written: its stage in `scripts/train-sleep4.sh` and its reading in `scripts/s6-sleep4-report.py`, with their tests. The code of K2 (ii), K5 and the preserved route (§11 items 3 and 6) is not written, and amendment 2 does not call for it. K1 has not run. If K1 fails on either seed, v4 stops at K1 and that reading is its result. If it passes on both seeds, nothing further runs until the lead writes the next amendment.
+
+## 16. K1, read on 19/11/2026: failed (the bar met on one seed of two); v4 stops at K1 and is closed
+
+**What ran.** `scripts/train-sleep4.sh k1` from `main`'s commit `267d3fb`, through the job queue (`runs/all/queue/`, job `60-sleep4-k1`; its text is `runs/s6-sleep4/stage1/k1-queue-job.txt`, its console `runs/s6-sleep4/stage1/k1-console.log`). By the times of the run files, seed 0 ran from 11:19 to 13:08 and seed 1 from 13:08 to 15:43, each 1,310 steps on the GPU, one after the other, under the brake. The console's last timed lines read 57.8 working minutes at step 1,267 (seed 0) and 60.7 at step 1,283 (seed 1), against §3.7's estimate of 54 per seed. Each command is v3's nano phase A with everything trained, `--steps 1310 --memory-off-eval 4`, and neither `--stop-after` nor `--stop-recall-acc` (amendment 2, points 1 and 2); each was checked against v3's by `s6-sleep4-report.py recipe` (`runs/s6-sleep4/stage1/k1-s*/cmd.txt`). The reading is `runs/s6-sleep4/stage1/k1.json`, `k1.md` and K1's part of `runs/s6-sleep4/stage1.json` (`k1`, `k1_pass`, `next_after_k1`; K3's part unchanged), written at 15:43 by `s6-sleep4-report.py k1`. K1 has no `final.json` (K3's held the last line of each run's log, kept for its frozen-base check). Every number below comes from these files, and the windows from each run's `log.jsonl`: **each step's own training batch, before its update. This is a reading on training sequences, not a held-out test.** No dev3 or test seed of any probe or game was read. The trainer's own validation on a sample of the stateless records, which it prints at step 0 and at the end of every run, is in the console and decides nothing.
+
+**The bar (K1's, §3.1): met on seed 1, missed on seed 0, so K1 fails.**
+
+| seed | steps | `recall` steps | `ask_acc`, last 100 `recall` steps | bar (0.95) | S90 | S95 | same batches as K3 |
+|---|---:|---:|---:|---|---|---|---|
+| 0 | 1,310 | 1,019 | 0.8442 | missed | never | never | yes |
+| 1 | 1,310 | 1,000 | 1.0000 | met | 465 | 516 | yes |
+
+Chance is 0.25 (four colours). A pass on one seed only is a failure (§3.1). "Same batches as K3" is §3.1's check by `seq_game` and `passes`, reported and deciding nothing: each K1 seed trained on the batches of K3's run of the same seed, so K1 and K3 differ only in which parameters train.
+
+**The windows of 50 `recall` steps (§3.1).** `ask_acc` pooled over the window; the accuracy at delays 1 to 4 and 17 to 32 frames (`by_delay`); `off`, the same weights without the memory on the steps of the window that read it (one sequence step in four; their number in brackets). The auxiliary accuracy per layer, the excess ratio, `ask_ce` and `grad_norm` are in `k1.json` and the console.
+
+| `recall` steps | seed 0 `ask_acc` | seed 0 1-4 | seed 0 17-32 | seed 0 `off` | seed 1 `ask_acc` | seed 1 1-4 | seed 1 17-32 | seed 1 `off` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1-50 | 0.161 | 0.146 | 0.174 | 0.151 (14) | 0.170 | 0.176 | 0.176 | 0.162 (13) |
+| 51-100 | 0.253 | 0.276 | 0.232 | 0.256 (11) | 0.251 | 0.256 | 0.256 | 0.259 (14) |
+| 101-150 | 0.251 | 0.266 | 0.233 | 0.259 (10) | 0.271 | 0.279 | 0.272 | 0.256 (11) |
+| 151-200 | 0.238 | 0.213 | 0.266 | 0.268 (11) | 0.285 | 0.309 | 0.280 | 0.221 (12) |
+| 201-250 | 0.280 | 0.274 | 0.278 | 0.250 (13) | 0.441 | 0.540 | 0.323 | 0.243 (13) |
+| 251-300 | 0.306 | 0.329 | 0.288 | 0.263 (11) | 0.558 | 0.729 | 0.367 | 0.254 (13) |
+| 301-350 | 0.349 | 0.391 | 0.291 | 0.243 (12) | 0.585 | 0.771 | 0.371 | 0.255 (12) |
+| 351-400 | 0.444 | 0.541 | 0.331 | 0.248 (12) | 0.598 | 0.754 | 0.397 | 0.248 (11) |
+| 401-450 | 0.546 | 0.704 | 0.349 | 0.246 (11) | 0.813 | 0.904 | 0.691 | 0.274 (13) |
+| 451-500 | 0.574 | 0.750 | 0.381 | 0.251 (12) | 0.991 | 0.998 | 0.976 | 0.229 (10) |
+| 501-550 | 0.593 | 0.786 | 0.371 | 0.238 (13) | 0.993 | 0.999 | 0.983 | 0.249 (11) |
+| 551-600 | 0.590 | 0.779 | 0.369 | 0.251 (14) | 0.998 | 0.998 | 0.994 | 0.249 (12) |
+| 601-650 | 0.586 | 0.780 | 0.364 | 0.236 (13) | 0.998 | 1.000 | 0.994 | 0.244 (12) |
+| 651-700 | 0.610 | 0.799 | 0.376 | 0.250 (12) | 0.998 | 0.999 | 0.994 | 0.246 (11) |
+| 701-750 | 0.600 | 0.787 | 0.375 | 0.249 (11) | 0.999 | 1.000 | 0.998 | 0.240 (11) |
+| 751-800 | 0.701 | 0.843 | 0.529 | 0.257 (12) | 0.999 | 1.000 | 0.994 | 0.235 (13) |
+| 801-850 | 0.794 | 0.914 | 0.639 | 0.234 (14) | 0.999 | 1.000 | 0.998 | 0.237 (12) |
+| 851-900 | 0.809 | 0.914 | 0.644 | 0.240 (13) | 0.999 | 1.000 | 0.997 | 0.229 (13) |
+| 901-950 | 0.810 | 0.904 | 0.646 | 0.279 (12) | 1.000 | 1.000 | 1.000 | 0.164 (10) |
+| 951-1000 | 0.849 | 0.945 | 0.681 | 0.248 (13) | 1.000 | 1.000 | 1.000 | 0.211 (11) |
+| 1001-1019 | 0.877 | 0.956 | 0.729 | 0.247 (5) | | | | |
+
+**What the windows show, as observations and not as a pass.** None of them changes the verdict.
+
+1. **Seed 1: a plateau, then a jump.** `ask_acc` sat at 0.558, 0.585 and 0.598 over `recall` steps 251 to 400 (about 150 steps), then rose to 0.813 in 401-450 and 0.991 in 451-500, and stayed at 0.991 to 1.000 to the end. S90 is `recall` step 465 and S95 step 516.
+2. **Seed 0: the same shape, later, and not finished.** A plateau at 0.574 to 0.610 over `recall` steps 451 to 750, then a rise to 0.701 (751-800), 0.794, 0.809, 0.810, 0.849 (951-1000) and 0.877 over the last, partial window (1001-1019, 19 steps). It was still rising when the budget ended. It was not run further: the budget and the bar were written before the run (§3.1, amendment 2), and §10 forbids running a check again except after a technical failure.
+3. **Both plateaus are the short delays solved and the long ones not.** On both plateaus the accuracy at delays 1 to 4 frames was 0.73 to 0.80 and at 17 to 32 frames 0.36 to 0.40 (excess ratio 0.21 to 0.29). The jump is the long delays catching up: on seed 1, 17-32 reads 0.994 to 1.000 in every window from `recall` step 551 on, and 1.000 in the last two; on seed 0, 17-32 reads 0.681 in 951-1000 and 0.729 in 1001-1019, against 0.945 and 0.956 at 1-4.
+4. **What was learned goes through the memory.** With the memory off, the same weights on the same batches answer between 0.151 and 0.279 in every window on both seeds (about 0.25, chance), while the memory-on answer rises to 0.849 (seed 0) and 1.000 (seed 1). These are 10 to 14 steps per window (5 in seed 0's last), 249 steps over seed 0 and 238 over seed 1.
+
+**Compared with K3.** On the same batches and seeds, with the base frozen, the answer stayed at chance (0.2579 and 0.2546 over the last 100 `recall` steps, §15). With everything trained it reached 0.8442 and 1.0000. This is reported, and decides nothing: K3's route was closed by its own reading.
+
+**The rule that applies (amendment 2, point 4).** K1 fails (a pass on one seed only is a failure), so **v4 stops at K1**: no K2, no confirmation, no K5, no stage 2. This reading is v4's result. In amendment 2's words for this outcome: v3's recipe does not reach 0.95 on its own batches within about 1,000 `recall` steps at the nano size on both seeds, so v3's gap to the pilot is not shown to be a matter of budget alone. K2 did not run, so the reading cannot say whether one of its four factors (the auxiliary weight per layer, the head as T2 was written, the pilot's rates, the clip) would have changed it. The reference S90 and the clip that K2 (iv) would have taken from K1's seed 0 are not computed. No stage-2 GPU minute was spent. Stage 1 cost K3's 97.2 working minutes and K1's two runs.
+
+**What this reading does not show.**
+
+- **Nothing about a held-out set.** Every number above is read on each step's own training batch, before its update. No dev3 or test seed of `recall` or of a game was read, and no language test, so K1 says nothing about how the memory does on episodes it has not trained on.
+- **Nothing about sleep (H1) or the games (H2).** K1 is phase A alone: one pass (`--sleep-passes 1`), so no sleep to compare, and no game sequences of phase B. Nothing was exported, probed or gated.
+- **No model.** K1's checkpoints are working files of the check and are not published. s6-sleep3-nano (v3) stays the published model of the line, with its failed gate; nothing about that file changes.
+- **Two seeds, one run each.** One seed met the bar and one did not. Two runs cannot say how often a seed locks in within the budget, nor how many more steps seed 0 would have needed: its last window rose, and a rising curve is not a pass.
+- **The key-overlap reading** that the review suggested next to K1 was not run (amendment 2, point 6).
+
+**State on 19/11/2026 (after K1). v4 is closed.** It ended at K1, failed, with this reading as its result. Nothing further of v4 runs: K2, the confirmation, K5 and stage 2 are not run, and their code (§11 items 3 and 6) is not written. Nothing is scheduled after v4. A further attempt, for example longer training on both seeds or a curriculum on the delay, would be a new pre-registered line with its own file, and none is decided.

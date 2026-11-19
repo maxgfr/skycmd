@@ -17,5 +17,23 @@
   },
   "k3_pass": false,
   "route": "closed",
-  "next": "the frozen route is closed for v4: K1 (seed 0, then seed 1), then K2 (i) to (iv) on seed 0, then the confirmation if a factor is adopted (section 3.6, rule 2)"
+  "next": "the frozen route is closed for v4: K1 (seed 0, then seed 1), then K2 (i) to (iv) on seed 0, then the confirmation if a factor is adopted (section 3.6, rule 2)",
+  "k1": {
+    "seed0": {
+      "S90": null,
+      "S95": null,
+      "last_100_ask_acc": 0.84421875,
+      "bar": false,
+      "recall_steps": 1019
+    },
+    "seed1": {
+      "S90": 465,
+      "S95": 516,
+      "last_100_ask_acc": 1.0,
+      "bar": true,
+      "recall_steps": 1000
+    }
+  },
+  "k1_pass": false,
+  "next_after_k1": "K1 failed (a pass on one seed only is a failure). Under amendment 2 of docs/s6-sleep4-prereg.md (section 14), v4 stops at K1: no K2, no confirmation, no K5, no stage 2; this reading is v4's result"
 }

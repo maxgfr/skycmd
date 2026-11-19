@@ -113,14 +113,16 @@ is not known.
   Training), and the memory was never read zeroed at this size, so H0 rests on the control alone
   ([docs/s6-sleep4-diagnosis.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-diagnosis.md)
   and the note of 17/11 at the end of the pre-registration).
-- **The fourth version's first check failed (18/11/2026):** K3 trained the memory with the base
-  frozen, at the nano size on training sequences, and `recall` stayed at 0.2579 and 0.2546 over
-  the last 100 `recall` steps of seeds 0 and 1, against a bar of 0.95 and a chance of 0.25
+- **The fourth version failed its two checks and is closed (18 and 19/11/2026):** K3 trained the
+  memory with the base frozen, at the nano size on training sequences, and `recall` stayed at
+  0.2579 and 0.2546 over the last 100 `recall` steps of seeds 0 and 1, against a bar of 0.95 and
+  a chance of 0.25 (§15). K1 then ran this file's own recipe, everything trained, for 1,310
+  steps on the same seeds: over the last 100 `recall` steps of its training batches, read before each
+  update (not a held-out test), the answer was right on 0.8442 of the questions at seed 0 and
+  1.0000 at seed 1. A pass on one seed only is a failure, so v4 stopped at K1, with no model
   ([docs/s6-sleep4-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-prereg.md)
-  §15). On 19/11/2026 it was decided (amendment 2) that v4 goes on to its check K1 and to K1
-  only (the same recipe with more steps, on both seeds, with no early stop within a run): if
-  K1's bar fails, v4 stops at K1; if it passes, nothing further runs until a further amendment.
-  K1 is queued and has not run. Nothing about this file changes.
+  §16). Seed 0 was still rising when its budget ended. K1 says nothing about a test, sleep or
+  the games. This file stays the published model of the line, and nothing about it changes.
 
 ## How to ask it
 

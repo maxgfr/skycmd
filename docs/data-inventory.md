@@ -22,7 +22,14 @@ the local data that nothing open reads removed: section 8 lists what was deleted
 kept. The rows that these changes contradicted are corrected and marked with the date; the
 sizes are still those read on 18/11 and 19/11, not read again after the deletion.
 
-**The owner's rule (18/11/2026).** Once a model is in its final version and nobody will touch it
+**Update of 19/11/2026, evening (s6-sleep v4 closed).** s6-sleep v4's check K1 ran and failed, so v4
+stopped at K1 and is closed, with no model (`docs/s6-sleep4-prereg.md` §16). Nothing open reads
+its data any more. The rows below that held data for v4 say so, marked with the date; under
+"What becomes removable when those two lines end" (section 8), v4's part now applies. Whether
+and when that data goes is the owner's decision: nothing was deleted, moved or uploaded for this
+update.
+
+**The owner's rule (18/11/2026). Once a model is in its final version and nobody will touch it
 again, and its training data is on Hugging Face, the local copy of that data may be deleted. The
 data must be on Hugging Face first.
 
@@ -75,8 +82,8 @@ repositories, each holding its GGUF and card; none holds a training checkpoint).
 |---|---|---|---|
 | s1-pico, s2-nano, s2-nano-doom, s3-pico, s4-micro, s5-lite | yes | yes | no open item reads them; `docs/weights-prereg.md` §2 moved its base to s6-nano |
 | s6 recipe (tranche 1: `runs/s6ab`, `runs/s6lr`) | not a model | yes | decided 12/11 (`runs/recipe/recipe.json`) |
-| s6-nano | yes, passed | **no** | `runs/s6-nano-g3/decide/last` is the base of s6-sleep v4 (`scripts/train-sleep4.sh`, `NANO_BASE`; K3 failed on 18/11, and K1, decided on 19/11, has not run). **19/11:** §7, its other reader, was closed without running (`docs/weights-prereg.md`, amendment 1), so `runs/s6-nano/pretrain/init` (§7.2) has no reader left |
-| s6-micro (v2) | yes, passed | yes for its checkpoints; its data **no** | its data (`data/decisions`, `distill`, `games`, `numeric`) is read by s6-sleep v4's K1 (§7, the other reader, was closed on 19/11) |
+| s6-nano | yes, passed | **no** | `runs/s6-nano-g3/decide/last` is the base of s6-sleep v4 (`scripts/train-sleep4.sh`, `NANO_BASE`; K3 failed on 18/11, and K1 failed on 19/11: v4 is closed). **19/11:** §7, its other reader, was closed without running (`docs/weights-prereg.md`, amendment 1), so `runs/s6-nano/pretrain/init` (§7.2) has no reader left |
+| s6-micro (v2) | yes, passed | yes for its checkpoints; its data **no** | its data (`data/decisions`, `distill`, `games`, `numeric`) was read by s6-sleep v4's K1, which closed v4 on 19/11 (§7, the other reader, was closed on 19/11) |
 | s6-micro-v1 | yes, failed | yes, since 19/11 | `runs/s6-micro/pretrain/init` was the initialisation of s6-route v4, v5 and v7 (`docs/s6-route4-prereg.md` §3, "as v4" in `docs/s6-route5-prereg.md` §5; `scripts/train-route4.sh` line 81); the route line is closed |
 | s6-secrets-pico | yes, passed | yes, since 19/11 | §7.4, its only reader, was closed without running on 19/11 (`docs/weights-prereg.md`, amendment 1) |
 | s6-secrets-verify-pico (v2) and v3 | v2 yes, failed; v3 failed | yes, by the lead's decision of 18/11 | closed as "not worth pre-registering" (`TODO.md` item 5); its data was deleted on 19/11 (section 8) |
@@ -90,7 +97,7 @@ repositories, each holding its GGUF and card; none holds a training checkpoint).
 | s6-route7-nano (v7, 19/11) | yes, failed | yes | the route line is closed: no v8 (`docs/s6-route7-prereg.md` §11 and the result block); its data is on the Hub as skycmd-route7, uploaded on 19/11 (3.6) |
 | s6-sleep v1, v2 | no model (stopped) | **no** for v1's sequences | `runs/s6-sleep/seq` is the default `SEQ` of v3 and v4 (`scripts/train-sleep3.sh`, `scripts/train-sleep4.sh` line 60) |
 | s6-sleep3-nano (v3) | yes, failed | **no** | v4 cites its run folder (`docs/s6-sleep4-prereg.md`, lines 42 and 100) |
-| s6-sleep v4 | no model: K3 failed (18/11); K1 decided on 19/11 (`docs/s6-sleep4-prereg.md`, amendment 2), queued, not run yet | **no** | K1 is next, on both seeds; v4 stops at K1 if its bar fails, and after a pass nothing runs until a further amendment |
+| s6-sleep v4 | no model: K3 failed (18/11); K1 failed (19/11, met on one seed of two; `docs/s6-sleep4-prereg.md` §16), so v4 is closed | **no** | closed: nothing further runs (amendment 2) |
 | LFM3 S1/S2 router | not a trained model (failed) | yes, since 19/11 | the fine-tune, the only reader of `runs/lfm3-s1s2`, was closed on 19/11 |
 | LFM3 fine-tune | closed on 19/11, nothing trained (`docs/lfm3-ft-prereg.md`, amendment 8) | yes | nothing reads `data/lfm3` any more |
 | §7 flexible weights | closed without running on 19/11 (`docs/weights-prereg.md`, amendment 1) | yes | nothing was computed; nothing reads its inputs |
@@ -148,12 +155,12 @@ splits of `data/decisions` and `data/s4/heldout` (`docs/s6-gen-prereg.md`).
 
 | model | status | training data (val, test) | on Hugging Face (repository, config) | local path, size | removable | how to rebuild |
 |---|---|---|---|---|---|---|
-| s6-nano | not final (its checkpoint is a base) | decisions, distill, games, numeric; text-open, text; DAgger `data/dagger-s6-nano/r1..r3` | skycmd-decisions (27 configs), skycmd-glm-labels (`agree`, `labels`), skycmd-games, skycmd-numeric, skycmd-text; **DAgger rounds not on the Hub** (G8) | `data/decisions` 0.84 GiB, `distill` 0.52, `teacher` 0.09, `games` 0.10, `numeric` 0.02, `text` 0.14, `text-open` 0.09, `tok` < 0.01, `dagger-s6-nano` 0.06 | no: s6-sleep v4's K1 reads them (§7, the other reader, was closed on 19/11); kept on 19/11 | `scripts/prepare-data.sh`; `sky-data teacher mix-labels` (default `--alpha 0.5`) rebuilds `data/distill/glm.jsonl` from `data/teacher/glm_labels.jsonl` and `data/decisions`; the DAgger rounds need the round checkpoints `runs/s6-nano-g1`, `g2` (`sky-arena --dagger`) |
+| s6-nano | not final (its checkpoint is a base) | decisions, distill, games, numeric; text-open, text; DAgger `data/dagger-s6-nano/r1..r3` | skycmd-decisions (27 configs), skycmd-glm-labels (`agree`, `labels`), skycmd-games, skycmd-numeric, skycmd-text; **DAgger rounds not on the Hub** (G8) | `data/decisions` 0.84 GiB, `distill` 0.52, `teacher` 0.09, `games` 0.10, `numeric` 0.02, `text` 0.14, `text-open` 0.09, `tok` < 0.01, `dagger-s6-nano` 0.06 | no: s6-sleep v4's K1 read them (§7, the other reader, was closed on 19/11); kept on 19/11; v4 closed on 19/11 (evening) | `scripts/prepare-data.sh`; `sky-data teacher mix-labels` (default `--alpha 0.5`) rebuilds `data/distill/glm.jsonl` from `data/teacher/glm_labels.jsonl` and `data/decisions`; the DAgger rounds need the round checkpoints `runs/s6-nano-g1`, `g2` (`sky-arena --dagger`) |
 | s6-micro v1 | final (since 19/11 for `runs/s6-micro/pretrain/init`: the route line is closed) | as s6-nano; DAgger `data/dagger-s6-micro/r1..r3` (14/11) | as s6-nano; **DAgger rounds not on the Hub** (G8) | `data/dagger-s6-micro` 0.06 GiB | the DAgger rounds after an upload | as s6-nano |
 | s6-micro (v2) | final as a model | as s6-nano; DAgger `runs/s6-micro2/data/dagger-s6-micro/r1..r3` (16/11; different files from v1's, checked by sha256) | as s6-nano; **DAgger rounds not on the Hub** (G8) | `runs/s6-micro2/data/` 0.06 GiB | after an upload | as s6-nano (`SKY_OUT=runs/s6-micro2/`, `runs/s6-micro2/env.sh`) |
 | s6-sleep v1, v2 | stopped | `runs/s6-sleep/seq/` (`sky-train s2-seqgen --seed 61`: recall, rule110, flappy, rescue, dodge, doom; `scripts/train-sleep.sh` lines 105–109); stateless records as s6-nano | **sequences not on the Hub** (G9) | `runs/s6-sleep/seq` 0.48 GiB | no: v3 and v4 read it | `s2-seqgen` with the seeds of `scripts/train-sleep.sh` (generated by our code; CPU) |
-| s6-sleep3-nano (v3) | not final (v4 cites it) | v1's sequences, the stateless records, base s6-nano | as above | `runs/s6-sleep3/` (worktree) 0.36 GiB | no, until v4's result | — |
-| s6-sleep v4 | K3 failed (18/11); K1 decided on 19/11, not run yet | v1's sequences; `data/decisions`, `distill`, `games`, `numeric`; tests `typed_decisions_bench`, `s4/heldout`, `when2call` (`scripts/train-sleep4.sh` lines 104, 266–268, 517) | as above | as above | no | — |
+| s6-sleep3-nano (v3) | not final (v4 cites it) | v1's sequences, the stateless records, base s6-nano | as above | `runs/s6-sleep3/` (worktree) 0.36 GiB | no, until v4's result, which came on 19/11 (v4 closed) | — |
+| s6-sleep v4 | closed: K3 failed (18/11), K1 failed (19/11) | v1's sequences; `data/decisions`, `distill`, `games`, `numeric`; tests `typed_decisions_bench`, `s4/heldout`, `when2call` (`scripts/train-sleep4.sh` lines 104, 266–268, 517) | as above | as above | no | — |
 | §7 flexible weights | closed without running (19/11) | would have read: base `runs/s6-nano-g3/decide/last`; §7.2 from `runs/s6-nano/pretrain/init` with the s6 records; §7.4 copies of s6-secrets-pico on `data/secrets`; nothing was computed | as above, skycmd-secrets | as above | no longer held by §7 | — |
 
 ### 3.3 s6-secrets
@@ -215,7 +222,7 @@ text and about the same for binary features.
 | G6 | Chronos-ZS caches `skycmd-data/s6-cast2/hf/` (the `datasets` cache), `chronos-zs/` (exported windows), `chronos-zs-out/` (forecast dumps of four systems). **Deleted on 19/11/2026** (section 8), with `skycmd-data/s6-cast2` | 6.35 + 0.48 + 0.30 GiB | the Chronos-ZS readings of s6-cast v2 (reported, not gated) and the leakage check | evaluation sets | `autogluon/chronos_datasets` at `eeecad0b` (tagged `other`: each series keeps its own licence) and `autogluon/chronos_datasets_extra` at `84737b7` (ETT from GitHub); rebuild `scripts/chronos-zs.py` through `scripts/train-cast2.sh chronos`; the dumps by `sky-cast-eval` | not checked set by set; not needed, the sets are on the Hub | — |
 | G7 | `data/decisions/typed_decisions_train.jsonl` (6,000 rows) and `typed_decisions_bench.jsonl` (2,000 rows), and their GLM-5.3-Flash labels: 5,640 rows of `data/teacher/glm_labels.jsonl` and 4,063 rows of `data/distill/glm.jsonl` | 8.9 MB, and the label rows within the files of 3.2 | every s6 decision model (train, the gated bench); s6-sleep v4 | project rule: "LocalLLaMA/typed-decisions is gated on the Hub" (`EXCLUDED` in `scripts/hf-publish-data.py`) | `LocalLLaMA/typed-decisions`: on 18/11/2026 the Hub API reports it **not gated** (`gated: False`), Apache-2.0, commit `e6aa632c` (16/11, leaderboard edits; s5 pinned `c806f6c6`); the labels exist only here and would need new teacher calls | rows: yes (Apache-2.0); labels: yes (MIT model, owner's decision of 16/11); but the bench is the test split of a public leaderboard, so publishing our copy of it is the owner's call | 8.9 MB and about 1% of the label files |
 | G8 | DAgger rounds `data/dagger-s6-nano/r1..r3`, `data/dagger-s6-micro/r1..r3` (v1), `runs/s6-micro2/data/dagger-s6-micro/r1..r3` (v2) | 64 MB each | training of s6-nano, s6-micro v1, s6-micro v2 | no entry in the publish script | ours: game states reached by the models, labelled by the oracle; rebuilding needs the round checkpoints (`sky-arena --dagger`, `scripts/train-s6.sh` line 192) | yes (Apache-2.0, our code and models; no third-party data) | 0.19 GiB |
-| G9 | s6-sleep sequences `runs/s6-sleep/seq/` (recall 228 MB, doom 67, rescue 64, rule110 49, dodge 45, flappy 38) | 0.48 GiB | s6-sleep v1, v3, v4 (K1 next) | no entry in the publish script | ours: `sky-train s2-seqgen --seed 61` (`scripts/train-sleep.sh` lines 105–109) | yes (Apache-2.0, generated by our code) | 0.48 GiB |
+| G9 | s6-sleep sequences `runs/s6-sleep/seq/` (recall 228 MB, doom 67, rescue 64, rule110 49, dodge 45, flappy 38) | 0.48 GiB | s6-sleep v1, v3, v4 (closed on 19/11) | no entry in the publish script | ours: `sky-train s2-seqgen --seed 61` (`scripts/train-sleep.sh` lines 105–109) | yes (Apache-2.0, generated by our code) | 0.48 GiB |
 | G10 | `build/test/t_toolrouting.jsonl` (100 test slates). **Deleted on 19/11/2026** (section 8), with `build/` | 148 kB | s6-route-nano and s6-route tests (reported) | project rule: the card of `stanley-nv/tool-routing-data` "asks users to review the generating model's terms" (`ROUTE_EXCLUDED`) | `stanley-nv/tool-routing-data` at `249f72a6`; `scripts/build-route-data.sh` rebuilds it | unclear (CC-BY-4.0 tag, the card's request) | — |
 | G11 | v2's false-negative filter: `build/teacher/false-negatives.items.jsonl` (40 MB) and the teacher's answers `false-negatives.jsonl` (3.3 MB). **Deleted on 19/11/2026** (section 8), with `build/`, without an upload | 43 MB | the hard slates of v2 (their effect is in the published slates) | project rule (`ROUTE_EXCLUDED`): "their effect is in the hard slates" | the answers need new teacher calls; the items `sky-data route split` rebuilds | yes (outputs of an MIT model, owner's decision of 16/11; the tool texts keep their sources' licences) | 3.3 MB (answers) |
 | G12 | v4's build `build4/`, including `build4/teacher/rewrite-description.jsonl` (13,687 rewrites, 1.5 MB). **Deleted on 19/11/2026** (section 8); the rewrites are in skycmd-route7 | 0.27 GiB | v5 reused `build4/teacher/` (the route line is closed) | v4 trained nothing; no entry in the publish script. **19/11:** the rewrites are in skycmd-route7 (`teacher_rewrite_description_v4`, checked against the records they went into), and `build4/` is down to its teacher folder (6.7 MB) | the records: `scripts/build-route4-data.sh`; the rewrites: 685 new teacher calls | yes (as G11) | 3.5 MB (`build4/teacher/`) |
@@ -241,7 +248,7 @@ on the Hub). Totals: about 3.6 GB of checkpoints and 9.36 GiB of caches.
 
 | run folder | checkpoints (MB) | cache | what it is | needed later? |
 |---|---:|---:|---|---|
-| `runs/s6-nano-g3/decide/last` (and `g1`, `g2`) | 24 each | — | s6-nano's DAgger rounds; `g3` is the published model's checkpoint | **yes**: `g3` is the base of s6-sleep v4 (§7, its other reader, was closed on 19/11); `g1`, `g2` only to rebuild the DAgger rounds (G8) |
+| `runs/s6-nano-g3/decide/last` (and `g1`, `g2`) | 24 each | — | s6-nano's DAgger rounds; `g3` is the published model's checkpoint | **yes**: `g3` is the published model's checkpoint and was the base of s6-sleep v4 (closed on 19/11; §7, its other reader, was closed on 19/11); `g1`, `g2` only to rebuild the DAgger rounds (G8) |
 | `runs/s6-nano` | 51 | 0.73 GiB | s6-nano's pretraining and first decision phase | no since 19/11: `pretrain/init` (5.7 MB) was kept for §7.2, closed without running; kept on 19/11 with the other `runs/s6-nano*` |
 | `runs/s6-micro` | 191 | 0.64 GiB | s6-micro v1's pretraining and decision phase | no since 19/11 (the route line is closed); before, **yes** for `pretrain/init` (21 MB, s6-route v4 and v5); `runs/s6-micro2/runs/s6-micro/pretrain/init` is the same file (same sha256) |
 | `runs/s6-micro-g1..g3` | 90 each | — | s6-micro v1's DAgger rounds | no |
@@ -257,8 +264,8 @@ on the Hub). Totals: about 3.6 GB of checkpoints and 9.36 GiB of caches.
 | worktree `runs/s6-ear2-nano` | 51 (`last`, `last-ema`, `pre-qat`) | — | v2; `last-ema` is copied to `skycmd-data/s6-ear2/checkpoints/last-ema/` (the four sha256 equal those of `last-ema.sha256`) | **yes**, the copy in `skycmd-data` (v3's start); the worktree copies are redundant |
 | worktree `runs/s6-ear2-pilot` | 69 | — | v2's pilots | no |
 | worktree `runs/s6-nano2`, `runs/s6-nano2-pilot` | 134, 170 | — | s6-route-nano's training and pilots (s6-route ships the same decision file) | v4 and v5 start from s6-micro's pretraining init instead (`docs/s6-route4-prereg.md`, option O5): no |
-| worktree `runs/s6-sleep3` | 359 (40 checkpoints) | — | v3's pilot, nano runs and auxiliary runs | until v4's result (v4 cites `runs/s6-sleep3/nano/`) |
-| worktree `runs/s6-sleep4` | 14 | — | v4's K3 (failed, 18/11); K1, decided on 19/11, has not run | **yes** |
+| worktree `runs/s6-sleep3` | 359 (40 checkpoints) | — | v3's pilot, nano runs and auxiliary runs | until v4's result (v4 cites `runs/s6-sleep3/nano/`), which came on 19/11 (v4 closed at K1) |
+| worktree `runs/s6-sleep4` | 14 | — | v4's K3 (failed, 18/11) and K1 (failed, 19/11; its small files are in git, as K3's) | no open item reads it since 19/11 (v4 closed); before, **yes** |
 | worktree `runs/s6-cast2-pico`, `runs/s6-cast2-pilot`, `runs/cast2-smoke` | 11, 9, 20 | — | v2, its pilot, a smoke prefix | no |
 | worktree `sleep2/runs` | 84 | — | s6-sleep v2's checks and v3's pre-runs; also 233 MB of diagnostic sequences (`s6-sleep3/seq-oracle`) | no |
 
@@ -312,7 +319,7 @@ before `uv run scripts/hf-publish-data.py --dry-run --only <set>` and the same w
 **(d) Must not be removed now** (updated on 19/11: §7, s6-route v5 and the LFM3 fine-tune are
 closed, so their items are no longer held by them):
 
-- s6-sleep v4 (K1 next, not run yet): `runs/s6-nano-g3/decide/last`, `runs/s6-sleep/seq/`, `data/decisions`
+- s6-sleep v4 (closed on 19/11 at K1; held until the owner decides): `runs/s6-nano-g3/decide/last`, `runs/s6-sleep/seq/`, `data/decisions`
   (all 29 files), `data/distill`, `data/games`, `data/numeric`, `data/s4/heldout`,
   `runs/s6-sleep3/`, `runs/s6-sleep4/`.
 - s6-ear v3 (pre-registration being frozen on 19/11): `skycmd-data/s6-ear2/` (train, test, eotbench, `checkpoints/last-ema`),
@@ -422,7 +429,7 @@ the Hub and the site.
 - **s6-ear v3** (its pre-registration being frozen on 19/11, nothing trained yet):
   `data/ear/wav/smart-turn` (6.79 GiB), `data/ear/clips` and `data/ear/jev` (with `mimi`,
   0.34 GiB), `skycmd-data/s6-ear2` (12.67 GiB).
-- **s6-sleep v4's K1** (decided on 19/11, not run yet): `data/decisions`, `data/distill`,
+- **s6-sleep v4's K1** (decided on 19/11; it ran that day and closed v4, so this no longer holds them): `data/decisions`, `data/distill`,
   `data/games`, `data/numeric`, the `runs/s6-nano*` folders (with the base
   `runs/s6-nano-g3/decide/last`) and the `runs/s6-sleep*` folders (with v1's sequences
   `runs/s6-sleep/seq`, G9).
@@ -433,7 +440,7 @@ the Hub and the site.
   skycmd-ear, identical); `data/ear/wav/smart-turn`, copies of a public test set whose upstream is
   on the Hub (G2); `skycmd-data/s6-ear2` (G3), which is not on the Hub, so under the owner's rule
   it goes only after an upload or by a decision like the one taken for v1's features on 19/11.
-- When s6-sleep v4 ends (it stops at K1 if K1's bar fails; after a pass, only a further amendment can extend it): `data/decisions`, `distill`, `games` and
+- When s6-sleep v4 ends (it ended on 19/11: K1 failed and v4 is closed): `data/decisions`, `distill`, `games` and
   `numeric` are on the Hub, identical (section 2), except G7: `typed_decisions_train` and
   `typed_decisions_bench` and their GLM-5.3-Flash label rows (5,640 and 4,063), which exist only
   here; the checkpoints of `runs/s6-nano*` (section 5, `g1` and `g2` only to rebuild the DAgger

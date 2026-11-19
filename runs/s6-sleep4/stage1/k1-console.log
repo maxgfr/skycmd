@@ -1,0 +1,208 @@
+K3 failed and K1 has not run: K1 may run (seed 0, then seed 1)
+config: v3's runs/s6-sleep3/nano/sleep3.json, named s6-sleep4-nano
+== runs/s6-sleep4/stage1/k1-s0: --steps 1310, seed 0 --sleep-records runs/s6-sleep/seq/recall.jsonl,runs/s6-sleep/seq/rule110.jsonl --sleep-weights recall=0.85,rule110=0.15 --sleep-batch 16 --seq-frac 0.9 --sleep-passes 1 --mem-lr-mult 10 --mem-gate-lr-mult 0 --memory-aux-weight 1 --sleep-chunk 2 --memory-off-eval 4
+runs/s6-sleep4/stage1/k1-s0/cmd.txt: v3's nano phase A, but for ['--config', '--freeze-base', '--memory-off-eval', '--minutes', '--out', '--seed', '--steps']
+source decisions: 776101 train items, weight 0.250
+source distill: 560238 train items, weight 0.300
+source games: 252591 train items, weight 0.350
+source numeric: 89997 train items, weight 0.100
+val 59164 / test 33534 items, 537348 distinct questions, 0 records skipped (84.4s)
+initialized 71 tensors from runs/s6-nano-g3/decide/last/model.safetensors
+memory: read on, projections ternary under QAT
+memory: AdamW rate x10 on mem.*
+memory: AdamW rate of the gates x0 on top
+memory: auxiliary loss (the colour asked, decoded from the reading) at weight 1
+s6-sleep4-nano: 1612657 parameters, batch 128, budget 1310 steps, QAT over the last 100%, loop dropout 0.25
+sequences recall: 8950 train sequences of 64 frames, share 0.85
+sequences rule110: 17959 train sequences of 8 frames, share 0.15
+memory and sleep: 90% of the steps are batches of 16 sequences, sleep passes drawn in [1], gradient through the last pass
+sequence batches in parts of 2 sequences, their gradients summed before the update
+step 0: starting ternary QAT
+  val[f32] exit 0 (L1): acc all 0.503 | decisions 0.465 | games 0.634 | numeric 0.466  nll 2.1189
+  val[f32] exit 1 (L2): acc all 0.523 | decisions 0.472 | games 0.714 | numeric 0.438  nll 1.9350
+  val[f32] exit 2 (L3): acc all 0.527 | decisions 0.472 | games 0.720 | numeric 0.457  nll 1.9335
+  val[f32] exit 3 (L4): acc all 0.513 | decisions 0.462 | games 0.700 | numeric 0.435  nll 1.9494
+  val[f32] effective rank per exit: 64.9 66.2 63.4 63.6 (of 144)
+  val[ternary] exit 0 (L1): acc all 0.589 | decisions 0.516 | games 0.863 | numeric 0.463  nll 0.9251
+  val[ternary] exit 1 (L2): acc all 0.598 | decisions 0.517 | games 0.895 | numeric 0.474  nll 0.9128
+  val[ternary] exit 2 (L3): acc all 0.597 | decisions 0.517 | games 0.892 | numeric 0.466  nll 0.9120
+  val[ternary] exit 3 (L4): acc all 0.599 | decisions 0.518 | games 0.896 | numeric 0.468  nll 0.9129
+  val[ternary] effective rank per exit: 76.5 73.9 69.7 67.0 (of 144)
+  accuracy before ternarization 0.5132, after (no QAT yet) 0.5985
+step     20 loss 0.7750 lr x0.725 qat 118 tok/s 1 q/s (step 20/1310, 1.5 min)
+step     52 sequence loss 2.0301 (last 50 sequence steps, step 52/1310, 3.4 min)
+step    110 sequence loss 1.4462 (last 50 sequence steps, step 110/1310, 6.2 min)
+step    165 sequence loss 1.3583 (last 50 sequence steps, step 165/1310, 9.0 min)
+step    220 loss 0.8416 lr x1.000 qat 292 tok/s 2 q/s (step 220/1310, 11.8 min)
+step    221 sequence loss 1.2561 (last 50 sequence steps, step 221/1310, 11.8 min)
+cooling down for 893 s (SKY_COOL)
+brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+step    274 sequence loss 1.1870 (last 50 sequence steps, step 274/1310, 14.0 min)
+step    320 loss 0.9108 lr x1.000 qat 176 tok/s 1 q/s (step 320/1310, 16.0 min)
+step    328 sequence loss 1.1440 (last 50 sequence steps, step 328/1310, 16.4 min)
+step    381 sequence loss 1.0553 (last 50 sequence steps, step 381/1310, 18.7 min)
+step    434 sequence loss 1.0112 (last 50 sequence steps, step 434/1310, 21.1 min)
+step    487 sequence loss 0.9623 (last 50 sequence steps, step 487/1310, 23.4 min)
+step    539 sequence loss 0.9505 (last 50 sequence steps, step 539/1310, 25.6 min)
+step    594 sequence loss 0.9216 (last 50 sequence steps, step 594/1310, 28.2 min)
+step    648 sequence loss 0.8920 (last 50 sequence steps, step 648/1310, 30.7 min)
+step    707 sequence loss 0.8783 (last 50 sequence steps, step 707/1310, 33.3 min)
+step    763 sequence loss 0.9261 (last 50 sequence steps, step 763/1310, 35.8 min)
+step    821 sequence loss 0.9033 (last 50 sequence steps, step 821/1310, 38.3 min)
+step    877 sequence loss 0.8512 (last 50 sequence steps, step 877/1310, 40.6 min)
+step    930 sequence loss 0.8513 (last 50 sequence steps, step 930/1310, 42.9 min)
+step    980 loss 0.8942 lr x1.000 qat 541 tok/s 3 q/s (step 980/1310, 45.2 min)
+step    985 sequence loss 0.7513 (last 50 sequence steps, step 985/1310, 45.4 min)
+  val[ternary] exit 0 (L1): acc all 0.565 | decisions 0.503 | games 0.795 | numeric 0.463  nll 0.9894
+  val[ternary] exit 1 (L2): acc all 0.575 | decisions 0.505 | games 0.832 | numeric 0.474  nll 0.9716
+  val[ternary] exit 2 (L3): acc all 0.575 | decisions 0.503 | games 0.839 | numeric 0.466  nll 0.9696
+  val[ternary] exit 3 (L4): acc all 0.574 | decisions 0.502 | games 0.842 | numeric 0.460  nll 0.9713
+  val[ternary] effective rank per exit: 72.5 68.3 64.4 61.7 (of 144)
+step   1020 loss 1.0048 lr x1.000 qat 840 tok/s 4 q/s (step 1020/1310, 47.1 min)
+step   1040 sequence loss 0.5472 (last 50 sequence steps, step 1040/1310, 47.9 min)
+step   1093 sequence loss 0.5020 (last 50 sequence steps, step 1093/1310, 50.4 min)
+step   1140 loss 0.8136 lr x0.687 qat 393 tok/s 3 q/s (step 1140/1310, 52.5 min)
+step   1150 sequence loss 0.4750 (last 50 sequence steps, step 1150/1310, 52.8 min)
+cooling down for 600 s (SKY_COOL)
+step   1205 sequence loss 0.4427 (last 50 sequence steps, step 1205/1310, 55.3 min)
+brake: duty 0.5, 45 min of work, 15 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+step   1267 sequence loss 0.3883 (last 50 sequence steps, step 1267/1310, 57.8 min)
+done: 1310 steps
+  val[f32] exit 0 (L1): acc all 0.478 | decisions 0.455 | games 0.567 | numeric 0.427  nll 2.0529
+  val[f32] exit 1 (L2): acc all 0.504 | decisions 0.467 | games 0.640 | numeric 0.441  nll 2.0414
+  val[f32] exit 2 (L3): acc all 0.499 | decisions 0.465 | games 0.633 | numeric 0.430  nll 2.0532
+  val[f32] exit 3 (L4): acc all 0.497 | decisions 0.460 | games 0.641 | numeric 0.427  nll 2.0823
+  val[f32] effective rank per exit: 61.7 62.9 59.6 60.0 (of 144)
+  val[ternary] exit 0 (L1): acc all 0.575 | decisions 0.507 | games 0.836 | numeric 0.438  nll 0.9586
+  val[ternary] exit 1 (L2): acc all 0.585 | decisions 0.511 | games 0.867 | numeric 0.438  nll 0.9399
+  val[ternary] exit 2 (L3): acc all 0.586 | decisions 0.510 | games 0.872 | numeric 0.455  nll 0.9389
+  val[ternary] exit 3 (L4): acc all 0.582 | decisions 0.506 | games 0.865 | numeric 0.449  nll 0.9397
+  val[ternary] effective rank per exit: 72.0 68.0 64.0 61.4 (of 144)
+final val accuracy (last exit): latent f32 0.4975, ternary 0.5817
+checkpoint runs/s6-sleep4/stage1/k1-s0/last
+== runs/s6-sleep4/stage1/k1-s1: --steps 1310, seed 1 --sleep-records runs/s6-sleep/seq/recall.jsonl,runs/s6-sleep/seq/rule110.jsonl --sleep-weights recall=0.85,rule110=0.15 --sleep-batch 16 --seq-frac 0.9 --sleep-passes 1 --mem-lr-mult 10 --mem-gate-lr-mult 0 --memory-aux-weight 1 --sleep-chunk 2 --memory-off-eval 4
+runs/s6-sleep4/stage1/k1-s1/cmd.txt: v3's nano phase A, but for ['--config', '--freeze-base', '--memory-off-eval', '--minutes', '--out', '--seed', '--steps']
+source decisions: 776101 train items, weight 0.250
+source distill: 560238 train items, weight 0.300
+source games: 252591 train items, weight 0.350
+source numeric: 89997 train items, weight 0.100
+val 59164 / test 33534 items, 537348 distinct questions, 0 records skipped (85.3s)
+initialized 71 tensors from runs/s6-nano-g3/decide/last/model.safetensors
+memory: read on, projections ternary under QAT
+memory: AdamW rate x10 on mem.*
+memory: AdamW rate of the gates x0 on top
+memory: auxiliary loss (the colour asked, decoded from the reading) at weight 1
+s6-sleep4-nano: 1612657 parameters, batch 128, budget 1310 steps, QAT over the last 100%, loop dropout 0.25
+sequences recall: 8950 train sequences of 64 frames, share 0.85
+sequences rule110: 17959 train sequences of 8 frames, share 0.15
+memory and sleep: 90% of the steps are batches of 16 sequences, sleep passes drawn in [1], gradient through the last pass
+sequence batches in parts of 2 sequences, their gradients summed before the update
+step 0: starting ternary QAT
+  val[f32] exit 0 (L1): acc all 0.505 | decisions 0.476 | games 0.629 | numeric 0.390  nll 2.2232
+  val[f32] exit 1 (L2): acc all 0.511 | decisions 0.462 | games 0.694 | numeric 0.387  nll 2.0259
+  val[f32] exit 2 (L3): acc all 0.509 | decisions 0.455 | games 0.709 | numeric 0.383  nll 2.0236
+  val[f32] exit 3 (L4): acc all 0.501 | decisions 0.448 | games 0.690 | numeric 0.406  nll 2.0201
+  val[f32] effective rank per exit: 65.2 66.6 63.8 64.1 (of 144)
+  val[ternary] exit 0 (L1): acc all 0.598 | decisions 0.519 | games 0.857 | numeric 0.505  nll 0.9294
+  val[ternary] exit 1 (L2): acc all 0.615 | decisions 0.522 | games 0.915 | numeric 0.521  nll 0.9130
+  val[ternary] exit 2 (L3): acc all 0.612 | decisions 0.522 | games 0.906 | numeric 0.524  nll 0.9121
+  val[ternary] exit 3 (L4): acc all 0.613 | decisions 0.522 | games 0.909 | numeric 0.524  nll 0.9132
+  val[ternary] effective rank per exit: 76.4 74.1 69.9 67.3 (of 144)
+  accuracy before ternarization 0.5015, after (no QAT yet) 0.6128
+step     58 sequence loss 1.9000 (last 50 sequence steps, step 58/1310, 2.4 min)
+step    116 sequence loss 1.4584 (last 50 sequence steps, step 116/1310, 4.9 min)
+step    120 loss 0.8423 lr x1.000 qat 555 tok/s 4 q/s (step 120/1310, 5.0 min)
+step    176 sequence loss 1.2983 (last 50 sequence steps, step 176/1310, 7.4 min)
+step    235 sequence loss 1.3197 (last 50 sequence steps, step 235/1310, 10.1 min)
+step    286 sequence loss 1.0642 (last 50 sequence steps, step 286/1310, 12.6 min)
+step    341 sequence loss 1.0273 (last 50 sequence steps, step 341/1310, 15.3 min)
+cooling down for 900 s (SKY_COOL)
+step    395 sequence loss 0.9903 (last 50 sequence steps, step 395/1310, 18.0 min)
+step    420 loss 0.8706 lr x1.000 qat 253 tok/s 1 q/s (step 420/1310, 19.1 min)
+step    447 sequence loss 0.9201 (last 50 sequence steps, step 447/1310, 21.7 min)
+step    509 sequence loss 0.8665 (last 50 sequence steps, step 509/1310, 24.3 min)
+step    563 sequence loss 0.5808 (last 50 sequence steps, step 563/1310, 26.7 min)
+step    618 sequence loss 0.1549 (last 50 sequence steps, step 618/1310, 29.5 min)
+step    620 loss 0.9026 lr x1.000 qat 396 tok/s 2 q/s (step 620/1310, 29.5 min)
+step    671 sequence loss 0.1092 (last 50 sequence steps, step 671/1310, 32.0 min)
+step    724 sequence loss 0.0946 (last 50 sequence steps, step 724/1310, 34.6 min)
+step    781 sequence loss 0.1490 (last 50 sequence steps, step 781/1310, 37.0 min)
+step    838 sequence loss 0.0898 (last 50 sequence steps, step 838/1310, 39.6 min)
+cooling down for 896 s (SKY_COOL)
+step    897 sequence loss 0.0903 (last 50 sequence steps, step 897/1310, 42.2 min)
+step    950 sequence loss 0.1160 (last 50 sequence steps, step 950/1310, 44.6 min)
+  val[ternary] exit 0 (L1): acc all 0.565 | decisions 0.498 | games 0.788 | numeric 0.482  nll 1.0016
+  val[ternary] exit 1 (L2): acc all 0.570 | decisions 0.498 | games 0.819 | numeric 0.457  nll 0.9857
+  val[ternary] exit 2 (L3): acc all 0.575 | decisions 0.497 | games 0.839 | numeric 0.457  nll 0.9827
+  val[ternary] exit 3 (L4): acc all 0.571 | decisions 0.499 | games 0.822 | numeric 0.450  nll 0.9856
+  val[ternary] effective rank per exit: 71.5 68.0 65.3 62.2 (of 144)
+step   1006 sequence loss 0.0951 (last 50 sequence steps, step 1006/1310, 47.3 min)
+step   1061 sequence loss 0.0172 (last 50 sequence steps, step 1061/1310, 50.2 min)
+step   1100 loss 0.8963 lr x0.825 qat 248 tok/s 2 q/s (step 1100/1310, 52.0 min)
+step   1117 sequence loss 0.0736 (last 50 sequence steps, step 1117/1310, 52.7 min)
+step   1171 sequence loss 0.1342 (last 50 sequence steps, step 1171/1310, 55.3 min)
+step   1180 loss 0.8718 lr x0.550 qat 515 tok/s 3 q/s (step 1180/1310, 55.7 min)
+step   1227 sequence loss 0.0734 (last 50 sequence steps, step 1227/1310, 58.1 min)
+step   1240 loss 0.9835 lr x0.344 qat 430 tok/s 2 q/s (step 1240/1310, 58.7 min)
+step   1283 sequence loss 0.0838 (last 50 sequence steps, step 1283/1310, 60.7 min)
+done: 1310 steps
+  val[f32] exit 0 (L1): acc all 0.485 | decisions 0.454 | games 0.598 | numeric 0.419  nll 2.0316
+  val[f32] exit 1 (L2): acc all 0.493 | decisions 0.446 | games 0.660 | numeric 0.406  nll 1.9893
+  val[f32] exit 2 (L3): acc all 0.492 | decisions 0.449 | games 0.644 | numeric 0.419  nll 1.9980
+  val[f32] exit 3 (L4): acc all 0.482 | decisions 0.444 | games 0.622 | numeric 0.393  nll 2.0223
+  val[f32] effective rank per exit: 59.7 61.1 58.9 59.4 (of 144)
+  val[ternary] exit 0 (L1): acc all 0.583 | decisions 0.509 | games 0.827 | numeric 0.498  nll 0.9645
+  val[ternary] exit 1 (L2): acc all 0.590 | decisions 0.508 | games 0.866 | numeric 0.482  nll 0.9482
+  val[ternary] exit 2 (L3): acc all 0.592 | decisions 0.511 | games 0.866 | numeric 0.486  nll 0.9481
+  val[ternary] exit 3 (L4): acc all 0.594 | decisions 0.510 | games 0.878 | numeric 0.479  nll 0.9478
+  val[ternary] effective rank per exit: 69.4 65.7 62.9 59.3 (of 144)
+final val accuracy (last exit): latent f32 0.4818, ternary 0.5938
+checkpoint runs/s6-sleep4/stage1/k1-s1/last
+K1 seed0: 1310 steps, 1019 recall steps | last 100: 0.8442 [FAIL] | S90 None | S95 None
+  recall steps | ask_acc | ask_ce | aux_acc (per layer) | 1-4 | 17-32 | excess | off acc | grad_norm
+     1-50   | 0.1608 | 1.8991 | 0.2508 (0.245/0.256) | 0.146 | 0.174 | 0.72 | 0.151 | 0.94
+    51-100  | 0.2527 | 1.4028 | 0.3543 (0.351/0.358) | 0.276 | 0.232 | -0.69 | 0.256 | 5.94
+   101-150  | 0.2514 | 1.3964 | 0.4010 (0.382/0.420) | 0.266 | 0.233 | n/a | 0.259 | 9.48
+   151-200  | 0.2377 | 1.3993 | 0.4520 (0.429/0.475) | 0.213 | 0.266 | -0.44 | 0.268 | 12.06
+   201-250  | 0.2802 | 1.3850 | 0.5296 (0.522/0.538) | 0.274 | 0.278 | 1.16 | 0.250 | 16.47
+   251-300  | 0.3059 | 1.3804 | 0.5736 (0.574/0.573) | 0.329 | 0.288 | 0.48 | 0.263 | 17.85
+   301-350  | 0.3491 | 1.3600 | 0.5939 (0.593/0.595) | 0.391 | 0.291 | 0.29 | 0.243 | 15.26
+   351-400  | 0.4444 | 1.2403 | 0.5976 (0.598/0.597) | 0.541 | 0.331 | 0.28 | 0.248 | 15.40
+   401-450  | 0.5459 | 1.0682 | 0.5990 (0.598/0.600) | 0.704 | 0.349 | 0.22 | 0.246 | 12.75
+   451-500  | 0.5737 | 0.9619 | 0.5984 (0.600/0.597) | 0.750 | 0.381 | 0.26 | 0.251 | 16.24
+   501-550  | 0.5927 | 0.8959 | 0.6047 (0.605/0.604) | 0.786 | 0.371 | 0.22 | 0.238 | 12.63
+   551-600  | 0.5902 | 0.8983 | 0.5954 (0.596/0.595) | 0.779 | 0.369 | 0.22 | 0.251 | 15.63
+   601-650  | 0.5859 | 0.8929 | 0.5995 (0.602/0.597) | 0.780 | 0.364 | 0.21 | 0.236 | 14.91
+   651-700  | 0.6102 | 0.8436 | 0.6118 (0.615/0.609) | 0.799 | 0.376 | 0.23 | 0.250 | 13.25
+   701-750  | 0.6005 | 0.8604 | 0.6437 (0.651/0.636) | 0.787 | 0.375 | 0.23 | 0.249 | 16.08
+   751-800  | 0.7013 | 0.7388 | 0.7736 (0.778/0.769) | 0.843 | 0.529 | 0.47 | 0.257 | 18.15
+   801-850  | 0.7939 | 0.5415 | 0.8061 (0.804/0.808) | 0.914 | 0.639 | 0.59 | 0.234 | 19.57
+   851-900  | 0.8092 | 0.4415 | 0.8201 (0.821/0.819) | 0.914 | 0.644 | 0.59 | 0.240 | 16.16
+   901-950  | 0.8103 | 0.4475 | 0.8497 (0.855/0.845) | 0.904 | 0.646 | 0.61 | 0.279 | 13.86
+   951-1000 | 0.8486 | 0.4132 | 0.8871 (0.889/0.885) | 0.945 | 0.681 | 0.62 | 0.248 | 15.57
+  1001-1019 | 0.8766 | 0.3524 | 0.9202 (0.922/0.918) | 0.956 | 0.729 | 0.68 | 0.247 | 13.17
+K1 seed1: 1310 steps, 1000 recall steps | last 100: 1.0000 [ok] | S90 465 | S95 516
+  recall steps | ask_acc | ask_ce | aux_acc (per layer) | 1-4 | 17-32 | excess | off acc | grad_norm
+     1-50   | 0.1702 | 1.9099 | 0.2545 (0.254/0.255) | 0.176 | 0.176 | 1.00 | 0.162 | 1.29
+    51-100  | 0.2509 | 1.3994 | 0.3330 (0.328/0.338) | 0.256 | 0.256 | n/a | 0.259 | 4.29
+   101-150  | 0.2711 | 1.3934 | 0.3978 (0.417/0.379) | 0.279 | 0.272 | 0.76 | 0.256 | 9.12
+   151-200  | 0.2850 | 1.3753 | 0.5532 (0.565/0.541) | 0.309 | 0.280 | 0.51 | 0.221 | 9.18
+   201-250  | 0.4409 | 1.2815 | 0.6063 (0.609/0.604) | 0.540 | 0.323 | 0.25 | 0.243 | 10.79
+   251-300  | 0.5578 | 1.0777 | 0.5989 (0.602/0.596) | 0.729 | 0.367 | 0.24 | 0.254 | 11.38
+   301-350  | 0.5847 | 0.9616 | 0.6058 (0.615/0.597) | 0.771 | 0.371 | 0.23 | 0.255 | 12.31
+   351-400  | 0.5981 | 0.9079 | 0.6880 (0.711/0.665) | 0.754 | 0.397 | 0.29 | 0.248 | 13.71
+   401-450  | 0.8133 | 0.5156 | 0.8966 (0.900/0.893) | 0.904 | 0.691 | 0.67 | 0.274 | 11.20
+   451-500  | 0.9909 | 0.0432 | 0.9939 (0.996/0.992) | 0.998 | 0.976 | 0.97 | 0.229 | 6.04
+   501-550  | 0.9933 | 0.0351 | 0.9955 (0.997/0.994) | 0.999 | 0.983 | 0.98 | 0.249 | 2.38
+   551-600  | 0.9977 | 0.0098 | 0.9984 (0.998/0.999) | 0.998 | 0.994 | 1.00 | 0.249 | 0.69
+   601-650  | 0.9978 | 0.0091 | 0.9989 (0.999/0.999) | 1.000 | 0.994 | 0.99 | 0.244 | 0.32
+   651-700  | 0.9977 | 0.0098 | 0.9981 (0.999/0.998) | 0.999 | 0.994 | 0.99 | 0.246 | 0.71
+   701-750  | 0.9989 | 0.0050 | 0.9972 (0.999/0.996) | 1.000 | 0.998 | 1.00 | 0.240 | 0.33
+   751-800  | 0.9986 | 0.0087 | 0.9992 (0.999/0.999) | 1.000 | 0.994 | 0.99 | 0.235 | 0.36
+   801-850  | 0.9994 | 0.0028 | 0.9995 (1.000/1.000) | 1.000 | 0.998 | 1.00 | 0.237 | 0.06
+   851-900  | 0.9991 | 0.0028 | 0.9996 (1.000/0.999) | 1.000 | 0.997 | 1.00 | 0.229 | 0.05
+   901-950  | 1.0000 | 0.0000 | 1.0000 (1.000/1.000) | 1.000 | 1.000 | 1.00 | 0.164 | 0.00
+   951-1000 | 1.0000 | 0.0001 | 0.9998 (1.000/1.000) | 1.000 | 1.000 | 1.00 | 0.211 | 0.00
+K1: FAIL. K1 failed (a pass on one seed only is a failure). Under amendment 2 of docs/s6-sleep4-prereg.md (section 14), v4 stops at K1: no K2, no confirmation, no K5, no stage 2; this reading is v4's result
+== K1 FAILED (a pass on one seed only is a failure). Amendment 2 (§14): v4 stops at K1, with no K2, no confirmation, no K5 and no stage 2, and this reading is its result; this script stops here
+== k1 exit 1

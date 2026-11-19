@@ -1,0 +1,12 @@
+# s6-sleep v4, check K1 (docs/s6-sleep4-prereg.md 3.3 and amendment 2 of 19/11/2026): v3's recipe
+# with everything trained, --steps 1310, seed 0 then seed 1, then its reading. The script stops
+# after K1 whatever it reads; exit 1 means K1's bar failed (a result, not a crash).
+# Run from this worktree, at main (267d3fb).
+set -uo pipefail
+export SKY_BRAKE_FILE=/Users/maxime/Documents/Code/skycmd/runs/brake
+export CARGO_BUILD_JOBS=2
+caffeinate -i bash scripts/train-sleep4.sh k1
+status=$?
+echo "== k1 exit $status"
+[ -f runs/s6-sleep4/stage1/k1.json ] && exit 0
+exit "$status"
