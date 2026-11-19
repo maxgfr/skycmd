@@ -87,7 +87,7 @@ S=$B/sky-turn
 name=s6-ear2-nano
 cfg=configs/$name.json
 # the data folder sits beside the main checkout (../skycmd-data), found through git's common folder so that
-# a worktree under .claude/worktrees/ resolves to the same place; TURN_DATA comes first
+# any other working tree of the repository resolves to the same place; TURN_DATA comes first
 repo=$(cd "$(dirname "$0")/.." && pwd)
 git_common=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$repo/.git")
 data=${TURN_DATA:-$(cd "$git_common/../.." && pwd)/skycmd-data/s6-ear2}

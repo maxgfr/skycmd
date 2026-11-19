@@ -37,11 +37,11 @@ The floating-point checkpoint of s3-pico no longer exists (finding of 09/11/2026
 
 ## 3. The targeted defect (a rule, with no choice by hand)
 
-On the dev seeds, for each game: `écart = (oracle − modèle) / |oracle|` with the mean scores that the arena outputs. **The target game is the one with the largest gap.** A single target game, fixed once and for all for 7.1.
+On the dev seeds, for each game: `gap = (oracle − model) / |oracle|` with the mean scores that the arena outputs. **The target game is the one with the largest gap.** A single target game, fixed once and for all for 7.1.
 
 ## 4. 7.1: targeted editing without forgetting
 
-**What an edit is allowed to do.** A list of `{paramètre, indice, delta}` on the floating-point checkpoint, at most **2 000 weights**, each `|delta|` at most equal to the standard deviation of the parameter touched. Then ternary re-export **with the existing calibration**, without recalibrating. The report gives the number of weights whose ternary value actually changed. An edit that changes none is invalid.
+**What an edit is allowed to do.** A list of `{parameter, index, delta}` on the floating-point checkpoint, at most **2 000 weights**, each `|delta|` at most equal to the standard deviation of the parameter touched. Then ternary re-export **with the existing calibration**, without recalibrating. The report gives the number of weights whose ternary value actually changed. An edit that changes none is invalid.
 
 **What GLM sees at each pass.** At most 20 000 weights as text, drawn from the last parameters before the final output; the activations on 20 failure states and 20 success states of the target game; the dev score of its last edit. **One pass = one proposal + one dev measurement.**
 
@@ -104,7 +104,7 @@ On the dev seeds, for each game: `écart = (oracle − modèle) / |oracle|` with
 ## 8. Reproducibility and report
 
 - GLM-5.3-flash via z.ai (`ccs config get zai`): prompts, answers and seeds written in `runs/weights/`. A cap of 400 requests for all of §7.
-- Throttled mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`) for all training, and the arena on one core.
+- Braked mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`) for all training, and the arena on one core.
 - A technical failure (quota, unreadable format) reruns the same computation identically, and it is noted. No rerun to "see" a better result.
 - The first technical trial of the format of the edits uses only the dev seeds. If it forces a change of protocol, it goes through a dated amendment before any reading of the test.
 - `runs/weights/REPORT.md` gives all the arms, including the failures. The site and `BENCH.md` take up its result.

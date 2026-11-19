@@ -159,7 +159,7 @@ What follows is how the code differs, and why. The trained models use the data, 
 ## What it does not bring (honestly)
 
 - **None of the building blocks is new.** The novelty is in how they are combined, in the scale and in the closed-loop calibration lesson. Our literature search was two research passes, not a systematic review.
-- **The games are friendly.** Code measures the useful features (relative clearances, an A* waypoint) and the model decides, following the [jev-drone](https://github.com/RomanSlack/jev-drone) philosophy. A small MLP on the same features would be a fair baseline, and we have not run it yet.
+- **The games are friendly.** Code measures the useful features (relative clearances, an A* waypoint) and the model decides, following the [jev-drone](https://github.com/RomanSlack/jev-drone) philosophy. A small MLP on the same features would be a fair baseline, and it was not run.
 - **The tiny model is a specialist.** On general decisions it is modest: 0.54 on our held-out mix and 0.38 on the external typed-decisions benchmark, against about 0.73 for the 144M Julia-1.
 - **No pre-registered claim for s5.** None of the three bets is claimed: the iso format missed its calibration margin, the coherence losses improved only the identities they were trained on, and 8-bit quantization could not be shown non-inferior for lack of power.
 - **s5 is a small English model.** There is no French version.

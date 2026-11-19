@@ -17,7 +17,7 @@ A decision model in this project reads one frame of a game, answers, and forgets
 
 ## The context: skycmd
 
-skycmd gathers very small "decision models" with ternary weights (each is −1, 0 or +1), written in Rust, run natively or in the browser through WebAssembly, and trained on one MacBook (Apple M5) in a throttled mode, so budgets count working minutes.
+skycmd gathers very small "decision models" with ternary weights (each is −1, 0 or +1), written in Rust, run natively or in the browser through WebAssembly, and trained on one MacBook (Apple M5) in a braked mode, so budgets count working minutes.
 
 ::: info Pre-registration and the gate
 Before an experiment runs, I commit the test, the bar to clear and what a failure would mean. The bar is the "gate": conditions that must all hold. The test is read once, a failure is published like a success, and the rule cannot be adjusted afterwards.

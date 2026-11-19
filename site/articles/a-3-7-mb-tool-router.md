@@ -13,7 +13,7 @@ An assistant that can use tools first has to pick one. That choice is usually le
 
 ## The context: skycmd
 
-A short reminder, for readers who arrive here directly: skycmd gathers very small "decision models", from a few hundred kilobytes to a few megabytes. Their weights are ternary: each one is −1, 0 or +1, which keeps them compact and fast to compute. They are written in Rust and run in the browser through WebAssembly. Everything is trained on a single MacBook (Apple M5), in a throttled mode that keeps the machine usable in the meantime.
+A short reminder, for readers who arrive here directly: skycmd gathers very small "decision models", from a few hundred kilobytes to a few megabytes. Their weights are ternary: each one is −1, 0 or +1, which keeps them compact and fast to compute. They are written in Rust and run in the browser through WebAssembly. Everything is trained on a single MacBook (Apple M5), in a braked mode that keeps the machine usable in the meantime.
 
 One rule frames every experiment: it is pre-registered.
 
@@ -41,7 +41,7 @@ The second version, [s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano)
 
 Its main idea comes from the project's best result, a secrets detector where rules propose candidates and the model judges them. The principle: whatever a cheap algorithm can compute, compute it and hand it to the model. Here, that algorithm is BM25. BM25 is a classic search score: it measures the words a request shares with each tool's description, giving more weight to rare words. It learns nothing and weighs nothing. Each tool's BM25 score and rank were written into the model's input.
 
-Training took 120 "working minutes" on the M5, about two hours of GPU time spread over a morning because of the throttling: 20,504 steps, on about 190,000 examples built from public tool-calling datasets. A larger open-weight model (GLM-5.3-Flash, MIT licence) served as a teacher, only to clean the training labels (4,174 calls).
+Training took 120 "working minutes" on the M5, about two hours of GPU time spread over a morning because of the brake: 20,504 steps, on about 190,000 examples built from public tool-calling datasets. A larger open-weight model (GLM-5.3-Flash, MIT licence) served as a teacher, only to clean the training labels (4,174 calls).
 
 The gate compared the model with a static embedding, [potion-base-2M](https://huggingface.co/minishlab/potion-base-2M). An embedding turns a text into a list of numbers, so that texts with close meanings get close lists; you then pick the tool whose description is closest to the request. "Static" means each word has a fixed list, which makes the whole thing very light.
 
@@ -129,7 +129,7 @@ These limits matter as much as the result:
 
 **Pre-registration is what turns a lucky number into a result.** The 0.8885 of the lead was only a hint. Writing the rule, building fresh data, reading once: that is what lets me say the 0.8868 is not a coincidence picked after the fact. It is also what forces the limits to be published with the result.
 
-**All of this fits on a laptop.** The only training run in this story took about two hours of throttled GPU time. The rest, meaning the combination, the settings and the evaluation, took a few minutes of CPU.
+**All of this fits on a laptop.** The only training run in this story took about two hours of braked GPU time. The rest, meaning the combination, the settings and the evaluation, took a few minutes of CPU.
 
 ## 19 November 2026: four more versions, and the end of the line
 

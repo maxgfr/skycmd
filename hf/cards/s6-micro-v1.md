@@ -135,7 +135,7 @@ Request format and bindings: [install guide](https://maxgfr.github.io/skycmd/ins
 
 ## Training
 
-From scratch in Rust (mlx-rs) on an Apple M5, in a throttled mode, so the budgets are working
+From scratch in Rust (mlx-rs) on an Apple M5, in a braked mode, so the budgets are working
 minutes: masked-language pretraining in float (180 minutes, 31,700 steps, 0.52B tokens, 93 per
 parameter), then decision training with ternary QAT after a 10 % float warm-up (180 minutes,
 38,826 steps, learning rate ×0.5 chosen by a pre-registered pilot) and three DAgger rounds on the

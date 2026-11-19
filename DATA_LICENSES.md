@@ -292,17 +292,17 @@ obfuscated or replaced forms could be, and they are not ours to redistribute.
 
 ## LFM3-1.7B System 1 / System 2 and its fine-tune (`data/lfm3/`, `scripts/lfm3-s1s2.sh` and `scripts/lfm3-ft.sh` (removed 19/11/2026), `docs/lfm3-s1s2-prereg.md`, `docs/lfm3-ft-prereg.md`)
 
-The router (`docs/lfm3-s1s2-prereg.md`) is inference only. Since its amendment 1 (05/11/2026) it runs remotely on Hugging Face Jobs, in bf16, on the base model and on the fine-tuned one.
+The router (`docs/lfm3-s1s2-prereg.md`) is inference only. Its amendment 1 (05/11/2026) moved it to Hugging Face Jobs, in bf16, on the base model and on the fine-tuned one; amendment 2 (09/11/2026) cancelled that, and the router ran on the M5 with `LiquidAI/LFM3-1.7B-MLX-4bit` (first row below) and failed (H3). No fine-tuned model exists.
 
-**Fine-tuning (planned, not run).** `docs/lfm3-ft-prereg.md` trains a LoRA on LFM3-1.7B, on Hugging Face Jobs. The training data is MIT only:
+**Fine-tuning (closed on 19/11/2026, nothing trained: `docs/lfm3-ft-prereg.md`, amendment 8).** `docs/lfm3-ft-prereg.md` planned a LoRA on LFM3-1.7B, first on Hugging Face Jobs, then on the M5 (from its amendment 1, 09/11/2026). Its training data was to be MIT only:
 - the GSM8K and MATH train worked solutions;
 - the base model's own correct answers on those train questions (self-distillation).
 
 None of the 600 calibration questions and no test question is trained on; questions with the same normalized text are excluded too. The GLM labels are **never** used for LFM3, as its pre-registration fixed (`docs/lfm3-ft-prereg.md`).
 
-**Where the outputs go.**
-- Generations, evaluations and logs go to the private dataset repo `maxgfr/skycmd-lfm3-ft-work`.
-- The merged model and its adapter go to the private model repo `maxgfr/skycmd-lfm3-1.7b-s1`.
+**Where the outputs were to go** (the fine-tune was closed with nothing trained, so no model was written to either).
+- Generations, evaluations and logs: the private dataset repo `maxgfr/skycmd-lfm3-ft-work`.
+- The merged model and its adapter: the private model repo `maxgfr/skycmd-lfm3-1.7b-s1`.
 
 **Derived weights stay private until the user agrees.** If they are ever published, it is under LFM Open License v1.0, with:
 - the license text and a NOTICE;
@@ -314,7 +314,7 @@ Commercial use only within the license's revenue threshold.
 | dataset / model | license | revision | how it is used | rows |
 |---|---|---|---|---:|
 | LiquidAI/LFM3-1.7B-MLX-4bit | LFM Open License v1.0 (`lfm1.0`) | `deb2986b9660c15ff7dd4c2bb1211ce3bbb814d4` | the router run on the M5 (mlx-vlm 0.7.11, `docs/lfm3-s1s2-prereg.md` amendment 2), and the base of the fine-tune's evaluation: the smoke's conversion check of 18/11/2026 agreed with the local conversion of the bf16 weights on 20 of 20 calibration questions (`docs/lfm3-ft-prereg.md`, amendment 7) | — |
-| LiquidAI/LFM3-1.7B | LFM Open License v1.0 (`lfm1.0`), custom code (`trust_remote_code`), unchanged at every revision | `1da06bec6a819da10b54c67e5c90972b46d81871` (`docs/lfm3-ft-prereg.md`, amendment 7: returned by `lfm3-ft.sh smoke` on 18/11/2026; weights, code and licence identical at every revision of the repository) | bf16 base model of the LoRA fine-tuning (not run: on 18/11/2026 no LoRA method fitted the M5's memory bound, amendment 7); derived weights private | — |
+| LiquidAI/LFM3-1.7B | LFM Open License v1.0 (`lfm1.0`), custom code (`trust_remote_code`), unchanged at every revision | `1da06bec6a819da10b54c67e5c90972b46d81871` (`docs/lfm3-ft-prereg.md`, amendment 7: returned by `scripts/lfm3-ft.sh smoke` on 18/11/2026, a script removed on 19/11/2026 and kept at commit `5011585`; weights, code and licence identical at every revision of the repository) | bf16 base model of the LoRA fine-tuning (not run: on 18/11/2026 no LoRA method fitted the M5's memory bound, amendment 7); derived weights private | — |
 | openai/gsm8k (`main`) | MIT | `740312ad` | 300 train questions (calibration), 500 test questions (test), seed 1234; the other train questions and their worked solutions (`<<...>>` removed, `\boxed{}` final line) for the fine-tune | 800 + about 7,170 |
 | DigitalLearningGmbH/MATH-lighteval | MIT (MATH, Hendrycks et al.) | `0530c786` | 300 train problems with a `\boxed{}` answer (calibration); the other train problems and their solutions for the fine-tune | 300 + about 7,200 |
 | HuggingFaceH4/MATH-500 | MIT (a subset of the MATH test set, from PRM800K); the card has no license tag | `6e4ed1a2` | the 500 test problems (test) | 500 |
@@ -349,7 +349,7 @@ Questions written by `sky-data audio-jev`: `turn_end` 215,655 / 11,370 / 31,527,
 
 ## s6-ear v2 audio (`sky-data turn-test`, `fetch-turn`, `turn-eotbench`, `docs/s6-ear2-prereg.md`)
 
-Only derived features are written, outside the repository (`skycmd-data/s6-ear2/`): float16 hops
+Only derived features are written, outside the repository (`skycmd-data/s6-ear2/`, deleted on 20/11/2026: `docs/data-inventory.md` section 10): float16 hops
 of the v2 front end (the last 4 s of each clip), the teacher's targets (u8), and the 16-bit PCM
 hashes of the test clips for the leakage filter. Each parquet shard is deleted once its features
 and targets are written; no audio is redistributed.
@@ -363,7 +363,7 @@ and targets are written; no audio is redistributed.
 
 ## s6-ear v3 audio (`sky-data fetch-conv`, `turn-extend`, `turn-eotbench --spans`, `docs/s6-ear3-prereg.md`)
 
-Only derived records are written, outside the repository (`skycmd-data/s6-ear3/`): float16 hops of
+Only derived records are written, outside the repository (`skycmd-data/s6-ear3/`, deleted on 20/11/2026: `docs/data-inventory.md` section 10): float16 hops of
 one speaker's channel per conversation record, its label and a manifest line (§3.2 item 7), the
 240 hops that extend each Smart Turn clip with its own background (§3.4), and the eot-bench span
 records (§8.3). Each shard is deleted once its records are written; the transient PCM tails (for

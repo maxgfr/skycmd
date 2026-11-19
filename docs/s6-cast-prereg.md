@@ -30,7 +30,7 @@
 - `configs/s6-cast-pico.json`: 388 320 parameters.
 - 480 minutes (time budget), batch 256, WSD.
 - Ternary QAT over the final 20 %, EMA 0,999.
-- **Teacher** (unless the pilot rules it out): TinyCast, whose deciles serve as a second target on 50 % of the windows. The loss is `pinball(vérité) + w·L1(déciles du professeur)`, with w going linearly from 0,5 to 0 over the budget. This is the teacher annealing of BAM: the end of training follows the truth alone. A student that learns both the truth and the teacher can surpass the latter (Born-Again Networks, arXiv 1805.04770; Revisiting Self-Distillation, arXiv 2206.08491). TinyCast excludes from its training the sets that overlap the GIFT-Eval and Chronos-ZS tests: it does not leak the test.
+- **Teacher** (unless the pilot rules it out): TinyCast, whose deciles serve as a second target on 50 % of the windows. The loss is `pinball(truth) + w·L1(teacher's deciles)`, with w going linearly from 0,5 to 0 over the budget. This is the teacher annealing of BAM: the end of training follows the truth alone. A student that learns both the truth and the teacher can surpass the latter (Born-Again Networks, arXiv 1805.04770; Revisiting Self-Distillation, arXiv 2206.08491). TinyCast excludes from its training the sets that overlap the GIFT-Eval and Chronos-ZS tests: it does not leak the test.
 - Seed 1, once only. Only a technical failure justifies a rerun, and it is noted in the report.
 
 ## 4. Exported checkpoint (`export`)
@@ -89,11 +89,11 @@ If the gate is not passed, the model is not published, and the report says so.
    - s6-cast takes the optimiser-level options that the pico ablation adopts (`docs/s6-prereg.md`, §4): Muon or AdamW, SODA, without polish, StableQAT, as well as XSA through the derived config. `scripts/s6-adopt.py env s6-cast-pico` gives `CONFIG` and `CAST_OPT`, without a rate;
    - its EMA and its QAT remain its own (§3). The output KD and the curriculum are options of the text decisions, which it does not have;
    - its pilot (§2) decides alone, by its own rules: rate kept at 3e-3 unless a gain of at least 2 %, distillation unless a loss of more than 1 %. `runs/s6-cast-pilot/choice.json` keeps the trace of it, and `train` reads it;
-   - the run is done in throttled mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`. The 480 minutes count only work time, and the report gives the number of steps actually done.
+   - the run is done in braked mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`. The 480 minutes count only work time, and the report gives the number of steps actually done.
 
    No score of s6-cast existed.
 
-4. **12/11/2026, before any training of s6-cast: the recipe is written (`runs/recipe/recipe.json`), no score of s6-cast exists. Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the throttled mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
+4. **12/11/2026, before any training of s6-cast: the recipe is written (`runs/recipe/recipe.json`), no score of s6-cast exists. Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the braked mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
 
 5. **12/11/2026, before any training of s6-cast: no score of s6-cast exists. The brake without a restart, and a memory cap.** The mode now changes while a run goes on: `sky-train` reads `SKY_BRAKE_FILE` again every few seconds, and `scripts/auto-brake.sh` writes it (the Mac counts as not in use after 10 minutes with no key or pointer input, unless a video or a call keeps the display awake, it runs on battery, or macOS reports thermal pressure). `scripts/train-all.sh` caps MLX's buffer cache at 2 GB, and the script stops a training that holds more than 13 GB of memory (see amendment 4 of `docs/s6-ear-prereg.md`). None of this changes what is computed.
 

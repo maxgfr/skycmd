@@ -211,7 +211,7 @@ decision. File: `s6-ear2-nano.gguf`, 631,936 bytes.
 ## Training data and licences
 
 One run, 240 working minutes (305,700 steps, about 152 epochs), batch 128, seed 1, on an Apple
-M5, in a throttled mode, so the budget counts working minutes. Ternary QAT over the last 15 %,
+M5, in a braked mode, so the budget counts working minutes. Ternary QAT over the last 15 %,
 EMA 0.999; the exported checkpoint is the EMA. The temperature and the two thresholds are fitted
 on validation and stored in the file; the test set was read once, at the end.
 

@@ -115,6 +115,10 @@ hours of CPU. Every command passes, or its failure is fixed and committed.
   `wasm-pack test --node crates/sky-web --test memory`; `node crates/sky-web/bench/verify-node.mjs --glue`.
 - `python3 -I scripts/test_s6_adopt.py` and the other Python test files of `scripts/` (some need
   numpy or pinned packages through `uv`); `scripts/test-auto-brake.sh` and `scripts/test_brake.py`.
+  CI's `scripts` job runs only those that need the standard library: the four that import numpy
+  (`scripts/route/test_baselines.py`, `scripts/test_cast2_data.py`, `scripts/test_route_embed.py`
+  and `scripts/test_turn_teacher.py`) run only in this pass, for example
+  `uv run --python 3.12 --with numpy python -I scripts/test_turn_teacher.py`.
 - `bash -n` and shellcheck on `scripts/*.sh`.
 - `DRY_RUN=1` on every step of `scripts/train-all.sh`.
 - `scripts/build-wasm.sh`, then `npm --prefix site test`, `npm --prefix site run docs:build` with no

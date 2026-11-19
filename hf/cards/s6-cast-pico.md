@@ -107,7 +107,7 @@ Runs in the skycmd engine only (`sky-infer`, natively and in WASM): in the brows
 ## Training
 
 From scratch in Rust (mlx-rs) on an Apple M5, one run of 480 working minutes (250,092 steps),
-in a throttled mode. AdamW at 3e-3 (chosen by a pre-registered pilot), batch 256, QAT over the
+in a braked mode. AdamW at 3e-3 (chosen by a pre-registered pilot), batch 256, QAT over the
 last 20 %, EMA 0.999 (the EMA weights are exported: validation pinball 0.0431, against 0.0442 for
 the last weights), seed 1, TinyCast as a teacher on 50 % of the windows with a weight annealed
 from 0.5 to 0. Data: synthetic series (Gaussian-process kernels, pulse trains, trend plus seasons

@@ -437,7 +437,7 @@ export const CATALOGUE: CatalogueEntry[] = [
     source: ['hf/cards/s1-pico.md', 'site/public/models/manifest.json'],
   },
 
-  // In progress: no numbers before a result (none at the moment; s6-route v7 was read on 19/11/2026)
+  // In progress: no numbers before a result (none: every line is closed; the last read, s6-ear v3, was on 19/11/2026)
 ]
 
 export function entriesOf(group: GroupId): CatalogueEntry[] {

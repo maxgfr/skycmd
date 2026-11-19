@@ -303,7 +303,7 @@ Pre-registration: [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), its gates in
 
 **Recipe.** Chosen by the pre-registered rules of the pico ablation (`runs/recipe/recipe.json`): AdamW, learning-rate scale 2.0, and none of the additions (no Muon, Parallax, XSA, SODA, exit distillation, EMA, StableQAT or curriculum; each missed its pre-registered gain or lost a game). The rate pilots kept ×1 for s6-nano and ×0.5 for s6-micro. Without the Parallax probe rows, s6-nano has 1,486,225 parameters instead of the 1,569,457 of the pre-registration; s6-micro has the s4-micro shape, 5,587,201. The GLM-5.3-flash teacher labelled 747,077 of the 747,198 selected training questions (0.9998, `runs/all/nano-glm.log`).
 
-**Runs.** Throttled mode (a duty cycle and cooling pauses, amendments 4 to 10), so the budgets count working minutes only. Steps actually done:
+**Runs.** Braked mode (a duty cycle and cooling pauses, amendments 4 to 10), so the budgets count working minutes only. Steps actually done:
 
 | phase | s6-nano budget | s6-nano steps | s6-micro v1 budget | s6-micro v1 steps | s6-micro v2 budget | s6-micro v2 steps |
 |---|---:|---:|---:|---:|---:|---:|
@@ -378,7 +378,7 @@ Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate
 
 **Model and recipe.** The s3-pico graph (1 state block × 4 loops, exits after each pass, d 96, vocabulary 1,024) with a 320-token state window and a 192-token head window: 445,345 parameters (203,393 in the pretraining stack), the same count as s3-pico, since the ablation did not adopt Parallax. Recipe from `runs/recipe/recipe.json`: AdamW, learning-rate scale 2.0, no EMA, so `last` is the exported checkpoint. Ternary GGUF: 250,272 bytes.
 
-**Run.** Seed 0, one run, in a throttled mode, so the budgets count working minutes; the log records two cooling pauses (582 s and 900 s) and no change of mode, so the run stayed in its launch mode (duty 0.5, 45 minutes of work and 15 of rest). Steps actually done (`runs/all/secrets-train.log`):
+**Run.** Seed 0, one run, in a braked mode, so the budgets count working minutes; the log records two cooling pauses (582 s and 900 s) and no change of mode, so the run stayed in its launch mode (duty 0.5, 45 minutes of work and 15 of rest). Steps actually done (`runs/all/secrets-train.log`):
 
 | phase | budget | steps |
 |---|---:|---:|
@@ -441,7 +441,7 @@ Amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md). The pub
 Pre-registration: [`docs/s6-ear-prereg.md`](docs/s6-ear-prereg.md), gates in §6, amendments 2 to 4. Gate file: [`runs/s6-ear-nano/eval/gate.json`](runs/s6-ear-nano/eval/gate.json) (`scripts/ear-gate.py gate`); measurements: `runs/s6-ear-nano/eval/eval-{full,crc,control}.json`, committed on 19/11/2026 with the other JSON files of that folder, and `runs/all/ear-train.log` (not committed). The gate file holds the v1 harness's bar of 0.8518, corrected to 0.9263 below.
 
 - **Model.** 1,532,449 parameters, ternary, 899,200 bytes; without Parallax (not adopted by the ablation) instead of the 1,615,681 of the pre-registration. Smart Turn v3.2 has 8M, 5.2 times more.
-- **Runs** (working minutes, throttled mode). Mimi pretraining: 48,626 steps; codebook-0 accuracy on masked val frames 0.2196 against a technical bar of 0.00488. Decision training: 48,205 steps, after a first run of 31,480 steps was discarded for a memory defect before any evaluation (amendment 4). The control without Mimi pretraining: 49,131 steps.
+- **Runs** (working minutes, braked mode). Mimi pretraining: 48,626 steps; codebook-0 accuracy on masked val frames 0.2196 against a technical bar of 0.00488. Decision training: 48,205 steps, after a first run of 31,480 steps was discarded for a memory defect before any evaluation (amendment 4). The control without Mimi pretraining: 49,131 steps.
 
 Test split, ternary, full depth:
 
@@ -1162,7 +1162,7 @@ The headline (servers resampled) is not allowed: the pair − BM25 −0.0065 [�
 
 ## LFM3-1.7B: System 1 first, System 2 when needed, pre-registered, failed
 
-Pre-registration: [`docs/lfm3-s1s2-prereg.md`](docs/lfm3-s1s2-prereg.md), its criteria in §6 and its amendments 1 to 5 (all before any run; amendment 2 cancels amendment 1, so the run is the original local protocol). No weight of LFM3 is trained: `LiquidAI/LFM3-1.7B-MLX-4bit` at revision `deb2986b`, 4-bit, mlx-vlm 0.7.11, on the Apple M5. Run: `scripts/lfm3-s1s2.sh` (`experiments/lfm3-s1s2/s1s2.py`); log `runs/lfm3-s1s2.log`; tables `runs/lfm3-s1s2/report-calib.md` (calibration) and `runs/lfm3-s1s2/report.md` (test), numbers `runs/lfm3-s1s2/summary.json`.
+Pre-registration: [`docs/lfm3-s1s2-prereg.md`](docs/lfm3-s1s2-prereg.md), its criteria in §6 and its amendments 1 to 5 (all before any run; amendment 2 cancels amendment 1, so the run is the original local protocol). No weight of LFM3 is trained: `LiquidAI/LFM3-1.7B-MLX-4bit` at revision `deb2986b`, 4-bit, mlx-vlm 0.7.11, on the Apple M5. Run: `scripts/lfm3-s1s2.sh` (`experiments/lfm3-s1s2/s1s2.py`; both removed on 19/11/2026 and kept at commit [`5011585`](https://github.com/maxgfr/skycmd/tree/5011585/experiments/lfm3-s1s2)); log `runs/lfm3-s1s2.log`; tables `runs/lfm3-s1s2/report-calib.md` (calibration) and `runs/lfm3-s1s2/report.md` (test), numbers `runs/lfm3-s1s2/summary.json`.
 
 **What was tested.** Whether a confidence probe on the answer given without thinking (System 1, an empty `<think></think>`, greedy) can decide, question by question, when the model should think (System 2: thinking on, Liquid AI's sampling for maths, the thinking closed after B tokens, B = 256 or 1,024), and keep the accuracy of always thinking for half its tokens. The probe is a logistic regression on 6 features of the System 1 output, fitted on the calibration split; the threshold τ comes from conformal risk control at α = 0.02 on the calibration split (n = 600), where a question costs 1 when the router is wrong and System 2 alone is right. A question sent to System 2 counts the tokens of both modes.
 

@@ -215,7 +215,7 @@ Apple M5, Node, the first 200 T5-tools slates, WASM SIMD128 (`runs/s6-route7/g4.
 ## Training data and licences
 
 **The model part.** From s6-micro's masked-language pretraining (`runs/s6-micro/pretrain/init`,
-checked by sha256), in Rust (mlx-rs) on an Apple M5, in a throttled mode, so the budgets are
+checked by sha256), in Rust (mlx-rs) on an Apple M5, in a braked mode, so the budgets are
 working minutes: a pilot of 20 working minutes (3,664 steps), then one main run of 120 working
 minutes (22,214 steps, seed 0, ternary QAT), the s6-micro graph (2 weight-shared blocks looped
 three times, exits after 2, 4 and 6 block passes, d 256, vocabulary 4,096, a head window of 320

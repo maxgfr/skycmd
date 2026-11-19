@@ -13,7 +13,7 @@ A voice agent has to decide whether you have stopped talking. The reference open
 
 ## The context: skycmd
 
-skycmd gathers very small "decision models" with ternary weights (each is −1, 0 or +1), written in Rust, run natively or in the browser through WebAssembly, and trained on one MacBook (Apple M5) in a throttled mode, so budgets count working minutes.
+skycmd gathers very small "decision models" with ternary weights (each is −1, 0 or +1), written in Rust, run natively or in the browser through WebAssembly, and trained on one MacBook (Apple M5) in a braked mode, so budgets count working minutes.
 
 ::: info Pre-registration and the gate
 Before an experiment runs, I commit the test, the bar to clear and what a failure would mean. The bar is the "gate": conditions that must all hold. The test is read once, a failure is published like a success, and the rule cannot be adjusted afterwards.
@@ -108,7 +108,7 @@ The pass says the model cleared its bars, not that the problem is solved.
 
 **Keep a benchmark the design never touched.** eot-bench is the number the design never optimised toward, and the only one that says plainly that both models are weak on real speech. The [tool router](/articles/a-3-7-mb-tool-router) got the same treatment: fresh requests no system had scored.
 
-**All of it on one laptop.** Probe, pilot, 240 minutes of training, 31,527 test clips, 17,934 real cuts: one Apple M5, throttled, about 293 working minutes of GPU.
+**All of it on one laptop.** Probe, pilot, 240 minutes of training, 31,527 test clips, 17,934 real cuts: one Apple M5, braked, about 293 working minutes of GPU.
 
 ## Check it
 

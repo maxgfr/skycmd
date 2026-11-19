@@ -101,16 +101,16 @@ The model is published at the CRC thresholds if the gates hold there as at full 
 
 ## 8. Amendments
 
-**Amendment 2 (09/11/2026, before any training of s6-ear: only the pico recipe is running, none of its results has been read, no score of s6-ear exists). The recipe and the throttled mode.** There was never an amendment 1: the number 2 is the one that `scripts/train-ear.sh` and `scripts/s6-adopt.py` already cite.
+**Amendment 2 (09/11/2026, before any training of s6-ear: only the pico recipe is running, none of its results has been read, no score of s6-ear exists). The recipe and the braked mode.** There was never an amendment 1: the number 2 is the one that `scripts/train-ear.sh` and `scripts/s6-adopt.py` already cite.
 
 - **The recipe.** s6-ear runs after the pico ablation (`docs/s6-prereg.md`, §3 and §4) and takes its options (`scripts/s6-adopt.py env s6-ear-nano`), for the model **and** for its control: `CONFIG`, `OPT`, `DECIDE`, `LR_SCALE`.
 - **The rate.** The rate of the pico pilot is moved to d = 144 by μP, as for s6-nano: `LR_SCALE` × √(96/144) × the default rate of the phase.
 - **The curriculum.** It orders text documents, and the audio pre-training has none: it has no effect here, so `PRETRAIN` stays empty.
 - **The check after pre-training.** `val_acc_cb0` must be at least 10/2048 (10 times chance), a threshold written before the run. Below it, it is a technical failure: it is noted in the report and `decide` is not launched.
-- **The throttled mode.** The run is done in throttled mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`. The budgets in minutes count only work time, and the report gives the number of steps actually done.
+- **The braked mode.** The run is done in braked mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`. The budgets in minutes count only work time, and the report gives the number of steps actually done.
 - **What does not change.** Data, questions, model, budgets, α thresholds, gates.
 
-**Amendment 3 (12/11/2026, before any training of s6-ear: the recipe is written (`runs/recipe/recipe.json`), no score of s6-ear exists). Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the throttled mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
+**Amendment 3 (12/11/2026, before any training of s6-ear: the recipe is written (`runs/recipe/recipe.json`), no score of s6-ear exists). Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the braked mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
 
 **Amendment 4 (12/11/2026, before any evaluation of s6-ear: no gate score has been read). A memory defect, and the decision runs started over.**
 

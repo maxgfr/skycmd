@@ -119,7 +119,7 @@ The measured costs in the smoke run, both at full depth:
 
 ## The first run: three gates failed
 
-Trained in November 2026 in a throttled mode, so the budgets count working minutes: 48,626 pretraining steps, then 48,205 decision steps. A first decision run of 31,480 steps was discarded before any evaluation because it ran in swap ([amendment 4](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md)). The control, the same model without the Mimi pretraining, did 49,131 steps. Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
+Trained in November 2026 in a braked mode, so the budgets count working minutes: 48,626 pretraining steps, then 48,205 decision steps. A first decision run of 31,480 steps was discarded before any evaluation because it ran in swap ([amendment 4](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md)). The control, the same model without the Mimi pretraining, did 49,131 steps. Test split, ternary, full depth (`runs/s6-ear-nano/eval/gate.json`):
 
 | gate | s6-ear-nano | control | bar | verdict |
 |---|---:|---:|---:|---|

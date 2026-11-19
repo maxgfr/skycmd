@@ -146,7 +146,7 @@ made on (sha256 `01e6db3fa71cc2c5563dea222c68e040d3994ee2abbb02b25491a51b8cb54f2
 
 ## Training
 
-From scratch in Rust (mlx-rs) on an Apple M5, one run, seed 0, in a throttled mode, so the
+From scratch in Rust (mlx-rs) on an Apple M5, one run, seed 0, in a braked mode, so the
 budgets are working minutes. The s6-secrets-pico graph (1 state block × 4 loops, an exit after
 each loop, d 96, vocabulary 1,024, state window 320, head window 192). Masked-language pretraining
 starting from s6-secrets-pico's pretraining stack (12 minutes, 11,296 steps) on the project's

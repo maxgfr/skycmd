@@ -128,7 +128,7 @@ Install and bindings: [install guide](https://maxgfr.github.io/skycmd/install/).
 
 ## Training
 
-From scratch in Rust (mlx-rs) on an Apple M5, in a throttled mode, so the budgets are working
+From scratch in Rust (mlx-rs) on an Apple M5, in a braked mode, so the budgets are working
 minutes: a masked pretraining on LibriSpeech `clean` that predicts Mimi's semantic codebook-0 ids
 of masked frames (60 minutes, 48,626 steps; Mimi itself never runs, its codes come from
 `shangeth/librispeech-mimi-codes`), then decision training (60 minutes, 48,205 steps) on end of

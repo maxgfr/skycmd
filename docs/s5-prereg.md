@@ -83,7 +83,7 @@ They are identical for A, A′, B and the baselines. The reference code is `crat
 
 ### Record
 
-A record carries the fields `{src, t, ins, opts_kv: [[id, définition]...], state, target, split, uid, lang}`.
+A record carries the fields `{src, t, ins, opts_kv: [[id, definition]...], state, target, split, uid, lang}`.
 
 - `t` is `choice`, `noul` or `score`.
 - `target` is a distribution, soft or one-hot. The gold is its argmax.
@@ -92,14 +92,14 @@ A record carries the fields `{src, t, ins, opts_kv: [[id, définition]...], stat
 
 | type | rendering |
 |---|---|
-| `choice` | `id: définition` |
-| `score` | `level i: définition` |
-| `noul` | `false` / `true`, or `false: définition` |
+| `choice` | `id: definition` |
+| `score` | `level i: definition` |
+| `noul` | `false` / `true`, or `false: definition` |
 
 ### Definition-only rendering (B, iso)
 
 - `choice`: the definition alone.
-- `score`: `level i of K-1: définition`.
+- `score`: `level i of K-1: definition`.
 - `noul` without a definition: the generic definitions.
 
 | language | false | true |
@@ -111,7 +111,7 @@ The identifiers are never rendered.
 
 ### Sequence A / A′ (Laya format)
 
-- Shape: `[CLS] "{t} question: {ins}" [SEP] ([MASK] " option")* [SEP] état [SEP]`.
+- Shape: `[CLS] "{t} question: {ins}" [SEP] ([MASK] " option")* [SEP] state [SEP]`.
 - Readout: one per `[MASK]`, with one temperature per type.
 
 ### Sequence B (iso)
@@ -502,7 +502,7 @@ A line of section 3 (excluded sources) was rephrased so as no longer to name GLM
 **Update, per type:**
 
 - ê_t = err_t · O_t / P(O_t), with P(O_t) = 1 for an escalated one and π for an accepted one;
-- λ_{t+1} = λ_t + η · 1{accepté_t} · (ê_t − α), bounded in [0, 1].
+- λ_{t+1} = λ_t + η · 1{accepted_t} · (ê_t − α), bounded in [0, 1].
 
 **Grid:** α ∈ {5, 10} %, π ∈ {0,1 ; 0,2 ; 0,5}, η = 0,005, 20 stream seeds (0 to 19).
 

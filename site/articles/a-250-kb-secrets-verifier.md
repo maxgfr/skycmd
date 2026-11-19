@@ -13,7 +13,7 @@ The tools that catch leaked credentials are mostly built on rules. I wanted to s
 
 ## The context: skycmd
 
-skycmd gathers very small "decision models" with ternary weights (each is −1, 0 or +1), written in Rust, run natively or in the browser, and trained on one MacBook (Apple M5) in a throttled mode that keeps it usable.
+skycmd gathers very small "decision models" with ternary weights (each is −1, 0 or +1), written in Rust, run natively or in the browser, and trained on one MacBook (Apple M5) in a braked mode that keeps it usable.
 
 ::: info Pre-registration and gates
 Before an experiment runs, I commit the test, the bar to clear and what a failure would mean. The bar is the "gate": conditions that must all hold. The test is read once, and a failure is published like a success, so the rule cannot be adjusted after the results are seen.
@@ -47,7 +47,7 @@ The model never searches. The cheap, deterministic part finds; the small learned
 
 The data was real this time. The main source is CredData, Samsung's public benchmark of real repositories, where each value is labelled a real credential, an example or test value, or not a credential. It is used in its obfuscated form: every real secret replaced by random characters of the same shape. Training used 100 of its repositories and validation 16, each licence-checked (MIT, Apache-2.0 or BSD). Public issue reports containing leaked secrets, their training values replaced by look-alikes, and synthetic candidates make up the rest. The test: 221 other CredData repositories, never trained on, and the issue reports' test split, whose values are real.
 
-Training was one run on the MacBook, from 19:39 to 20:42 on 14 November: 12 working minutes of pretraining on text, then 30 on the question itself (the throttled mode's pauses not counted).
+Training was one run on the MacBook, from 19:39 to 20:42 on 14 November: 12 working minutes of pretraining on text, then 30 on the question itself (the braked mode's pauses not counted).
 
 ## The results on 221 real repositories
 
@@ -147,7 +147,7 @@ Since version 1.9.0, secretgate offers this file as an experimental option, off 
 
 **A failed gate can still be a usable part.** Good calibration and few false alarms on clean files make the model reasonable to wire in where it cannot remove what the rules find, only add. That is a weaker claim than a pass, and the only one I make.
 
-**All of it fits on a laptop.** The v2 run took about an hour on the MacBook, throttled; the 67 MB baseline alone took 57,098 CPU seconds to evaluate.
+**All of it fits on a laptop.** The v2 run took about an hour on the MacBook, braked; the 67 MB baseline alone took 57,098 CPU seconds to evaluate.
 
 ## Check it
 

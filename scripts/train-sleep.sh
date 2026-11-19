@@ -28,7 +28,7 @@
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$PWD/target/s3-train}
-# The thermal brake, as scripts/train-all.sh: throttled unless set, the brake file of
+# The thermal brake, as scripts/train-all.sh: braked unless set, the brake file of
 # scripts/auto-brake.sh when it runs, and a cap on the MLX buffer cache.
 export SKY_DUTY=${SKY_DUTY:-0.5}
 export SKY_COOL=${SKY_COOL-45:15}

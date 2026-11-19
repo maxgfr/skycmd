@@ -59,7 +59,7 @@ How the labelling survives quotas, network cuts and the provider's moderation is
 
 ## The run
 
-One run, in a throttled mode (a duty cycle and cooling pauses), so the budgets count working minutes only. Steps actually done (`BENCH.md`):
+One run, in a braked mode (a duty cycle and cooling pauses), so the budgets count working minutes only. Steps actually done (`BENCH.md`):
 
 | phase | budget | steps |
 |---|---:|---:|

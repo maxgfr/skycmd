@@ -57,11 +57,11 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <h2 id="what-failed">What failed, and what it taught</h2>
 
-<p class="home-lead">Most experiments here missed their gate. Each failure is published with its numbers, and the next version starts from what it showed:</p>
+<p class="home-lead">Most experiments here missed their gate. Each failure is published with its numbers, and the next version started from what it showed:</p>
 
 <ModelCatalogue lessons />
 
-<p class="home-more"><a href="./models/#results">Every failed gate and its lesson</a> · <a href="./articles/">Articles: four of these stories told in full, and an overview</a></p>
+<p class="home-more"><a href="./models/#results">Every failed gate and its lesson</a> · <a href="./articles/">Articles: five of these stories told in full, and an overview</a></p>
 
 </section>
 

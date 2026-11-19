@@ -51,7 +51,7 @@ Only MIT sources. No test question, none of the router's 600 calibration questio
 About 14 400 questions remain. The exact numbers of exclusions are written by `gen` and `sft`.
 
 **(a) Written solutions, NO-THINK targets.** For each question kept, the data set's solution:
-- GSM8K: the calculator annotations `<<...>>` removed, the last line `#### réponse` replaced by `\boxed{réponse}` (réponse: the answer);
+- GSM8K: the calculator annotations `<<...>>` removed, the last line `#### answer` replaced by `\boxed{answer}`;
 - MATH: the solution as is (it ends with a `\boxed{}`).
 
 **(b) Self-distillation** (`gen`).

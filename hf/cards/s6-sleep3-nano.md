@@ -174,7 +174,7 @@ reading of the gate was made at full depth, the last exit, with an override (`--
 ## Training
 
 From the checkpoint behind s6-nano (`runs/s6-nano-g3/decide/last`), in Rust (mlx-rs) on an Apple
-M5, in a throttled mode, so the budgets are working minutes. Two arms, three seeds each (0, 1, 2):
+M5, in a braked mode, so the budgets are working minutes. Two arms, three seeds each (0, 1, 2):
 this model and the control, which has no memory and sees the same batches for the same number of
 steps. The sleep arm at seed 0 trained 12 + 18 working minutes, 292 and 877 steps; the five other
 runs trained its steps, phase by phase. Ternary QAT from the first step, batch 128, AdamW, the

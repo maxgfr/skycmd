@@ -4,9 +4,12 @@ One table per line of work, in the order the lines started, then the documents t
 line. Each row gives a version, its status with its date (copied from the
 [Results](https://maxgfr.github.io/skycmd/results/) page), its pre-registration, the studies and
 diagnoses written around it, and its result folder. A result folder marked "not committed" exists
-only on the training machine; its numbers are in [`BENCH.md`](../BENCH.md). The nine
-pre-registrations of s5, s6, s6-gen, s6-ear, s6-secrets, s6-cast, LFM3 (two) and flexible weights
-are in French, as is `research-night.md`; the other documents are in English. Status on 19/11/2026.
+only on the training machine, and since the deletions of 19 and 20/11/2026 only its small text and
+JSON files are left there ([`data-inventory.md`](data-inventory.md), sections 9 to 11); its numbers
+are in [`BENCH.md`](../BENCH.md). The nine pre-registrations of s5, s6, s6-gen, s6-ear, s6-secrets,
+s6-cast, LFM3 (two) and flexible weights, and `research-night.md`, were written in French and
+translated into English on 19/11/2026 (each says so at its top); every document is now in English.
+Status on 20/11/2026: every line is closed, and no pre-registration is open.
 
 ## s1 to s5 (October 2026)
 
@@ -105,7 +108,7 @@ Versions 2 and 3 were pre-registered as s6-nano v2 and v3, so their files carry 
 | [`SPEC-S2.md`](SPEC-S2.md), [`SPEC-S3.md`](SPEC-S3.md), [`SPEC-S6.md`](SPEC-S6.md), [`SPEC-S6-CAST.md`](SPEC-S6-CAST.md) | the architectures s2, s3 and s6 and the s6 forecaster |
 | [`compat.md`](compat.md) | which other runtimes can read skycmd's GGUF files |
 | [`idle-training.md`](idle-training.md) | the idle brake: training on a laptop in use, and budgets in working minutes |
-| [`data-inventory.md`](data-inventory.md) | where every model's training, validation and test data lives (inventory of 18/11/2026) |
+| [`data-inventory.md`](data-inventory.md) | where every model's training, validation and test data lives (inventory of 18/11/2026), the deletions of 19 and 20/11/2026 and what is left on the disk |
 | [`big-run-report.md`](big-run-report.md) | the final report of the big run of 12 to 14 November 2026 |
 | [`research.md`](research.md), [`research-night.md`](research-night.md), [`research-s4.md`](research-s4.md), [`research-s6-usefulness.md`](research-s6-usefulness.md), [`research-fast-weight-memory.md`](research-fast-weight-memory.md), [`research-s6-sleep4.md`](research-s6-sleep4.md), [`research-flexible-weights.md`](research-flexible-weights.md) | literature and research dossiers, each dated |
 | [`night-experiments.md`](night-experiments.md) | the night of 12/10/2026: smaller and faster than s3-pico |

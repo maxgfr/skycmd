@@ -155,7 +155,7 @@ If H1 fails and the rest holds, nothing is published: a model that remembers but
 
 ## 9. Cost and modes
 
-- The pilot is about 2 hours of working time and the nano runs about 3 hours 30, before evaluation: 12 to 20 hours of wall clock in the throttled mode, less while the Mac is left alone.
+- The pilot is about 2 hours of working time and the nano runs about 3 hours 30, before evaluation: 12 to 20 hours of wall clock in the braked mode, less while the Mac is left alone.
 - Two modes, as in the other pre-registrations: `0.5` and `45:15` while the Mac is in use, `0.85` and `50:10` while it is not, set by `scripts/auto-brake.sh` through `SKY_BRAKE_FILE`. The budgets count working time only.
 - Nothing of this experiment runs during another training.
 

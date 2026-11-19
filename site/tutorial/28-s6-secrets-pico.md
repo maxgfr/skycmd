@@ -43,7 +43,7 @@ On `secret_bench` it scores **0.977** on the secret question (precision 0.966, r
 
 - **Graph.** The s3-pico graph: one state block looped 4 times with an exit after each pass, d = 96, a 1,024-token vocabulary. A random key costs about one token per character, so the state window is 320 tokens instead of 64 (the states run to 93 tokens at the median and 312 at most) and the head 192 instead of 96 (the service question and its 15 options reach 179). RoPE has no position table, so the count is s3-pico's: 445,345.
 - **Recipe.** From the pre-registered s6 ablation, applied by file (`runs/recipe/recipe.json`): AdamW at a learning-rate scale of 2.0, none of the eight s6 additions ([chapter 27](./27-s6-nano#the-recipe-chosen-by-an-ablation-not-by-hand)).
-- **Run.** Seed 0, once, in a throttled mode, so the budgets count working minutes (`BENCH.md`):
+- **Run.** Seed 0, once, in a braked mode, so the budgets count working minutes (`BENCH.md`):
 
 | phase | budget | steps |
 |---|---:|---:|

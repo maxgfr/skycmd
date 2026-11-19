@@ -117,7 +117,7 @@ Wall-clock time counts: the real trainings are budgeted in minutes, and at equal
 - **What does not change.** Data, arms, seeds, step budgets, metrics and thresholds.
 - **Why.** A choice made by hand between the ablation and the final models is a moment where one reads the results and where one can bend a rule. A tested script applies it to the letter.
 
-**Amendment 5 (09/11/2026, before the pilot: no s6 run has run, no result has been read). The throttled mode.**
+**Amendment 5 (09/11/2026, before the pilot: no s6 run has run, no result has been read). The braked mode.**
 
 - **The finding.** At full power, the M5 heats up too much, and it does not stay open all the time. The run can be suspended (lid closed) or stopped (Mac switched off), and resume later.
 - **The mechanism.** `SKY_DUTY` (0,5 by default in `scripts/s6-recipe.sh`) is the share of the time during which the training loop works. Before each step, it rests in proportion to the work done since its last pause. `SKY_COOL` (`45:15` by default in the same script) adds a full rest: each hour of the system clock, 45 min of work then 15 min without GPU computation.
@@ -128,10 +128,10 @@ Wall-clock time counts: the real trainings are budgeted in minutes, and at equal
 
 **Amendment 6 (11/11/2026, during the ablation, before the change it describes). Full speed while the Mac is unused.**
 
-- **The request.** The owner asked for full speed (`SKY_DUTY=1`, `SKY_COOL=` empty) whenever the Mac is not in use, starting the night of 11/11/2026, and the throttled mode of amendment 5 the rest of the time.
-- **Why no rule moves.** `train_minutes` feeds rules 1 and 5 of §4 only, through four arms: `softmax-adamw`, `softmax-muon`, `parallax-muon` and `parallax-muon-nopolish`. Their 12 runs were all finished in throttled mode before this amendment (116 of the ablation's steps were done). The arms still to run (`parallax-muon-kd` seeds 11 and 13, `-ema`, `-stableqat`, `-curriculum`) are judged by rule 4, on accuracy, ECE and the arena, with fixed step budgets.
+- **The request.** The owner asked for full speed (`SKY_DUTY=1`, `SKY_COOL=` empty) whenever the Mac is not in use, starting the night of 11/11/2026, and the braked mode of amendment 5 the rest of the time.
+- **Why no rule moves.** `train_minutes` feeds rules 1 and 5 of §4 only, through four arms: `softmax-adamw`, `softmax-muon`, `parallax-muon` and `parallax-muon-nopolish`. Their 12 runs were all finished in braked mode before this amendment (116 of the ablation's steps were done). The arms still to run (`parallax-muon-kd` seeds 11 and 13, `-ema`, `-stableqat`, `-curriculum`) are judged by rule 4, on accuracy, ECE and the arena, with fixed step budgets.
 - **What is reported.** `train_minutes` of the remaining arms stays in the summary, but it mixes two modes from here on and must not be compared with the earlier arms. The report says which runs ran in which mode.
 - **What had been seen.** `runs/s6ab/summary.json` did not exist and no rule had been evaluated. Validation lines of single runs were seen in the log while watching the run. The change follows from the owner's schedule, not from a result.
 - **Mechanics.** The run is stopped between two steps when possible and started again with the same command. A step cut short starts over from zero with the same seeds, as in amendment 5.
 - **What does not change.** Data, arms, seeds, step budgets, metrics and thresholds.
-- **Update, the same night (11/11/2026, 23:30).** The owner then asked not to run at 100%, because the Mac heats up fast. The mode outside working hours is therefore `SKY_DUTY=0.85`, `SKY_COOL=50:10` (the owner's figure), and the run goes back to the throttled mode if macOS reports thermal pressure. Full speed ran from 23:21 to the end of the step in progress, about 10 minutes, on runs of `parallax-muon-kd` (seed 13) and of the next arm. The argument above does not change: no rule reads the time of the remaining arms.
+- **Update, the same night (11/11/2026, 23:30).** The owner then asked not to run at 100%, because the Mac heats up fast. The mode outside working hours is therefore `SKY_DUTY=0.85`, `SKY_COOL=50:10` (the owner's figure), and the run goes back to the braked mode if macOS reports thermal pressure. Full speed ran from 23:21 to the end of the step in progress, about 10 minutes, on runs of `parallax-muon-kd` (seed 13) and of the next arm. The argument above does not change: no rule reads the time of the remaining arms.

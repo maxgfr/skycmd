@@ -203,7 +203,7 @@ block passes) the accuracy on T-tools is 0.8340 at a native median of 13,340 µs
 
 ## Training
 
-From scratch in Rust (mlx-rs) on an Apple M5, one run, seed 0, no restart, in a throttled mode,
+From scratch in Rust (mlx-rs) on an Apple M5, one run, seed 0, no restart, in a braked mode,
 so the budget is working minutes. The s6-micro graph (2 weight-shared blocks looped three times,
 exits after 2, 4 and 6 block passes, d 256, 4 heads, vocabulary 4,096, windows of 384 state tokens
 and 256 head tokens), initialised from s6-micro's masked-language pretraining (SimpleStories,
