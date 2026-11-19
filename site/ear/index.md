@@ -13,6 +13,12 @@ outline: [2, 2]
   <TurnDemo />
 </ClientOnly>
 
+## The third version: s6-ear3-nano (failed its gate)
+
+::: danger Failed its pre-registered gate: published as a result, not for use
+**s6-ear3-nano** is the same graph trained again from v2 on real two-speaker conversations and on the silences this demo asks at. On eot-bench, real speech addressed to an agent, read 0.2 s into each pause, its AUC is 0.7197 where v2 reads 0.7448 on the same cuts and Smart Turn 0.7873, so it failed its gate; on held-out human-to-human conversations it reads 0.6878 against v2's 0.6031. It was designed after v2's eot-bench reading, and its label cross-check was amended after a measurement on five training sessions; both are disclosed with the result. This page keeps v2. The third version runs with the same demo in [its Space](https://huggingface.co/spaces/maxgfr/s6-ear3-nano); the numbers are in [its section of Results](/results/#s6-ear3-nano-failed).
+:::
+
 ## The first version: s6-ear-nano (failed its gate)
 
 The demo below is the first version, which failed its gate: with a microphone it almost never says that the speaker has finished their turn, because its end-of-turn accuracy is 0.5681, barely above the 0.4979 of always answering "finished".

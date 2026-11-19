@@ -137,3 +137,21 @@ Trained in November 2026 in a throttled mode, so the budgets count working minut
 It failed its gate; its file is published as a result (owner's decision of 15/11/2026), as evaluated: the [Listen](/ear/) page loads it under a notice with these numbers and answers at full depth. Its control is not published.
 
 **The second version passed.** s6-ear2-nano does one job, end of turn, as a 632 KB student of Smart Turn v3.2 that reads the last 4 s of audio: 0.8993 on the same 31,527 test clips (bar 0.85; the teacher 0.9260 through the same fixed harness), a false cut-off of 0.0847 and 2.39 ms per decision in WASM. It is weaker on real conversations, where it answers "finished" on 0.5253 of the real ends of turn of eot-bench at its cautious threshold ([results](/results/#s6-ear2-nano-passed), [the article](/articles/a-632-kb-end-of-turn-detector)).
+
+## The third version: trained on real conversations, gate failed
+
+s6-ear v3 ([pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear3-prereg.md)) kept v2's graph and front end and changed only the training, to attack the weakness above. Two things were missing from v2's data: real conversations, and the silences the demo actually asks about (the energy VAD asks 0.2 s into a pause, then every 0.2 s, while v2's training clips end at the end of speech).
+
+- **Labels from the other speaker.** otoSpeech (about 280 h of spontaneous English, gated, CC BY 4.0) records each speaker on a separate channel. The demo's energy VAD and policy, ported to Rust and checked bit for bit against `turn.ts`, are replayed on one channel; each pause they would ask about becomes a record. Its label comes from the other channel: end of turn when the other speaker takes the floor (speaks for at least 1 s, not a backchannel) within 4 s, hold when the same speaker resumes first. No model writes a label.
+- **Checked before any training.** A second, neural detector (Silero VAD) relabelled the validation records and agreed on 0.9509 of them (bar 0.85); the silence after a pause, alone, did not predict the label (AUC at most 0.4396, bar 0.60), so the other voice does not leak into the channel.
+- **Trained from v2 for 120 working minutes**, half on those records cut 0.2 to 2.4 s into each pause, half on Smart Turn's clips extended by their own background noise.
+
+The gate asked for a measurable gain on eot-bench, real speech addressed to an agent, at the policy's first question. It failed (E1, E2 and E3):
+
+| | s6-ear3-nano | s6-ear2-nano | Smart Turn v3.2 |
+|---|---:|---:|---:|
+| eot-bench AUC, 0.2 s into each pause (16,230 cuts, 14 languages) | 0.7197 | 0.7448 | 0.7873 |
+| held-out human-to-human conversations, AUC (30,000 records, reported) | 0.6878 | 0.6031 | 0.6430 |
+| Smart Turn's test clips, accuracy (31,527) | 0.8978 | 0.8993 | 0.9260 |
+
+The change on eot-bench is −0.0252 [−0.0336, −0.0167], where at least +0.02 with a lower bound above 0 was asked. The pre-registration had written down, before the run, how to read this case: since v3 improved on its own held-out conversations, the human-to-human signal was learned and does not transfer to speech addressed to an agent. v3 was designed after v2's eot-bench reading, and its label cross-check was amended after a measurement on five training sessions; both are disclosed with the result. Its file is published as a result, with a Space; s6-ear2-nano stays the file to use ([results](/results/#s6-ear3-nano-failed), [the article](/articles/an-end-of-turn-detector-trained-on-real-conversations)).

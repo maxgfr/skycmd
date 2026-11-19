@@ -47,7 +47,7 @@ Every model is also on Hugging Face with its model card and a demo Space that ru
 [s3-pico](https://huggingface.co/maxgfr/s3-pico), [s1-pico](https://huggingface.co/maxgfr/s1-pico),
 [s2-nano](https://huggingface.co/maxgfr/s2-nano) and [s2-nano-doom](https://huggingface.co/maxgfr/s2-nano-doom).
 
-**Failed their gates, published as results.** These eight s6 models failed their pre-registered
+**Failed their gates, published as results.** These nine s6 models failed their pre-registered
 gates; each file is published as a result (owner's decision of 15/11/2026), not for use. The
 verdicts do not change, and each card opens with the failure and its numbers:
 
@@ -55,6 +55,7 @@ verdicts do not change, and each card opens with the failure and its numbers:
 |---|---|---:|---|---|
 | s6-micro-v1 (games and free-text questions; the first version of s6-micro) | failed its calibration guard: ECE 0.0821 against 0.08 (0.547 on `typed_decisions_bench`) | 5,587,201 | [s6-micro-v1.gguf](https://maxgfr.github.io/skycmd/models/s6-micro-v1.gguf) (2.4 MB) | skycmd engine only |
 | s6-ear-nano (audio: end of turn, keywords) | failed three of its four gates: end of turn 0.5681 against 0.9263 for Smart Turn v3.2 | 1,532,449 | [s6-ear-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-ear-nano.gguf) (899 KB) | skycmd engine only (`decideAudio`) |
+| s6-ear3-nano (s6-ear v3: end of turn, v2's graph trained again on real conversations) | failed E1, E2 and E3: on eot-bench 0.2 s into each pause, AUC 0.7197 against v2's 0.7448 (at least +0.02 asked); Smart Turn's clips 0.8978 (A1 holds); designed after v2's eot-bench reading, its label cross-check amended after a look at five training sessions (disclosed) | 1,306,178 | [s6-ear3-nano.gguf](https://maxgfr.github.io/skycmd/models/s6-ear3-nano.gguf) (632 KB) | skycmd engine only (`TurnDetector` in WASM, `sky-turn` natively) |
 | s6-cast-pico (forecasting) | failed: nGMASE 0.9471 (bar 0.838), nWQL 0.6646 (bar 0.587) on GIFT-Eval | 369,792 | [s6-cast-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-cast-pico.gguf) (143 KB) | skycmd engine only (`Forecaster`) |
 | s6-cast2-pico (forecasting, v2) | failed: nGMASE 0.8847 (bar 0.838), nWQL 0.6190 (bar 0.587) on GIFT-Eval | 377,568 | [s6-cast2-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-cast2-pico.gguf) (149 KB) | skycmd engine only (`Forecaster`) |
 | s6-secrets-verify-pico (one rule candidate in its context) | failed G1 on its every-repository reading: line F1 0.8561 against 0.7332 + 0.15; the six other gates held | 445,345 | [s6-secrets-verify-pico.gguf](https://maxgfr.github.io/skycmd/models/s6-secrets-verify-pico.gguf) (250 KB) | skycmd engine only |
@@ -71,8 +72,10 @@ included: owner's decision of 17/11/2026): [s6-micro-v1](https://huggingface.co/
 candidates with a simplified rule, not secretgate's engine),
 [s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (its demo runs the file alone; the
 file, fused with a static embedding, is the model part of s6-route, which passed its own gate,
-above), [s6-sleep3-nano](https://huggingface.co/maxgfr/s6-sleep3-nano) (with its control) and
-[s6-route7-nano](https://huggingface.co/maxgfr/s6-route7-nano).
+above), [s6-sleep3-nano](https://huggingface.co/maxgfr/s6-sleep3-nano) (with its control),
+[s6-route7-nano](https://huggingface.co/maxgfr/s6-route7-nano) and
+[s6-ear3-nano](https://huggingface.co/maxgfr/s6-ear3-nano) (its demo is v2's microphone demo, on
+this file).
 
 Next to s6-cast-pico and s6-cast2-pico, the [Forecast](/forecast/) page runs two reference forecasters, which are not ours and keep their own licenses:
 

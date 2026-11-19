@@ -52,7 +52,7 @@ The run's own gate table is [`runs/all/REPORT.md`](../runs/all/REPORT.md).
 |---|---|---|---|---|
 | v1 (s6-ear-nano) | failed, three gates of four (12/11/2026) | [`s6-ear-prereg.md`](s6-ear-prereg.md) | | [`runs/s6-ear-nano/eval/`](../runs/s6-ear-nano/eval/gate.json) |
 | v2 (s6-ear2-nano) | passed (17/11/2026) | [`s6-ear2-prereg.md`](s6-ear2-prereg.md) | [`s6-ear2-study.md`](s6-ear2-study.md), [`s6-ear2-readings.md`](s6-ear2-readings.md) | [`runs/s6-ear2-nano/`](../runs/s6-ear2-nano/), with `runs/s6-ear2-pilot/`, `runs/s6-ear2-harness/` and `runs/s6-ear2-probe/` |
-| v3 (s6-ear3-nano) | running: frozen 19/11/2026, data build running, nothing trained | [`s6-ear3-prereg.md`](s6-ear3-prereg.md) | [`s6-ear3-study.md`](s6-ear3-study.md) | [`runs/s6-ear3-nano/`](../runs/s6-ear3-nano/) |
+| v3 (s6-ear3-nano) | failed, E1, E2 and E3 (19/11/2026) | [`s6-ear3-prereg.md`](s6-ear3-prereg.md) | [`s6-ear3-study.md`](s6-ear3-study.md) | [`runs/s6-ear3-nano/`](../runs/s6-ear3-nano/GATE.md), with `runs/s6-ear3-pilot/` |
 
 ## s6-cast (forecasting)
 
