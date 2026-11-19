@@ -1,112 +1,114 @@
-# s6-secrets : pré-enregistrement (premier entraînement et porte de publication)
+# s6-secrets: pre-registration (first training and publication gate)
 
-**Statut : figé le 26/10/2026, avant tout entraînement de s6-secrets.** Ce fichier fixe les données, le run, le choix du checkpoint, l'évaluation et la porte de publication. Les résultats seront lus à travers ce texte.
+*Translated into English on 19/11/2026. The text frozen on 26/10/2026 was written in French; that original, which remains the reference in case of doubt, is this file at commit `1f180a5`. The translation changes no rule, number or threshold.*
 
-**Modifications de ce fichier :**
+**Status: frozen on 26/10/2026, before any training of s6-secrets.** This file fixes the data, the run, the choice of checkpoint, the evaluation and the publication gate. The results will be read through this text.
 
-- tout amendement est commité, daté et motivé en section 7 ;
-- il précède le run qu'il concerne ;
-- il ne touche jamais un seuil après la lecture d'un score du bench.
+**Changes to this file:**
 
-## 1. La tâche et les données
+- every amendment is committed, dated and justified in section 7;
+- it precedes the run it concerns;
+- it never touches a threshold after a bench score has been read.
 
-Détecter une clé d'API ou un secret exposé dans un court texte : un fichier `.env`, du code, une config, une commande `curl`, un log, un diff. Le jev a quatre questions par texte (`docs/SPEC-S6.md` §s6-secrets) :
+## 1. The task and the data
 
-- **secret** (noul) : le texte expose-t-il un secret utilisable, à révoquer ?
-- **service** (choice, 15 options) : quel service a émis la clé (`none` s'il n'y en a pas) ?
-- **kind** (choice, 5 options) : secret, clé de test, clé publique, placeholder (ou exemple, valeur masquée, référence), ou pas un identifiant ;
-- **line** (choice) : quelle ligne expose le secret ?
+Detect an API key or an exposed secret in a short text: a `.env` file, code, a config, a `curl` command, a log, a diff. The jev has four questions per text (`docs/SPEC-S6.md` §s6-secrets):
 
-**Données.** `sky-data secret-jev` (graine 1234, valeurs par défaut) écrit les fichiers dans `data/secrets`. Tout est synthétique et généré en local : chaque clé suit le format public de son fournisseur avec un corps aléatoire, donc aucune n'est une vraie clé, et rien n'est commité.
+- **secret** (noul): does the text expose a usable secret, to be revoked?
+- **service** (choice, 15 options): which service issued the key (`none` if there is none)?
+- **kind** (choice, 5 options): secret, test key, public key, placeholder (or example, masked value, reference), or not a credential;
+- **line** (choice): which line exposes the secret?
 
-- `secret_synth` : 50 000 textes, environ 193 000 questions, réparties 95/5 en train et val par texte. Ils sont tirés de 9 gabarits : env, export, python, js, yaml, json, curl, log, diff.
-- `secret_bench` : 2 000 textes, 7 984 questions, en test seulement. Ils viennent de 4 gabarits que l'entraînement ne voit jamais : docker-compose, toml, go, ini.
+**Data.** `sky-data secret-jev` (seed 1234, default values) writes the files into `data/secrets`. Everything is synthetic and generated locally: each key follows the public format of its provider with a random body, so none is a real key, and nothing is committed.
 
-Les deux sources ont les mêmes parts de classes :
+- `secret_synth`: 50 000 texts, about 193 000 questions, split 95/5 into train and val by text. They are drawn from 9 templates: env, export, python, js, yaml, json, curl, log, diff.
+- `secret_bench`: 2 000 texts, 7 984 questions, in test only. They come from 4 templates that training never sees: docker-compose, toml, go, ini.
 
-- secrets : 50 % ;
-- clés de test : 10 % ;
-- clés publiques : 8 % ;
-- placeholders : 17 % ;
-- valeurs qui ne sont pas des identifiants : 15 %.
+The two sources have the same class shares:
 
-## 2. Le modèle
+- secrets: 50 %;
+- test keys: 10 %;
+- public keys: 8 %;
+- placeholders: 17 %;
+- values that are not credentials: 15 %.
 
-`configs/s6-secrets-pico.json` reprend l'architecture de s6-pico à l'identique (même nombre de paramètres), avec deux fenêtres élargies :
+## 2. The model
 
-- **état : 320 jetons au lieu de 64.** Avec le tokenizer s6 (BPE 1 024 avec [NUM]), une clé aléatoire coûte environ un jeton par caractère. Les états du jev font 93 jetons en médiane, 179 au 95e centile et 312 au maximum.
-- **tête : 192 jetons au lieu de 96.** La question « service » et ses 15 options font jusqu'à 179 jetons.
+`configs/s6-secrets-pico.json` takes the architecture of s6-pico identically (same number of parameters), with two widened windows:
 
-Ces données ne vont pas dans `data/decisions` : le s6 général les tronquerait avant la clé.
+- **state: 320 tokens instead of 64.** With the s6 tokenizer (BPE 1 024 with [NUM]), a random key costs about one token per character. The states of the jev are 93 tokens at the median, 179 at the 95th percentile and 312 at the maximum.
+- **head: 192 tokens instead of 96.** The "service" question and its 15 options run to 179 tokens.
 
-## 3. Le run (`scripts/train-secrets.sh`)
+These data do not go into `data/decisions`: the general s6 would truncate them before the key.
 
-- **Prétraitement MLM** : 8 minutes sur `data/text` plus 10 % de curriculum numérique, en séquences de 256 jetons.
-- **Entraînement des décisions** : 15 minutes sur `data/secrets` seul, batch 64.
-  - QAT ternaire après 10 % d'échauffement en flottant.
+## 3. The run (`scripts/train-secrets.sh`)
+
+- **MLM pre-processing**: 8 minutes on `data/text` plus 10 % of numeric curriculum, in sequences of 256 tokens.
+- **Decision training**: 15 minutes on `data/secrets` alone, batch 64.
+  - Ternary QAT after 10 % of floating-point warm-up.
   - Loop dropout 0,25.
-  - Mêmes options d'optimiseur que s6-pico (`OPT`).
-- Graine 0, une seule fois. Seul un échec technique justifie de relancer, et il est noté dans le rapport.
+  - Same optimiser options as s6-pico (`OPT`).
+- Seed 0, once only. Only a technical failure justifies a rerun, and it is noted in the report.
 
-## 4. Checkpoint exporté
+## 4. Exported checkpoint
 
-- `last` (ou `last-ema` si `DECIDE` contient `--ema`, ce qui est décidé avant le run), calibré par `s2-calibrate` sur la validation, puis exporté en ternaire.
-- Aucun checkpoint intermédiaire n'est considéré.
+- `last` (or `last-ema` if `DECIDE` contains `--ema`, which is decided before the run), calibrated by `s2-calibrate` on the validation, then exported as ternary.
+- No intermediate checkpoint is considered.
 
-## 5. Évaluation
+## 5. Evaluation
 
-`s2-eval` du GGUF ternaire sur `secret_bench`, dernière sortie, pleine profondeur. Chaque question a sa propre source (`secret_bench:secret`, `:service`, `:kind`, `:line`), donc on lit une exactitude par question.
+`s2-eval` of the ternary GGUF on `secret_bench`, last output, full depth. Each question has its own source (`secret_bench:secret`, `:service`, `:kind`, `:line`), so one accuracy is read per question.
 
-**Référence : le scanner à règles** (`sky-data secret-baseline`), mesuré sur ce même bench avant tout entraînement. Il combine :
+**Reference: the rule-based scanner** (`sky-data secret-baseline`), measured on this same bench before any training. It combines:
 
-- des préfixes façon gitleaks pour 20 formats ;
-- les chaînes de connexion qui portent leur mot de passe ;
-- une règle d'entropie (au moins 3,5 bits par caractère, 20 caractères au moins, un chiffre) sur les noms qui sonnent secret ;
-- une liste d'exceptions (EXAMPLE, clés de test et clés publiques).
+- gitleaks-style prefixes for 20 formats;
+- connection strings that carry their password;
+- an entropy rule (at least 3,5 bits per character, 20 characters at least, one digit) on names that sound secret;
+- a list of exceptions (EXAMPLE, test keys and public keys).
 
-Ses scores :
+Its scores:
 
-| question | exactitude | détail |
+| question | accuracy | detail |
 |---|---:|---|
-| secret | **0,977** | précision 0,966, rappel 0,989 (999 vrais positifs, 35 faux positifs, 11 manqués, 951 vrais négatifs) |
-| service | **0,787** | il ne nomme le service que pour ce qu'il signale, et appelle `generic` toute clé sans préfixe |
+| secret | **0,977** | precision 0,966, recall 0,989 (999 true positives, 35 false positives, 11 missed, 951 true negatives) |
+| service | **0,787** | it names the service only for what it flags, and calls `generic` any key without a prefix |
 
-Les 35 faux positifs du scanner sont tous des valeurs aléatoires qui ne sont pas des identifiants, sous un nom qui sonne secret (`CACHE_KEY`, `KEY_FINGERPRINT`). Les 11 manqués sont des secrets génériques sans signe distinctif.
+The scanner's 35 false positives are all random values that are not credentials, under a name that sounds secret (`CACHE_KEY`, `KEY_FINGERPRINT`). The 11 missed are generic secrets with no distinctive sign.
 
-## 6. Objectif et porte de publication
+## 6. Objective and publication gate
 
-**Objectif : battre le scanner à règles sur les deux questions qu'il traite.** Avec le GGUF ternaire à pleine profondeur, il faut :
+**Objective: beat the rule-based scanner on the two questions it handles.** With the ternary GGUF at full depth, it needs:
 
-- une **exactitude secret > 0,977**,
-- **et** une **exactitude service > 0,787**.
+- a **secret accuracy > 0,977**,
+- **and** a **service accuracy > 0,787**.
 
-s6-secrets-pico est publié (site, manifeste, Hugging Face) si l'objectif est atteint. Sinon, il n'est pas publié, et le rapport le dit.
+s6-secrets-pico is published (site, manifest, Hugging Face) if the objective is reached. Otherwise, it is not published, and the report says so.
 
-Quel que soit le résultat, le rapport donne :
+Whatever the result, the report gives:
 
-- l'exactitude des questions kind et line ;
-- l'exactitude en validation (gabarits vus) ;
-- la sortie anticipée ;
-- la taille ;
-- la latence.
+- the accuracy of the kind and line questions;
+- the accuracy on validation (templates seen);
+- the early exit;
+- the size;
+- the latency.
 
-**Ce que ce banc ne dit pas.** Il est synthétique : les formats, les gabarits et les parts de classes viennent de notre générateur. Battre le scanner ici montre que le modèle lit les formats et le contexte (nom de variable, clé publique ou de test, placeholder) dans des fichiers d'un type qu'il n'a jamais vu. Cela ne dit rien de son rappel sur de vrais dépôts : aucune conclusion de ce genre ne sera tirée.
+**What this bench does not say.** It is synthetic: the formats, the templates and the class shares come from our generator. Beating the scanner here shows that the model reads the formats and the context (variable name, public or test key, placeholder) in files of a type it has never seen. It says nothing of its recall on real repositories: no conclusion of that kind will be drawn.
 
-## 7. Amendements
+## 7. Amendments
 
-**Amendement 1 (28/10/2026, avant tout entraînement de s6-secrets, aucun score lu). Corpus de pré-entraînement.**
+**Amendment 1 (28/10/2026, before any training of s6-secrets, no score read). Pre-training corpus.**
 
-- **Changement.** Le prétraitement MLM du §3 lit `data/text-open` puis `data/text` (`--text data/text-open,data/text` dans `scripts/train-secrets.sh`), au lieu de `data/text` seul.
-- **Pourquoi.** C'est le même changement que l'amendement 1 de `docs/s6-prereg.md`, dont s6-secrets reprend les options. Le texte ajouté (Q/R StackExchange, souvent techniques, PDF scientifiques, maths) est aussi plus proche des fichiers de configuration et de code du jev que les histoires.
-- **Ce qui ne change pas.** La durée (8 minutes), les séquences de 256 jetons, le tokenizer, les données de décision (`data/secrets` seul), le bench et la porte de publication.
+- **Change.** The MLM pre-processing of §3 reads `data/text-open` then `data/text` (`--text data/text-open,data/text` in `scripts/train-secrets.sh`), instead of `data/text` alone.
+- **Why.** It is the same change as amendment 1 of `docs/s6-prereg.md`, whose options s6-secrets takes. The added text (StackExchange Q&A, often technical, scientific PDFs, maths) is also closer to the configuration and code files of the jev than the stories are.
+- **What does not change.** The duration (8 minutes), the sequences of 256 tokens, the tokenizer, the decision data (`data/secrets` alone), the bench and the publication gate.
 
-**Amendement 2 (29/10/2026, avant tout entraînement de s6-secrets, aucun score lu). Options d'optimiseur.**
+**Amendment 2 (29/10/2026, before any training of s6-secrets, no score read). Optimiser options.**
 
-- **Changement.** Le modèle final s6-pico n'existe plus (`docs/s6-prereg.md`, amendement 2). « Mêmes options d'optimiseur que s6-pico » (§3) veut dire : les options adoptées par l'ablation pico, `OPT` sans taux, plus `LR_SCALE`. `scripts/train-secrets.sh` applique `LR_SCALE` au taux par défaut de chaque phase (3e-3 en pré-entraînement, 1e-3 en décision) et refuse un `OPT` qui porterait un taux.
-- **Pourquoi.** Un `--muon-lr` passé dans `OPT` aurait donné le même taux aux deux phases, ce que l'ablation ne fait pas.
-- **Ce qui ne change pas.** L'architecture, les données, les budgets, le bench et la porte.
+- **Change.** The final model s6-pico no longer exists (`docs/s6-prereg.md`, amendment 2). "Same optimiser options as s6-pico" (§3) means: the options adopted by the pico ablation, `OPT` without a rate, plus `LR_SCALE`. `scripts/train-secrets.sh` applies `LR_SCALE` to the default rate of each phase (3e-3 in pre-training, 1e-3 in decision) and refuses an `OPT` that would carry a rate.
+- **Why.** A `--muon-lr` passed in `OPT` would have given the same rate to both phases, which the ablation does not do.
+- **What does not change.** The architecture, the data, the budgets, the bench and the gate.
 
-**Amendement 3 (09/11/2026, avant tout entraînement de s6-secrets : seule la recette pico tourne, aucun de ses résultats n'a été lu). La recette passe par le fichier, en mode bridé.** Les options adoptées viennent de `runs/recipe/recipe.json` (`scripts/s6-adopt.py env s6-secrets-pico`), sans choix à la main. Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md` : les budgets en minutes ne comptent que le temps de travail, et le rapport donne le nombre de pas réellement faits. Rien d'autre ne change.
+**Amendment 3 (09/11/2026, before any training of s6-secrets: only the pico recipe is running, none of its results has been read). The recipe goes through the file, in throttled mode.** The adopted options come from `runs/recipe/recipe.json` (`scripts/s6-adopt.py env s6-secrets-pico`), with no choice by hand. The run is done in throttled mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`: the budgets in minutes count only work time, and the report gives the number of steps actually done. Nothing else changes.
 
 **Amendment 4 (12/11/2026, before any training of s6-secrets: the recipe is written (`runs/recipe/recipe.json`), no score of s6-secrets exists). Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the throttled mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
 

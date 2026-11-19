@@ -1,112 +1,114 @@
-# s6-ear : pré-enregistrement (premier entraînement et portes)
+# s6-ear: pre-registration (first training and gates)
+
+*Translated into English on 19/11/2026. The text frozen on 03/11/2026 was written in French; that original, which remains the reference in case of doubt, is this file at commit `1f180a5`. The translation changes no rule, number or threshold.*
 
 *Note added 19/11/2026: "TODO.md" (§6 and §1.1, cited in sections 4 and 7 below) refers to the project's former to-do file, `TODO.md`, removed on 19/11/2026; its last version is at commit `0e45b7b`. The text below is unchanged.*
 
-**Statut : figé le 03/11/2026, avant toute donnée audio téléchargée en entier et avant tout entraînement de s6-ear.** Ce fichier fixe les données, les questions, le run, le témoin, l'évaluation et les portes. Les résultats seront lus à travers ce texte.
+**Status: frozen on 03/11/2026, before any audio data was downloaded in full and before any training of s6-ear.** This file fixes the data, the questions, the run, the control, the evaluation and the gates. The results will be read through this text.
 
-**Modifications de ce fichier :**
+**Changes to this file:**
 
-- tout amendement est commité, daté et motivé en section 8 ;
-- il précède le run qu'il concerne ;
-- il ne touche jamais un seuil après la lecture d'un score de test.
+- every amendment is committed, dated and justified in section 8;
+- it precedes the run it concerns;
+- it never touches a threshold after a test score has been read.
 
-## 1. Données
+## 1. Data
 
-Toutes les sources sont publiques, non restreintes et en CC-BY-4.0 (`DATA_LICENSES.md`, section audio). `sky-data fetch-audio --set all` (graine 1234) les écrit dans `data/ear`, qui n'est pas commité. Chaque clip est gardé sous la forme de ses log-mel (float16, `audio/<set>/<id>.npy`), coupé à ses 128 dernières trames de 80 ms. Les clips de test sont aussi gardés en WAV 16 kHz (`wav/<set>/<id>.wav`).
+All the sources are public, unrestricted and under CC-BY-4.0 (`DATA_LICENSES.md`, audio section). `sky-data fetch-audio --set all` (seed 1234) writes them into `data/ear`, which is not committed. Each clip is kept in the form of its log-mel (float16, `audio/<set>/<id>.npy`), cut to its last 128 frames of 80 ms. The test clips are also kept as 16 kHz WAV (`wav/<set>/<id>.wav`).
 
 | set | source | splits |
 |---|---|---|
-| smart-turn | train et val : `pipecat-ai/smart-turn-data-v3-train` (227 025 clips, 23 langues dont le français) ; test : `pipecat-ai/smart-turn-data-v3.2-test` (31 527 clips), le jeu de test officiel de Smart Turn v3.2 | val 5 % du train par un hachage graine de l'id du clip ; tout clip du train dont l'id est aussi dans le test est retiré (disjoint par clip) |
-| speech-commands | Speech Commands v0.02 (archive TensorFlow officielle) | train / val par `validation_list.txt` ; les clips de `testing_list.txt` sont écartés ; test = l'archive de test officielle à 12 classes |
-| mswc | `MLCommons/ml_spoken_words`, en et fr, WAV | train / dev / test du jeu ; la première archive de chaque split et langue (`--mswc-archives 1`) |
-| mimi | `openslr/librispeech_asr` (`clean`, `train.100` et `validation`) joint à `shangeth/librispeech-mimi-codes` (`train_clean_100`, `dev_clean`) par id d'énoncé | pré-entraînement seulement |
+| smart-turn | train and val: `pipecat-ai/smart-turn-data-v3-train` (227 025 clips, 23 languages including French); test: `pipecat-ai/smart-turn-data-v3.2-test` (31 527 clips), the official test set of Smart Turn v3.2 | val 5 % of train by a seeded hash of the clip id; any train clip whose id is also in the test is removed (disjoint by clip) |
+| speech-commands | Speech Commands v0.02 (official TensorFlow archive) | train / val by `validation_list.txt`; the clips of `testing_list.txt` are set aside; test = the official 12-class test archive |
+| mswc | `MLCommons/ml_spoken_words`, en and fr, WAV | train / dev / test of the set; the first archive of each split and language (`--mswc-archives 1`) |
+| mimi | `openslr/librispeech_asr` (`clean`, `train.100` and `validation`) joined to `shangeth/librispeech-mimi-codes` (`train_clean_100`, `dev_clean`) by utterance id | pre-training only |
 
-Smart Turn : le plan d'origine tirait le test dans `smart-turn-data-v3-train` (10 % par graine). Il a été remplacé avant toute donnée complète et tout run, parce que ce jeu est celui sur lequel Smart Turn est entraîné : la barre aurait été mesurée sur ses propres données d'entraînement. Le jeu de test officiel de v3.2 n'a été vu par aucun des deux modèles.
+Smart Turn: the original plan drew the test from `smart-turn-data-v3-train` (10 % by seed). It was replaced before any complete data and any run, because this set is the one Smart Turn is trained on: the bar would have been measured on its own training data. The official test set of v3.2 has been seen by neither of the two models.
 
-Speech Commands : les 25 mots hors des 10 mots du benchmark donnent la classe « unknown », gardés avec une probabilité de 1/6 en train et en val. La classe « silence » est faite de découpes de 1 s, toutes les 0,5 s, des bruits de `_background_noise_`, dont 10 % vont en val.
+Speech Commands: the 25 words outside the 10 words of the benchmark give the class "unknown", kept with a probability of 1/6 in train and in val. The class "silence" is made of 1 s cuts, every 0,5 s, of the noises of `_background_noise_`, of which 10 % go to val.
 
-Mimi : les codes sont à 12,5 Hz, comme nos trames. Un énoncé a en général une trame de code de plus que de trames log-mel (arrondi au-dessus contre arrondi en dessous) : la paire est coupée à la plus courte. Seul le codebook 0 est utilisé : c'est le codebook sémantique, distillé de WavLM.
+Mimi: the codes are at 12,5 Hz, like our frames. An utterance in general has one more code frame than log-mel frames (rounding up against rounding down): the pair is cut to the shorter one. Only codebook 0 is used: it is the semantic codebook, distilled from WavLM.
 
-## 2. Questions (le jev audio, `sky-data audio-jev`)
+## 2. Questions (the audio jev, `sky-data audio-jev`)
 
-Un record par question, l'état étant le chemin du `.npy` du clip. Les textes sont fixés dans `crates/sky-data/src/audio.rs` :
+One record per question, the state being the path of the clip's `.npy`. The texts are fixed in `crates/sky-data/src/audio.rs`:
 
-- **`turn_end`** (noul) : « Has the speaker finished their turn? ». La cible est `endpoint_bool`. Options : « false: the speaker is still talking or will go on », « true: the speaker has finished their turn ».
-- **`keyword`** (choice, 12 options) : « Which word was said? », sur yes, no, up, down, left, right, on, off, stop, go, « silence: nothing was said » et « unknown: another word ».
-- **`keyword_zs`** (choice, 10 options) : la même question sur MSWC.
-  - Pour chaque langue, 50 mots qui ont au moins 20 clips de test sont réservés, tirés par la graine.
-  - Une question de test porte sur un mot réservé. Ses 9 distracteurs sont d'autres mots réservés. Chaque mot réservé donne exactement 20 questions de test (ses 20 premiers clips), donc le mot juste est uniforme sur les mots réservés.
-  - Les questions de train et de val portent sur les autres mots, avec des distracteurs pris parmi eux.
-  - Aucun mot réservé n'apparaît à l'entraînement, ni comme réponse ni comme option.
+- **`turn_end`** (noul): "Has the speaker finished their turn?". The target is `endpoint_bool`. Options: "false: the speaker is still talking or will go on", "true: the speaker has finished their turn".
+- **`keyword`** (choice, 12 options): "Which word was said?", over yes, no, up, down, left, right, on, off, stop, go, "silence: nothing was said" and "unknown: another word".
+- **`keyword_zs`** (choice, 10 options): the same question on MSWC.
+  - For each language, 50 words that have at least 20 test clips are held back, drawn by the seed.
+  - A test question bears on a held-back word. Its 9 distractors are other held-back words. Each held-back word gives exactly 20 test questions (its first 20 clips), so the right word is uniform over the held-back words.
+  - The train and val questions bear on the other words, with distractors taken among them.
+  - No held-back word appears in training, neither as an answer nor as an option.
 
-## 3. Modèle
+## 3. Model
 
-`configs/s6-ear-nano.json` : la forme de s6-nano (d 144, ff 288, 2 blocs × 2 boucles, sorties 1 à 4, Parallax, 2 têtes, tokenizer `tok-s6-2048`), avec `state_kind: "audio"` et une fenêtre d'état de 128 trames (10,24 s). Le décompte des paramètres est figé par un test :
+`configs/s6-ear-nano.json`: the shape of s6-nano (d 144, ff 288, 2 blocks × 2 loops, exits 1 to 4, Parallax, 2 heads, tokenizer `tok-s6-2048`), with `state_kind: "audio"` and a state window of 128 frames (10,24 s). The parameter count is fixed by a test:
 
-- modèle de décision : 1 615 681 paramètres (s6-nano plus `audio_proj`, 46 224) ;
-- pile de pré-entraînement : 821 552.
+- decision model: 1 615 681 parameters (s6-nano plus `audio_proj`, 46 224);
+- pre-training stack: 821 552.
 
-Smart Turn v3.2 en a 8M : s6-ear-nano en fait environ 1/5. La taille n'est pas une condition de porte, elle est fixée par la config.
+Smart Turn v3.2 has 8M: s6-ear-nano is about 1/5 of that. Size is not a gate condition; it is fixed by the config.
 
-## 4. Le run (`scripts/train-ear.sh data pretrain decide eval`)
+## 4. The run (`scripts/train-ear.sh data pretrain decide eval`)
 
-- **Pré-entraînement** (`s2-pretrain --audio`) : 60 min, 64 découpes de 128 trames par lot, 30 % des trames masquées par blocs de 3. La cible est l'id Mimi du codebook 0 de chaque trame masquée. Le rapport donne la précision de ce codebook sur les trames masquées de val.
-- **Décision** (`s2-decide`) :
-  - 60 min sur `turn_end=0.45,keyword=0.30,keyword_zs=0.25`, depuis l'init du pré-entraînement ;
-  - QAT ternaire sur les 10 derniers %, `--loop-dropout 0.25` ;
-  - puis `s2-calibrate` sur val et l'export ternaire.
-- **Témoin** (pré-enregistré) : le même modèle, les mêmes données et le même budget de décision, **sans** pré-entraînement Mimi (init aléatoire). Il est rapporté à côté de chaque porte, sans être lui-même une porte : il mesure ce qu'apporte la distillation de Mimi.
-- **Seuils**, sur val, à pleine profondeur, toutes les sorties (`sky-eval --dump-exits`, `scripts/ear-gate.py crc`) :
-  - **seuils de sortie anticipée** par contrôle conformal du risque, α = 0,02 (SPEC-S6 §9). Ils sont écrits dans une copie `-crc` du GGUF ;
-  - **seuil de renvoi au Système 2** ρ, α = 0,05 : le taux d'erreur parmi les décisions que s6-ear prend lui-même. Il est rapporté avec la couverture.
+- **Pre-training** (`s2-pretrain --audio`): 60 min, 64 cuts of 128 frames per batch, 30 % of the frames masked in blocks of 3. The target is the Mimi id of codebook 0 of each masked frame. The report gives the accuracy of this codebook on the masked val frames.
+- **Decision** (`s2-decide`):
+  - 60 min on `turn_end=0.45,keyword=0.30,keyword_zs=0.25`, from the pre-training's init;
+  - ternary QAT over the last 10 %, `--loop-dropout 0.25`;
+  - then `s2-calibrate` on val and the ternary export.
+- **Control** (pre-registered): the same model, the same data and the same decision budget, **without** Mimi pre-training (random init). It is reported next to each gate, without being a gate itself: it measures what the distillation of Mimi brings.
+- **Thresholds**, on val, at full depth, all exits (`sky-eval --dump-exits`, `scripts/ear-gate.py crc`):
+  - **early-exit thresholds** by conformal risk control, α = 0,02 (SPEC-S6 §9). They are written into a `-crc` copy of the GGUF;
+  - **threshold of hand-off to System 2** ρ, α = 0,05: the error rate among the decisions that s6-ear takes itself. It is reported with the coverage.
 
-Ce run n'est pas lancé en même temps qu'un autre entraînement sur le GPU (le run LFM3 du §6 de TODO.md).
+This run is not launched at the same time as another training on the GPU (the LFM3 run of §6 of TODO.md).
 
-## 5. Évaluation (split test, modèle ternaire)
+## 5. Evaluation (test split, ternary model)
 
-- `sky-eval` à pleine profondeur (τ = 1), puis aux seuils CRC, puis le témoin. Les clips de test sont lus en WAV, par le chemin PCM de `Engine::decide_audio` (le chemin déployé).
-- `scripts/ear-baseline.py` : Smart Turn v3.2 (`smart-turn-v3.2-cpu.onnx`, révision `f766f81d3cfdf7737ac64aad813d91bbfd56bf93`) sur les mêmes clips de test de `turn_end` (le jeu de test officiel de v3.2). On reprend l'inférence de référence de Pipecat : les 8 dernières secondes, les features Whisper, et `probability > 0.5`.
-- La parité WASM sur 20 clips de test (`parity-node.mjs` : écart de probabilité ≤ 1e-4, même argmax).
-- La latence médiane native par décision.
+- `sky-eval` at full depth (τ = 1), then at the CRC thresholds, then the control. The test clips are read as WAV, through the PCM path of `Engine::decide_audio` (the deployed path).
+- `scripts/ear-baseline.py`: Smart Turn v3.2 (`smart-turn-v3.2-cpu.onnx`, revision `f766f81d3cfdf7737ac64aad813d91bbfd56bf93`) on the same test clips of `turn_end` (the official test set of v3.2). We take Pipecat's reference inference: the last 8 seconds, the Whisper features, and `probability > 0.5`.
+- WASM parity on 20 test clips (`parity-node.mjs`: probability gap ≤ 1e-4, same argmax).
+- The native median latency per decision.
 
-## 6. Portes (v1)
+## 6. Gates (v1)
 
-Toutes sont lues sur le modèle ternaire à pleine profondeur. Leur métrique est l'**exactitude** (la part de bonnes réponses) :
+All are read on the ternary model at full depth. Their metric is **accuracy** (the share of right answers):
 
-1. **Fin de tour** : exactitude sur `ear:turn_end` ≥ celle de Smart Turn v3.2 sur les mêmes clips.
-2. **Mots-clés** : exactitude sur `ear:keyword` (test officiel, 12 options) ≥ 0,90.
-3. **Mots-clés zéro-shot** : exactitude sur `ear:keyword_zs:en` **et** sur `ear:keyword_zs:fr` ≥ 0,20, soit 2 × le hasard à 10 options. La barre est délibérément basse : c'est un premier essai.
+1. **End of turn**: accuracy on `ear:turn_end` ≥ that of Smart Turn v3.2 on the same clips.
+2. **Keywords**: accuracy on `ear:keyword` (official test, 12 options) ≥ 0,90.
+3. **Zero-shot keywords**: accuracy on `ear:keyword_zs:en` **and** on `ear:keyword_zs:fr` ≥ 0,20, that is 2 × chance at 10 options. The bar is deliberately low: it is a first attempt.
 
-`scripts/ear-gate.py gate` les calcule. Si une porte échoue, le modèle n'est pas publié, mais le résultat va quand même dans le rapport. La précision et le rappel de la fin de tour sont rapportés pour les deux modèles.
+`scripts/ear-gate.py gate` computes them. If a gate fails, the model is not published, but the result still goes into the report. The precision and the recall of the end of turn are reported for both models.
 
-Le modèle est publié aux seuils CRC si les portes y tiennent comme à pleine profondeur, à pleine profondeur si elles ne tiennent que là, et n'est pas publié sinon.
+The model is published at the CRC thresholds if the gates hold there as at full depth, at full depth if they hold only there, and is not published otherwise.
 
-## 7. v2 (code et pré-enregistrement maintenant ; données et runs ensuite)
+## 7. v2 (code and pre-registration now; data and runs later)
 
-- **`duplex_action`** (choice) : « What should I do now? », avec les options listen, backchannel, speak, yield.
-  - Les labels viennent d'AMI (CC-BY-4.0 : un micro par orateur et des horodatages), par la règle `audio::duplex_label`, testée.
-  - Au temps t, pour l'agent A :
-    - si A parle et qu'un autre orateur commence dans les 500 ms, hors acte « backchannel », pendant que A parle encore, c'est **yield** ;
-    - si A commence un segment dans les 500 ms, c'est **backchannel** si c'est un acte backchannel, sinon **speak** ;
-    - sinon, c'est **listen**.
-  - **Porte** : battre la règle « parler après 500 ms de silence » (`audio::silence_rule`) en exactitude sur le split test d'AMI.
-  - Le téléchargeur AMI reste à écrire : c'est une donnée v2.
-- **`about`** (noul et choice sur le contenu, `audio::about_questions`) : distillation intermodale.
-  - `sky-data teacher label-transcripts` demande à GLM-5.3-flash une probabilité par option sur chaque transcription LibriSpeech de `data/ear/mimi`. Le labelleur est celui du §1.1, qui reprend après une interruption et isole les refus de la modération.
-  - `audio-jev --about` en fait des cibles douces sur l'audio : le professeur lit le texte, l'élève entend le son.
-  - La labellisation est lancée **après** celle du §1.1 de TODO.md, qui utilise le même quota z.ai.
-  - **Porte** : exactitude ≥ 0,60 sur les questions binaires (val, contre l'argmax du professeur).
+- **`duplex_action`** (choice): "What should I do now?", with the options listen, backchannel, speak, yield.
+  - The labels come from AMI (CC-BY-4.0: one microphone per speaker and timestamps), by the rule `audio::duplex_label`, tested.
+  - At time t, for agent A:
+    - if A is speaking and another speaker starts within 500 ms, outside a "backchannel" act, while A is still speaking, it is **yield**;
+    - if A starts a segment within 500 ms, it is **backchannel** if it is a backchannel act, otherwise **speak**;
+    - otherwise, it is **listen**.
+  - **Gate**: beat the rule "speak after 500 ms of silence" (`audio::silence_rule`) in accuracy on the test split of AMI.
+  - The AMI downloader remains to be written: it is a v2 data item.
+- **`about`** (noul and choice on the content, `audio::about_questions`): cross-modal distillation.
+  - `sky-data teacher label-transcripts` asks GLM-5.3-flash for a probability per option on each LibriSpeech transcription of `data/ear/mimi`. The labeller is the one of §1.1, which resumes after an interruption and isolates the moderation refusals.
+  - `audio-jev --about` turns them into soft targets on the audio: the teacher reads the text, the student hears the sound.
+  - The labelling is launched **after** that of §1.1 of TODO.md, which uses the same z.ai quota.
+  - **Gate**: accuracy ≥ 0,60 on the binary questions (val, against the teacher's argmax).
 
-## 8. Amendements
+## 8. Amendments
 
-**Amendement 2 (09/11/2026, avant tout entraînement de s6-ear : seule la recette pico tourne, aucun de ses résultats n'a été lu, aucun score de s6-ear n'existe). La recette et le mode bridé.** Il n'y a jamais eu d'amendement 1 : le numéro 2 est celui que citent déjà `scripts/train-ear.sh` et `scripts/s6-adopt.py`.
+**Amendment 2 (09/11/2026, before any training of s6-ear: only the pico recipe is running, none of its results has been read, no score of s6-ear exists). The recipe and the throttled mode.** There was never an amendment 1: the number 2 is the one that `scripts/train-ear.sh` and `scripts/s6-adopt.py` already cite.
 
-- **La recette.** s6-ear tourne après l'ablation pico (`docs/s6-prereg.md`, §3 et §4) et prend ses options (`scripts/s6-adopt.py env s6-ear-nano`), pour le modèle **et** pour son témoin : `CONFIG`, `OPT`, `DECIDE`, `LR_SCALE`.
-- **Le taux.** Le taux du pilote pico est déplacé à d = 144 par μP, comme pour s6-nano : `LR_SCALE` × √(96/144) × le taux par défaut de la phase.
-- **Le curriculum.** Il ordonne des documents texte, et le pré-entraînement audio n'en a pas : il est sans effet ici, donc `PRETRAIN` reste vide.
-- **Le contrôle après le pré-entraînement.** `val_acc_cb0` doit valoir au moins 10/2048 (10 fois le hasard), seuil écrit avant le run. En dessous, c'est un échec technique : il est noté dans le rapport et `decide` n'est pas lancé.
-- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md`. Les budgets en minutes ne comptent que le temps de travail, et le rapport donne le nombre de pas réellement faits.
-- **Ce qui ne change pas.** Données, questions, modèle, budgets, seuils α, portes.
+- **The recipe.** s6-ear runs after the pico ablation (`docs/s6-prereg.md`, §3 and §4) and takes its options (`scripts/s6-adopt.py env s6-ear-nano`), for the model **and** for its control: `CONFIG`, `OPT`, `DECIDE`, `LR_SCALE`.
+- **The rate.** The rate of the pico pilot is moved to d = 144 by μP, as for s6-nano: `LR_SCALE` × √(96/144) × the default rate of the phase.
+- **The curriculum.** It orders text documents, and the audio pre-training has none: it has no effect here, so `PRETRAIN` stays empty.
+- **The check after pre-training.** `val_acc_cb0` must be at least 10/2048 (10 times chance), a threshold written before the run. Below it, it is a technical failure: it is noted in the report and `decide` is not launched.
+- **The throttled mode.** The run is done in throttled mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`. The budgets in minutes count only work time, and the report gives the number of steps actually done.
+- **What does not change.** Data, questions, model, budgets, α thresholds, gates.
 
 **Amendment 3 (12/11/2026, before any training of s6-ear: the recipe is written (`runs/recipe/recipe.json`), no score of s6-ear exists). Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the throttled mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
 
