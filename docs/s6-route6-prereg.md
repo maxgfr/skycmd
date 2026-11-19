@@ -1,5 +1,7 @@
 # s6-route v6 (v5's data with one fix, trained, and gated on the model's request-blind reading): pre-registration
 
+*Status on 19/11/2026: v6 stopped at its stop rule on 18/11/2026, before any training, and the route line was closed after v7; see the result block at the end of this file and `runs/s6-route6/`.*
+
 **Frozen on 18/11/2026 by the lead, before any computation of v6 and before its code is written; every later change is a dated amendment that precedes the computation it concerns.**
 
 **Amendment 1 of the same day (18/11/2026), before any computation of v6 (§17):** the fix of §4.8 is extended to every slate of the When2Call group, none of which shows an exempt tool any more.

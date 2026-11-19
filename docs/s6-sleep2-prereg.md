@@ -1,5 +1,7 @@
 # s6-sleep v2 (s6-sleep2-pico pilot, then s6-sleep2-nano): pre-registration
 
+*Status on 19/11/2026: v2 ended at its CPU check C4 on 15/11/2026, before any GPU run; see the result block in this file and `docs/s6-sleep3-diagnosis.md`. v3 and v4 followed and are closed (Results, section s6-sleep3-nano).*
+
 **Status: frozen on 15/11/2026.** No line of v2's code is written, no v2 check has run, no v2 model exists. This file fixes:
 
 - the memory form;

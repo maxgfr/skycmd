@@ -1,5 +1,7 @@
 # s6-route-nano: what the site's router playground needs from the engine
 
+*Status on 19/11/2026: s6-route-nano failed its gate on 16/11/2026, so the site shows its result without a playground, and its Hugging Face Space runs the file alone with the failed gate first; the site's Router page (`site/router/index.md`) is the playground of s6-route, which passed; see the Results page, section s6-route-nano.*
+
 A note for item 7 of section 14 of `docs/s6-nano2-prereg.md` (the page itself is not written
 yet). The page is published with its playground only if the gate passes (section 11); otherwise
 it shows the result without the playground.

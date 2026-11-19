@@ -1,5 +1,7 @@
 # s6-secrets-verify-pico: diagnosis of the API category, for a possible v4
 
+*Status on 19/11/2026: closed on 18/11/2026, by the lead's decision on this diagnosis: no v4 of s6-secrets-verify-pico is pre-registered; see section 5.*
+
 Date: 17-18/11/2026. Read-only analysis. No model was run, nothing was trained, no scanner was rerun. The test was read once for v2 and once more for v3. This diagnosis tabulates the published test outputs into aggregates. To do that it reads the test meta rows again, and the text of the test files that hold a T row on an API line, through the scorer's own loader. That makes it a further look at the test. **Nothing below may be used to choose anything that is later read on the same test files.** This report holds counts, rates, lengths, entropies, class counts, rule ids, extensions, category names and keyword ids from a fixed list. It holds no value, no source line and no variable name.
 
 ## 1. Summary
