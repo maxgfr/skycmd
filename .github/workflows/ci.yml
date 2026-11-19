@@ -102,3 +102,59 @@ jobs:
         run: >-
           test -s site/public/pkg/sky_web_bg.wasm && test -s site/public/pkg/sky_web_relaxed_bg.wasm &&
           test -s site/public/pkg/sky_web.js
+
+  # The site's tests (the Models catalogue against the manifest, the demos' pure parts) and its
+  # build, which fails on a dead link. Neither needs the wasm modules.
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # the tests are TypeScript run by node --test, which needs Node 22.18 or later
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm --prefix site ci
+      - name: Tests
+        run: npm --prefix site test
+      - name: Build (dead links fail it)
+        run: npm --prefix site run docs:build
+
+  # The scripts: syntax and shellcheck on every shell script, and the Python test files of
+  # scripts/ that need only the standard library. Left out because they import numpy:
+  # scripts/route/test_baselines.py, test_cast2_data.py, test_route_embed.py and
+  # test_turn_teacher.py; test_brake.py runs in the fmt job.
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: bash -n
+        run: for f in scripts/*.sh; do bash -n "$f" || exit 1; done
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Python tests (standard library only)
+        run: |
+          set -e
+          for t in \
+            scripts/secrets2/test_candidates.py scripts/secrets2/test_runners.py \
+            scripts/secrets2/test_scorer.py scripts/secrets2/test_union.py \
+            scripts/test_all_report.py scripts/test_build_route6_data.py \
+            scripts/test_hf_publish.py scripts/test_hf_publish_data.py \
+            scripts/test_route7_gate.py scripts/test_route_t5.py scripts/test_s6_adopt.py \
+            scripts/test_s6_cast2_gate.py scripts/test_s6_route3_gate.py \
+            scripts/test_s6_route4_checks.py scripts/test_s6_route4_pilot.py \
+            scripts/test_s6_route5_checks.py scripts/test_s6_route5_pilot.py \
+            scripts/test_s6_route6_blind.py scripts/test_s6_route6_checks.py \
+            scripts/test_s6_route6_fit.py scripts/test_s6_route6_gate.py \
+            scripts/test_s6_route6_pilot.py scripts/test_s6_route7_reference.py \
+            scripts/test_s6_route_gate.py scripts/test_s6_secrets2_gate.py \
+            scripts/test_s6_secrets3_gate.py scripts/test_s6_sleep3_report.py \
+            scripts/test_s6_sleep4_report.py scripts/test_s6_sleep_report.py \
+            scripts/test_turn3_scripts.py scripts/test_turn_gate.py; do
+            echo "== $t"
+            python3 -I "$t"
+          done
