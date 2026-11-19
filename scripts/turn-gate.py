@@ -48,7 +48,11 @@ s6-ear v3 (docs/s6-ear3-prereg.md):
 * harness3 (§8.1): the policy port, v2's file on Smart Turn's test (0.8993), the span builder at v2's cut
   (17,934 cuts, 0.7299 and 0.7838 within 0.0005), then the count of §8.3's cuts; exit 1 on a failure.
 * gate3 (§9): A1, A2, E1-E3 (the paired bootstrap by turn, 2,000 resamples, seed 20261117), G3 (with v2's
-  tensor list); §8.2-8.4 and §10 reported; GATE.md and GATE.json. Refuses before §8.1 and §8.5 are on file.
+  tensor list); §8.2-8.4 and §10 reported; GATE.md and GATE.json. Refuses before §8.1 and §8.5 are on file,
+  and (amendment 3) on a partial input: fewer than the 31,527 test clips, a span of §8.3 or an ask without
+  its reading, a conversation test record without its readings or teacher opinion, a parity file that is not a
+  complete measurement, a missing file: "technical failure: partial input, no verdict written", exit 1, no
+  GATE file (a smoke run, on validation stand-ins, is not checked).
 """
 
 from __future__ import annotations
@@ -1228,6 +1232,97 @@ def meaning3(r):
     return "v3 passes. It replaces v2 in the demo only by the owner's decision."
 
 
+PARTIAL = "technical failure: partial input, no verdict written"
+
+
+def parity_problem(path, what):
+    """None when `path` holds a complete measurement of §7 (pass or fail), else why not."""
+    try:
+        rec = read_parity(path)
+    except ValueError as e:
+        return f"{what}: {path} does not parse ({e})"
+    if rec is None:
+        return f"{what}: no parity line in {path}"
+    n, diff, same = rec.get("n"), rec.get("max_abs_diff"), rec.get("same_decision")
+    if not isinstance(n, int) or isinstance(n, bool) or n < PARITY_CLIPS:
+        return f"{what}: {n} clips in {path}, §7 measures {PARITY_CLIPS}"
+    if not isinstance(diff, (int, float)) or isinstance(diff, bool) or not math.isfinite(diff) \
+            or not isinstance(same, int) or isinstance(same, bool):
+        return f"{what}: {path} lacks max_abs_diff or same_decision"
+    return None
+
+
+def given(path):
+    return bool(path) and os.path.exists(path)
+
+
+def gate3_problems(a, h3, lab, tp):
+    """Amendment 3: the gate reads complete inputs or writes no verdict. Every reading the run makes must be
+    whole: the 31,527 Smart Turn test clips (§8.2), every span of §8.3 (the count the harness check
+    recorded before any model read them) at every ask, every conversation test record at every ask (§8.4)
+    with its teacher opinion, both parity measurements (§7) and both files (§9 G3). Returns what is missing."""
+    out = []
+    # test (a), §8.2
+    if len(lab) != TEST_CLIPS:
+        out.append(f"test (a): {len(lab)} Smart Turn test clips in {a.labels}, §8.2 reads {TEST_CLIPS}")
+    miss = sum(1 for i in lab if not (i in tp and finite(tp[i].get("prob"))))
+    if miss:
+        out.append(f"test (a): {miss} of the {len(lab)} test clips have no v3 probability in {a.test_probs}")
+    # test (b), §8.3
+    if not (a.spans and given(a.eot_v3) and given(a.eot_v2)):
+        out.append(f"test (b): no eot-bench readings (--spans {a.spans}, --eot-v3 {a.eot_v3}, --eot-v2 {a.eot_v2})")
+    else:
+        recs, _, st200 = span_rows(a.spans)
+        p3, p2 = by_id_d(a.eot_v3), by_id_d(a.eot_v2)
+        gated = [r for r in recs if gated_span(r)]
+        want = ((h3 or {}).get("cuts_8_3") or {}).get("cuts")
+        if want is None:
+            out.append("test (b): the harness check records no count of §8.3's cuts")
+        elif len(gated) != want:
+            out.append(f"test (b): {len(gated)} spans of §8.3 in {a.spans}, the harness check counted {want}")
+        labelled = [r for r in recs if isinstance(r.get("label"), bool)]
+        for name, pr, zero in (("v3", p3, True), ("v2", p2, False)):
+            m = sum(1 for r in labelled if not r.get("long_hold")
+                    for d in ASKS if d <= int(r.get("dmax_ms", 0)) and not finite(pr.get((r["id"], d))))
+            m += sum(1 for r in labelled if zero and not finite(pr.get((r["id"], 0))))
+            if m:
+                out.append(f"test (b): {m} span readings of {name} missing (every ask inside each span"
+                           f"{', and d = 0' if zero else ''})")
+        m = sum(1 for r in gated if not finite(st200.get(r["id"])))
+        if m:
+            out.append(f"test (b): {m} of the {len(gated)} spans of §8.3 have no Smart Turn reading at + 0.2 s")
+    # test (c), §8.4 (reported): when the run gives it, every test record at every ask
+    if a.conv_v3 or a.conv_v2:
+        if not (a.conv_store and given(a.conv_v3) and given(a.conv_v2)):
+            out.append(f"test (c): readings missing (--conv-store {a.conv_store}, --conv-v3 {a.conv_v3}, "
+                       f"--conv-v2 {a.conv_v2})")
+        else:
+            tl = [r for r in manifests(a.conv_store) if r.get("split") == "test" and isinstance(r.get("label"), bool)]
+            if not tl:
+                out.append(f"test (c): no conversation test record in {a.conv_store}")
+            for name, path in (("v3", a.conv_v3), ("v2", a.conv_v2)):
+                pr = by_id_d(path)
+                m = sum(1 for r in tl for d in ASKS if d <= int(r.get("dmax_ms", 0)) and not finite(pr.get((r["id"], d))))
+                if m:
+                    out.append(f"test (c): {m} readings of {name} missing in {path} (every ask inside each test record)")
+            if a.sessions:
+                tst = {}
+                for f in sorted(Path(a.sessions).glob("teacher-conv-*.jsonl")):
+                    tst.update({r["id"]: r.get("prob") for r in read_jsonl(f)})
+                m = sum(1 for r in tl if not finite(tst.get(r["id"])))
+                if m:
+                    out.append(f"test (c): {m} of the {len(tl)} test records have no teacher opinion in {a.sessions}")
+    # G3, §7 and §9
+    for path, what in ((a.parity, "parity (Smart Turn clips)"), (a.parity_conv, "parity (conversation records)")):
+        p = parity_problem(path, what) if given(path) else f"{what}: no file {path}"
+        if p:
+            out.append(p)
+    for path, what in ((a.model, "v3's file"), (a.v2_model, "v2's file")):
+        if not given(path):
+            out.append(f"G3: no {what} ({path})")
+    return out
+
+
 def cmd_gate3(a):
     smoke = a.smoke
     h3 = json.load(open(a.harness3)) if a.harness3 and os.path.exists(a.harness3) else None
@@ -1245,6 +1340,11 @@ def cmd_gate3(a):
         m["id"]: (m["label"], m.get("lang") or "", m.get("dataset") or "")
         for m in manifests(a.labels_store) if m.get("split") == "val" and isinstance(m.get("label"), bool)}
     tp = {r["id"]: r for r in read_jsonl(a.test_probs)}
+    if not smoke:
+        # amendment 3: a partial input is a technical failure, never a verdict (exit 1, no GATE file)
+        problems = gate3_problems(a, h3, lab, tp)
+        if problems:
+            raise SystemExit(f"{PARTIAL}:\n  " + "\n  ".join(problems))
     ids = [i for i in lab if i in tp and "prob" in tp[i]]
     sc = Scores([tp[i]["prob"] for i in ids], [lab[i][0] for i in ids], taus=(tau50, tau85))
     overall = bootstrap(sc)

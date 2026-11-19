@@ -540,7 +540,32 @@ class Harness3AndGate3(unittest.TestCase):
         finally:
             gate.V2_TEST_ACC, gate.V2_EOT_CUTS, gate.V2_EOT_AUC, gate.ST_EOT_AUC, gate.TEST_CLIPS = saved
 
-    def run_gate(self, v3_skill, v3_other_skill, acc_ok=True):
+    def run_gate(self, v3_skill, v3_other_skill, acc_ok=True, spoil=None):
+        """The gate on a complete synthetic run (§8.2's count is this set's 50 clips); `spoil(d)` damages an
+        input before the gate reads it."""
+        d = self.d
+        self.write_inputs(v3_skill, v3_other_skill, acc_ok)
+        if spoil:
+            spoil(d)
+        saved = gate.TEST_CLIPS
+        gate.TEST_CLIPS = len(self.test)
+        try:
+            gate.cmd_gate3(self.gate_args())
+        finally:
+            gate.TEST_CLIPS = saved
+        return json.load(open(d / "GATE.json"))
+
+    def gate_args(self):
+        d = self.d
+        return Namespace(run=str(d / "run"), test_probs=str(d / "test.jsonl"), labels=str(d / "clips.jsonl"), labels_store=None,
+                         test_ext=None, v2_test_ext=None, spans=str(d / "spans"), eot_v3=str(d / "eot3.jsonl"),
+                         eot_v2=str(d / "eot2.jsonl"), conv_store=None, conv_v3=None, conv_v2=None, conv_val=None, sessions=None,
+                         calib=str(d / "calib.json"), latency=str(d / "latency.json"), parity=str(d / "parity.json"),
+                         parity_conv=str(d / "parity-conv.json"), model=str(d / "v3.gguf"), v2_model=str(d / "v2.gguf"),
+                         harness3=str(d / "h3.json"), pilot=None, crosscheck=None, bleed=None, conv_summary=None,
+                         out=str(d / "GATE.md"), v2_tau85=0.7, boot=200, smoke=False)
+
+    def write_inputs(self, v3_skill, v3_other_skill, acc_ok=True):
         d = self.d
         jsonl(d / "test.jsonl", [{"id": c["id"], "prob": (0.9 if c["label"]["endpoint"] else 0.1)
                                   if (acc_ok or i % 5) else (0.1 if c["label"]["endpoint"] else 0.9)}
@@ -557,16 +582,8 @@ class Harness3AndGate3(unittest.TestCase):
         if not Path(d, "v2.gguf").exists():
             Path(d, "v2.gguf").write_bytes(gguf_bytes([("a.weight", (4, 2), 0)]))
         Path(d, "v3.gguf").write_bytes(gguf_bytes([("a.weight", (4, 2), 0)]))
-        Path(d, "h3.json").write_text(json.dumps({"passed": True}))
-        a = Namespace(run=str(d / "run"), test_probs=str(d / "test.jsonl"), labels=str(d / "clips.jsonl"), labels_store=None,
-                      test_ext=None, v2_test_ext=None, spans=str(d / "spans"), eot_v3=str(d / "eot3.jsonl"),
-                      eot_v2=str(d / "eot2.jsonl"), conv_store=None, conv_v3=None, conv_v2=None, conv_val=None, sessions=None,
-                      calib=str(d / "calib.json"), latency=str(d / "latency.json"), parity=str(d / "parity.json"),
-                      parity_conv=str(d / "parity-conv.json"), model=str(d / "v3.gguf"), v2_model=str(d / "v2.gguf"),
-                      harness3=str(d / "h3.json"), pilot=None, crosscheck=None, bleed=None, conv_summary=None,
-                      out=str(d / "GATE.md"), v2_tau85=0.7, boot=200, smoke=False)
-        gate.cmd_gate3(a)
-        return json.load(open(d / "GATE.json"))
+        # the count of §8.3's cuts the harness check recorded before any model read them
+        Path(d, "h3.json").write_text(json.dumps({"passed": True, "cuts_8_3": {"cuts": 240}}))
 
     def test_v3_better_everywhere_passes(self):
         r = self.run_gate(0.9, 0.9)
@@ -599,6 +616,74 @@ class Harness3AndGate3(unittest.TestCase):
         r = self.run_gate(0.9, 0.9)
         self.assertFalse(r["G3"]["terms"]["same_tensor_list_as_v2"])
         self.assertFalse(r["G3"]["pass"])
+
+    def assert_partial(self, spoil, says):
+        """Amendment 3: a partial input stops the gate as a technical failure, with no GATE file."""
+        with self.assertRaises(SystemExit) as cm:
+            self.run_gate(0.9, 0.9, spoil=spoil)
+        msg = str(cm.exception.code)
+        self.assertTrue(msg.startswith(gate.PARTIAL), msg)
+        self.assertIn(says, msg)
+        self.assertFalse(Path(self.d, "GATE.md").exists())
+        self.assertFalse(Path(self.d, "GATE.json").exists())
+        return msg
+
+    def test_a_missing_test_clip_writes_no_verdict(self):
+        def spoil(d):
+            rows = Path(d, "test.jsonl").read_text().splitlines()
+            Path(d, "test.jsonl").write_text("\n".join(rows[1:]) + "\n")
+        self.assert_partial(spoil, "1 of the 50 test clips have no v3 probability")
+
+    def test_fewer_labels_than_the_test_set_writes_no_verdict(self):
+        def spoil(d):
+            jsonl(d / "clips.jsonl", self.test[:49])
+        self.assert_partial(spoil, "49 Smart Turn test clips")
+
+    def test_a_missing_span_reading_writes_no_verdict(self):
+        def spoil(d):
+            rows = [json.loads(l) for l in Path(d, "eot2.jsonl").read_text().splitlines()]
+            jsonl(d / "eot2.jsonl", [r for r in rows if not (r["id"] == "u7#1" and r["d_ms"] == 200)])
+        self.assert_partial(spoil, "1 span readings of v2 missing")
+
+    def test_a_span_count_other_than_the_harness_check_writes_no_verdict(self):
+        def spoil(d):
+            Path(d, "h3.json").write_text(json.dumps({"passed": True, "cuts_8_3": {"cuts": 242}}))
+        self.assert_partial(spoil, "the harness check counted 242")
+
+    def test_an_empty_or_short_parity_file_writes_no_verdict(self):
+        def empty(d):
+            Path(d, "parity-conv.json").write_text("")
+        self.assert_partial(empty, "parity (conversation records): no parity line")
+        Path(self.d, "parity-conv.json").unlink()
+
+        def short(d):
+            Path(d, "parity.json").write_text(json.dumps({"mode": "turn", "n": 12, "max_abs_diff": 0.0, "same_decision": 12}))
+        self.assert_partial(short, "12 clips")
+
+    def test_a_missing_conversation_reading_writes_no_verdict(self):
+        def spoil(d):
+            jsonl(d / "conv" / "store" / "manifest-00000.jsonl",
+                  [{"id": f"c{i}", "split": "test", "label": i % 2 == 0, "dmax_ms": 400} for i in range(4)])
+            jsonl(d / "conv3.jsonl", [{"id": f"c{i}", "d_ms": k, "prob": 0.5} for i in range(4) for k in (200, 400)])
+            jsonl(d / "conv2.jsonl", [{"id": f"c{i}", "d_ms": k, "prob": 0.5} for i in range(4) for k in (200, 400)][1:])
+            jsonl(d / "conv" / "teacher-conv-00000.jsonl", [{"id": f"c{i}", "prob": 0.5} for i in range(3)])
+
+        def args():
+            a = Harness3AndGate3.gate_args(self)
+            a.conv_store, a.conv_v3, a.conv_v2 = str(self.d / "conv" / "store"), str(self.d / "conv3.jsonl"), str(self.d / "conv2.jsonl")
+            a.sessions = str(self.d / "conv")
+            return a
+        self.gate_args = args
+        msg = self.assert_partial(spoil, "1 readings of v2 missing")
+        self.assertIn("1 of the 4 test records have no teacher opinion", msg)
+        self.assertNotIn("readings of v3 missing", msg)
+
+    def test_a_measured_parity_failure_is_a_verdict(self):
+        def spoil(d):
+            Path(d, "parity.json").write_text(json.dumps({"mode": "turn", "n": 20, "max_abs_diff": 3e-3, "same_decision": 19}))
+        r = self.run_gate(0.9, 0.9, spoil=spoil)
+        self.assertFalse(r["G3"]["terms"]["parity"])
+        self.assertEqual(r["verdict"], "fail")
 
     def test_the_gate_refuses_before_the_harness_check(self):
         Path(self.d, "h3.json").write_text(json.dumps({"passed": False}))

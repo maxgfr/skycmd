@@ -42,8 +42,11 @@ validation and test records of one shard of `sky-data fetch-conv`, recorded only
 Each record's tail (`DIR/tails-<tag>.bin`, 8 s of float32 PCM up to o + 0.2 s, already left-padded
 with zeros as Pipecat does; `tails-<tag>.jsonl` names them) goes through the same preprocessing and
 the same graph; writes `DIR/teacher-conv-<tag>.jsonl` {id, logit, prob} and `.done`, then removes
-the tails (the transient files of the shard). A shard without validation or test records has no
-tails: its `.done` is written with 0 records.
+the tails (the transient files of the shard). The number of tails must be the number of validation
+and test records the shard wrote (`conv-<tag>.json`, `written`); a shard that wrote none has no tails
+and its `.done` is written with 0 records, and a shard whose tails are missing or short is an error
+(exit 1), never 0 records (docs/s6-ear3-prereg.md amendment 3). `scripts/turn3-guard.py teacher` checks
+the whole folder after the fact.
 """
 import argparse
 import json
@@ -198,23 +201,45 @@ def tail_items(binf, rows):
             yield int(r["index"]), r["id"], b
 
 
+def expected_tails(conv, tag):
+    """The validation and test records shard `tag` wrote, each with a tail (`conv-<tag>.json`, `written`);
+    None without the shard's report."""
+    p = Path(conv) / f"conv-{tag}.json"
+    if not p.exists():
+        return None
+    w = json.loads(p.read_text()).get("written") or {}
+    return int(w.get("val", 0)) + int(w.get("test", 0))
+
+
 def run_records(a):
     conv = Path(a.records)
     tag = a.tag
     lines, binf = conv / f"tails-{tag}.jsonl", conv / f"tails-{tag}.bin"
     out, done = conv / f"teacher-conv-{tag}.jsonl", conv / f"teacher-conv-{tag}.done"
+    expected = expected_tails(conv, tag)
     if done.exists():
+        had = json.loads(done.read_text()).get("records")
+        if expected is not None and had != expected:
+            # the tails, if any, are kept: they may be the only copy of what is not scored
+            raise SystemExit(f"{done}: {had} records, but conv-{tag}.json says the shard wrote {expected} validation "
+                             "and test records: remove the .done and score the shard again, or rebuild the shard")
         for p in (lines, binf):
             p.unlink(missing_ok=True)
         print(f"teacher-conv {tag}: done")
         return 0
+    if expected is None:
+        raise SystemExit(f"no {conv / f'conv-{tag}.json'} (sky-data fetch-conv --shards {int(tag)})")
     if not lines.exists():
-        if (conv / f"conv-{tag}.json").exists():
+        if expected == 0:
             done.write_text(json.dumps({"shard": tag, "records": 0}) + "\n")
             print(f"teacher-conv {tag}: no validation or test record")
             return 0
-        raise SystemExit(f"no {lines} (sky-data fetch-conv --shards {int(tag)})")
+        raise SystemExit(f"no {lines}: the shard wrote {expected} validation and test records and their tails are "
+                         f"gone; rebuild the shard (sky-data fetch-conv --shards {int(tag)})")
     rows = [json.loads(l) for l in lines.read_text().splitlines() if l.strip()]
+    if len(rows) != expected:
+        raise SystemExit(f"{lines} names {len(rows)} tails, the shard wrote {expected} validation and test records; "
+                         f"rebuild the shard (sky-data fetch-conv --shards {int(tag)})")
     t0 = time.time()
     tmp = out.with_suffix(".part")
     ctx = mp.get_context("spawn")
