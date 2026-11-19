@@ -17,7 +17,9 @@
 #                  Turn at the span's start (the harness check) and at + 0.2 s (scripts/ear-baseline.py), the
 #                  file removed; no label is read
 #   teacher-conv   §5: every shard's recorded opinion on file (a shard left over is scored)
-#   crosscheck     §3.7: sky-data conv-crosscheck; both bars, else the build stops before any training
+#   crosscheck     §3.7 as amended (amendment 2): sky-data conv-crosscheck, the instant label of every
+#                  eligible energy record; both bars (agreement >= 0.85, drop share <= 0.30), else the build
+#                  stops before any training
 #   bleed          §3.7: scripts/turn-gate.py bleed (no d above 0.60, else the build stops); the counts of
 #                  §3.2 and both numbers are copied to runs/s6-ear3-nano/data/, to be committed
 #   labelcheck     §3.7, optional (LABELCHECK=1 during conv-data, then the owner's answers): the sheet, or

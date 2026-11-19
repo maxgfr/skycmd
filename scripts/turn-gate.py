@@ -808,7 +808,9 @@ DISCLOSURE3 = (
     "design, and the cut point (0.2 s) comes from the demo's policy and LiveKit's card, not from a reading. The "
     "variable trailing silence was motivated by the microphone demo (turn.ts), through the code. v3's study "
     "measured the trailing silence of 3,160 of v2's training clips. Smart Turn's test is still partly in-sample "
-    "for the design, as v2's disclosure says; v3 adds no reading of it before the gate. **What it means:** the "
+    "for the design, as v2's disclosure says; v3 adds no reading of it before the gate. The label cross-check and the "
+    "caps were amended after a measurement on five training sessions, before any validation or test session was read "
+    "(amendment 2: Silero's label read at each energy record's instant; every end-of-turn record kept). **What it means:** the "
     "training corpus is human-to-human and eot-bench is human-to-agent (the labels of the training "
     "conversations are the listener's behaviour, not an agent's need); the training conversations are English "
     "and eot-bench has 14 languages; the conversation test is session-disjoint, not speaker-disjoint."
@@ -1487,7 +1489,7 @@ def render3(r):
            json.dumps({k: v for k, v in t["overall"].items() if k in ("auc", "ece")}),
            "", "Extended by 0.2 and 0.6 s of their own background (reported): " + json.dumps(t["extended"])]
     md += ["", "## Reported (§10)", "", "Pilot: " + json.dumps(r["pilot"]),
-           "", "Label cross-check: " + json.dumps({k: (r["crosscheck"] or {}).get(k) for k in ("agreement", "unconfirmed", "pass")}),
+           "", "Label cross-check (the instant label of amendment 2): " + json.dumps({k: ((r["crosscheck"] or {}).get("instant") or {}).get(k) for k in ("agreement", "drop_share", "agreement_by_class")} | {"pass": (r["crosscheck"] or {}).get("pass")}),
            "", "Bleed probe: " + json.dumps({k: (r["bleed"] or {}).get(k) for k in ("max_auc", "pass")}),
            "", "Data: " + json.dumps((r["data"] or {}).get("counts")),
            "", "Training: " + json.dumps({k: v for k, v in (r["training"] or {}).items() if k != "validation"}),

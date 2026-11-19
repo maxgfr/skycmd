@@ -305,8 +305,8 @@ pub fn measure_sessions(sessions: &[Session]) -> Value {
     json!({
         "sessions": sessions.len(), "sessions_dropped_by_the_session_rules": dropped,
         "energy": en.json(), "silero": si.json(), "runs": runs,
-        "crosscheck": {"agreement": xr["agreement"], "table": xr["table"], "unconfirmed": xr["unconfirmed"],
-            "eligible_energy_records": xr["eligible_energy_records"], "time_difference_ms": xr["time_difference_ms"]},
+        "crosscheck": {"instant": xr["instant"], "offset_matching_reported": xr["offset_matching_reported"],
+            "eligible_energy_records": xr["eligible_energy_records"], "pass": xr["pass"]},
         "variant_i_gap_300ms": v1.json(), "variant_ii_b_from_silero": v2.json(),
     })
 }
@@ -403,7 +403,11 @@ mod tests {
             silero_runs: p.raw_runs.clone(),
         };
         let v = measure_sessions(&[s]);
-        assert_eq!(v["crosscheck"]["agreement"]["value"], 1.0, "{v}");
+        assert_eq!(v["crosscheck"]["instant"]["agreement"]["value"], 1.0, "{v}");
+        assert_eq!(
+            v["crosscheck"]["offset_matching_reported"]["agreement"]["value"], 1.0,
+            "{v}"
+        );
         // the same runs for B: variant (ii) is the energy path
         assert_eq!(v["variant_ii_b_from_silero"]["eot"], v["energy"]["eot"]);
         assert_eq!(v["energy"]["eot"], v["silero"]["eot"]);

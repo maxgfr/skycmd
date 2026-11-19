@@ -89,7 +89,10 @@ pub const SHARD_RESERVE: u64 = 1_500_000_000;
 pub const SILERO_GAP_MS: u64 = 200;
 pub const MATCH_MS: u64 = 150;
 pub const AGREEMENT_BAR: f64 = 0.85;
+/// The second bar before amendment 2 (reported only since).
 pub const UNCONFIRMED_BAR: f64 = 0.30;
+/// Amendment 2's second bar: at most this share of the eligible records has a dropped instant label.
+pub const INSTANT_DROP_BAR: f64 = 0.30;
 
 // ----------------------------------------------------------------------------- the label rule
 
@@ -291,6 +294,53 @@ pub fn label(
         return Err(Drop::Redaction);
     }
     Ok(Labelled { eot, tb, resume })
+}
+
+/// A's run heard within this time before an energy offset still opens the instant label's pause
+/// (amendment 2).
+pub const INSTANT_NEAR_MS: u64 = 150;
+/// A heard speaking this long after o holds the floor at that instant (amendment 2).
+pub const INSTANT_HOLD_MS: u64 = 1000;
+
+/// The instant label of amendment 2 (docs/s6-ear3-prereg.md, §3.7 amended): the label of an energy
+/// record (channel A, offset o) read from another detector's cleaned runs at the instant o, by
+/// [`label`]. A's pause as that detector sees it starts at o_s: the end of A's run that covers o
+/// or ends within 150 ms before it, else o. r is A's next onset after o_s, t_B B's first floor take
+/// at or after o, the horizon from o. A heard for 1.0 s or more after o is a hold; B's floor take
+/// beginning while A is still heard (o <= t_B < o_s) is an overlap. Returns the outcome and o_s.
+pub fn instant_label(
+    a: &Channel,
+    b: &Channel,
+    o: u64,
+    redactions: &[(u64, u64)],
+) -> (std::result::Result<Labelled, Drop>, u64) {
+    let i = a.runs.partition_point(|r| r.start <= o);
+    let os = match i.checked_sub(1).map(|k| a.runs[k]) {
+        Some(r) if r.end > o || r.end + INSTANT_NEAR_MS * MS >= o => r.end,
+        _ => o,
+    };
+    let next = a.runs.iter().find(|x| x.start > os).map(|x| x.start);
+    if os <= o {
+        return (label(a, b, o, next, redactions), os);
+    }
+    // A is heard speaking at o
+    let resume = if os - o >= INSTANT_HOLD_MS * MS {
+        Some(o)
+    } else {
+        next
+    };
+    let out = label(a, b, o, resume, redactions);
+    let tb = b
+        .runs
+        .iter()
+        .zip(&b.kinds)
+        .find(|(r, k)| **k == Kind::Take && r.start >= o)
+        .map(|(r, _)| r.start);
+    match out {
+        Err(Drop::Backchannel) | Err(Drop::Overlap) => (out, os),
+        _ if tb.is_some_and(|t| t < os) => (Err(Drop::Overlap), os),
+        _ => (out, os),
+    }
 }
 
 // ----------------------------------------------------------------------------- gain and bleed
@@ -594,10 +644,15 @@ pub fn write_wav_f32(pcm: &[f32]) -> Vec<u8> {
     b
 }
 
-/// The draw of the caps: for each split, the keys of its `cap` smallest eligible records so far.
+/// The draw of the caps (§3.2 item 8, amendments 1 and 2): every eligible end-of-turn record of a
+/// split, and its holds of the smallest keys up to the split's total. While the shards come, the
+/// holds keep their `cap` smallest keys; [`Caps::finalize`] then keeps `cap − ends of turn` of them
+/// (and, were there more ends of turn than the cap, the `cap` smallest of those and no hold).
 pub struct Caps {
-    heaps: HashMap<String, BinaryHeap<u64>>,
+    /// `(split, end of turn)` → the kept keys (a max-heap).
+    heaps: HashMap<(String, bool), BinaryHeap<u64>>,
     caps: HashMap<String, usize>,
+    last: bool,
 }
 
 impl Caps {
@@ -605,14 +660,32 @@ impl Caps {
         Caps {
             heaps: HashMap::new(),
             caps: caps.iter().map(|&(s, c)| (s.to_string(), c)).collect(),
+            last: false,
         }
     }
 
-    /// Adds an eligible record's key; true when it is among the `cap` smallest now.
-    pub fn insert(&mut self, split: &str, key: u64) -> bool {
+    /// How many keys of a split's class may be kept now.
+    fn limit(&self, split: &str, eot: bool) -> usize {
         let cap = self.caps.get(split).copied().unwrap_or(0);
-        let h = self.heaps.entry(split.to_string()).or_default();
-        if h.len() < cap {
+        if !self.last {
+            return if eot { usize::MAX } else { cap };
+        }
+        let n_eot = self
+            .heaps
+            .get(&(split.to_string(), true))
+            .map_or(0, |h| h.len());
+        if eot {
+            n_eot.min(cap)
+        } else {
+            cap.saturating_sub(n_eot)
+        }
+    }
+
+    /// Adds an eligible record's key; true when the draw keeps it now.
+    pub fn insert(&mut self, split: &str, eot: bool, key: u64) -> bool {
+        let lim = self.limit(split, eot);
+        let h = self.heaps.entry((split.to_string(), eot)).or_default();
+        if h.len() < lim {
             h.push(key);
             true
         } else if h.peek().is_some_and(|&m| key < m) {
@@ -624,13 +697,31 @@ impl Caps {
         }
     }
 
-    /// The largest key a split keeps now (every key while it holds fewer than its cap).
-    pub fn threshold(&self, split: &str) -> u64 {
-        let cap = self.caps.get(split).copied().unwrap_or(0);
-        match self.heaps.get(split) {
-            Some(h) if h.len() >= cap => h.peek().copied().unwrap_or(u64::MAX),
-            _ if cap == 0 => 0,
-            _ => u64::MAX,
+    /// The draw after the last shard: the holds cut to the split's total less its ends of turn.
+    pub fn finalize(&mut self) {
+        self.last = true;
+        let keys: Vec<(String, bool)> = self.heaps.keys().cloned().collect();
+        // the ends of turn first: the holds' limit counts them
+        for eot in [true, false] {
+            for k in keys.iter().filter(|k| k.1 == eot) {
+                let lim = self.limit(&k.0, k.1);
+                let h = self.heaps.get_mut(k).expect("listed");
+                while h.len() > lim {
+                    h.pop();
+                }
+            }
+        }
+    }
+
+    /// Whether the draw keeps a record (of a split and class) of this key.
+    pub fn keeps(&self, split: &str, eot: bool, key: u64) -> bool {
+        let lim = self.limit(split, eot);
+        if lim == 0 {
+            return false;
+        }
+        match self.heaps.get(&(split.to_string(), eot)) {
+            Some(h) if h.len() >= lim => h.peek().is_some_and(|&m| key <= m),
+            _ => true,
         }
     }
 }
@@ -724,7 +815,7 @@ impl ConvDir {
 }
 
 /// The keys of every record a store holds, by split.
-fn stored_keys(store: &Path, skip_tag: Option<&str>) -> Result<Vec<(String, u64)>> {
+fn stored_keys(store: &Path, skip_tag: Option<&str>) -> Result<Vec<(String, bool, u64)>> {
     let mut out = Vec::new();
     if !store.exists() {
         return Ok(out);
@@ -747,7 +838,7 @@ fn stored_keys(store: &Path, skip_tag: Option<&str>) -> Result<Vec<(String, u64)
             }
             let v: Value = serde_json::from_str(&line)?;
             if let (Some(s), Some(k)) = (v["split"].as_str(), v["key"].as_u64()) {
-                out.push((s.to_string(), k));
+                out.push((s.to_string(), v["label"] == true, k));
             }
         }
     }
@@ -776,8 +867,8 @@ impl<'a> ShardWriter<'a> {
     pub fn new(cd: &'a ConvDir, tag: &str, threads: usize) -> Result<Self> {
         fs::create_dir_all(cd.store())?;
         let mut caps = Caps::new(&CAPS);
-        for (s, k) in stored_keys(&cd.store(), Some(tag))? {
-            caps.insert(&s, k);
+        for (s, e, k) in stored_keys(&cd.store(), Some(tag))? {
+            caps.insert(&s, e, k);
         }
         let parity = read_parity(cd)?;
         let (tb, _) = cd.tails(tag);
@@ -883,7 +974,7 @@ impl<'a> ShardWriter<'a> {
         for (cand, l) in &eligible {
             let id = format!("{}:{}:{}", meta.id, cand.channel, cand.pause.offset);
             let key = record_key(&id);
-            if self.caps.insert(split, key) {
+            if self.caps.insert(split, l.eot, key) {
                 let o = cand.pause.offset;
                 let dmax = *cand.pause.asks.last().expect("a pause has an ask");
                 let (_, _, cut_hops) = record_hops(o, dmax);
@@ -1076,9 +1167,9 @@ pub fn compact(store: &Path, caps: &Caps, full: bool) -> Result<usize> {
             .map(|l| -> Result<Value> { Ok(serde_json::from_str(&l?)?) })
             .collect::<Result<_>>()?;
         let live = |v: &Value| {
-            v["key"]
-                .as_u64()
-                .is_some_and(|k| k <= caps.threshold(v["split"].as_str().unwrap_or("")))
+            v["key"].as_u64().is_some_and(|k| {
+                caps.keeps(v["split"].as_str().unwrap_or(""), v["label"] == true, k)
+            })
         };
         let gone = lines.iter().filter(|v| !live(v)).count();
         if gone == 0 || (!full && gone * 4 < lines.len()) {
@@ -1300,8 +1391,8 @@ pub fn fetch_conv(hf: &Hf, o: &ConvOptions) -> Result<Value> {
         fs::remove_file(&tar)?;
         // the parts that lost a quarter of their records to the caps since they were written
         let mut caps = Caps::new(&CAPS);
-        for (s, k) in stored_keys(&cd.store(), None)? {
-            caps.insert(&s, k);
+        for (s, e, k) in stored_keys(&cd.store(), None)? {
+            caps.insert(&s, e, k);
         }
         let removed = compact(&cd.store(), &caps, false)?;
         eprintln!(
@@ -1321,9 +1412,10 @@ pub fn fetch_conv(hf: &Hf, o: &ConvOptions) -> Result<Value> {
 /// subset).
 pub fn finalize(cd: &ConvDir) -> Result<Value> {
     let mut caps = Caps::new(&CAPS);
-    for (s, k) in stored_keys(&cd.store(), None)? {
-        caps.insert(&s, k);
+    for (s, e, k) in stored_keys(&cd.store(), None)? {
+        caps.insert(&s, e, k);
     }
+    caps.finalize();
     let removed = compact(&cd.store(), &caps, true)?;
     eprintln!("[fetch-conv] finalize: {removed} records compacted out");
     summary(cd, true)
@@ -1350,6 +1442,7 @@ pub fn summary(cd: &ConvDir, last: bool) -> Result<Value> {
         "caps": CAPS.iter().map(|(s, c)| (s.to_string(), *c)).collect::<BTreeMap<_, _>>(),
         "cap_seed": CAP_SEED,
         "rule": "docs/s6-ear3-prereg.md §3.2 (amendment 1): drops counted by the first rule that applies, in the order of item 5; sessions absent from splits.json are not decoded",
+        "class_ratio": "amendment 2: the caps keep every eligible end-of-turn record and draw the holds up to the total, so the stored ratio is not the natural one; counts.eligible holds the natural counts by split, [hold, end of turn]",
     });
     if last {
         let mut train_speakers = HashSet::new();
@@ -1471,6 +1564,14 @@ pub struct Crosscheck {
     pub diffs_ms: Vec<i64>,
     pub silero_offsets: usize,
     pub silero_drops: BTreeMap<String, usize>,
+    /// Amendment 2, the instant label of every eligible energy record: its drops, and its table
+    /// (rows: the energy label; columns: the instant label) where it is not a drop.
+    pub instant_drops: BTreeMap<String, usize>,
+    pub instant_table: [[usize; 2]; 2],
+    /// End-of-turn records in which Silero hears A still speaking at o + 0.2 s, and A's remaining
+    /// speech (o_s − o, ms) in them.
+    pub eot_speaking_at_first_ask: usize,
+    pub eot_remaining_ms: Vec<u64>,
 }
 
 /// One validation session's cross-check: energy records `(channel, o, eot)` against the Silero
@@ -1511,6 +1612,27 @@ pub fn crosscheck_session(
             .map(|r| (r.1, r.2))
             .collect();
         e.sort();
+        for &(o, cls) in &e {
+            let (out, os) = instant_label(&chans[a], &chans[1 - a], o, redactions);
+            match out {
+                Err(d) => {
+                    *x.instant_drops
+                        .entry(
+                            serde_json::to_value(d)
+                                .unwrap()
+                                .as_str()
+                                .unwrap_or("")
+                                .to_string(),
+                        )
+                        .or_default() += 1
+                }
+                Ok(l) => x.instant_table[cls as usize][l.eot as usize] += 1,
+            }
+            if cls && os > o + crate::turn_policy::STOP_MS * MS {
+                x.eot_speaking_at_first_ask += 1;
+                x.eot_remaining_ms.push((os - o) / MS);
+            }
+        }
         let eo: Vec<u64> = e.iter().map(|r| r.0).collect();
         let so: Vec<u64> = offs.iter().map(|r| r.0).collect();
         for (i, m) in match_offsets(&eo, &so, MATCH_MS * MS)
@@ -1563,15 +1685,38 @@ impl Crosscheck {
             json!({"hold": a[0] as f64 / self.eligible_by_class[0].max(1) as f64,
                 "eot": a[1] as f64 / self.eligible_by_class[1].max(1) as f64})
         };
-        let pass_a = self.both_labelled > 0 && agreement >= AGREEMENT_BAR;
-        let pass_u = self.eligible > 0 && unconfirmed <= UNCONFIRMED_BAR;
+        // amendment 2: the bars, on the instant label of every eligible energy record
+        let t = self.instant_table;
+        let labelled = t[0][0] + t[0][1] + t[1][0] + t[1][1];
+        let agree_all = t[0][0] + t[1][1];
+        let dropped: usize = self.instant_drops.values().sum();
+        let agreement_all = agree_all as f64 / labelled.max(1) as f64;
+        let (alo, ahi) = wilson(agree_all, labelled);
+        let drop_share = dropped as f64 / self.eligible.max(1) as f64;
+        let pass_a = labelled > 0 && agreement_all >= AGREEMENT_BAR;
+        let pass_d = self.eligible > 0 && drop_share <= INSTANT_DROP_BAR;
+        let by_class = |c: usize| t[c][c] as f64 / (t[c][0] + t[c][1]).max(1) as f64;
+        let mut rem = self.eot_remaining_ms.clone();
+        rem.sort();
         json!({
-            "about": "docs/s6-ear3-prereg.md §3.7: the labels of the validation sessions derived again from Silero VAD v6.2.3's speech runs with the same label code; energy records matched to Silero offsets within 150 ms, one to one, the closest first. Silero is used for this check only: no record is selected, dropped or relabelled by it.",
+            "about": "docs/s6-ear3-prereg.md §3.7 as amended (amendment 2): every eligible energy record of the validation sessions labelled again at its instant from Silero VAD v6.2.3's speech runs, with the same label code. The bars: the agreement on every record whose instant label is not a drop, and the share of records whose instant label is a drop. The offset matching (within 150 ms, one to one) is reported and decides nothing. Silero selects, drops and relabels nothing.",
             "sessions": self.sessions, "eligible_energy_records": self.eligible,
             "eligible_by_class": {"hold": self.eligible_by_class[0], "eot": self.eligible_by_class[1]},
+            "instant": {
+                "agreement": {"value": agreement_all, "wilson95": [alo, ahi], "agree": agree_all,
+                    "labelled": labelled, "bar": AGREEMENT_BAR, "pass": pass_a},
+                "drop_share": {"value": drop_share, "records": dropped, "drops": self.instant_drops,
+                    "bar": INSTANT_DROP_BAR, "pass": pass_d},
+                "table": {"rows": "energy label (hold, eot)", "columns": "instant Silero label (hold, eot)", "counts": t},
+                "agreement_by_class": {"hold": by_class(0), "eot": by_class(1)},
+                "eot_silero_hears_a_at_first_ask": {"records": self.eot_speaking_at_first_ask,
+                    "share": self.eot_speaking_at_first_ask as f64 / self.eligible_by_class[1].max(1) as f64,
+                    "median_remaining_ms": rem.get(rem.len() / 2)},
+            },
+            "offset_matching_reported": {
             "agreement": {"value": agreement, "wilson95": [lo, hi], "agree": self.agree,
-                "pairs_labelled_by_both": self.both_labelled, "bar": AGREEMENT_BAR, "pass": pass_a},
-            "unconfirmed": {"value": unconfirmed, "records": unconf, "bar": UNCONFIRMED_BAR, "pass": pass_u,
+                "pairs_labelled_by_both": self.both_labelled, "bar_before_amendment_2": AGREEMENT_BAR},
+            "unconfirmed": {"value": unconfirmed, "records": unconf, "bar_before_amendment_2": UNCONFIRMED_BAR,
                 "unmatched": {"hold": self.unmatched[0], "eot": self.unmatched[1]},
                 "silero_dropped": {"hold": self.silero_dropped[0], "eot": self.silero_dropped[1]},
                 "share_by_class": {"unmatched": share(self.unmatched), "silero_dropped": share(self.silero_dropped)}},
@@ -1579,7 +1724,8 @@ impl Crosscheck {
             "time_difference_ms": {"silero_minus_energy": true, "n": d.len(), "p05": q(0.05), "p25": q(0.25),
                 "median": q(0.5), "p75": q(0.75), "p95": q(0.95), "histogram_10ms": hist},
             "silero_offsets": self.silero_offsets, "silero_drops": self.silero_drops,
-            "pass": pass_a && pass_u,
+            },
+            "pass": pass_a && pass_d,
         })
     }
 }
@@ -1761,9 +1907,10 @@ pub fn conv_fixture(data: &Path, sessions: usize) -> Result<Value> {
     fs::remove_file(tb).ok();
     fs::remove_file(tl).ok();
     let mut caps = Caps::new(&CAPS);
-    for (s, k) in stored_keys(&cd.store(), None)? {
-        caps.insert(&s, k);
+    for (s, e, k) in stored_keys(&cd.store(), None)? {
+        caps.insert(&s, e, k);
     }
+    caps.finalize();
     compact(&cd.store(), &caps, true)?;
     Ok(json!({"fixture": tag, "counts": c}))
 }
@@ -1998,15 +2145,65 @@ mod tests {
     }
 
     #[test]
-    fn caps_keep_the_smallest_keys() {
-        let mut c = Caps::new(&[("train", 3)]);
-        for k in [50, 10, 40, 30, 20, 60] {
-            c.insert("train", k);
+    fn caps_keep_every_end_of_turn_and_the_smallest_holds() {
+        let mut c = Caps::new(&[("train", 5)]);
+        for k in [50, 10, 40, 30, 20, 60, 70] {
+            c.insert("train", false, k);
         }
-        assert_eq!(c.threshold("train"), 30);
-        assert!(!c.insert("train", 35) && c.insert("train", 5));
-        assert_eq!(c.threshold("train"), 20);
-        assert_eq!(c.threshold("val"), 0);
+        // while the shards come, the holds keep their 5 smallest keys; every end of turn is kept
+        assert!(c.keeps("train", false, 50) && !c.keeps("train", false, 60));
+        assert!(!c.insert("train", false, 55) && c.insert("train", false, 5));
+        for k in [99, 98] {
+            assert!(c.insert("train", true, k));
+        }
+        assert!(c.keeps("train", true, 99) && !c.keeps("val", false, 1));
+        // the draw: 5 = 2 ends of turn + the 3 smallest holds (5, 10, 20)
+        c.finalize();
+        assert!(c.keeps("train", true, 98) && c.keeps("train", true, 99));
+        assert!(c.keeps("train", false, 20) && !c.keeps("train", false, 30));
+        // more ends of turn than the cap: the cap's smallest of them, no hold
+        let mut d = Caps::new(&[("val", 2)]);
+        for k in [7, 3, 9] {
+            d.insert("val", true, k);
+        }
+        d.insert("val", false, 1);
+        d.finalize();
+        assert!(d.keeps("val", true, 7) && !d.keeps("val", true, 9) && !d.keeps("val", false, 1));
+    }
+
+    #[test]
+    fn the_instant_label_reads_who_speaks_next_at_o() {
+        let none: &[(u64, u64)] = &[];
+        // A pauses at 3.0 s as Silero hears it too; B takes the floor at 3.5 s: end of turn
+        let a = chan(&[(0.0, 3.0), (6.0, 8.0)], 20.0);
+        let b = chan(&[(3.5, 5.5)], 20.0);
+        assert!(instant_label(&a, &b, 3 * S, none).0.unwrap().eot);
+        // the energy offset falls 0.1 s after Silero's: the pause starts at Silero's run end
+        let (l, os) = instant_label(&a, &b, 3 * S + S / 10, none);
+        assert!(l.unwrap().eot);
+        assert_eq!(os, 3 * S);
+        // A still heard for 0.3 s after o (trailing off), then B takes the floor: end of turn
+        let a = chan(&[(0.0, 3.3), (7.0, 8.0)], 20.0);
+        let b = chan(&[(3.6, 5.5)], 20.0);
+        let (l, os) = instant_label(&a, &b, 3 * S, none);
+        assert!(l.unwrap().eot);
+        assert_eq!(os, 3 * S + 3 * S / 10);
+        // A heard going on for seconds after o: a hold, even with nobody else within 4 s
+        let a = chan(&[(0.0, 9.0)], 20.0);
+        let b = chan(&[(12.0, 14.0)], 20.0);
+        let l = instant_label(&a, &b, 3 * S, none).0.unwrap();
+        assert!(!l.eot);
+        // B's floor take beginning while A is still heard: an overlap
+        let a = chan(&[(0.0, 3.5), (7.0, 8.0)], 20.0);
+        let b = chan(&[(3.2, 6.0)], 20.0);
+        assert_eq!(instant_label(&a, &b, 3 * S, none).0, Err(Drop::Overlap));
+        // A heard resuming 0.5 s after a pause seen at o: a hold
+        let a = chan(&[(0.0, 3.0), (3.5, 6.0)], 20.0);
+        let b = chan(&[(10.0, 12.0)], 20.0);
+        assert!(!instant_label(&a, &b, 3 * S, none).0.unwrap().eot);
+        // nobody within 4 s of a pause Silero hears: dropped, as §3.2
+        let a = chan(&[(0.0, 3.0), (8.0, 9.0)], 20.0);
+        assert_eq!(instant_label(&a, &b, 3 * S, none).0, Err(Drop::NoFollow));
     }
 
     #[test]
@@ -2051,8 +2248,13 @@ mod tests {
             &mut x,
         );
         let r = x.report();
-        assert_eq!(r["agreement"]["value"], 1.0, "{r}");
-        assert_eq!(r["unconfirmed"]["value"], 0.0, "{r}");
+        // the statistics of before amendment 2, unchanged, now reported only
+        let m = &r["offset_matching_reported"];
+        assert_eq!(m["agreement"]["value"], 1.0, "{r}");
+        assert_eq!(m["unconfirmed"]["value"], 0.0, "{r}");
+        // the amended bars: identical runs give agreement 1 and no dropped instant label
+        assert_eq!(r["instant"]["agreement"]["value"], 1.0, "{r}");
+        assert_eq!(r["instant"]["drop_share"]["value"], 0.0, "{r}");
         assert_eq!(r["pass"], true);
         // shifted by 300 ms, nothing matches: every record is unconfirmed
         let shift: Vec<Vec<Run>> = p
@@ -2075,7 +2277,16 @@ mod tests {
             &[],
             &mut y,
         );
-        assert_eq!(y.report()["unconfirmed"]["value"], 1.0);
+        let ry = y.report();
+        assert_eq!(ry["offset_matching_reported"]["unconfirmed"]["value"], 1.0);
+        // read at the energy instants, the shifted runs still answer who speaks next: every A
+        // is heard 300 ms after its energy offset, trailing off, and the labels agree
+        assert_eq!(ry["instant"]["agreement"]["value"], 1.0, "{ry}");
+        assert_eq!(ry["instant"]["drop_share"]["value"], 0.0, "{ry}");
+        assert_eq!(
+            ry["instant"]["eot_silero_hears_a_at_first_ask"]["median_remaining_ms"],
+            300
+        );
     }
 
     #[test]
@@ -2095,7 +2306,11 @@ mod tests {
         }
         // the cross-check of the fixture agrees with itself
         let x = conv_crosscheck(&dir).unwrap();
-        assert_eq!(x["agreement"]["value"], 1.0, "{x}");
+        assert_eq!(x["instant"]["agreement"]["value"], 1.0, "{x}");
+        assert_eq!(
+            x["offset_matching_reported"]["agreement"]["value"], 1.0,
+            "{x}"
+        );
         assert!(cd.parity().join("records.jsonl").exists());
         // compaction under a tighter cap keeps exactly the smallest keys, offsets consistent
         let keys: Vec<u64> = st
@@ -2109,22 +2324,46 @@ mod tests {
             .iter()
             .map(|c| (c.id.clone(), st.hops(c).unwrap()))
             .collect();
-        let mut caps = Caps::new(&[("train", 3), ("val", 1_000_000), ("test", 1_000_000)]);
-        for &k in &keys {
-            caps.insert("train", k);
+        let eot_keys: HashSet<u64> = st
+            .clips
+            .iter()
+            .filter(|c| c.split() == "train" && c.label() == Some(true))
+            .map(|c| c.meta["key"].as_u64().unwrap())
+            .collect();
+        let mut holds: Vec<u64> = st
+            .clips
+            .iter()
+            .filter(|c| c.split() == "train" && c.label() == Some(false))
+            .map(|c| c.meta["key"].as_u64().unwrap())
+            .collect();
+        holds.sort();
+        assert!(!eot_keys.is_empty() && holds.len() > 2);
+        // a total of the ends of turn + 2: every end of turn and the 2 holds of smallest key
+        let total = eot_keys.len() + 2;
+        let mut caps = Caps::new(&[("train", total), ("val", 1_000_000), ("test", 1_000_000)]);
+        for c in &st.clips {
+            caps.insert(
+                c.split(),
+                c.label() == Some(true),
+                c.meta["key"].as_u64().unwrap(),
+            );
         }
+        caps.finalize();
         let removed = compact(&cd.store(), &caps, true).unwrap();
-        assert_eq!(removed, keys.len() - 3);
+        assert_eq!(removed, keys.len() - total);
         let st2 = Store::open(&cd.store()).unwrap();
-        let mut sorted = keys.clone();
-        sorted.sort();
         let kept: HashSet<u64> = st2
             .clips
             .iter()
             .filter(|c| c.split() == "train")
             .map(|c| c.meta["key"].as_u64().unwrap())
             .collect();
-        assert_eq!(kept, sorted[..3].iter().copied().collect());
+        let want: HashSet<u64> = eot_keys
+            .iter()
+            .copied()
+            .chain(holds[..2].iter().copied())
+            .collect();
+        assert_eq!(kept, want);
         for c in &st2.clips {
             assert_eq!(st2.hops(c).unwrap(), hops_before[&c.id]);
         }
