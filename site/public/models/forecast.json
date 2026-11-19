@@ -49,7 +49,7 @@
       "file": "ref/timestral-5m.onnx",
       "spec": "ref/timestral-5m.json",
       "params": 5210000,
-      "bytes": 22969292,
+      "bytes": 21329304,
       "license": "Modified MIT (Mistral AI)",
       "notice": "ref/TIMESTRAL-LICENSE.txt",
       "url": "https://huggingface.co/mistralai/Timestral-5M",

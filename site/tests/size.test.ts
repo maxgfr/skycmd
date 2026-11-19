@@ -21,7 +21,7 @@ test('decimal units: whole KB under 1 MB, one decimal of MB above', () => {
   assert.equal(formatSize(2_418_912), '2.4 MB')
   assert.equal(formatSize(3_692_224), '3.7 MB')
   assert.equal(formatSize(20_684_640), '20.7 MB')
-  assert.equal(formatSize(22_969_292), '23.0 MB')
+  assert.equal(formatSize(21_329_304), '21.3 MB')
   assert.equal(formatSize(0), '0 KB')
   assert.equal(formatSize(499), '0 KB')
   assert.equal(formatSize(999_499), '999 KB')
