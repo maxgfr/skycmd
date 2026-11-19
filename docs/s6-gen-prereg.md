@@ -1,190 +1,192 @@
-# s6-nano et s6-micro : pré-enregistrement (le s6 généraliste)
+# s6-nano and s6-micro: pre-registration (the general-purpose s6)
 
-**Statut : figé le 29/10/2026, avant tout entraînement de s6-nano et de s6-micro.** Aucun run s6 n'a tourné : ni le pilote pico, ni l'ablation. Ce fichier fixe les modèles, les données, le pilote de learning rate de chaque taille, les runs, le choix du checkpoint, l'évaluation et les portes de publication. Les résultats seront lus à travers ce texte, et pas à travers une version écrite après coup.
+*Translated into English on 19/11/2026. The text frozen on 29/10/2026 was written in French; that original, which remains the reference in case of doubt, is this file at commit `1f180a5`. The translation changes no rule, number or threshold.*
 
-**Modifications de ce fichier :**
+**Status: frozen on 29/10/2026, before any training of s6-nano and of s6-micro.** No s6 run has run: neither the pico pilot, nor the ablation. This file fixes the models, the data, the learning rate pilot of each size, the runs, the choice of the checkpoint, the evaluation and the publication gates. The results will be read through this text, and not through a version written after the fact.
 
-- tout amendement est commité, daté et motivé en section 8 ;
-- il précède les runs qu'il concerne ;
-- il ne touche jamais un seuil après la lecture d'un résultat qu'il départage.
+**Changes to this file:**
 
-## 1. Pourquoi
+- every amendment is committed, dated and justified in section 8;
+- it precedes the runs it concerns;
+- it never touches a threshold after the reading of a result that it settles.
 
-Le s6 devient un modèle généraliste : les 4 jeux, et des questions à choix en texte libre. Il remplace le modèle final s6-pico (`docs/s6-prereg.md`, amendement 2). Le pilote et l'ablation au format pico restent : ils sont rapides, et ils ne servent qu'à choisir la recette.
+## 1. Why
 
-Les deux tentatives précédentes sur `typed_decisions_bench` sont restées sous la classe majoritaire (**0,398**) :
+s6 becomes a general-purpose model: the 4 games, and multiple-choice questions in free text. It replaces the s6-pico final model (`docs/s6-prereg.md`, amendment 2). The pilot and the ablation at pico size remain: they are fast, and they serve only to choose the recipe.
 
-- **s3-pico** (445 k paramètres) fait **0,382**. Avec 1 024 jetons et des fenêtres de 64/96, 96,8 % des séquences sont tronquées (tutoriel, chapitre 12).
-- **s4-micro** (5,6 M) fait **0,343**. Sa cause identifiée est un pré-entraînement de 30 min sur 150 Mo seulement (tutoriel, chapitre 22).
+The two previous attempts on `typed_decisions_bench` stayed below the majority class (**0,398**):
 
-s6-nano et s6-micro ont des fenêtres larges, un vocabulaire plus grand, 300 Mo de texte (`data/text-open` puis `data/text`) et des heures de pré-entraînement.
+- **s3-pico** (445 k parameters) scores **0,382**. With 1 024 tokens and windows of 64/96, 96,8 % of the sequences are truncated (tutorial, chapter 12).
+- **s4-micro** (5,6 M) scores **0,343**. Its identified cause is a pretraining of 30 min on only 150 MB (tutorial, chapter 22).
 
-**Pas de professeur** (remplacé par l'amendement 1 : le professeur open source GLM-5.3-flash, à distance). Aucun fichier professeur n'est sur disque (ni `data/s4`, ni `data/s5`, ni les professeurs laya ou oscar-150m). Cette v1 est donc entraînée sans distillation, et ce choix est fait avant le run. Les cibles douces déjà présentes dans les jeux de données (tasksource, procedural, calibrated…) suffisent.
+s6-nano and s6-micro have wide windows, a larger vocabulary, 300 MB of text (`data/text-open` then `data/text`) and hours of pretraining.
 
-## 2. Les modèles
+**No teacher** (replaced by amendment 1: the open-source teacher GLM-5.3-flash, remote). No teacher file is on disk (neither `data/s4`, nor `data/s5`, nor the laya or oscar-150m teachers). This v1 is therefore trained without distillation, and this choice is made before the run. The soft targets already present in the datasets (tasksource, procedural, calibrated…) are enough.
 
-Les tailles et les nombres de paramètres ont été fixés dans `s6_parameter_counts` (`crates/sky-train/src/s2/model.rs`) avant tout run.
+## 2. The models
+
+The sizes and the parameter counts were fixed in `s6_parameter_counts` (`crates/sky-train/src/s2/model.rs`) before any run.
 
 | | s6-nano | s6-micro |
 |---|---|---|
 | config | `configs/s6-nano.json` | `configs/s6-micro.json` |
-| paramètres (décision / pré-entraînement) | **1 569 457** / 778 065 | **5 849 601** / 2 960 769 |
-| vocabulaire | 2 048 (`data/tok/tok-s6-2048.json`) | 4 096 (`data/tok/tok-s6-4096.json`) |
-| largeur d / ff | 144 / 288 | 256 / 768 |
-| blocs × boucles (état) | 2 × 2, sorties après 1, 2, 3, 4 | 2 × 3, sorties après 2, 4, 6 |
-| têtes | 2 (dimension 72) | 4 (dimension 64) |
-| fenêtres état / tête | 256 / 128, puis **512 / 160** (amendement 2) | 384 / 128 |
+| parameters (decision / pretraining) | **1 569 457** / 778 065 | **5 849 601** / 2 960 769 |
+| vocabulary | 2 048 (`data/tok/tok-s6-2048.json`) | 4 096 (`data/tok/tok-s6-4096.json`) |
+| width d / ff | 144 / 288 | 256 / 768 |
+| blocks × loops (state) | 2 × 2, exits after 1, 2, 3, 4 | 2 × 3, exits after 2, 4, 6 |
+| heads | 2 (dimension 72) | 4 (dimension 64) |
+| state / head windows | 256 / 128, then **512 / 160** (amendment 2) | 384 / 128 |
 
-s6-micro a la forme de s4-micro (5 587 201 paramètres) plus les lignes de sonde Parallax. Les deux configs ont `fuse_numbers: true`.
+s6-micro has the shape of s4-micro (5 587 201 parameters) plus the Parallax probe rows. Both configs have `fuse_numbers: true`.
 
-**La recette vient de l'ablation pico, appliquée mécaniquement.** Avant le pilote de la première taille, un commit règle les deux configs et les variables de `scripts/train-s6.sh` sur les règles d'adoption de `docs/s6-prereg.md` §4 :
+**The recipe comes from the pico ablation, applied mechanically.** Before the pilot of the first size, a commit sets the two configs and the variables of `scripts/train-s6.sh` according to the adoption rules of `docs/s6-prereg.md` §4:
 
-- `parallax` reste `true` si la règle 2 l'adopte, sinon il passe à `false` ;
-- `"xsa": true` est ajouté si la règle 3 adopte XSA (il n'ajoute aucun tenseur) ;
-- `OPT` (Muon v2 ou `--no-muon`, `--wd-mode soda`, `--ns-polish 0`), `PRETRAIN` (`--curriculum 0.1`) et `DECIDE` (`--exit-kd 0.5`, `--ema 0.999`, `--qat-grad-a 0.21`) prennent les changements adoptés ;
-- `LR_SCALE` est l'échelle du pilote pico pour l'optimiseur retenu.
+- `parallax` stays `true` if rule 2 adopts it, otherwise it becomes `false`;
+- `"xsa": true` is added if rule 3 adopts XSA (it adds no tensor);
+- `OPT` (Muon v2 or `--no-muon`, `--wd-mode soda`, `--ns-polish 0`), `PRETRAIN` (`--curriculum 0.1`) and `DECIDE` (`--exit-kd 0.5`, `--ema 0.999`, `--qat-grad-a 0.21`) take the adopted changes;
+- `LR_SCALE` is the pico pilot's scale for the optimizer kept.
 
-Si `parallax` passe à `false`, le même commit corrige les nombres de paramètres du test. Rien d'autre ne change dans la recette.
+If `parallax` becomes `false`, the same commit corrects the parameter counts of the test. Nothing else changes in the recipe.
 
-## 3. Données
+## 3. Data
 
-Toutes les données sortent de `scripts/prepare-data.sh`, lancé une fois avant le pilote pico (`docs/s6-prereg.md` §1). Il écrit aussi les deux tokenizers et les jeux zéro-shot de MASSIVE (`fetch-commands --only massive`, puis `s4-corpus --only-heldout`). Rien n'est régénéré entre les pilotes et les runs des deux tailles.
+All the data come out of `scripts/prepare-data.sh`, run once before the pico pilot (`docs/s6-prereg.md` §1). It also writes the two tokenizers and the zero-shot sets of MASSIVE (`fetch-commands --only massive`, then `s4-corpus --only-heldout`). Nothing is regenerated between the pilots and the runs of the two sizes.
 
-- **Tokenizers.** `sky-data train-tokenizer --vocab N --num` sur `data/text`, `data/text-open`, `data/decisions` et `data/games`.
-- **Pré-entraînement MLM.** `data/text-open` puis `data/text`, plus 10 % de curriculum numérique (`data/numeric`), en séquences de 256 jetons.
-- **Décisions.** `data/decisions,data/games,data/numeric` avec les poids `decisions=0.55,games=0.35,numeric=0.10`. `data/decisions` compte 831 387 questions dans 29 jeux. Seuls les splits `train` sont entraînés et seuls les splits `val` servent à choisir.
-- **DAgger.** Poids `games=0.4,rN=0.25,decisions=0.3,numeric=0.05`. Garder 30 % de décisions évite d'oublier la langue en apprenant à jouer.
-- **Ensembles de test, jamais lus avant l'évaluation finale :**
-  - `typed_decisions_bench` : tout est en `split: test` ;
-  - MASSIVE en et fr (`data/s4/heldout/zs_massive_*.jsonl`) : le split test, pas du tout dans `data/decisions`, donc **zéro-shot** ;
-  - notam (`notam:deel_subject`, `notam:notam_multi`) : tout est en test, donc jamais entraîné ;
-  - When2Call : son split test. Ses splits train et val sont entraînés : c'est un test de la même distribution.
-- **Banking77 est dans la distribution.** Il est maintenant dans `data/decisions`, en train et val seulement, donc s6 s'entraîne dessus. `zs_banking77` (tiré de ces mêmes records) est rapporté à part, avec la mention « entraîné », et n'entre dans aucune moyenne ni aucune porte.
-- Les données enseignant GLM (`glm_orders`, `paraphrased`) : leur présence ou leur absence est notée dans le rapport.
+- **Tokenizers.** `sky-data train-tokenizer --vocab N --num` on `data/text`, `data/text-open`, `data/decisions` and `data/games`.
+- **MLM pretraining.** `data/text-open` then `data/text`, plus 10 % of numeric curriculum (`data/numeric`), in sequences of 256 tokens.
+- **Decisions.** `data/decisions,data/games,data/numeric` with the weights `decisions=0.55,games=0.35,numeric=0.10`. `data/decisions` counts 831 387 questions in 29 datasets. Only the `train` splits are trained on and only the `val` splits are used to choose.
+- **DAgger.** Weights `games=0.4,rN=0.25,decisions=0.3,numeric=0.05`. Keeping 30 % of decisions avoids forgetting language while learning to play.
+- **Test sets, never read before the final evaluation:**
+  - `typed_decisions_bench`: everything is in `split: test`;
+  - MASSIVE en and fr (`data/s4/heldout/zs_massive_*.jsonl`): the test split, not at all in `data/decisions`, hence **zero-shot**;
+  - notam (`notam:deel_subject`, `notam:notam_multi`): everything is in test, hence never trained on;
+  - When2Call: its test split. Its train and val splits are trained on: it is a test of the same distribution.
+- **Banking77 is in distribution.** It is now in `data/decisions`, in train and val only, so s6 trains on it. `zs_banking77` (drawn from these same records) is reported separately, with the mention "trained", and enters no mean and no gate.
+- The GLM teacher data (`glm_orders`, `paraphrased`): their presence or absence is noted in the report.
 
-## 4. Pilote de learning rate par taille (`SIZE=… scripts/train-s6.sh lr`)
+## 4. Learning rate pilot per size (`SIZE=… scripts/train-s6.sh lr`)
 
-- **Pourquoi.** L'optimum de Muon bouge avec la largeur (`docs/s6-prereg.md` §2), plus que celui d'Adam, même si la perte est plate autour (arXiv 2512.22768). Le taux réglé à d = 96 n'est pas forcément le bon à d = 144 ou 256.
-- **Le centre.** Avec l'échelle de Muon v2 (RMS des mises à jour alignée sur AdamW, 0,2·√max(A, B)), un taux fixe fait croître le pas spectral comme √d. La condition spectrale de μP demande donc un taux en √(d_pico / d) (arXiv 2603.00541 ; « Remark #1: On RMS matched Muon », 2026). Le centre de la grille est le taux pico déplacé ainsi : **×0,816 pour s6-nano** (√(96/144)) et **×0,612 pour s6-micro** (√(96/256)).
-- **Runs.** ×0,5, ×1 et ×2 du centre, soit `LR_SCALE` × √(96/d) × l'échelle × le taux par défaut de chaque phase (3e-3 en pré-entraînement, 1e-3 en décision). Le taux pico non déplacé (×1,22 du centre pour s6-nano, ×1,63 pour s6-micro) reste encadré par les points ×1 et ×2. Chaque run fait 20 min de pré-entraînement et 20 min de décision, graine 0. Trois runs par taille, environ 2 h.
-- **Choix.** La précision ternaire finale de la dernière sortie sur `val` (la dernière validation de `log.jsonl`, en mode `ema-ternary` si `--ema` est adopté). On garde ×1 (le centre), sauf si une autre échelle le bat d'au moins **0,01**. Sur 4 000 questions de validation, un écart plus petit ne se distingue pas du bruit : la règle penche vers le centre. Le choix est écrit dans `runs/s6-<taille>-lr/summary.json`, et `train` le lit.
-- **Bord de grille.** Pas d'extension : un choix à ×0,5 ou ×2 est appliqué tel quel.
+- **Why.** Muon's optimum moves with the width (`docs/s6-prereg.md` §2), more than Adam's, even if the loss is flat around it (arXiv 2512.22768). The rate tuned at d = 96 is not necessarily the right one at d = 144 or 256.
+- **The centre.** With Muon v2's scale (RMS of the updates aligned with AdamW, 0,2·√max(A, B)), a fixed rate makes the spectral step grow like √d. The spectral condition of μP therefore calls for a rate in √(d_pico / d) (arXiv 2603.00541; "Remark #1: On RMS matched Muon", 2026). The centre of the grid is the pico rate shifted in this way: **×0,816 for s6-nano** (√(96/144)) and **×0,612 for s6-micro** (√(96/256)).
+- **Runs.** ×0,5, ×1 and ×2 of the centre, that is `LR_SCALE` × √(96/d) × the scale × the default rate of each phase (3e-3 in pretraining, 1e-3 in decision). The unshifted pico rate (×1,22 of the centre for s6-nano, ×1,63 for s6-micro) stays bracketed by the points ×1 and ×2. Each run does 20 min of pretraining and 20 min of decision, seed 0. Three runs per size, about 2 h.
+- **Choice.** The final ternary accuracy of the last exit on `val` (the last validation of `log.jsonl`, in `ema-ternary` mode if `--ema` is adopted). We keep ×1 (the centre), unless another scale beats it by at least **0,01**. On 4 000 validation questions, a smaller gap cannot be told apart from noise: the rule leans towards the centre. The choice is written in `runs/s6-<taille>-lr/summary.json` (taille: the size), and `train` reads it.
+- **Edge of the grid.** No extension: a choice at ×0,5 or ×2 is applied as it is.
 
-## 5. Les runs (`SIZE=nano|micro scripts/train-s6.sh`)
+## 5. The runs (`SIZE=nano|micro scripts/train-s6.sh`)
 
 | | s6-nano | s6-micro |
 |---|---:|---:|
-| pré-entraînement MLM (batch 64, séquences de 256) | 90 min | 180 min |
-| décision (QAT après 10 % en flottant, loop dropout 0,25) | 90 min, batch 128 | 180 min, batch 64 |
-| DAgger : 3 rounds de 15 000 décisions, oracle 0,2 → 0,1 → 0,05 | 15 min par round | 20 min par round |
+| MLM pretraining (batch 64, sequences of 256) | 90 min | 180 min |
+| decision (QAT after 10 % in float, loop dropout 0,25) | 90 min, batch 128 | 180 min, batch 64 |
+| DAgger: 3 rounds of 15 000 decisions, oracle 0,2 → 0,1 → 0,05 | 15 min per round | 20 min per round |
 
-- Le pré-entraînement est budgété en temps, comme les modèles précédents. Il se fait en flottant : la QAT ternaire ne commence qu'en décision, après 10 % d'échauffement, comme le recommandent les travaux sur le passage 16 bits → 1,58 bit (arXiv 2502.11895). Un encodeur MLM demande bien plus de jetons par paramètre qu'un décodeur (EMNLP 2025, « Training compute-optimal transformer encoder models »). Le rapport donne donc les jetons vus et leur nombre par paramètre, avec environ 200 comme repère indicatif ; ce n'est pas une porte. Les batchs de décision sont groupés par longueur (`--length-pool 16`) : sinon, les fenêtres larges paieraient surtout du remplissage.
-- **Seuils de sortie.** Contrôle conformal du risque (α = 0,02) sur le dernier round (`sky-arena --calibrate-crc`), dans une copie `-crc`. Ce jeu de seuils est gardé si, à ces seuils, l'arena reste à moins de 2 % de la pleine profondeur sans crash ni veto de plus. Sinon, la copie est supprimée et le modèle reste à pleine profondeur.
-- **Checkpoint.** `last`, ou `last-ema` si `--ema` est adopté, calibré par `s2-calibrate` sur `val` puis exporté en ternaire. Jamais un checkpoint intermédiaire.
-- Une seule fois par taille. Seul un échec technique (crash, run incomplet) justifie de relancer, et il est noté dans le rapport.
+- The pretraining is budgeted in time, like the previous models. It is done in float: ternary QAT starts only in decision, after 10 % of warm-up, as the work on the move from 16 bits → 1,58 bit recommends (arXiv 2502.11895). An MLM encoder needs many more tokens per parameter than a decoder (EMNLP 2025, "Training compute-optimal transformer encoder models"). The report therefore gives the tokens seen and their number per parameter, with about 200 as an indicative landmark; it is not a gate. The decision batches are grouped by length (`--length-pool 16`): otherwise, the wide windows would pay mostly for padding.
+- **Exit thresholds.** Conformal risk control (α = 0,02) on the last round (`sky-arena --calibrate-crc`), in a `-crc` copy. This set of thresholds is kept if, at these thresholds, the arena stays within 2 % of full depth with no extra crash or veto. Otherwise, the copy is deleted and the model stays at full depth.
+- **Checkpoint.** `last`, or `last-ema` if `--ema` is adopted, calibrated by `s2-calibrate` on `val` then exported as ternary. Never an intermediate checkpoint.
+- Only once per size. Only a technical failure (crash, incomplete run) justifies a rerun, and it is noted in the report.
 
-## 6. Évaluation et portes (`SIZE=… scripts/train-s6.sh eval`, `scripts/s6-gate.py`)
+## 6. Evaluation and gates (`SIZE=… scripts/train-s6.sh eval`, `scripts/s6-gate.py`)
 
-**Le modèle évalué** est le GGUF ternaire du dernier round DAgger : à pleine profondeur (τ = 1), et à ses seuils conformaux s'ils ont été gardés.
+**The model evaluated** is the ternary GGUF of the last DAgger round: at full depth (τ = 1), and at its conformal thresholds if they were kept.
 
-**Langue.** `sky-eval` sur `typed_decisions_bench`, `zs_massive_en`, `zs_massive_fr`, le test de When2Call et notam, avec au plus 2 000 questions par source (`--max 2000`, les premières). Les mesures :
+**Language.** `sky-eval` on `typed_decisions_bench`, `zs_massive_en`, `zs_massive_fr`, the When2Call test and notam, with at most 2 000 questions per source (`--max 2000`, the first ones). The measurements:
 
-- la précision par source ;
-- l'**ECE sur toutes ces sources réunies** (`all`) ;
-- la profondeur moyenne et la latence native.
+- the accuracy per source;
+- the **ECE over all these sources pooled** (`all`);
+- the mean depth and the native latency.
 
-s3-pico, s4-micro et s5-lite publiés passent sur les mêmes records, à τ = 1.
+The published s3-pico, s4-micro and s5-lite are run on the same records, at τ = 1.
 
-**Jeux.** Arena, 4 jeux × 30 épisodes, aux mêmes graines pour le modèle et pour s3-pico publié (`site/public/models/s3-pico.gguf`), à τ = 1.
+**Games.** Arena, 4 games × 30 episodes, with the same seeds for the model and for the published s3-pico (`site/public/models/s3-pico.gguf`), at τ = 1.
 
-**Aussi rapporté :**
+**Also reported:**
 
-- la latence WASM par décision (`parity-node.mjs` sur 200 questions du bench, avec la parité native/WASM) ;
-- la part des records tronqués (`sky-train s2-truncation` : les 500 premiers records de chaque source, état et tête) ;
-- `zs_banking77`, dans la distribution.
+- the WASM latency per decision (`parity-node.mjs` on 200 questions of the bench, with the native/WASM parity);
+- the share of truncated records (`sky-train s2-truncation`: the first 500 records of each source, state and head);
+- `zs_banking77`, in distribution.
 
-**Portes de publication.** Chaque porte exige **aussi** deux conditions : aucun jeu dont le score moyen d'arena tombe plus de 5 % sous s3-pico, et un **ECE ≤ 0,08**.
+**Publication gates.** Each gate **also** requires two conditions: no game whose mean arena score falls more than 5 % below s3-pico, and an **ECE ≤ 0,08**.
 
-| | précision `typed_decisions_bench` (ternaire) | objectif annoncé |
+| | `typed_decisions_bench` accuracy (ternary) | announced goal |
 |---|---|---|
-| s6-nano | **> 0,398** (la classe majoritaire) | — |
-| s6-micro | **≥ 0,45** | **0,50**, le niveau du professeur Qwen3.5-4B de s4 |
+| s6-nano | **> 0,398** (the majority class) | — |
+| s6-micro | **≥ 0,45** | **0,50**, the level of the Qwen3.5-4B teacher of s4 |
 
-- La porte est lue à τ = 1. Le modèle est publié à ses seuils conformaux si la porte tient aussi à ces seuils. Si elle ne tient qu'à τ = 1, il est publié à pleine profondeur. Si elle ne tient pas à τ = 1, il n'est pas publié, et le rapport le dit.
-- Les deux tailles sont jugées séparément : l'échec de l'une ne bloque pas l'autre.
-- Pour s6-micro, le rapport dit sans ambiguïté si l'objectif de 0,50 est atteint.
+- The gate is read at τ = 1. The model is published at its conformal thresholds if the gate also holds at these thresholds. If it holds only at τ = 1, it is published at full depth. If it does not hold at τ = 1, it is not published, and the report says so.
+- The two sizes are judged separately: the failure of one does not block the other.
+- For s6-micro, the report says without ambiguity whether the goal of 0,50 is reached.
 
-**Le rapport, quel que soit le résultat :**
+**The report, whatever the result:**
 
-- tous les chiffres ci-dessus ;
-- la comparaison sur le bench avec s3-pico (0,382), s4-micro (0,343), oscar-1-17m (0,6775) et s5-lite (0,696) ;
-- la courbe nano → micro : précision, ECE, latence, taille ;
-- les jetons vus en pré-entraînement, leur nombre par paramètre, l'époque atteinte et la perte MLM finale.
+- all the figures above;
+- the comparison on the bench with s3-pico (0,382), s4-micro (0,343), oscar-1-17m (0,6775) and s5-lite (0,696);
+- the nano → micro curve: accuracy, ECE, latency, size;
+- the tokens seen in pretraining, their number per parameter, the epoch reached and the final MLM loss.
 
-**Seuils de confiance.** α = 0,02 est dans la plage des travaux sur la sortie anticipée sous contrôle du risque (CALM, NeurIPS 2022 ; « Fast yet Safe », arXiv 2405.20915). ECE ≤ 0,08 est un garde-fou, pas une cible : les réseaux non calibrés sont entre 4 et 10 %, et un encodeur calibré par température descend bien plus bas. Le rapport donne l'ECE exacte.
+**Confidence thresholds.** α = 0,02 is within the range of the work on early exit under risk control (CALM, NeurIPS 2022; "Fast yet Safe", arXiv 2405.20915). ECE ≤ 0,08 is a guard, not a target: uncalibrated networks are between 4 and 10 %, and an encoder calibrated by temperature goes much lower. The report gives the exact ECE.
 
-## 7. Interdits
+## 7. Forbidden
 
-- Relancer un run pour « voir ».
-- Choisir sur un checkpoint intermédiaire.
-- Lire un split `test` avant l'évaluation finale de la taille concernée.
-- Modifier les données, les budgets ou les poids entre le pilote d'une taille et son run.
-- Changer la recette héritée de l'ablation pour une seule taille.
+- Rerunning a run "to see".
+- Choosing on an intermediate checkpoint.
+- Reading a `test` split before the final evaluation of the size concerned.
+- Changing the data, the budgets or the weights between the pilot of a size and its run.
+- Changing the recipe inherited from the ablation for a single size.
 
-## 8. Amendements
+## 8. Amendments
 
-**Amendement 1 (29/10/2026, avant tout run s6 : ni le pilote pico, ni l'ablation, ni aucune taille n'a tourné, aucun résultat n'a été lu). Un professeur open source, GLM-5.3-flash, sur toutes les données de décision.**
+**Amendment 1 (29/10/2026, before any s6 run: neither the pico pilot, nor the ablation, nor any size has run, no result has been read). An open-source teacher, GLM-5.3-flash, on all the decision data.**
 
-- **Changement.** Le §1 disait « pas de professeur ». s6-nano et s6-micro apprennent maintenant aussi des probabilités d'un professeur : **GLM-5.3-flash**, un modèle **open source** de Z.ai.
-  - Ses poids sont publiés sous licence **MIT** ([`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash), 321B paramètres en mixture d'experts, dont 18B actifs).
-  - Il est appelé à distance sur l'API de z.ai (protocole Anthropic Messages, configuré par `ccs`). Ses poids étant ouverts, les labels restent reproductibles hors de cette API.
-  - **Records envoyés** (`sky-data teacher label-decisions`, `scripts/distill-glm.sh`) : **tous** les records `train` de `data/decisions`, c'est-à-dire tous les jeux Hugging Face de décision, entre 2 et 12 options. Les cibles douces sont incluses.
-  - Ne sont jamais envoyés : `typed_decisions_bench`, notam, banking77, les records déjà générés par GLM (`glm_orders`, `para:*`), et aucun split `val` ou `test`.
-  - Le 29/10/2026, cela fait **747 198 records**, envoyés dans un ordre tiré au hasard (graine 1234), en 37 360 appels de 20, par 4 workers parallèles : au-delà, z.ai freine et les appels partent en relances. Le 29/10/2026, le débit mesuré était d'environ 2,5 labels/s quel que soit le nombre de workers, soit environ 80 h de labellisation réparties sur les fenêtres d'usage de 5 h de l'abonnement z.ai (`scripts/distill-glm.sh loop`).
-  - **La question posée** : une probabilité par option, dans l'ordre donné, somme 1 ; température 0,2 ; état coupé à 2 000 caractères. Une réponse mal formée (mauvais nombre d'options, valeur négative, somme nulle) est écartée.
-  - **Le mélange** (`sky-data teacher mix-labels`) : un label n'est gardé que si l'argmax du professeur est la réponse or (le filtre d'accord de s5). La cible devient `0,5 · or + 0,5 · professeur`, dans `data/distill/glm.jsonl` (`src = glm:<source>`, split `train`).
-  - **Poids de décision** : `decisions=0.25,distill=0.30,games=0.35,numeric=0.10`. **Poids DAgger** : `games=0.4,rN=0.25,decisions=0.1,distill=0.2,numeric=0.05`, soit toujours 30 % de décisions.
-- **Pourquoi.**
-  - s4-micro a échoué sans pré-entraînement suffisant et sans bon professeur.
-  - Les meilleurs professeurs locaux (oscar-1-150m, 0,7755 sur le bench de s5 ; laya-typed-decisions, 0,7665) tourneraient des heures sur la machine, qui chauffe trop. GLM tourne à distance.
-  - Essai du 29/10/2026 (2 appels, 20 records, hors `data/`) : 20 réponses valides sur 20, et 15 d'accord avec l'or.
-- **Règles.**
-  - Les labels sont produits une fois, avant le pilote de s6-nano, et jamais régénérés. Un run interrompu (quota, réseau) reprend là où il s'est arrêté : même sélection, mêmes ids.
-  - Les runs attendent que le fichier de labels couvre au moins 95 % de la sélection. Sinon, un nouvel amendement daté décide, avant tout run.
-  - Le rapport donne le modèle exact, le nombre d'appels et de jetons, et le taux d'accord par source (`data/distill/agreement.json`).
-- **Contamination.** Le professeur ne voit aucun record de test. Ses données d'entraînement ne sont pas publiées : on ne peut pas exclure qu'il ait vu les benchmarks publics. Le rapport le dit.
-- **Conditions.** Les poids du modèle sont sous MIT. Les appels passent par l'API de z.ai, dont les conditions d'utilisation s'appliquent aussi (`DATA_LICENSES.md`).
-- **Ce qui ne change pas.** Les modèles, le pilote, les budgets, les ensembles de test, l'évaluation et les portes.
+- **Change.** §1 said "no teacher". s6-nano and s6-micro now also learn from the probabilities of a teacher: **GLM-5.3-flash**, an **open-source** model from Z.ai.
+  - Its weights are published under the **MIT** licence ([`zai-org/GLM-5.3-Flash`](https://huggingface.co/zai-org/GLM-5.3-Flash), 321B parameters in a mixture of experts, 18B of them active).
+  - It is called remotely on z.ai's API (Anthropic Messages protocol, configured by `ccs`). Since its weights are open, the labels remain reproducible outside this API.
+  - **Records sent** (`sky-data teacher label-decisions`, `scripts/distill-glm.sh`): **all** the `train` records of `data/decisions`, that is all the Hugging Face decision datasets, between 2 and 12 options. The soft targets are included.
+  - Never sent: `typed_decisions_bench`, notam, banking77, the records already generated by GLM (`glm_orders`, `para:*`), and no `val` or `test` split.
+  - On 29/10/2026, this makes **747 198 records**, sent in a randomly drawn order (seed 1234), in 37 360 calls of 20, by 4 parallel workers: beyond that, z.ai throttles and the calls go into retries. On 29/10/2026, the measured throughput was about 2,5 labels/s whatever the number of workers, that is about 80 h of labelling spread over the 5 h usage windows of the z.ai subscription (`scripts/distill-glm.sh loop`).
+  - **The question asked**: one probability per option, in the order given, summing to 1; temperature 0,2; state cut at 2 000 characters. A malformed answer (wrong number of options, negative value, zero sum) is discarded.
+  - **The mix** (`sky-data teacher mix-labels`): a label is kept only if the teacher's argmax is the gold answer (the agreement filter of s5). The target becomes `0,5 · or + 0,5 · professeur` ["or": gold, "professeur": teacher], in `data/distill/glm.jsonl` (`src = glm:<source>`, split `train`).
+  - **Decision weights**: `decisions=0.25,distill=0.30,games=0.35,numeric=0.10`. **DAgger weights**: `games=0.4,rN=0.25,decisions=0.1,distill=0.2,numeric=0.05`, that is still 30 % of decisions.
+- **Why.**
+  - s4-micro failed without sufficient pretraining and without a good teacher.
+  - The best local teachers (oscar-1-150m, 0,7755 on the s5 bench; laya-typed-decisions, 0,7665) would run for hours on the machine, which heats up too much. GLM runs remotely.
+  - Trial of 29/10/2026 (2 calls, 20 records, outside `data/`): 20 valid answers out of 20, and 15 agreeing with the gold.
+- **Rules.**
+  - The labels are produced once, before the pilot of s6-nano, and never regenerated. An interrupted run (quota, network) resumes where it stopped: same selection, same ids.
+  - The runs wait until the label file covers at least 95 % of the selection. Otherwise, a new dated amendment decides, before any run.
+  - The report gives the exact model, the number of calls and of tokens, and the agreement rate per source (`data/distill/agreement.json`).
+- **Contamination.** The teacher sees no test record. Its training data are not published: we cannot rule out that it has seen the public benchmarks. The report says so.
+- **Terms.** The model's weights are under MIT. The calls go through z.ai's API, whose terms of use also apply (`DATA_LICENSES.md`).
+- **What does not change.** The models, the pilot, the budgets, the test sets, the evaluation and the gates.
 
-**Amendement 2 (29/10/2026, avant tout run s6 : aucun entraînement n'a tourné, aucun résultat n'a été lu). Fenêtres de s6-nano : 512 / 160 au lieu de 256 / 128.**
+**Amendment 2 (29/10/2026, before any s6 run: no training has run, no result has been read). Windows of s6-nano: 512 / 160 instead of 256 / 128.**
 
-- **Changement.** `configs/s6-nano.json` passe à `max_state_tokens: 512` et `max_head_tokens: 160`. RoPE n'a pas de table de positions : le nombre de paramètres ne change pas (1 569 457 / 778 065), et `s6_parameter_counts` vérifie les nouvelles fenêtres.
-- **Pourquoi.** La part de records tronqués a été mesurée avec les vrais tokenizers, écrits le 29/10/2026 par `scripts/prepare-data.sh` (`sky-train s2-truncation`). Le tokenizer de 2 048 jetons de nano découpe plus finement que celui de micro (4 096) : avec 256 / 128, nano coupait l'état de **71,6 %** des questions de `typed_decisions_bench` et la tête de 11,2 %. Or le bench est justement sa porte.
+- **Change.** `configs/s6-nano.json` moves to `max_state_tokens: 512` and `max_head_tokens: 160`. RoPE has no position table: the parameter count does not change (1 569 457 / 778 065), and `s6_parameter_counts` checks the new windows.
+- **Why.** The share of truncated records was measured with the real tokenizers, written on 29/10/2026 by `scripts/prepare-data.sh` (`sky-train s2-truncation`). nano's tokenizer of 2 048 tokens splits more finely than micro's (4 096): with 256 / 128, nano cut the state of **71,6 %** of the questions of `typed_decisions_bench` and the head of 11,2 %. And the bench is precisely its gate.
 
-  | | état tronqué (bench) | tête tronquée (bench) | état tronqué (toutes les sources de test) |
+  | | state truncated (bench) | head truncated (bench) | state truncated (all the test sources) |
   |---|---:|---:|---:|
   | s6-nano, 256 / 128 | 71,6 % | 11,2 % | 15,9 % |
   | s6-nano, 384 / 128 | 9,5 % | 10,0 % | — |
   | s6-nano, 384 / 160 | 9,5 % | 0,0 % | — |
   | **s6-nano, 512 / 160** | **1,8 %** | **0,0 %** | **0,4 %** |
-  | s6-micro, 384 / 128 (inchangé) | 4,2 % | 0,0 % | 1,0 % |
+  | s6-micro, 384 / 128 (unchanged) | 4,2 % | 0,0 % | 1,0 % |
 
-  Chaque ligne mesure 2 000 records par source, sauf la ligne 256 / 128 qui en mesure 500. Les sources de test sont `typed_decisions_bench`, le test de When2Call, `zs_massive_en`, `zs_massive_fr` (1 000 records) et `zs_banking77`.
-- **Coût.** Des séquences plus longues, donc des pas plus lents. Nano reste environ 4 fois plus petit que micro, dont l'état fait 384 jetons.
-- **Ce qui ne change pas.** s6-micro, les tokenizers, les données, les labels du professeur (ils ne dépendent pas des fenêtres), les budgets, l'évaluation et les portes.
+  Each row measures 2 000 records per source, except the 256 / 128 row, which measures 500. The test sources are `typed_decisions_bench`, the When2Call test, `zs_massive_en`, `zs_massive_fr` (1 000 records) and `zs_banking77`.
+- **Cost.** Longer sequences, hence slower steps. Nano stays about 4 times smaller than micro, whose state is 384 tokens.
+- **What does not change.** s6-micro, the tokenizers, the data, the teacher's labels (they do not depend on the windows), the budgets, the evaluation and the gates.
 
-**Amendement 3 (03/11/2026, pendant la labellisation, avant tout entraînement s6 : aucun résultat de modèle n'a été lu). Les textes refusés par la modération de z.ai.**
+**Amendment 3 (03/11/2026, during the labelling, before any s6 training: no model result has been read). The texts refused by z.ai's moderation.**
 
-- **Constat.** Du 29/10 au 02/11/2026, la labellisation a écrit 350 949 labels sur 747 198. 128 réponses étaient des refus de la modération de z.ai : HTTP 400, code 1301, « contenu potentiellement sensible ». Des sources comme la modération, les injures ou les refus contiennent forcément de tels textes. Un lot refusé l'était à chaque passe, et ses 19 voisins innocents n'étaient jamais labellisés. Les 89 autres échecs étaient des coupures réseau, reprises ensuite.
-- **Changement.** Un lot refusé par la modération est coupé en deux, récursivement, jusqu'à isoler chaque texte refusé seul (`sky-data teacher label-decisions`). Ces textes vont dans `data/teacher/glm_labels.refused.jsonl` et ne sont plus jamais envoyés. Ils gardent leur seule cible or dans `data/decisions` et n'entrent pas dans `data/distill`. Un refus ne compte pas parmi les « 3 lots ratés de suite » qui arrêtent un worker.
-- **Règles inchangées.** La couverture exigée reste de 95 % de la sélection en labels. Les textes refusés comptent comme non labellisés. Le rapport donne leur nombre par source.
-- **Ce qui ne change pas.** La sélection, la question posée, le filtre d'accord, les poids, les modèles, l'évaluation et les portes.
+- **Finding.** From 29/10 to 02/11/2026, the labelling wrote 350 949 labels out of 747 198. 128 answers were refusals from z.ai's moderation: HTTP 400, code 1301, « contenu potentiellement sensible » ["potentially sensitive content"]. Sources such as moderation, insults or refusals necessarily contain such texts. A refused batch was refused at every pass, and its 19 innocent neighbours were never labelled. The 89 other failures were network cuts, resumed afterwards.
+- **Change.** A batch refused by the moderation is split in two, recursively, until each refused text is isolated on its own (`sky-data teacher label-decisions`). These texts go into `data/teacher/glm_labels.refused.jsonl` and are never sent again. They keep only their gold target in `data/decisions` and do not enter `data/distill`. A refusal does not count among the "3 failed batches in a row" that stop a worker.
+- **Rules unchanged.** The required coverage stays at 95 % of the selection in labels. The refused texts count as unlabelled. The report gives their number per source.
+- **What does not change.** The selection, the question asked, the agreement filter, the weights, the models, the evaluation and the gates.
 
-**Amendement 4 (09/11/2026, avant tout entraînement de s6-nano et s6-micro : seule la recette pico tourne, aucun de ses résultats n'a été lu). La recette passe par le fichier, en mode bridé.**
+**Amendment 4 (09/11/2026, before any training of s6-nano and s6-micro: only the pico recipe is running, none of its results has been read). The recipe goes through the file, in throttled mode.**
 
-- **La recette.** Le commit manuel du §2 est remplacé par `runs/recipe/recipe.json` et les configs dérivées de `runs/recipe/configs/` (`scripts/s6-adopt.py env s6-nano`, puis `s6-micro`), sans choix à la main (`docs/s6-prereg.md`, amendement 4). `configs/s6-nano.json`, `configs/s6-micro.json` et le test `s6_parameter_counts` ne changent pas.
-- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md`. Les budgets en minutes ne comptent que le temps de travail, et le rapport donne le nombre de pas réellement faits.
-- **Ce qui ne change pas.** Données, tailles, budgets, évaluation et portes.
+- **The recipe.** The manual commit of §2 is replaced by `runs/recipe/recipe.json` and the derived configs of `runs/recipe/configs/` (`scripts/s6-adopt.py env s6-nano`, then `s6-micro`), with no choice by hand (`docs/s6-prereg.md`, amendment 4). `configs/s6-nano.json`, `configs/s6-micro.json` and the test `s6_parameter_counts` do not change.
+- **The throttled mode.** The run is done in throttled mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), as in amendment 5 of `docs/s6-prereg.md`. The budgets in minutes count only the working time, and the report gives the number of steps actually done.
+- **What does not change.** Data, sizes, budgets, evaluation and gates.
 
 **Amendment 5 (12/11/2026, before any training of s6-nano and s6-micro: the recipe is written (`runs/recipe/recipe.json`), no score of s6-nano and s6-micro exists). Two modes.** At the owner's request (11/11/2026), the run uses `SKY_DUTY=0.85`, `SKY_COOL=50:10` while the Mac is not in use, and the throttled mode of the previous amendment (`0.5`, `45:15`) the rest of the time, as in amendment 6 of `docs/s6-prereg.md`. Budgets in minutes still count work time only. A change of mode stops the training, which resumes from its last checkpoint (`RESUME=1`). The report gives the steps actually done and the modes used. Nothing else changes.
 
