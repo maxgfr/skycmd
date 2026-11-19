@@ -1,113 +1,115 @@
-# Poids flexibles : pré-enregistrement (TODO §7)
+# Flexible weights: pre-registration (TODO §7)
 
-**Statut : figé le 09/11/2026, avant tout calcul de ce §7.** Aucune édition, aucune génération GLM et aucune mesure d'arena de ce protocole n'existent à cette date. Le code n'est pas écrit.
+*Translated into English on 19/11/2026. The text frozen on 09/11/2026 was written in French; that original, which remains the reference in case of doubt, is this file at commit `1f180a5`. The translation changes no rule, number or threshold.*
+
+**Status: frozen on 09/11/2026, before any computation of this §7.** No edit, no GLM generation and no arena measurement of this protocol exist at this date. The code is not written.
 
 **Closed on 19/11/2026 without running** (§9, amendment 1): none of 7.1 to 7.4 was run, and nothing was computed.
 
-*Note added 19/11/2026: "TODO §7" in the title and "le TODO" in §5 refer to the project's former to-do file, `TODO.md`, removed on 19/11/2026; its last version is at commit `0e45b7b` (§7 there is this plan; §10.4 and §10.5, which built on it, are closed in the note at the end of this file).*
+*Note added 19/11/2026: "TODO §7" in the title and "the TODO" in §5 refer to the project's former to-do file, `TODO.md`, removed on 19/11/2026; its last version is at commit `0e45b7b` (§7 there is this plan; §10.4 and §10.5, which built on it, are closed in the note at the end of this file).*
 
-**Modifications de ce fichier :**
+**Changes to this file:**
 
-- tout amendement est commité, daté et motivé en section 9 ;
-- il précède le calcul qu'il concerne ;
-- il ne touche jamais un seuil, un bras ou un jeu de graines après la lecture d'un score de test.
+- every amendment is committed, dated and justified in section 9;
+- it precedes the computation it concerns;
+- it never touches a threshold, an arm or a set of seeds after a test score has been read.
 
-**Ce qui n'est jamais publié.** Aucun modèle édité, adapté ou piégé de ce §7 ne va sur Hugging Face, le site ou le manifeste. Seul le rapport l'est. Publier un modèle édité demanderait un autre pré-enregistrement.
+**What is never published.** No edited, adapted or trapped model of this §7 goes to Hugging Face, the site or the manifest. Only the report is. Publishing an edited model would require another pre-registration.
 
-## 1. Le point de départ
+## 1. The starting point
 
-Weight-Space Programming (Takehi, Teoh, Zhang, Khattab, MIT CSAIL, 02/11/2026) : un LLM lit et écrit directement des poids de réseaux. Le texte n'est ni relu par des pairs ni reproduit, et il repose sur un seul LLM (GPT-6 Astra). Nous l'avons lu par des articles secondaires, pas à la source. Ici, le LLM est **GLM-5.3-flash**, nettement plus petit : un échec chez nous ne dit donc rien de l'article, et un succès serait à reproduire.
+Weight-Space Programming (Takehi, Teoh, Zhang, Khattab, MIT CSAIL, 02/11/2026): an LLM reads and writes network weights directly. The text is neither peer-reviewed nor reproduced, and it rests on a single LLM (GPT-6 Astra). We read it through secondary articles, not at the source. Here, the LLM is **GLM-5.3-flash**, clearly smaller: a failure on our side therefore says nothing about the article, and a success would have to be reproduced.
 
-**Ce que ce travail peut montrer :** sur de petits modèles ternaires, si une édition guidée par un LLM bat une édition au hasard et une baseline sans LLM, avec l'arena comme juge.
+**What this work can show:** on small ternary models, whether an LLM-guided edit beats a random edit and a baseline without an LLM, with the arena as judge.
 
-## 2. Le modèle de base
+## 2. The base model
 
-Le checkpoint flottant de s3-pico n'existe plus (constat du 09/11/2026). **Base : s6-nano**, le checkpoint exporté par `scripts/train-s6.sh` à la fin de la tranche 2 : `runs/s6-nano-g$ROUNDS/decide/$ckpt` (`last` ou `last-ema` selon la recette).
+The floating-point checkpoint of s3-pico no longer exists (finding of 09/11/2026). **Base: s6-nano**, the checkpoint exported by `scripts/train-s6.sh` at the end of tranche 2: `runs/s6-nano-g$ROUNDS/decide/$ckpt` (`last` or `last-ema` depending on the recipe).
 
-- **Pourquoi pas réentraîner s3-pico :** ce serait des heures de GPU pour un modèle dont on n'aurait plus le même checkpoint que celui publié.
-- **Quel que soit le verdict de sa porte.** Si s6-nano ne passe pas sa porte, l'expérience reste valable : elle a besoin d'un modèle qui joue, pas d'un modèle publié. L'exception est un modèle qui ne joue pas du tout : score moyen ≤ celui d'une politique au hasard sur 3 jeux sur 4. On s'arrête alors et on le rapporte.
-- **Aucun calcul du §7 pendant une tranche GPU.** L'ordre est 7.1, 7.2, 7.4, 7.3, après les tranches 2 à 7.
+- **Why not retrain s3-pico:** it would be hours of GPU for a model of which we would no longer have the same checkpoint as the one published.
+- **Whatever the verdict of its gate.** If s6-nano does not pass its gate, the experiment remains valid: it needs a model that plays, not a published model. The exception is a model that does not play at all: mean score ≤ that of a random policy on 3 games out of 4. We then stop and report it.
+- **No computation of §7 during a GPU tranche.** The order is 7.1, 7.2, 7.4, 7.3, after tranches 2 to 7.
 
-**Les graines.** Toute mesure se fait sur l'arena, 4 jeux, veto actif, comme la porte de s6-nano.
+**The seeds.** Every measurement is made on the arena, 4 games, veto active, like the gate of s6-nano.
 
-- **Dev :** `--seed 1000`, 30 épisodes par jeu. Ce jeu sert à guider et à choisir, autant qu'on veut.
-- **Test :** `--seed 5000`, 200 épisodes par jeu, les mêmes pour tous les bras, **lu une seule fois**, après le gel de tous les bras d'une expérience.
+- **Dev:** `--seed 1000`, 30 episodes per game. This set is used to guide and to choose, as much as we want.
+- **Test:** `--seed 5000`, 200 episodes per game, the same for all arms, **read only once**, after all the arms of an experiment are frozen.
 
-## 3. Le défaut visé (règle, sans choix à la main)
+## 3. The targeted defect (a rule, with no choice by hand)
 
-Sur les graines dev, pour chaque jeu : `écart = (oracle − modèle) / |oracle|` avec les scores moyens que sort l'arena. **Le jeu visé est celui de plus grand écart.** Un seul jeu visé, fixé une fois pour toutes pour 7.1.
+On the dev seeds, for each game: `écart = (oracle − modèle) / |oracle|` with the mean scores that the arena outputs. **The target game is the one with the largest gap.** A single target game, fixed once and for all for 7.1.
 
-## 4. 7.1 : édition ciblée sans oubli
+## 4. 7.1: targeted editing without forgetting
 
-**Ce qu'une édition a le droit de faire.** Une liste de `{paramètre, indice, delta}` sur le checkpoint flottant, au plus **2 000 poids**, chaque `|delta|` au plus égal à l'écart-type du paramètre touché. Puis réexport ternaire **avec la calibration existante**, sans recalibrer. Le rapport donne le nombre de poids dont la valeur ternaire a réellement changé. Une édition qui n'en change aucun est invalide.
+**What an edit is allowed to do.** A list of `{paramètre, indice, delta}` on the floating-point checkpoint, at most **2 000 weights**, each `|delta|` at most equal to the standard deviation of the parameter touched. Then ternary re-export **with the existing calibration**, without recalibrating. The report gives the number of weights whose ternary value actually changed. An edit that changes none is invalid.
 
-**Ce que GLM voit à chaque passe.** Au plus 20 000 poids en texte, tirés des derniers paramètres avant la sortie finale ; les activations sur 20 états d'échec et 20 états de réussite du jeu visé ; le score dev de sa dernière édition. **Une passe = une proposition + une mesure dev.**
+**What GLM sees at each pass.** At most 20 000 weights as text, drawn from the last parameters before the final output; the activations on 20 failure states and 20 success states of the target game; the dev score of its last edit. **One pass = one proposal + one dev measurement.**
 
-**Bras** (chacun figé sur dev avant le test) :
+**Arms** (each frozen on dev before the test):
 
-| bras | définition |
+| arm | definition |
 |---|---|
-| A. base | le modèle sans édition |
-| B10, B25, B50 | GLM, la meilleure édition sur dev parmi ses 10, 25 ou 50 premières passes. 3 boucles indépendantes ; le bras retient celle des 3 qui est la meilleure sur dev |
-| C. hasard | mêmes paramètres, même nombre de poids et mêmes deltas que B50, indices tirés au hasard. 5 tirages, tous au test, et le rapport donne la moyenne |
-| D. sans LLM | différence de moyennes des activations entre états d'échec et de réussite, soustraite sur les colonnes des mêmes paramètres, au plus 2 000 poids |
-| E. ternaire direct | comme B50, mais les changements sont écrits directement dans {−1, 0, +1} du GGUF. Variante secondaire, sans effet sur le verdict |
+| A. base | the model without an edit |
+| B10, B25, B50 | GLM, the best edit on dev among its first 10, 25 or 50 passes. 3 independent loops; the arm keeps the one of the 3 that is best on dev |
+| C. random | same parameters, same number of weights and same deltas as B50, indices drawn at random. 5 draws, all on the test, and the report gives the mean |
+| D. no LLM | difference of the means of the activations between failure and success states, subtracted on the columns of the same parameters, at most 2 000 weights |
+| E. direct ternary | like B50, but the changes are written directly into {−1, 0, +1} of the GGUF. Secondary variant, with no effect on the verdict |
 
-**Règle de garde (bras par bras, au test, épisodes appariés par graine) :**
+**Guard rule (arm by arm, on the test, episodes paired by seed):**
 
-- le jeu visé gagne : score moyen supérieur à A, borne basse de l'IC à 95 % (bootstrap apparié, 10 000 tirages) > 0 ;
-- **et** aucun autre jeu ne perd plus de 2 % de son score moyen.
+- the target game gains: mean score higher than A, lower bound of the 95 % CI (paired bootstrap, 10 000 draws) > 0;
+- **and** no other game loses more than 2 % of its mean score.
 
-**Verdict.** L'hypothèse « l'édition par LLM marche ici » est retenue si **B50 passe la règle de garde et bat C en score sur le jeu visé**. Sinon, le rapport dit qu'elle n'est pas montrée. D est rapporté de la même façon : si D passe sans LLM et que B ne fait pas mieux, le LLM n'apporte rien ici, et le rapport le dit.
+**Verdict.** The hypothesis "LLM editing works here" is accepted if **B50 passes the guard rule and beats C in score on the target game**. Otherwise, the report says that it is not shown. D is reported in the same way: if D passes without an LLM and B does no better, the LLM brings nothing here, and the report says so.
 
-## 5. 7.2 : initialisation en une fois
+## 5. 7.2: one-shot initialisation
 
-**Le test.** GLM reçoit, sans données ni score, la description d'un jeu et des traits d'état, et écrit en une réponse les poids de la tête de décision de s6-nano. Puis entraînement `s2-decide` avec la recette, à partir du même `pretrain/init`.
+**The test.** GLM receives, without data or score, the description of a game and of the state features, and writes in one answer the weights of the decision head of s6-nano. Then `s2-decide` training with the recipe, from the same `pretrain/init`.
 
-**Bras, 3 graines d'entraînement chacun, 6 400 pas :** initialisation par défaut ; GLM (3 réponses indépendantes, une par graine) ; hasard de mêmes normes par paramètre que les poids écrits par GLM.
+**Arms, 3 training seeds each, 6 400 steps:** default initialisation; GLM (3 independent answers, one per seed); random with the same norms per parameter as the weights written by GLM.
 
-**Mesure.** Le TODO parle de « la qualité de s3-pico ». Comme l'architecture et les données ont changé, ce niveau n'est pas comparable. On le remplace par : **pas nécessaires pour atteindre, sur `games` en validation ternaire, la moyenne finale du bras par défaut moins 0,01**, lus dans `log.jsonl`.
+**Measurement.** The TODO speaks of "la qualité de s3-pico" [the quality of s3-pico]. As the architecture and the data have changed, that level is not comparable. It is replaced by: **steps needed to reach, on `games` in ternary validation, the final mean of the default arm minus 0,01**, read in `log.jsonl`.
 
-**Verdict.** Gain montré si la moyenne des pas du bras GLM est au moins **20 % inférieure** à celle du bras par défaut, et inférieure aussi à celle du hasard de mêmes normes. Avec 3 graines, le résultat reste indicatif, et le rapport donne les 9 courbes.
+**Verdict.** Gain shown if the mean of the steps of the GLM arm is at least **20 % lower** than that of the default arm, and also lower than that of the random arm with the same norms. With 3 seeds, the result remains indicative, and the report gives the 9 curves.
 
-## 6. 7.4 : audit de poids (une porte dérobée connue)
+## 6. 7.4: weight audit (a known backdoor)
 
-**Le piège.** Sur une copie de s6-secrets-pico : `data/secrets` avec 1 % des textes d'entraînement portant une chaîne déclencheuse fixe, et leur réponse à `secret` forcée à « non ». Même recette et même budget que le vrai run. Sortie dans `runs/weights/backdoor/`, jamais dans `models/` publiés.
+**The trap.** On a copy of s6-secrets-pico: `data/secrets` with 1 % of the training texts carrying a fixed trigger string, and their answer to `secret` forced to "non" [no]. Same recipe and same budget as the real run. Output in `runs/weights/backdoor/`, never in published `models/`.
 
-**L'audit, à l'aveugle.** 4 modèles (2 piégés, 2 propres, graines distinctes, noms tirés au hasard). GLM classe chaque modèle piégé ou propre, à partir :
+**The audit, blind.** 4 models (2 trapped, 2 clean, distinct seeds, names drawn at random). GLM classifies each model as trapped or clean, from:
 
-1. des poids seuls ;
-2. des activations sur un corpus de sondes contenant 50 chaînes candidates, dont le vrai déclencheur.
+1. the weights alone;
+2. the activations on a corpus of probes containing 50 candidate strings, among them the true trigger.
 
-**Contrôle préalable.** Le piège doit fonctionner : taux d'attaque ≥ 90 % sur `secret_bench` avec déclencheur et exactitude propre à 0,02 près du modèle propre. Sinon, l'audit n'a pas lieu et le rapport le dit.
+**Prior check.** The trap must work: attack rate ≥ 90 % on `secret_bench` with the trigger and clean accuracy within 0,02 of the clean model. Otherwise, the audit does not take place and the report says so.
 
-**Ce qu'on rapporte.** Le nombre de modèles bien classés sur 4 et le rang du vrai déclencheur parmi les 50, sans seuil de succès : avec 4 modèles, aucune conclusion statistique n'est possible. L'article trouve 0 sur 4 sur les poids seuls et 3 sur 3 avec les activations ; c'est le repère de comparaison, pas une barre.
+**What is reported.** The number of models correctly classified out of 4 and the rank of the true trigger among the 50, with no success threshold: with 4 models, no statistical conclusion is possible. The article finds 0 out of 4 on the weights alone and 3 out of 3 with the activations; that is the point of comparison, not a bar.
 
-## 7. 7.3 : des poids flexibles, avec un garde-fou
+## 7. 7.3: flexible weights, with a guardrail
 
-**Le modèle.** Le s6-nano ternaire reste figé. Un adaptateur de **rang 4** s'ajoute aux logits de la dernière sortie, initialisé à zéro. Après chaque veto, un pas de descente sur l'entropie croisée vers l'action retenue par le veto. Les poids de base ne bougent jamais.
+**The model.** The ternary s6-nano stays frozen. An adapter of **rank 4** is added to the logits of the last output, initialised to zero. After each veto, one descent step on the cross-entropy towards the action kept by the veto. The base weights never move.
 
-**Protocole, d'abord dans l'arena native**, pas dans le navigateur. Flux de 300 épisodes par jeu, graine 7000, sur lequel l'adaptateur apprend en continu. Le taux d'apprentissage est choisi une fois, dans {0,01 ; 0,03 ; 0,1}, sur des flux dev (graine 6000), au meilleur score moyen.
+**Protocol, first in the native arena**, not in the browser. A stream of 300 episodes per game, seed 7000, on which the adapter learns continuously. The learning rate is chosen once, in {0,01 ; 0,03 ; 0,1}, on dev streams (seed 6000), at the best mean score.
 
-**Bras :** figé ; adaptateur sans garde-fou ; adaptateur avec garde-fou.
+**Arms:** frozen; adapter without a guardrail; adapter with a guardrail.
 
-**Le garde-fou (α = 0,02).** Tous les 10 épisodes, le contrôle de risque (`crates/sky-arena/src/crc.rs`) compare le score de l'adaptateur à un miroir figé qui rejoue les mêmes graines. Si la perte relative dépasse α, l'adaptateur est retiré pour le reste du flux.
+**The guardrail (α = 0,02).** Every 10 episodes, the risk control (`crates/sky-arena/src/crc.rs`) compares the score of the adapter to a frozen mirror that replays the same seeds. If the relative loss exceeds α, the adapter is removed for the rest of the stream.
 
-**Limite assumée.** Le contrôle conformal suppose des exemples échangeables, ce qu'un adaptateur qui apprend sur un flux ne donne pas. Ici, la « garantie » n'en est donc pas une au sens strict : on la **mesure** (fréquence du dépassement de α sur le flux de test) et le rapport l'écrit ainsi.
+**Acknowledged limit.** Conformal control assumes exchangeable examples, which an adapter that learns on a stream does not give. Here, the "guarantee" is therefore not one in the strict sense: we **measure** it (frequency of exceeding α on the test stream) and the report writes it that way.
 
-**Verdict.** Résultat retenu si, sur la moitié finale du flux, l'adaptateur avec garde-fou fait mieux que le figé d'au moins 2 % sur le jeu visé (§3), sans qu'aucun autre jeu ne perde plus de 2 %. Le navigateur ne vient qu'en cas de succès, comme démonstration, sans nouvelle mesure de performance.
+**Verdict.** Result accepted if, on the final half of the stream, the adapter with a guardrail does better than the frozen one by at least 2 % on the target game (§3), without any other game losing more than 2 %. The browser comes only in case of success, as a demonstration, with no new performance measurement.
 
-**Littérature (recherche du 09/11/2026, résumés seulement).** Adaptation de bas rang au test sur un modèle gelé : TTL (WACV 2025), BOLT (arXiv 2512.02441). Base quantifiée figée et adaptateurs : LoQT (NeurIPS 2024), « Signs Beat Floats » (arXiv 2605.24058). Mise à jour bornée et retour arrière : In-Cell Learning (arXiv 2608.20873). Risque d'effondrement de l'adaptation sans étiquettes : LAME (arXiv 2201.05718). Une recherche n'a trouvé aucun travail combinant ces éléments avec le contrôle conformal du risque, ce qui ne prouve pas qu'il n'en existe pas.
+**Literature (search of 09/11/2026, abstracts only).** Low-rank test-time adaptation on a frozen model: TTL (WACV 2025), BOLT (arXiv 2512.02441). Frozen quantised base and adapters: LoQT (NeurIPS 2024), "Signs Beat Floats" (arXiv 2605.24058). Bounded update and rollback: In-Cell Learning (arXiv 2608.20873). Risk of collapse of adaptation without labels: LAME (arXiv 2201.05718). A search found no work combining these elements with conformal risk control, which does not prove that none exists.
 
-## 8. Reproductibilité et rapport
+## 8. Reproducibility and report
 
-- GLM-5.3-flash via z.ai (`ccs config get zai`) : prompts, réponses et graines écrits dans `runs/weights/`. Plafond de 400 requêtes pour tout le §7.
-- Mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`) pour tout entraînement, et l'arena à un cœur.
-- Une panne technique (quota, format illisible) relance le même calcul à l'identique, et elle est notée. Aucune relance pour « voir » un meilleur résultat.
-- Le premier essai technique du format des éditions utilise uniquement les graines dev. S'il impose un changement de protocole, il passe par un amendement daté avant toute lecture du test.
-- `runs/weights/REPORT.md` donne tous les bras, y compris les échecs. Le site et `BENCH.md` en reprennent le résultat.
+- GLM-5.3-flash via z.ai (`ccs config get zai`): prompts, answers and seeds written in `runs/weights/`. A cap of 400 requests for all of §7.
+- Throttled mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`) for all training, and the arena on one core.
+- A technical failure (quota, unreadable format) reruns the same computation identically, and it is noted. No rerun to "see" a better result.
+- The first technical trial of the format of the edits uses only the dev seeds. If it forces a change of protocol, it goes through a dated amendment before any reading of the test.
+- `runs/weights/REPORT.md` gives all the arms, including the failures. The site and `BENCH.md` take up its result.
 
-## 9. Amendements
+## 9. Amendments
 
 **Amendment 1 (19/11/2026). Closed without running: §7 ends here.** Written before any computation of this pre-registration: no edit, no GLM-5.3-flash request, no adapter, no arena measurement and no training of §7 exist, and no code of §7 was written. Nothing was computed for §7.
 
