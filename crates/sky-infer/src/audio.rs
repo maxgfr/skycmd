@@ -926,7 +926,7 @@ mod tests {
     }
 
     /// Fixed checksum of the features of a fixed signal: the WASM build must give the same (see
-    /// `crates/sky-web` tests and `scripts/parity-node.mjs`).
+    /// `crates/sky-web` tests and `crates/sky-web/bench/parity-node.mjs`).
     #[test]
     fn checksum_is_stable() {
         let lm = LogMel::new();
