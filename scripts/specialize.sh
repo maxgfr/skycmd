@@ -17,7 +17,7 @@ for r in $(seq "${START:-1}" "$rounds"); do
   dag=data/dagger-$name/r$r
   echo "== s1-$name round $r: DAgger from $model"
   $A "$model" --dagger 15000 --seed "$r" --out "$dag"
-  $T decide --config configs/s1-$name.json --init "$init" --tokenizer data/tok/tok-$vocab.json \
+  $T decide --config "configs/s1-$name.json" --init "$init" --tokenizer "data/tok/tok-$vocab.json" \
     --records data/decisions,data/games,"$dag" --weights "games=0.5,r$r=0.4,decisions=0.1" \
     --minutes "$minutes" --out "$run/decide"
   $T calibrate --run "$run/decide/last" --records data/decisions,data/games

@@ -337,6 +337,9 @@ env "${daemon_env[@]}" bash "$here/train-when-idle.sh" --no-caffeinate -f "$tmp/
 check "train-when-idle: reuses a running daemon, returns the command's status" "5" "$?"
 check "train-when-idle: leaves the daemon it did not start running" "yes" \
   "$(kill -0 "$d1" 2>/dev/null && echo yes)"
+once=$(env "${daemon_env[@]}" bash "$here/auto-brake.sh" --once "$tmp/d/brake" 2>/dev/null)
+check "--once names the live daemon's pid, once" "pid $d1" \
+  "$(printf '%s\n' "$once" | sed -n 's/^daemon  *//p')"
 kill -TERM "$d1"
 wait "$d1"
 check "daemon: TERM stops it with status 0" "0" "$?"
@@ -359,6 +362,8 @@ check "train-when-idle: the pid file is gone with it" "no" \
 
 once=$(env "${daemon_env[@]}" bash "$here/auto-brake.sh" --once "$tmp/o/brake" 2>/dev/null)
 check "--once prints the decision" "yes" "$(printf '%s\n' "$once" | grep -q '^decision ' && echo yes)"
+check "--once says when no daemon serves the file" "none for this file" \
+  "$(printf '%s\n' "$once" | sed -n 's/^daemon  *//p')"
 check "--once writes nothing" "no" "$([ -e "$tmp/o" ] && echo yes || echo no)"
 
 # ----------------------------------------------------------------------------- train-when-idle

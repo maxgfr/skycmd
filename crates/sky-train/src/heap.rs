@@ -40,8 +40,9 @@ mod tests {
     fn counts_a_live_allocation() {
         let before = super::in_use();
         assert!(before.0 > 0 && before.1 > 0);
-        // 64 MB held: other tests allocate at the same time, far less than that.
-        let held = vec![1u8; 64 << 20];
+        // 64 MB held: other tests allocate at the same time, far less than that. `black_box` keeps
+        // a release build from removing an allocation that nothing reads.
+        let held = std::hint::black_box(vec![1u8; 64 << 20]);
         let after = super::in_use();
         assert!(after.1 > before.1 + (32 << 20), "{before:?} -> {after:?}");
         drop(held);

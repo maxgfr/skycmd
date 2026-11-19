@@ -32,7 +32,7 @@ steps=("$@")
 [ ${#steps[@]} -eq 0 ] && steps=(data calib test route)
 for s in "${steps[@]}"; do
   case "$s" in
-    data) [ -s data/lfm3/test.jsonl ] && echo "== data/lfm3 exists, skipped" || py data ;;
+    data) if [ -s data/lfm3/test.jsonl ]; then echo "== data/lfm3 exists, skipped"; else py data; fi ;;
     smoke)
       [ -s data/lfm3/calib.jsonl ] || py data
       py gen --split calib --mode s1 --limit 3 --out runs/lfm3-s1s2-smoke

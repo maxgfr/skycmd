@@ -33,6 +33,7 @@ done
 rm -rf "$tmp"
 # per model and game: episodes, decisions, agreement with the oracle, mean score and return,
 # completion and crash rates (the table of the dataset card)
+# shellcheck disable=SC2086 # MODELS is a list: one argument per model
 python3 -I - "$OUT" $MODELS <<'PY'
 import json, sys
 from collections import defaultdict

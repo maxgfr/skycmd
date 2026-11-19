@@ -53,6 +53,7 @@ if [[ ${#rows[@]} -eq 0 ]]; then
   echo "nothing new to export: manifest.json and bench.json are unchanged"; exit 0
 fi
 
+# shellcheck disable=SC2016 # the single quotes hold JavaScript, not shell
 printf '%s\n' "${rows[@]+"${rows[@]}"}" | node --input-type=module -e '
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 const rows = readFileSync(0, "utf8").split("\n").filter(Boolean).map((l) => {

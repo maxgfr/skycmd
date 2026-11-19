@@ -339,8 +339,9 @@ ab_once() {
   value=${out%%$'\t'*}
   reason=${out#*$'\t'}
   pid=$(daemon_pid "$file" || true)
+  if [ -n "$pid" ]; then pid="pid $pid"; else pid="none for this file"; fi
   printf '%-16s %s\n' "brake file" "$file (holds: ${p_current:-nothing})"
-  printf '%-16s %s\n' "daemon" "${pid:+pid $pid}${pid:-none for this file}"
+  printf '%-16s %s\n' "daemon" "$pid"
   printf '%-16s %s\n' "thermal state" "$p_state (0 nominal .. 3 critical; helper $therm_bin: $([ -x "$therm_bin" ] && echo present || echo absent))"
   printf '%-16s %s\n' "pmset therm" "$p_pmset_hot (1: a speed limit or a thermal warning)"
   printf '%-16s %s\n' "on battery" "$p_battery"
