@@ -34,6 +34,7 @@ no test tool enters a count. Only aggregates are printed.
 import argparse
 import collections
 import json
+import os
 import re
 
 SCHEMA = re.compile(r'\b(api|endpoint|parameters?|json|ids?|specified|given|provided|based on|'
@@ -131,7 +132,9 @@ def level_dist(anchors, m):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--data', default='/Users/maxime/Documents/Code/skycmd-data/s6-route')
+    ap.add_argument('--data', default=os.environ.get('ROUTE_DATA') or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'skycmd-data', 's6-route'),
+        help='the data folder (default: ROUTE_DATA, else <repo>/../skycmd-data/s6-route)')
     ap.add_argument('--out')
     a = ap.parse_args()
     D = a.data.rstrip('/') + '/'

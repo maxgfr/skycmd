@@ -2,8 +2,8 @@
 # Teacher soft labels of s6-nano / s6-micro through a GLM endpoint (docs/s6-gen-prereg.md,
 # amendment 1): GLM-5.3-flash, an open-weight model (MIT, zai-org/GLM-5.3-Flash), called through
 # the z.ai API, so nothing heavy runs on this machine. The endpoint and the key come from the zai
-# provider of ccs (Claude Code Switch) unless SKY_TEACHER_URL and SKY_TEACHER_KEY are set; the key
-# is never printed.
+# provider of `ccs`, a command-line provider switcher, unless SKY_TEACHER_URL and SKY_TEACHER_KEY
+# are set; the key is never printed.
 # Usage: scripts/distill-glm.sh [count] [label] [loop] [mix]   (default: loop mix)
 #   count   records left to label and the calls that takes (no API call)
 #   label   one pass of sky-data teacher label-decisions -> data/teacher/glm_labels.jsonl; it

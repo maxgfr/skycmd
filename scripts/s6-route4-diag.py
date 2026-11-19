@@ -2,7 +2,7 @@
 """The tables of docs/s6-route4-diagnosis.md (why s6-route-nano fails when tool names are masked).
 
 Standard library only; run with `python3 -I`. The data folder (DATA, default
-/Users/maxime/Documents/Code/skycmd-data/s6-route) is read, never written.
+<repo>/../skycmd-data/s6-route) is read, never written.
 
   s6-route4-diag.py kinds                  record kinds of the training and validation files: share,
                                            none-gold count, how often the gold is BM25 rank 1
@@ -40,7 +40,8 @@ import random
 import re
 import sys
 
-DATA = os.environ.get('DATA', '/Users/maxime/Documents/Code/skycmd-data/s6-route').rstrip('/') + '/'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA = os.path.abspath(os.environ.get('DATA') or os.path.join(ROOT, '..', 'skycmd-data', 's6-route')) + '/'
 NONE = 'none of these tools fits the request'
 
 

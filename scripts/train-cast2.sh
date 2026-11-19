@@ -36,7 +36,7 @@
 #   MINUTES=720  TIME_SCALE=1       working minutes of training (TIME_SCALE multiplies them)
 #   PILOT_STEPS=3000                steps of each pilot
 #   SOURCES=uscrn_subhourly         the new sources the data step fetches (amendment 1)
-#   CAST2_DATA=/Users/maxime/Documents/Code/skycmd-data/s6-cast2
+#   CAST2_DATA=<repo>/../skycmd-data/s6-cast2
 #                                   outside the repository: series2/ (the new series), list.json
 #                                   and leak.json (§3.2, §3.3), chronos-zs/ and chronos-zs-out/
 #                                   (the Chronos-ZS windows and the references' scores), hf/
@@ -87,7 +87,8 @@ run=${sky_out}runs/$name
 pilot_dir=${sky_out}runs/s6-cast2-pilot
 # The new real series, the records of their checks and the Chronos-ZS data live outside the
 # repositories (amendment 1): CAST2_DATA, read by every step, written by data and chronos-check.
-cast2_data=${CAST2_DATA:-/Users/maxime/Documents/Code/skycmd-data/s6-cast2}
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cast2_data=${CAST2_DATA:-$repo_root/../skycmd-data/s6-cast2}
 # fetched (series2/) and, after the leakage check of amendment 2, what trains (series2-checked/)
 fetched2=$cast2_data/series2
 series2=$cast2_data/series2-checked

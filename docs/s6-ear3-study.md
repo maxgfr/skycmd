@@ -342,7 +342,7 @@ The project publishes its models under Apache-2.0 and its data sets openly. A re
   - Free space was 6,057,404 KB (6.1 GB) on 17/11/2026 (`df -k`), not the 28 GB of the brief.
   - v3 needs at most 16.9 GB of new data plus the project's 8 GB floor (§6).
   - Space must be freed first. The largest candidate is v1's `data/ear/audio` (20 GB), which v2's pre-registration keeps untouched "unless the owner decides otherwise".
-- **v2's checkpoint.** It exists only in a session worktree (`.claude/worktrees/s6-tranches-2-7/runs/s6-ear2-nano/last-ema`, `model.safetensors` 5.7 MB, not in git). It must be copied somewhere durable before that worktree is removed, or the from-v2 start is impossible. The lead copies it to `../skycmd-data/s6-ear2/checkpoints/last-ema/` (decision of 17/11/2026), and the sha256 of its files is recorded before the run.
+- **v2's checkpoint.** It exists only in a second working tree of the repository (`runs/s6-ear2-nano/last-ema` there, `model.safetensors` 5.7 MB, not in git). It must be copied somewhere durable before that worktree is removed, or the from-v2 start is impossible. The lead copies it to `../skycmd-data/s6-ear2/checkpoints/last-ema/` (decision of 17/11/2026), and the sha256 of its files is recorded before the run.
 - **Gate (a) may move.** Half the draws become conversations, and three quarters of the Smart Turn draws get a trailing silence. The trimmed test clips may lose a point. Starting from v2's weights and keeping a quarter of v2's view mitigate this.
 
 ## 6. Cost (one MacBook, Apple M5, 16 GB)

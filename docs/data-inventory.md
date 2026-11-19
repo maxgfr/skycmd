@@ -72,14 +72,14 @@ data must be on Hugging Face first.
 
 | folder | what | size (18/11/2026) |
 |---|---|---:|
-| `skycmd/data/` | the main checkout's data, linked into the worktrees (`.claude/worktrees/s6-tranches-2-7/data` is a symlink to it) | 47.77 GiB |
+| `skycmd/data/` | the main checkout's data, linked into the worktrees (the `data` folder of a second working tree of the repository is a symlink to it) | 47.77 GiB |
 | `skycmd-data/s6-ear2/` | s6-ear v2's feature stores and v2's EMA checkpoint | 12.67 GiB |
 | `skycmd-data/s6-cast2/` | s6-cast v2's new series and the Chronos-ZS caches; **Deleted on 19/11/2026** (section 8) | 7.20 GiB |
 | `skycmd-data/s6-secrets2/` | s6-secrets v2 and v3's CredData and issue-report sets (real leaked credentials; not opened for this inventory); **Deleted on 19/11/2026** (section 8) | 3.97 GiB |
 | `skycmd-data/s6-route/` | the tool-routing sources, builds and evaluation outputs; all but `eval/` and the manifests **deleted on 19/11/2026** (section 8) | 2.86 GiB |
 | `skycmd/runs/` | runs of the main checkout: checkpoints, tokenized caches, logs | 12.57 GiB |
-| `.claude/worktrees/s6-tranches-2-7/runs/` | runs of the session worktree (some entries are symlinks to `skycmd/runs/`) | 0.83 GiB |
-| `skycmd/models/`, `.claude/worktrees/s6-tranches-2-7/models/` | exported GGUF files | 18 MB, 9 MB |
+| `runs/` of a second working tree of the repository | its runs (some entries are symlinks to `skycmd/runs/`) | 0.83 GiB |
+| `skycmd/models/`, `models/` of a second working tree of the repository | exported GGUF files | 18 MB, 9 MB |
 
 ## 1. Status of the models
 

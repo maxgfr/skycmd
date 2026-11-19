@@ -2,7 +2,7 @@
 """Request-blind rules on the test-like slates of s6-route (docs/s6-route4-study.md, section 7).
 
 Standard library only; run with `python3 -I`. The data folder (DATA, default
-/Users/maxime/Documents/Code/skycmd-data/s6-route) is read, never written. No model is run.
+<repo>/../skycmd-data/s6-route) is read, never written. No model is run.
 
   s6-route4-blind.py rules      every rule on build/val/v_tools.jsonl (validation), then on the
                                 published test files build/test/t_tools.jsonl (T-tools of v2) and
@@ -26,7 +26,8 @@ import os
 import re
 import sys
 
-DATA = os.environ.get('DATA', '/Users/maxime/Documents/Code/skycmd-data/s6-route').rstrip('/') + '/'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA = os.path.abspath(os.environ.get('DATA') or os.path.join(ROOT, '..', 'skycmd-data', 's6-route')) + '/'
 EV = DATA + 'ev' + 'al/val/'
 FILES = [('v_tools (validation)', 'build/val/v_tools.jsonl'),
          ('t_tools (T-tools, read for v2)', 'build/test/t_tools.jsonl'),
