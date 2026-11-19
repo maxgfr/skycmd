@@ -219,3 +219,13 @@ Data build ≈ 20 (CPU; plus the fetch of glaive and hermes), baseline training 
 - v1 test dumps and test files, already read by the v1 evaluation and by `BENCH.md`: the per-task, per-class, per-language and per-length breakdowns of §3 are new readings of those records. Any v2 judged on the same records is designed after reading them; the pre-registration says so.
 - Validation and training splits only for the baseline rehearsal (§5). No MASSIVE, When2Call or bench test record was scored by a baseline.
 - `data/distill/agreement.json`, `runs/*/log.jsonl`, `runs/all/*.log`, `runs/*/eval/*`, `DATA_LICENSES.md`, `docs/research-s6-usefulness.md` §3, §8 (item 5) and §9.
+
+## 8. Open, not scheduled (note added 19/11/2026)
+
+Two gaps noted on 14/11/2026, kept here from the project's former to-do file (`TODO.md`, removed
+on 19/11/2026; last version at commit `0e45b7b`). Neither has a pre-registration or a date.
+
+- **French intent data.** The decision training set holds French only in PAWS-X and Allociné, two
+  binary tasks, and no intent task (§2.3, §3.2: the French MASSIVE gap is language, not truncation).
+- **The truncation of states.** Long states are cut to the model's window (§3.1 to §3.5 give the
+  truncated shares per source).

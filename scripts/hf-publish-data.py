@@ -7,7 +7,7 @@
 # ///
 """Publish skycmd's datasets to Hugging Face: one dataset repository per set, one parquet file per
 source, and a card that names each source, its licence, the command that wrote the files and the
-commit (TODO.md §1.2).
+commit (DATA_LICENSES.md, "Published on Hugging Face").
 
     hf auth login                       # a token with write access
     uv run scripts/hf-publish-data.py [--dry-run] [--only decisions,games] [--user NAME]
@@ -20,7 +20,7 @@ Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) befor
   * gated upstream sets are not republished (LocalLLaMA/typed-decisions, train and bench);
   * the GLM-5.3-flash labels are published only with --glm MIXDIR (`sky-data teacher mix-labels
     --alpha 0 --out MIXDIR`) as `skycmd-glm-labels`, marked as AI-generated: the outputs of an
-    open-weight MIT model, published by the owner's decision (DATA_LICENSES.md, TODO.md §1.2);
+    open-weight MIT model, published by the owner's decision (DATA_LICENSES.md, s6-nano / s6-micro);
   * every set a model reads is published: decisions, games, numeric, secrets, commands, zero-shot,
     the s6-cast series, the MLM text with its tokenizers and the s6-ear questions with their clip
     index and Mimi codes; `skycmd-lfm3-math` (the LFM3-1.7B router's questions) is published, and

@@ -34,8 +34,8 @@ The full guide, with every setting, the guards and what went wrong along the way
 
 The rests are taken out of the run clock, so a budget of 60 working minutes is the same computation in
 every mode: only the wall-clock time changes. With these defaults it is about ×1.15 at night, ×1.4
-when the Mac is left alone and ×2.7 when it is in use or on battery (the "Times" paragraph of
-[TODO.md](https://github.com/maxgfr/skycmd/blob/main/TODO.md)).
+when the Mac is left alone and ×2.7 when it is in use or on battery: the wall-clock cost is
+`(1 / duty) × (work + rest) / work` ([`docs/idle-training.md`](https://github.com/maxgfr/skycmd/blob/main/docs/idle-training.md#why-budgets-count-working-minutes)).
 
 ## Quick start
 

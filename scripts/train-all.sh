@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The big run on one machine (TODO.md §9): the s6 recipe, then the five s6 models, in the brake mode
+# The big run on one machine (docs/big-run-report.md): the s6 recipe, then the five s6 models, in the brake mode
 # of docs/s6-prereg.md amendment 5, with no decision taken by hand. Run it from the main checkout.
 #
 # Usage: scripts/train-all.sh [step...]
@@ -40,7 +40,7 @@ if [ -n "${SMOKE:-}" ]; then
   export ROUNDS=1 DAGGER_N=200 EPISODES=2 PILOT_STEPS=100
 fi
 recipe_json=runs/recipe/recipe.json
-# The records GLM had to label (TODO.md §1.1); data/distill/agreement.json gives those it labelled.
+# The records GLM had to label (docs/s6-gen-prereg.md, amendment 1; docs/big-run-report.md §7); data/distill/agreement.json gives those it labelled.
 GLM_SELECTED=747198
 GLM_MIN_COVER=0.95
 # docs/s6-ear-prereg.md, amendment 2: 10 x chance over the 2,048 entries of Mimi's codebook 0.

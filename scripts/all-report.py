@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""The gates of the five s6 models, in one file (TODO.md §9.4, scripts/train-all.sh report).
+"""The gates of the five s6 models, in one file (the report step of scripts/train-all.sh;
+docs/big-run-report.md).
 
 Reads what each training script wrote, applies no judgement, and writes one table: a model whose files
 are missing is shown as "not run", and a value that cannot be read as "unreadable", never as a pass.

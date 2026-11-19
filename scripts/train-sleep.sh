@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# s6-sleep: the pico pilot and the nano runs of docs/s6-sleep-prereg.md (TODO §10).
+# s6-sleep: the pico pilot and the nano runs of docs/s6-sleep-prereg.md.
 #
 #   scripts/train-sleep.sh [data] [pilot] [nano] [test] [report]     # default: all, in this order
 #

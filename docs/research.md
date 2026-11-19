@@ -126,3 +126,40 @@ Searched datasets for doom, vizdoom, freedoom, deathmatch, sample-factory, gamen
 | Sample-Factory models (`edbeeching/doom_*`, `andrewzhang505/sample-factory-2-doom-*`, about 1,000 `vizdoom` models) | none declared on the ones opened | checkpoints and one `replay.mp4` | noted only: the replays are video |
 
 None of these can produce our records honestly. Our state text needs the bearing and distance of the nearest visible enemy, incoming projectiles, wall distances, doors and the next A* waypoint on a grid map, and no Hub dataset stores more than pose, health, ammo and a few counters next to the pixels. Their actions also come from reward-trained policies, humans or VLMs, while our labels come from an oracle with full simulator access. The permissive sets with game variables (`gamewam-vizdoom`, `doom-dense-arnold`) could at most give an action-frequency prior by health or ammo bin, and the procedural oracle already produces unlimited exact labels, so the Doom data stays fully generated (`sky-games-gen --game doom`, `sky-arena --dagger`).
+
+## Sleep, consolidation and plasticity: the sources of s6-sleep (read 11/11/2026; note added 19/11/2026, moved from the deleted TODO)
+
+These sources and their figures were listed in the project's former to-do file (`TODO.md`, removed
+on 19/11/2026; last version at commit `0e45b7b`, §10) when s6-sleep was planned. The figures were
+read in the papers themselves (arXiv HTML, 11/11/2026), not only in the video.
+
+- bycloud, ["The Next Scaling Axis of LLM Is… Sleeping?"](https://www.youtube.com/watch?v=rAxTxqIHh9E),
+  video of 10/11/2026 (read from its automatic captions); it pointed to the papers below.
+- Lee, McLeish, Goldstein, Fanti, *Do Language Models Need Sleep? Offline Recurrence for Improved
+  Online Inference*, [arXiv 2605.26099](https://arxiv.org/abs/2605.26099): the base of s6-sleep
+  (`docs/s6-sleep-prereg.md`). Attention and gated delta network blocks alternate; at sleep the model
+  reruns its stack N times on the same chunk and only the fast weights change. Rule 110 (a 4-layer
+  hybrid, d = 256): exact accuracy about 10% at N = 1, 20% at N = 2, above 30% at N = 3 or 4, with the
+  same memory size. GSM-Infinite without chain of thought, 6 operations: Jet-Nemotron 2B 0.742 at
+  N = 1 and 0.812 at N = 6; Ouro 1.4B 0.419 at N = 1 and 0.615 at N = 4. Stated limits: training cost
+  grows about linearly with N and can be unstable.
+- Behrouz, Hashemi, Javanmard, Mirrokni, *Language Models Need Sleep: Learning to Self-Modify and
+  Consolidate Memories*, [arXiv 2606.03979](https://arxiv.org/abs/2606.03979): sleep as
+  consolidation into new low-rank experts, and "dreaming" on self-generated tasks. Qwen3-1.7B: AIME-24
+  from 49.8 to 53.2, AIME-25 from 34.5 to 40.2. SQuAD, one passage: 48.9 with sleep, 35.7 with sleep
+  and no dreaming, so dreaming carries most of the gain. No seeds or error bars are given. This was
+  the idea of the flexible weights with sleep and dreaming, closed on 18/11/2026
+  (`docs/weights-prereg.md`, the note at the end).
+- Feng et al., *In-Place Test-Time Training*, ICLR 2026, [arXiv 2604.06169](https://arxiv.org/abs/2604.06169):
+  the down projection of a gated MLP becomes fast weights, updated chunk by chunk. Its gains are on
+  long context (RULER on Qwen3-4B: +4.4 points at 64k, −0.5 at 4k), so it was the least useful source
+  for skycmd's short states; the in-place TTT on LFM3-1.7B that it suggested is closed
+  (`docs/weights-prereg.md`, the note at the end).
+- Hernandez-Garcia, Figliolia, Millidge, *Can Scale Save Us From Plasticity Loss in Large Language
+  Models?*, [arXiv 2606.24752](https://arxiv.org/abs/2606.24752). The onset of plasticity loss follows
+  `T = 1.3·10⁻⁵ · P^0.8269`, in tasks of 5B tokens each; a 5M-parameter model loses plasticity after
+  6 tasks, that is 30B tokens. **Why it is not a next step here:** a pretraining run of the s6
+  recipe sees about 40M tokens (4,800 steps in about 6 minutes at about 105k tokens/s, from
+  `runs/s6-recipe.log`), several hundred times fewer than 30B. Plasticity loss is not a risk for
+  these runs; it would be worth measuring only if a sleeping model were ever trained continuously for
+  a long time, for example in the browser across many sessions.

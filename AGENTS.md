@@ -10,6 +10,41 @@
   touch it only when the owner names it in the request.
 - Models and their demos also go to Hugging Face (`scripts/hf-publish.py`, `hf/cards/`,
   `hf/spaces.json`); a result is published whether its gate passed or failed.
+- **A failed model is published as a result** (owner's decision of 15/11/2026): its file, its
+  card and its manifest entry say first that it failed, and its verdict does not change.
+- **Every published model has a Space**, failed gates included (owner's decision of 17/11/2026):
+  an entry in `hf/spaces.json`, uploaded by `scripts/hf-publish.py`. When another project pins
+  files of a model repository by sha256 (the `engine/` folder of `s6-secrets-verify-pico`), publish
+  its Space with `--space-only`, which never touches the model repository. The global Space
+  `maxgfr/skycmd` (the entry of kind `hub`) gathers every demo and is republished with
+  `--only skycmd` after each new model.
+
+## Publishing a result: checklist
+
+Applied to every model whose gate has been read, passed or failed.
+
+- **Before:** the gate is read once and the result block is committed at the end of the
+  pre-registration, with the small result files under `runs/<name>/`.
+- **The write-up, in the repository:**
+  - its section in `BENCH.md` and its row in the README model table;
+  - `site/results/index.md` (its row in the status table, and every pre-registered number,
+    failures included), `site/novelty/index.md` and `site/bench/index.md`;
+  - its card in the Models catalogue (`site/.vitepress/theme/lib/catalogue.ts`), checked by
+    `npm --prefix site test`;
+  - its tutorial chapter, where it has one;
+  - the GGUF in `site/public/models/` and its entry in `site/public/models/manifest.json`, with
+    its sha256 and `gate: passed` or `gate: failed`: **never left at a default when the model
+    failed**. A forecaster also gets its line in `site/public/models/forecast.json` and the
+    Forecast page;
+  - `hf/cards/<name>.md`, opening with the verdict, and its Space entry in `hf/spaces.json`;
+  - `DATA_LICENSES.md` for any new data set or teacher;
+  - one article in `site/articles/`, listed on `site/articles/index.md`, newest first.
+- **Build and dry run:** `scripts/build-wasm.sh`, `(cd site && npm run space:build)`, then
+  `python3 scripts/hf-publish.py --dry-run --only <name>`.
+- **Upload, once the write-up is merged into `main`:** `python3 scripts/hf-publish.py --only <name>`,
+  then the global Space again with `python3 scripts/hf-publish.py --only skycmd`.
+- **Done means:** the files committed, the site deployed from `main`, and every URL of the model
+  (model repository, its Space, the global Space, the site pages) answering 200.
 
 ## Articles
 
@@ -40,3 +75,48 @@
 - Each generated source is listed in `DATA_LICENSES.md` with its model, its licence and its role.
 - Text written for a demo or a test fixture (presets, edge cases) is not training data and never
   enters a data set.
+
+## Pre-registered experiments
+
+- Every experiment has a pre-registration in `docs/`, frozen and committed before any
+  computation it governs.
+- Any change is a **dated amendment, written and committed before the computation it concerns**
+  (before the run, the step or the reading it changes). It says what changes and what does not.
+- **A test set is read once.** Test seeds and fresh files are opened once, by the step the
+  pre-registration names.
+- **No rerun "to see".** Only a technical failure justifies a new run, and it is recorded in the
+  report and in the result block.
+- Never choose on an intermediate checkpoint: the checkpoint rule is fixed in the
+  pre-registration.
+- A gate is read as written. A failure is reported as such, in the result block, `BENCH.md` and
+  on the site, and its file is published as a result (above).
+- A system designed after its test was read, and judged on the same records, is disclosed as a
+  second look everywhere its result is reported.
+- One budgeted GPU run at a time. Budgets count working minutes, so the brake that keeps the
+  machine usable does not change them (`docs/idle-training.md`).
+
+## Full test pass
+
+CPU only, one build at a time, since the machine is shared (the pass of 19/11/2026 ran with
+`CARGO_BUILD_JOBS=4`). The release build of sky-train compiles MLX; the whole pass takes a few
+hours of CPU. Every command passes, or its failure is fixed and committed.
+
+- `cargo fmt --all --check`; clippy as CI runs it:
+  `cargo clippy --workspace --exclude sky-train --all-targets -- -D warnings`, then
+  `cargo clippy -p sky-train --all-targets -- -D warnings`.
+- `cargo test --release` on sky-infer, sky-data, sky-web, sky-gguf and xtask;
+  `cargo test --release -p sky-train` with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
+- `cargo test -p sky-web --test parity`; `wasm-pack test --node --release crates/sky-web --test parity`
+  (with SIMD128, and also `--test iso --test forecast --test verify`, as CI does);
+  `wasm-pack test --node crates/sky-web --test memory`; `node crates/sky-web/bench/verify-node.mjs --glue`.
+- `python3 -I scripts/test_s6_adopt.py` and the other Python test files of `scripts/` (some need
+  numpy or pinned packages through `uv`); `scripts/test-auto-brake.sh` and `scripts/test_brake.py`.
+- `bash -n` and shellcheck on `scripts/*.sh`.
+- `DRY_RUN=1` on every step of `scripts/train-all.sh`.
+- `scripts/build-wasm.sh`, then `npm --prefix site test`, `npm --prefix site run docs:build` with no
+  dead link, and `npm --prefix site run space:build`.
+- `load_dataset("maxgfr/skycmd-decisions", "boolq")` loads (for example through
+  `uv run --no-project --with datasets`).
+- The numbers: each model's numbers are the same in `BENCH.md`, the README, Results, What we bring,
+  Bench, the Models catalogue, the articles, the tutorial chapters, `hf/cards/` and the manifest,
+  and agree with the result files.

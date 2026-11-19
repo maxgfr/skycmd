@@ -29,6 +29,12 @@ its data any more. The rows below that held data for v4 say so, marked with the 
 and when that data goes is the owner's decision: nothing was deleted, moved or uploaded for this
 update.
 
+**Update of 19/11/2026, last (s6-ear v3 frozen).** s6-ear v3's pre-registration (`docs/s6-ear3-prereg.md`)
+was frozen on 19/11/2026, with amendments 1 and 2. Access to the gated otoSpeech set was granted;
+v3's data build is running (its CPU stages); nothing has been trained and no test has been read.
+The rows below that said the pre-registration was "being frozen" are corrected; the paragraph
+above, "later that day", keeps the state it was written in.
+
 **The owner's rule (18/11/2026). Once a model is in its final version and nobody will touch it
 again, and its training data is on Hugging Face, the local copy of that data may be deleted. The
 data must be on Hugging Face first.
@@ -58,7 +64,9 @@ data must be on Hugging Face first.
   `README.md` and `agreement.json` files were downloaded; no data shard.
 - Local hashes: `sha256` of every local file that a published manifest names (section 2).
 - Who reads what: the pre-registrations in `docs/`, the run scripts in `scripts/`, `TODO.md`
-  ("Where we are", "What remains") and `DATA_LICENSES.md`, at commit `6b6ecac`.
+  ("Where we are", "What remains") and `DATA_LICENSES.md`, at commit `6b6ecac`. `TODO.md`, the
+  project's to-do file, was removed on 19/11/2026: each mention of it below is its text at commit
+  `6b6ecac` (its last version is at commit `0e45b7b`).
 
 **Where things are.**
 
@@ -75,7 +83,7 @@ data must be on Hugging Face first.
 
 ## 1. Status of the models
 
-From `TODO.md` ("Where we are", 18/11/2026) and the Hub (`list_models(author="maxgfr")`: 18 model
+From `TODO.md` at commit `6b6ecac` ("Where we are", 18/11/2026) and the Hub (`list_models(author="maxgfr")`: 18 model
 repositories, each holding its GGUF and card; none holds a training checkpoint).
 
 | model | published | final? | why |
@@ -86,11 +94,11 @@ repositories, each holding its GGUF and card; none holds a training checkpoint).
 | s6-micro (v2) | yes, passed | yes for its checkpoints; its data **no** | its data (`data/decisions`, `distill`, `games`, `numeric`) was read by s6-sleep v4's K1, which closed v4 on 19/11 (§7, the other reader, was closed on 19/11) |
 | s6-micro-v1 | yes, failed | yes, since 19/11 | `runs/s6-micro/pretrain/init` was the initialisation of s6-route v4, v5 and v7 (`docs/s6-route4-prereg.md` §3, "as v4" in `docs/s6-route5-prereg.md` §5; `scripts/train-route4.sh` line 81); the route line is closed |
 | s6-secrets-pico | yes, passed | yes, since 19/11 | §7.4, its only reader, was closed without running on 19/11 (`docs/weights-prereg.md`, amendment 1) |
-| s6-secrets-verify-pico (v2) and v3 | v2 yes, failed; v3 failed | yes, by the lead's decision of 18/11 | closed as "not worth pre-registering" (`TODO.md` item 5); its data was deleted on 19/11 (section 8) |
-| s6-ear-nano (v1) | yes, failed | yes for its features (deleted on 19/11, section 8); **no** for its Smart Turn test WAVs and two index files | v2's evaluation and v3 (its pre-registration being frozen on 19/11) read `data/ear/wav/smart-turn`, `data/ear/clips/smart-turn.jsonl`, `data/ear/jev/turn_end.jsonl` (`scripts/train-turn.sh`, `docs/s6-ear3-prereg.md` §3.1, §3.4, §3.8) |
-| s6-ear2-nano (v2) | yes, passed | **no** | v3 (`docs/s6-ear3-prereg.md`, being frozen on 19/11; nothing trained yet) starts from v2's EMA checkpoint and reuses v2's stores (§3.1, §3.8) |
+| s6-secrets-verify-pico (v2) and v3 | v2 yes, failed; v3 failed | yes, by the lead's decision of 18/11 | closed as "not worth pre-registering" (`docs/s6-secrets4-diagnosis.md` §5, the note of 19/11/2026); its data was deleted on 19/11 (section 8) |
+| s6-ear-nano (v1) | yes, failed | yes for its features (deleted on 19/11, section 8); **no** for its Smart Turn test WAVs and two index files | v2's evaluation and v3 (its pre-registration frozen on 19/11) read `data/ear/wav/smart-turn`, `data/ear/clips/smart-turn.jsonl`, `data/ear/jev/turn_end.jsonl` (`scripts/train-turn.sh`, `docs/s6-ear3-prereg.md` §3.1, §3.4, §3.8) |
+| s6-ear2-nano (v2) | yes, passed | **no** | v3 (`docs/s6-ear3-prereg.md`, frozen on 19/11; nothing trained yet) starts from v2's EMA checkpoint and reuses v2's stores (§3.1, §3.8) |
 | s6-cast-pico (v1) | yes, failed | yes | by §11 of `docs/s6-cast2-prereg.md` the s6-cast line stops; its local data was deleted on 19/11 (section 8) |
-| s6-cast2-pico (v2) | yes, failed (the Hub repository `maxgfr/s6-cast2-pico` holds its GGUF since 18/11 12:47 UTC, same sha256 as `site/public/models/s6-cast2-pico.gguf`; `TODO.md` of the morning still says "not uploaded yet") | yes, with one reservation | the coverage and front-end diagnostics of §9 are "not scheduled" (`TODO.md` item 1); rebuilding them needs GIFT-Eval's windows again, whose local copy was deleted on 19/11 (section 8) |
+| s6-cast2-pico (v2) | yes, failed (the Hub repository `maxgfr/s6-cast2-pico` holds its GGUF since 18/11 12:47 UTC, same sha256 as `site/public/models/s6-cast2-pico.gguf`; `TODO.md` at commit `6b6ecac`, the morning's state, said "not uploaded yet") | yes, with one reservation | the coverage and front-end diagnostics of §9 are "not scheduled" (`TODO.md` at commit `6b6ecac`, item 1); rebuilding them needs GIFT-Eval's windows again, whose local copy was deleted on 19/11 (section 8) |
 | s6-route-nano (v2), s6-route (v3) | yes (failed, passed) | yes, since 19/11 | the route line is closed (v5 and v6 stopped before training, v7 failed, no v8); their records are skycmd-route; the local builds were deleted on 19/11 (section 8) |
 | s6-route v4 | no model | yes, since 19/11 | the route line is closed; its 13,687 teacher rewrites are in skycmd-route7 (G12) |
 | s6-route v5, v6 (19/11) | no model: each stopped at its data checks or its stop rule (18/11) | yes | v7 took v6's build as its inputs, checked by hash (`runs/s6-route7/inputs.json`) |
@@ -168,7 +176,7 @@ splits of `data/decisions` and `data/s4/heldout` (`docs/s6-gen-prereg.md`).
 | model | status | training data (val, test) | on Hugging Face | local path, size | removable | how to rebuild |
 |---|---|---|---|---|---|---|
 | s6-secrets-pico | final since 19/11 (§7.4 closed) | `data/secrets/secret_synth` (train, val), `secret_bench` (test); MLM on text-open and text | skycmd-secrets (`secret_synth`, `secret_bench`), skycmd-text | `data/secrets` 0.09 GiB | yes under the rule since 19/11 (skycmd-secrets, 2 of 2 identical); not deleted on 19/11 | `sky-data secret-jev` (seed 1234; our generator) |
-| s6-secrets-verify-pico (v2), v3 | final by the lead's decision (18/11) | CredData obfuscated files (116 permissively licensed repositories for train and val; 221 others for test only), the Zenodo issue-report set (secrets replaced by shapes in train and val), synthetic candidates; the obfuscated CredData files are also 30% of the MLM text (`DATA_LICENSES.md`) | **never published**: real-credential sets, "not ours to redistribute" (owner, 16/11, `TODO.md`) | **Deleted on 19/11/2026** (section 8): `skycmd-data/s6-secrets2` 3.97 GiB; the tokenized MLM caches `runs/s6-secrets-verify-pico/pretrain/cache` and `runs/secrets2-smoke/runs/s6-secrets-verify-pico/pretrain/cache`, 1.21 GiB each (their `corpus.json` lists `build/pretrain-text/creddata.jsonl` among the inputs) | deleted without an upload, by the owner's decision (section 7, question 5): it can never be on the Hub | CredData at `01e3d135a90f46c9a7965683b24a05d12e136b33` with its `download_data.py` in a Linux container (it clones the 337 source repositories, so a rebuild depends on them still existing); Zenodo 10.5281/zenodo.19622962 (134,502,037 bytes) (`docs/s6-secrets2-prereg.md` §3) |
+| s6-secrets-verify-pico (v2), v3 | final by the lead's decision (18/11) | CredData obfuscated files (116 permissively licensed repositories for train and val; 221 others for test only), the Zenodo issue-report set (secrets replaced by shapes in train and val), synthetic candidates; the obfuscated CredData files are also 30% of the MLM text (`DATA_LICENSES.md`) | **never published**: real-credential sets, "not ours to redistribute" (owner, 16/11; `DATA_LICENSES.md`, s6-secrets v2) | **Deleted on 19/11/2026** (section 8): `skycmd-data/s6-secrets2` 3.97 GiB; the tokenized MLM caches `runs/s6-secrets-verify-pico/pretrain/cache` and `runs/secrets2-smoke/runs/s6-secrets-verify-pico/pretrain/cache`, 1.21 GiB each (their `corpus.json` lists `build/pretrain-text/creddata.jsonl` among the inputs) | deleted without an upload, by the owner's decision (section 7, question 5): it can never be on the Hub | CredData at `01e3d135a90f46c9a7965683b24a05d12e136b33` with its `download_data.py` in a Linux container (it clones the 337 source repositories, so a rebuild depends on them still existing); Zenodo 10.5281/zenodo.19622962 (134,502,037 bytes) (`docs/s6-secrets2-prereg.md` §3) |
 
 ### 3.4 s6-ear
 
@@ -176,7 +184,7 @@ splits of `data/decisions` and `data/s4/heldout` (`docs/s6-gen-prereg.md`).
 |---|---|---|---|---|---|---|
 | s6-ear-nano (v1) | final, except three files it shares with v2 and v3 | log-mel features `data/ear/audio/` (Smart Turn v3-train and v3.2-test, Speech Commands v0.02, MSWC en + fr first archives, LibriSpeech clean) and the Mimi codes; questions `data/ear/jev/`; test WAVs `data/ear/wav/` (for the baselines) | skycmd-ear: the questions (`turn_end`, `keyword`, `keyword_zs`), the clip index (`clips_*`) and the Mimi codes (`mimi_*`); **not the features nor the WAVs** (G1, G2) | **Deleted on 19/11/2026** (section 8): `data/ear/audio` 20.07 GiB (smart-turn 14 GiB, librispeech 2.9, mswc 2.7, speech-commands 0.39; 700,083 files); `data/ear/wav/mswc` 3.66, `wav/speech-commands` 0.15; `data/hf/speech_commands` (the downloaded archive) 2.26. Kept: `jev`, `clips`, `mimi` 0.34 | the features and v1-only WAVs: deleted on 19/11 without an upload, by the owner's decision (section 7, questions 1 and 2); the v1-only index files (`jev/keyword*.jsonl`, `clips/mswc.jsonl`, `clips/speech-commands.jsonl`, `mimi/`, 0.20 GiB): yes | `sky-data fetch-audio --set all` then `sky-data audio-jev` (`scripts/train-ear.sh` `data`); sources read at `main`, not pinned (section 4, G1) |
 | s6-ear2-nano (v2) | not final (v3 builds on it) | `skycmd-data/s6-ear2/train/` (from `pipecat-ai/smart-turn-data-v3.2-train` at `f8c95d28`, 83 shards; 257,353 train / 13,593 val, `train/LEAK.json`): features 9.07 GB, the Smart Turn v3.2 teacher's targets 2.84 GB, manifests 0.06 GB; test: `test/` (from v1's WAVs of `smart-turn-data-v3.2-test`), `eotbench/store` (`livekit/eot-bench-data` at `ae834af9`) | **none of the stores** (G3) | `skycmd-data/s6-ear2` 12.67 GiB (train 11.14, test 0.99, eotbench 0.51, checkpoints 0.02); and from v1: `data/ear/wav/smart-turn` 6.79 GiB, `clips/smart-turn.jsonl` 59 MB, `jev/turn_end.jsonl` 92 MB | no: v3 reuses them (`docs/s6-ear3-prereg.md` §3.8: "Reused, not copied: v2's Smart Turn store (11 GB), its test store and v1's test WAVs") | `scripts/train-turn.sh data` (`sky-data fetch-turn`, `turn-test`, `turn-eotbench`, `scripts/turn-teacher.py`): about 41.4 GB to stream; on 16/11 the first feature shard was written at 01:52 and the last teacher shard at 05:24 |
-| s6-ear3-nano (v3) | pre-registration being frozen on 19/11 (the owner accepted otoSpeech's access conditions on 19/11); nothing trained yet | v2's stores, v1's test WAVs, new conversation records from `otoearth/otoSpeech-full-duplex-280h` (gated, CC-BY-4.0), eot-bench | — | — | — | — |
+| s6-ear3-nano (v3) | pre-registration frozen on 19/11/2026 with amendments 1 and 2 (the owner accepted otoSpeech's access conditions on 19/11 and access was granted); its data build is running (CPU stages); nothing trained, no test read | v2's stores, v1's test WAVs, new conversation records from `otoearth/otoSpeech-full-duplex-280h` (gated, CC-BY-4.0), eot-bench | — | — | — | — |
 
 ### 3.5 s6-cast
 
@@ -257,8 +265,8 @@ on the Hub). Totals: about 3.6 GB of checkpoints and 9.36 GiB of caches.
 | `runs/s6ab`, `runs/s6lr` | 483, 101 | — | tranche 1's pico ablation and rate pilot (135 and 28 checkpoints) | no (the recipe is decided) |
 | `runs/s6-secrets-pico` | 15 | 0.85 GiB | the published model | no: §7.4 was closed on 19/11 |
 | `runs/s6-secrets-verify-pico`, `runs/secrets2-smoke` | 15, 15 | 1.21, 1.21 GiB (CredData text inside, G14) | v2 and a smoke run of it | no; the caches must never be published. **Deleted on 19/11/2026** (section 8): `runs/secrets2-smoke` and `runs/s6-secrets-verify-pico/pretrain` |
-| `runs/s6-ear-nano`, `runs/s6-ear-nano-swap` | 89, 55 | — | v1 and a run set aside (`TODO.md` item 11) | no |
-| `runs/s6-nano-lr-swap` | 36 | — | a run set aside (`TODO.md` item 11) | no |
+| `runs/s6-ear-nano`, `runs/s6-ear-nano-swap` | 89, 55 | — | v1 and a run set aside (`TODO.md` at commit `6b6ecac`, item 11) | no |
+| `runs/s6-nano-lr-swap` | 36 | — | a run set aside (`TODO.md` at commit `6b6ecac`, item 11) | no |
 | `runs/s6-sleep` | 31 | — | v1's pilot (and `seq/`, G9, which is data) | the checkpoints no; `seq/` yes |
 | `runs/s6-cast-pico`, `runs/s6-cast-pilot` | 10, 18 | — | v1 and its pilot | no |
 | worktree `runs/s6-ear2-nano` | 51 (`last`, `last-ema`, `pre-qat`) | — | v2; `last-ema` is copied to `skycmd-data/s6-ear2/checkpoints/last-ema/` (the four sha256 equal those of `last-ema.sha256`) | **yes**, the copy in `skycmd-data` (v3's start); the worktree copies are redundant |
@@ -291,6 +299,21 @@ Total: 11.71 GiB, of which 4.18 GiB of data files, 6.95 GiB of caches and 0.58 G
 output. Checkpoints of final models (section 5, "no") are not training data and are not
 counted here: about 2.8 GB more, the owner's call.
 
+**How the caches are cleaned** (measured on 09/11/2026; moved here on 19/11/2026 from the removed
+`TODO.md`, whose last version is at commit `0e45b7b`). A tokenized pretraining cache is 866 MB per
+pretraining run of the s6 text set, the same from one run to the next, so about 43 GB for the fifty
+or so runs of tranche 1; a pico checkpoint is under 5 MB. Once a run's steps are finished the caches
+serve no result, only a faster reload of a restarted step, and the trainer rebuilds them on the
+CPU. To remove them all:
+
+```
+find runs -type d -name cache -prune -exec rm -rf {} +
+```
+
+The debug build cache `target/s3-train/debug` (9.2 GB on 06/11/2026, written by `cargo test` and
+clippy) rebuilds itself and can be deleted after tests; the training scripts use only
+`target/s3-train/release`.
+
 **(b) Removable after an upload that the licences allow.** No entry exists for any of these in
 `scripts/hf-publish-data.py`; each needs a new `SETS` entry (and, for USCRN, a `SERIES` entry)
 before `uv run scripts/hf-publish-data.py --dry-run --only <set>` and the same without
@@ -322,7 +345,7 @@ closed, so their items are no longer held by them):
 - s6-sleep v4 (closed on 19/11 at K1; held until the owner decides): `runs/s6-nano-g3/decide/last`, `runs/s6-sleep/seq/`, `data/decisions`
   (all 29 files), `data/distill`, `data/games`, `data/numeric`, `data/s4/heldout`,
   `runs/s6-sleep3/`, `runs/s6-sleep4/`.
-- s6-ear v3 (pre-registration being frozen on 19/11): `skycmd-data/s6-ear2/` (train, test, eotbench, `checkpoints/last-ema`),
+- s6-ear v3 (pre-registration frozen on 19/11; its data build running, nothing trained): `skycmd-data/s6-ear2/` (train, test, eotbench, `checkpoints/last-ema`),
   `data/ear/wav/smart-turn`, `data/ear/clips/smart-turn.jsonl`, `data/ear/jev/turn_end.jsonl`.
 - Not reproducible and only here: `data/teacher/glm_labels.jsonl` and `data/distill/glm.jsonl`
   hold the 5,640 and 4,063 rows of G7 that the Hub does not have.
@@ -330,7 +353,7 @@ closed, so their items are no longer held by them):
 **(e) Mismatches between a published set and the local files:** none (section 2). Three
 statements of the repository disagree with what was read on 18/11/2026: `scripts/hf-publish-data.py`
 and `DATA_LICENSES.md` call `LocalLLaMA/typed-decisions` gated, the Hub reports it ungated;
-`TODO.md` (morning) says s6-cast2-pico is not uploaded, its Hub repository holds the file since
+`TODO.md` at commit `6b6ecac` (morning) said s6-cast2-pico was not uploaded, its Hub repository holds the file since
 12:47 UTC; the free space was 18 GiB at 15:30, not the 5 to 6 GiB of the morning's notes.
 
 ## 7. Questions only the owner can answer
@@ -426,7 +449,7 @@ the Hub and the site.
 
 **Kept because something open reads it:**
 
-- **s6-ear v3** (its pre-registration being frozen on 19/11, nothing trained yet):
+- **s6-ear v3** (its pre-registration frozen on 19/11, its data build running, nothing trained yet):
   `data/ear/wav/smart-turn` (6.79 GiB), `data/ear/clips` and `data/ear/jev` (with `mimi`,
   0.34 GiB), `skycmd-data/s6-ear2` (12.67 GiB).
 - **s6-sleep v4's K1** (decided on 19/11; it ran that day and closed v4, so this no longer holds them): `data/decisions`, `data/distill`,

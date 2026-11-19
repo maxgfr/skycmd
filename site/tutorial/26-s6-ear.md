@@ -110,6 +110,8 @@ const r = JSON.parse(engine.decideAudio('noul', 'Has the speaker finished their 
   JSON.stringify(['false: still talking', 'true: finished']), pcm16k))  // Float32Array
 ```
 
+To try the page with a model of your own: build the site and serve the build (`npm --prefix site run docs:build`, then `npm --prefix site run docs:preview`), because under `docs:dev` Vite refuses to import the WASM module from `/public`, as on the other demo pages. Copy the model into `site/public/ear/dev/` (ignored by git) and open `/skycmd/ear/?model=/ear/dev/<file>.gguf`: the `model` parameter replaces the s6-ear-nano file of the page's second demo (the decision model with keywords).
+
 The measured costs in the smoke run, both at full depth:
 
 - **Native:** 0.6 ms per decision for 1 s of audio and 5 ms for 10 s, log-mel included.

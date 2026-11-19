@@ -242,3 +242,19 @@ What the pre-registrations say the report will give and that the run files do no
 10. **s6-secrets validation accuracy per question** (`docs/s6-secrets-prereg.md` §6 asks for the validation accuracy): only the pooled value is in the training log (`val[ternary]` 0.998 at every exit, `runs/all/secrets-train.log`), as `BENCH.md` already says.
 
 Found in the run files and not yet reported elsewhere, for completeness: the s6-ear routing threshold ρ with its coverage on validation (choice: τ 0.5, coverage 0.0401, error among answered 0.0030; noul: τ 0.74, coverage 0.3583, error 0.0490; `runs/s6-ear-nano/eval/crc.json`), its WASM parity on 20 test clips (max |Δp| 1.79e-5, argmax agreement 20 of 20, median 6,696 µs; `wasm.json`) and its native median latency (3,435 µs over all test sources; `eval-full.json`).
+
+## 8. Tranche 1's rate pilot and timing (added 19/11/2026)
+
+Numbers of tranche 1 that were recorded only in the project's former to-do file (`TODO.md`,
+removed on 19/11/2026; last version at commit `0e45b7b`, §2.1 to §2.3 and the notes of 12/11).
+They come from `runs/s6lr/summary.json` and `runs/s6-recipe.log`, which are not in git; the rules
+and gains of the ablation are in `runs/recipe/recipe.json`, which is.
+
+- **Rate pilot** (`cargo xtask s6lr`, six runs: `softmax-adamw` and `parallax-muon` at ×0.5, ×1 and
+  ×2). AdamW was kept at ×2: final ternary validation accuracy 0.5775 against 0.553 at ×1, above
+  the rule's 0.01. Muon was kept at ×1. Since ×2 is at the edge of the grid, the single extension
+  ran by itself (`cargo xtask s6lr --extend`, amendment 4 of `docs/s6-prereg.md`): AdamW at ×4
+  scored 0.5245, so ×2 stayed.
+- **Timing.** `train_minutes` was noisy on the arms that ran while the Mac was in use (up to
+  ±16 minutes), but rule 1 compares two arms that ran at night (23.1 and 23.2 minutes, ±0.3), and
+  rule 5 is moot under AdamW.

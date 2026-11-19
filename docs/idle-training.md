@@ -48,6 +48,22 @@ same), `--no-daemon` (only export `SKY_BRAKE_FILE` and run the command), `--no-c
 If a daemon already serves the brake file, it is used and left running; otherwise the one started
 here stops with the command. The exit status is the command's.
 
+### Closing the lid, sleep and power-off
+
+How the project's long runs behave when the Mac is closed or turned off (rules written on
+09/11/2026 for tranche 1, kept here since 19/11/2026):
+
+- **Closing the lid pauses the run**, and it resumes on its own when the lid is opened: there is no
+  command to retype. A night when the Mac went to "Clamshell Sleep" (04 to 05/11/2026, at 22:12)
+  cost time, nothing else.
+- **Turning the Mac off or restarting it stops the run:** run the same command again. The run
+  scripts skip the steps they have finished (their markers), and the step that was running starts
+  again from its beginning, or from its last checkpoint where the script resumes (`RESUME=1`).
+- **Never use `pmset disablesleep`** for this: the Mac would keep running with its lid closed,
+  the worst case for heat.
+- **`caffeinate -i` only blocks idle sleep** while the lid is open (it is what `train-when-idle.sh`
+  wraps the command in); it does not keep a closed Mac running.
+
 ## The brake-file protocol
 
 This is the whole interface between the daemon and a trainer. Anything that follows it can take
@@ -170,9 +186,9 @@ machine, the same learning-rate schedule, the same model. Only the wall-clock du
 is what lets the pre-registered experiments of this repository run under a brake that changes with
 the owner's day: their budgets are fixed before the run, and the brake cannot move them.
 
-The cost in wall-clock time, with the defaults, is `(1 / duty) × (work + rest) / work`. TODO.md
-("Times") gives it as about ×1.15 in the night mode (0.95, 55:5), ×1.4 when the Mac is left alone
-(0.85, 50:10) and ×2.7 when it is in use or on battery (0.5, 45:15).
+The cost in wall-clock time, with the defaults, is `(1 / duty) × (work + rest) / work`: about
+×1.15 in the night mode (0.95, 55:5), ×1.4 when the Mac is left alone (0.85, 50:10) and ×2.7 when
+it is in use or on battery (0.5, 45:15).
 
 A budget in steps (`--steps` in `sky-train`) is not affected either.
 
@@ -296,7 +312,7 @@ the code was reviewed to make it reusable (November 2026), which no run is recor
   16/11/2026 at step 203 of its 12 working minutes: the trainer held 16 GB on a 16 GB machine (limit
   13 GB, four readings in a row). The fix cut each batch into parts with the same update, and the
   six nano runs then ran through the night without a stop (`docs/s6-sleep3-prereg.md`,
-  amendment 3; TODO.md). On 13/11 it stopped a decision training at 15 GB, in swap, after 8.2 of its
+  amendment 3 and the result block). On 13/11 it stopped a decision training at 15 GB, in swap, after 8.2 of its
   20 minutes (`docs/big-run-report.md`).
 - **It does not catch all swapping.** On 14/11 a decision training of s6-micro was in swap from about
   its minute 92 at 9.3 GB of heap, below the limit, and answered 110 questions per second instead of

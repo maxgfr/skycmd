@@ -1,5 +1,7 @@
 # s6-ear : pré-enregistrement (premier entraînement et portes)
 
+*Note added 19/11/2026: "TODO.md" (§6 and §1.1, cited in sections 4 and 7 below) refers to the project's former to-do file, `TODO.md`, removed on 19/11/2026; its last version is at commit `0e45b7b`. The text below is unchanged.*
+
 **Statut : figé le 03/11/2026, avant toute donnée audio téléchargée en entier et avant tout entraînement de s6-ear.** Ce fichier fixe les données, les questions, le run, le témoin, l'évaluation et les portes. Les résultats seront lus à travers ce texte.
 
 **Modifications de ce fichier :**

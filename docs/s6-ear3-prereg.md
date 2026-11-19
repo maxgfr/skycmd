@@ -42,7 +42,7 @@ Records derived from otoSpeech are not published (§13), as the owner stated on 
 - **v2 never trained on the silences it is asked about.**
   - The demo asks after 0.2 s of silence, then every 0.2 s up to 2.4 s (`site/.vitepress/theme/lib/turn.ts`).
   - Its training clips end at the end of speech: median trailing silence 0 ms, and only 7.2% (not finished) and 8.9% (finished) have 200 ms or more (`docs/s6-ear3-study.md` §2).
-- **The request.** `TODO.md`, "What remains", item 5: train with trailing silences of variable length, as the microphone delivers them, and read it on real conversations.
+- **The request.** `TODO.md` (removed on 19/11/2026; last version at commit `0e45b7b`), "What remains", item 5: train with trailing silences of variable length, as the microphone delivers them, and read it on real conversations.
 - **The design study.** `docs/s6-ear3-study.md` is committed with this file and holds every fact and number quoted here, with its source and the date read.
 
 **Changes to this file:**

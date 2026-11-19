@@ -83,7 +83,19 @@ does not run on the laptop, so it is called through a hosted endpoint used as a 
 that endpoint. The owner's position (3 November 2026, restated on 16 November 2026): the outputs
 of an open-weight MIT model are free to use as training labels and to publish. They are published
 as `maxgfr/skycmd-glm-labels`, marked as AI-generated, with the texts under their sources'
-licences (TODO.md §1.2).
+licences.
+
+**The terms of the z.ai API, and the decision to publish anyway.** The labels were obtained
+through z.ai's hosted API, whose [terms of use](https://docs.z.ai/legal-agreement/terms-of-use)
+add two clauses that the MIT licence of the weights does not: §1(f)(xii) forbids using the
+outputs for "training, labeling, fine-tuning … related to external models", and §III.5(d) asks
+that generated content be marked as AI-generated. The MIT licence covers the weights, not the
+API. The owner decided to publish the labels despite §1(f)(xii) ("it is open source, you can
+publish"): first in part while the labelling ran (republished at 72% on 4 November 2026), then in
+full on 5 November 2026. The data set is marked as AI-generated, as §III.5(d) asks. It has two configs: `agree` (the records whose teacher argmax
+is the gold answer, with the teacher's probabilities as the target) and `labels` (every raw
+label). It holds neither the texts refused by the moderation nor `typed_decisions_train`, which is
+gated upstream. The GLM labels are never used for the LFM3-1.7B fine-tune (`docs/lfm3-ft-prereg.md`).
 
 s6-nano and s6-micro train on `data/decisions`, `data/distill`, `data/games` and `data/numeric`
 (train splits only) and pretrain on `data/text-open` then `data/text`. The GLM files of
@@ -268,6 +280,8 @@ TinyCast's own overlap list (20 benchmark names and 66 gridded-weather names, `e
 The model trained on them, s6-secrets-verify-pico, failed its gate; its file is published as a
 result (owner's decision of 15/11/2026). None of the data below is committed or redistributed: it
 is downloaded outside the repository, and logs and reports show only hashes and lengths of values.
+These real-credential sets are never published (the owner's decision of 16/11/2026): only their
+obfuscated or replaced forms could be, and they are not ours to redistribute.
 
 | source | license | how it is used |
 |---|---|---|

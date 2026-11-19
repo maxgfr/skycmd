@@ -211,3 +211,21 @@ Ordered by evidence, then by who must change. Each estimate is an upper bound on
 - **Any validation reading for API:** its 7 positive lines in one repository support no conclusion on this category.
 
 The scripts that produced these numbers were throwaway and printed aggregates only. They were deleted, and none is committed. The method is the one of `docs/s6-secrets3-diagnosis.md` §1, applied to the published test flags, and it reproduces `scores.json` exactly (see §2).
+
+## 5. Decision and open items (note of 19/11/2026)
+
+Moved here on 19/11/2026 from the project's former to-do file (`TODO.md`, removed that day; last
+version at commit `0e45b7b`), where they were recorded on 18/11/2026.
+
+- **Closed: not worth pre-registering** (the lead's decision of 18/11/2026, on this diagnosis). No
+  version of s6-secrets-verify-pico aimed at the API category is pre-registered. This closes the
+  model's part of the quality round of 17/11/2026 (one targeted defect per model).
+- **Open, not scheduled** (no pre-registration, no date):
+  1. **In secretgate's candidate generator, read a quoted value with backslash escapes as one
+     string** (§3, item 1). The gain is at most +0.0053 on line F1, and it cannot be checked on
+     validation, which holds no value of that form. The generator is frozen as `sg-cand-1`
+     (`docs/s6-secrets2-prereg.md` §2), so this is a change of that contract: **changing
+     `sg-cand-1` is the owner's call.**
+  2. **A verifier version aimed at the false positives of the Key and Password categories**
+     (§2.4 and §3). It would need test repositories that none of v2, v3 or this diagnosis has
+     read.

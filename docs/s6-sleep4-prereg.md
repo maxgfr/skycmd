@@ -306,7 +306,7 @@ The draft of 17/11/2026 was accepted with these changes, all written into the se
 
 ### Amendment 1 (18/11/2026), owed before stage 2, recorded after K3's reading
 
-The lead's two readings of the frozen text (TODO.md, item 5, statement of 18/11/2026), written down here before any stage-2 run:
+The lead's two readings of the frozen text (TODO.md [removed on 19/11/2026; last version at commit `0e45b7b`], item 5, statement of 18/11/2026), written down here before any stage-2 run:
 
 1. **The language parity check of the frozen route** (§4.1, §6 H3) compares the `s2-eval` report of the memory model with the base's line by line: every line of the report (each exit and source: accuracy, NLL, ECE, the early exit, the permutation and coherence checks), for the float and the ternary rows, equal, but for the two lines that name the model and its checkpoint (`typed_parity` in `scripts/s6-sleep4-report.py`). `s2-eval` writes no per-question answer, so this is a necessary condition; a per-answer dump would be the exact check that §4.1's "answer for answer" asks for.
 2. **v2's stop** (§4.2, C19: the ask-frame cross-entropy above 1.336 over the last 50 `recall` steps of phase A) is read as one rule for all seeds: it is read on every memory seed, and if it holds for any one of them, no phase B runs for any seed and v4 reports a failure in-sample (`cmd_phase_a`, which sets `stop` when it holds for any seed).

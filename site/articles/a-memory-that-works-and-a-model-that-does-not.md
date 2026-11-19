@@ -123,6 +123,7 @@ The exported file also had to pass s6-nano's own gate. Its language part holds (
 - **Sleep did nothing measurable**: +0.0030, an interval that contains zero; at the longest delays four passes score under one.
 - **The memory cost two games.** The control itself plays Flappy at 71.05, where its base reached 200 in another reader; this training may lower Flappy on its own, but that is not measured.
 - **The pilot did not carry over**: 1.0000 at the pico size, 0.4892 at nano. On record, the nano runs' first phase had at most 233 `recall` steps, the pilot's 526; whether that is the cause is not measured.
+  *Note added on 19 November 2026:* a fourth version, s6-sleep v4, tried to answer that on training sequences and is closed. Its first check, K3 (the base model frozen), failed on both seeds; its second, K1 (everything trained, more `recall` steps), met its bar on one seed of two (0.8442 and 1.0000 against 0.95 on both, read on training batches), so v4 stopped there with no model and no test read ([`docs/s6-sleep4-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-prereg.md) §16). That narrows the question without settling it.
 - **One probe, one size**, three seeds. A synthetic probe says nothing about real tasks, nor about the paper, whose memory spans tokens, not frames.
 
 ## What I take from it

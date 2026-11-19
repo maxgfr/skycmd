@@ -1,5 +1,7 @@
 # Flexible weights for tiny ternary policies: what the literature says about TODO §7.1 to §7.4
 
+*Note added 19/11/2026: "TODO" and `TODO.md` (item 6 and §7, its table of the post's claims) refer to the project's former to-do file, `TODO.md`, removed on 19/11/2026; its last version is at commit `0e45b7b`. The text below is unchanged.*
+
 Research date: 19 November 2026. A dossier of 85 fetched sources, 67 of them listed at the end; the primary post (source 1) and the open-weight re-run (source 5) were read in full. Each fact gives its source number from the list at the end. Text marked **[Inference]** is my own reasoning or estimate, not a claim from a source. "Not verified" means I looked and could not confirm it. This file records research only: what follows from it for the project is decided elsewhere, and any experiment gets its own dated pre-registration first (`docs/weights-prereg.md` §9).
 
 The project facts used here come from `TODO.md` (item 6 and §7) and `docs/weights-prereg.md` (frozen 09/11/2026): §7 plans four experiments, none started; the pre-registration chose s6-nano as the base because the float checkpoint of s3-pico no longer exists, caps GLM-5.3-flash at 400 requests for all of §7, and puts 7.1 and 7.3 in the arena on the CPU; item 6 records that s6-nano plays at the oracle's score in every game on its gate's 30 seeds and estimates 5 to 6 h of GPU for 7.2 and 7.4.

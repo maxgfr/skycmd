@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Night 1 of the big run (TODO.md §9.4): the s6 recipe, with no decision taken by hand
+# Night 1 of the big run (docs/big-run-report.md): the s6 recipe, with no decision taken by hand
 # (docs/s6-prereg.md §2 to §4 and amendment 4).
 #
 #   caffeinate -i scripts/s6-recipe.sh        # from the main checkout
@@ -77,5 +77,5 @@ if [ -n "${DRY_RUN:-}" ]; then
 else
   r=$SKYCMD_STORE/runs
   python3 -I scripts/s6-adopt.py adopt --pilot "$r/s6lr/summary.json" --ablation "$r/s6ab/summary.json" --out "$r/recipe"
-  echo "== recipe in runs/recipe/recipe.json: commit it with the report (TODO.md §9.4, step 8)"
+  echo "== recipe in runs/recipe/recipe.json: commit it with the report (docs/big-run-report.md)"
 fi

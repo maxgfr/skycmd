@@ -109,7 +109,7 @@ Le rapport donne tout, quel que soit le résultat :
   - Le modèle de base.
   - Le modèle fine-tuné de `docs/lfm3-ft-prereg.md`, avec exactement le même protocole. Sa sonde et son τ sont ajustés sur sa propre calibration, et son test est lu une fois.
 - **Où tourne `route`.** En local, sur CPU, sur les générations rapatriées (`scripts/lfm3-ft.sh pull route`) : `route --split calib`, puis `route --split test`, une fois par modèle.
-- **Pourquoi.** La sonde lit les log-probabilités des jetons : il faut un moteur qui les rende. Aucune API ne sert LFM3 avec ses log-probabilités au 05/11/2026 (`TODO.md` §6). bf16 et 4 bits ne donnent pas exactement les mêmes sorties : les résultats de ce run sont ceux de LFM3-1.7B en bf16, et le rapport le dit.
+- **Pourquoi.** La sonde lit les log-probabilités des jetons : il faut un moteur qui les rende. Aucune API ne sert LFM3 avec ses log-probabilités au 05/11/2026 (`TODO.md` §6; removed on 19/11/2026; last version at commit `0e45b7b`). bf16 et 4 bits ne donnent pas exactement les mêmes sorties : les résultats de ce run sont ceux de LFM3-1.7B en bf16, et le rapport le dit.
 
 **Amendement 2 (09/11/2026, avant tout run : seul l'essai de fumée local de 3 questions par mode a tourné, aucun résultat de calibration ni de test n'existe). Retour au protocole local d'origine.**
 

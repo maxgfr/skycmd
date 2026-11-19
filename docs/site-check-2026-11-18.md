@@ -1,5 +1,7 @@
 # Site and Spaces check, 18 November 2026
 
+*Completed on 19/11/2026: the site's demos and the eight Spaces listed under "Not tested" below were checked in Chrome that day, in [`docs/site-check-2026-11-19.md`](site-check-2026-11-19.md).*
+
 A check of the public site (<https://maxgfr.github.io/skycmd/>), of the 18 Hugging Face Spaces
 listed in `hf/spaces.json`, of the 18 model pages and of the 15 data sets named in `README.md`.
 Nothing was changed: this file records what was tested and what was seen.
