@@ -937,6 +937,10 @@ impl<'a> ShardWriter<'a> {
     /// Keeps the 16-bit WAV of the 4 s window at d = 0.2 s of the test records of the smallest
     /// keys (§7's WASM parity; local only, deleted with the data).
     fn parity_offer(&mut self, r: &Record, pcm: &[f32]) -> Result<()> {
+        // a shard redone after a crash offers its records again
+        if self.parity.iter().any(|(_, id)| *id == r.id) {
+            return Ok(());
+        }
         if self.parity.len() >= PARITY_RECORDS
             && self.parity.last().is_some_and(|&(k, _)| r.key >= k)
         {

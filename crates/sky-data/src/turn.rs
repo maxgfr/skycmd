@@ -1036,22 +1036,33 @@ pub struct ExtendReport {
     pub undecodable: usize,
 }
 
-/// Extends the clips `(meta, pcm)` of one part into `dir` under `tag`.
-fn extend_part(
-    items: &[(Value, Option<Vec<f32>>)],
-    dir: &Path,
-    tag: &str,
-    last: &HashMap<String, Vec<u8>>,
+/// Writes the extension of one part, a chunk of decoded clips at a time (the PCM of a whole shard
+/// is never held at once).
+struct Extender {
+    part: PartWriter,
+    last: HashMap<String, Vec<u8>>,
     threads: usize,
-) -> Result<ExtendReport> {
-    let mut part = PartWriter::new(dir, tag)?;
-    let mut rep = ExtendReport::default();
-    for chunk in items.chunks(1024) {
-        let out = par_map(chunk, threads, |fe, (meta, pcm)| {
+    rep: ExtendReport,
+}
+
+impl Extender {
+    fn new(dir: &Path, tag: &str, last: HashMap<String, Vec<u8>>, threads: usize) -> Result<Self> {
+        Ok(Extender {
+            part: PartWriter::new(dir, tag)?,
+            last,
+            threads,
+            rep: ExtendReport::default(),
+        })
+    }
+
+    /// Extends the clips `(meta, pcm)` of a chunk.
+    fn add(&mut self, items: &[(Value, Option<Vec<f32>>)]) -> Result<()> {
+        let out = par_map(items, self.threads, |fe, (meta, pcm)| {
             let id = meta["id"].as_str().unwrap_or("");
             pcm.as_ref().map(|p| extension_hops(fe, p, id))
         });
-        for ((meta, _), r) in chunk.iter().zip(out) {
+        let rep = &mut self.rep;
+        for ((meta, _), r) in items.iter().zip(out) {
             let Some((h, zeros, own)) = r else {
                 rep.undecodable += 1;
                 continue;
@@ -1061,7 +1072,7 @@ fn extend_part(
                 continue;
             };
             let id = meta["id"].as_str().unwrap_or("");
-            let matches = last.get(id).is_some_and(|b| *b == encode_hops(&own));
+            let matches = self.last.get(id).is_some_and(|b| *b == encode_hops(&own));
             rep.last_hop_mismatch += !matches as usize;
             rep.zero_fill += zeros as usize;
             rep.clips += 1;
@@ -1069,15 +1080,19 @@ fn extend_part(
             if let Some(l) = meta.get("label") {
                 m["label"] = l.clone();
             }
-            part.put(&h, EXT_HOPS, m)?;
+            self.part.put(&h, EXT_HOPS, m)?;
         }
+        Ok(())
     }
-    part.finish()?;
-    fs::write(
-        dir.join(format!("ext-{tag}.json")),
-        serde_json::to_string_pretty(&rep)? + "\n",
-    )?;
-    Ok(rep)
+
+    fn finish(self, dir: &Path, tag: &str) -> Result<ExtendReport> {
+        self.part.finish()?;
+        fs::write(
+            dir.join(format!("ext-{tag}.json")),
+            serde_json::to_string_pretty(&self.rep)? + "\n",
+        )?;
+        Ok(self.rep)
+    }
 }
 
 /// `turn-extend`: the 83 training shards again (v2's kept clips, from v2's manifests), or with
@@ -1094,27 +1109,37 @@ pub fn turn_extend(hf: &Hf, o: &ExtendOptions) -> Result<Value> {
             .and_then(Path::parent)
             .ok_or_else(|| anyhow!("{}: no data folder above it", o.clips.display()))?
             .to_path_buf();
-        let mut items = Vec::new();
+        let mut clips = Vec::new();
         for line in BufReader::new(File::open(&o.clips)?).lines() {
             let v: Value = serde_json::from_str(&line?)?;
             if v["split"].as_str() != Some("test") {
                 continue;
             }
             if let (Some(id), Some(wav)) = (v["id"].as_str(), v["wav"].as_str()) {
-                let pcm = fs::read(base.join(wav))
-                    .ok()
-                    .and_then(|b| dsp::read_wav(&b).ok())
-                    .map(|(p, r)| dsp::resample(&p, r, SAMPLE_RATE));
-                // no label is written: the test's labels are read by the gate only
-                items.push((json!({"id": id, "split": "test"}), pcm));
+                clips.push((id.to_string(), base.join(wav)));
             }
         }
         o.guard.check(
-            (items.len() * EXT_HOPS * HOP_BYTES) as u64,
+            (clips.len() * EXT_HOPS * HOP_BYTES) as u64,
             "turn-extend --test",
         )?;
         let last = v2_last_hops(&o.v2.join("test"), "test")?;
-        let rep = extend_part(&items, &dir, "test", &last, o.threads)?;
+        let mut ex = Extender::new(&dir, "test", last, o.threads)?;
+        for chunk in clips.chunks(512) {
+            // no label is written: the test's labels are read by the gate only
+            let items: Vec<(Value, Option<Vec<f32>>)> = chunk
+                .iter()
+                .map(|(id, wav)| {
+                    let pcm = fs::read(wav)
+                        .ok()
+                        .and_then(|b| dsp::read_wav(&b).ok())
+                        .map(|(p, r)| dsp::resample(&p, r, SAMPLE_RATE));
+                    (json!({"id": id, "split": "test"}), pcm)
+                })
+                .collect();
+            ex.add(&items)?;
+        }
+        let rep = ex.finish(&dir, "test")?;
         return Ok(json!({"test": rep}));
     }
     let files: Vec<RepoFile> = {
@@ -1168,9 +1193,11 @@ pub fn turn_extend(hf: &Hf, o: &ExtendOptions) -> Result<Value> {
         o.guard
             .check(reserve, &format!("extension of shard {tag}"))?;
         let last = v2_last_hops(&v2dir, &tag)?;
-        let mut items = Vec::with_capacity(want.len());
+        let mut ex = Extender::new(&dir, &tag, last, o.threads)?;
         let mut row = 0usize;
         for rg in 0..row_groups(&path)? {
+            // one row group's clips at a time
+            let mut items = Vec::new();
             for r in group_rows(&path, rg)? {
                 if let Some(m) = want.get(&row) {
                     let id = field_str(&r, "id").unwrap_or_default();
@@ -1188,9 +1215,9 @@ pub fn turn_extend(hf: &Hf, o: &ExtendOptions) -> Result<Value> {
                 }
                 row += 1;
             }
+            ex.add(&items)?;
         }
-        // v2's manifest order (the rows of its part)
-        let rep = extend_part(&items, &dir, &tag, &last, o.threads)?;
+        let rep = ex.finish(&dir, &tag)?;
         eprintln!("[turn-extend] shard {tag}: {rep:?}");
         total.clips += rep.clips;
         total.zero_fill += rep.zero_fill;
@@ -1396,6 +1423,28 @@ mod tests {
             leak_rule("copy", &back, &HashSet::new(), &hashes),
             Leak::TestPcm
         );
+        // s6-ear v3: the test clips' extension (turn-extend --test, no download), chunk by chunk;
+        // every recomputed last hop is v2's stored one
+        let hf = Hf::new(dir.join("hf")).unwrap();
+        let mut guard = Guard::new(&dir, 0.0);
+        guard.fake_free = Some(1 << 40);
+        let e = ExtendOptions {
+            out: dir.join("v3"),
+            v2: o.out.clone(),
+            shards: Vec::new(),
+            threads: 2,
+            test: true,
+            clips: o.clips.clone(),
+            guard,
+        };
+        let r = turn_extend(&hf, &e).unwrap();
+        assert_eq!(r["test"]["clips"], 3, "{r}");
+        assert_eq!(r["test"]["last_hop_mismatch"], 0, "{r}");
+        let x = Store::open(&dir.join("v3/st-ext-test")).unwrap();
+        assert!(x
+            .clips
+            .iter()
+            .all(|c| c.hops == EXT_HOPS && c.label().is_none()));
         fs::remove_dir_all(&dir).ok();
     }
 }
