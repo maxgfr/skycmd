@@ -8,6 +8,8 @@
 
 **Amendment 3 (19/11/2026), while the training runs, before the fresh test is opened (§16):** readings of the gate's code (the names of τ_ask7, the stage that opens T5, G4's median, B1, the extra baselines, the blind copies and G4's slates, the one look at T5's records); written before any number of v7 is known.
 
+**Result (19/11/2026), at the end of this file:** the gate fails (G1 fails, G2 fails, G3 fails, G4 holds, G5 holds, G6 fails). On T5-tools the pair is at 0.5610 against BM25 0.5675; the model part's blind reading is at chance (0.1406) and the pair's is not (0.1969). The route line is closed; the published pair (v3) stands.
+
 - **Nothing of v7 has run.** No record is rebuilt, no plan is drawn, no teacher call is made, no
   blind copy is written, no model is trained and no system is scored. To write this document:
   - no record and no request text was opened;
@@ -660,3 +662,256 @@ The code's readings of the frozen text and of v6's §7, §8 and §14, as the lea
 
 **Nothing else changes.** No bar, rule, file or choice of the frozen text or of amendments 1 and 2
 moves.
+
+## Result (19/11/2026): v7 trained, read once on T5, and failed its gate
+
+**The gate fails (G1 fails, G2 fails, G3 fails, G4 holds, G5 holds, G6 fails).** This is
+`runs/s6-route7/GATE.md`, word for word. G6 does not fail only on the slates that show
+server-mates: it fails on all of T5-tools, and its reading without those slates fails too (below).
+
+**What ran, in order** (18 and 19/11/2026; the job queue's log `runs/all/queue/log` and the logs
+`runs/all/queue-40-route7-train.log`, `route7-gate-fit.log` and `queue-50-route7-gate.log`, read-only
+in the worktree of the runs).
+
+- **The training** (`scripts/train-route7.sh`, the queue's job `40-route7-train`, from 18/11 at
+  23:53:21 to 19/11 at 04:19:53): the smoke under a throwaway prefix, its numbers not read; the head
+  window by v4 §3.3's rule, 320 (the share of heads shrunk: 0.0492 at 320, 0.1051 at 256, 0.6215 at
+  160; `runs/s6-route7/window.json`); the pilot, 20 working minutes, 3,664 steps, a checkpoint kept
+  every 5; the main run, 120 working minutes, 22,214 steps, seed 0, from s6-micro's pretraining
+  (`runs/s6-route7/init.sha256`); the readings of every kept checkpoint; the calibration and the
+  export of the last checkpoint (`models/s6-route7/skycmd-s6-route7-nano-ternary.gguf`, 2,418,976
+  bytes). No checkpoint was chosen on a reading.
+- **`fit` and `embed`** (`scripts/route7-gate.sh`, 04:22:22, `runs/s6-route7/gate-stages/`): β and
+  τ_ask7 on `v5_tools` by v3's rules (`runs/s6-route7/fit.json`), then the embedding file that stores
+  them (`runs/s6-route7/embed.json`); the published `s6-route-embed.gguf` is unchanged.
+- **`open`** (04:22:53): the pilot summary exists, did not abort and was read at amendment 2's bar;
+  the exported model, the fit and the embedding file exist; every T5 file has its sha256. Then
+  `runs/s6-route7/FRESH-OPEN`, which records the hashes of the model, of the embedding file, of the
+  fit and of the five T5 files. T5 was opened once, by this stage (amendment 3, point 2).
+- **`read`** (to 04:37:39), **`g4`** (04:37:49), **`gate`** (04:37:50): every reading of §7 to §9
+  on T5, its probe and blind copies, T2-tools and validation (`runs/s6-route7/readings.json`); the
+  WASM bench against the Python reference under D4 (`g4.json`); then `scripts/s6-route6-gate.py`
+  (`gate.json`, `GATE.md`). Once `gate.json` exists, nothing reads T5 again.
+
+**The gate** (`runs/s6-route7/gate.json`; T5-tools: 2,000 slates from 262 MCP servers of Toucan,
+1,600 with a tool right and 400 with *none* right; c = 1/7; intervals 95%, 1,000 resamples).
+
+| | condition | measured | verdict |
+|---|---|---|---|
+| G1 | the pair − BM25: lower bound of the slate bootstrap > 0 | 0.5610 against 0.5675: −0.0065 [−0.0235, +0.0120] | **fails** |
+| G1 | the pair − `potion-cos-4bit`: lower bound > 0 | 0.5610 against 0.5025: +0.0585 [+0.0380, +0.0800] | holds |
+| G1 | the pair above its model part | 0.5610 against 0.4905 | holds |
+| G2 (a) | `t5_tools_rw`, 1,600 tool-gold slates: the pair answers the rewritten distractor on ≤ 0.1929, and ≤ +0.03 over the same option in the unchanged slate | 0.0494; +0.0238 | holds |
+| G2 (a) | `t5_tools_masked_rw`, 1,600 tool-gold slates: the same | 0.0513; +0.0287 | holds |
+| G2 (b) | `t5_tools_masked`: the pair ≥ `potion-cos-4bit` − 0.02 | 0.5440 against 0.4750 − 0.02 = 0.4550 | holds |
+| G2 (c) | `t5_tools_masked`: *none* answered on 0.10 to 0.30 of the slates (true share 0.20) | 0.3345 | **fails** |
+| G3 | ECE (15 bins) of the pair on T5-tools ≤ 0.05 | 0.1845 | **fails** |
+| G4 | WASM against the Python reference, the first 200 slates of T5-tools: max \|Δp\| ≤ 1e-3, the same answer on ≥ 199 | 9.1e-7, 200 of 200 | holds |
+| G4 | WASM SIMD128 median ≤ 60 ms per request (the bench's `median_cached_us`, amendment 3, point 3) | 13.87 ms | holds |
+| G4 | the two files ≤ 4,000,000 bytes | 3,692,288 (2,418,976 + 1,273,312) | holds |
+| G5 | the pair on T2-tools (945 slates) ≥ 0.8668 | 0.8815 | holds |
+| G6 (a) | the model part in B0: blind accuracy ≤ c + 0.05 = 0.1929, and its upper bound with servers resampled ≤ c + 0.08 = 0.2229 | 0.1406; servers [0.1113, 0.1720] | holds |
+| G6 (b) | the pair in B0: the same | **0.1969**, 0.0040 above 0.1929; servers [0.1599, **0.2350**], 0.0121 above 0.2229 | **fails** |
+| G6 (c) | Δ_none ≤ 0.05, and its upper bound (servers) ≤ 0.15, for the model part and for the pair | the model part −0.0069 [−0.0220, +0.0081]; the pair −0.0087 [−0.0521, +0.0371] | holds |
+
+- **The headline** (servers resampled) is not allowed: the pair − BM25 is −0.0065 [−0.0309, +0.0170],
+  and the pair − `potion-cos-4bit` +0.0585 [+0.0278, +0.0860].
+- **The report's sentence** (v4 §8): on T5-tools the pair is at 0.5610, −0.0065 against BM25 (slates
+  [−0.0235, +0.0120], servers [−0.0309, +0.0170]) and +0.0585 against its embedding part (slates
+  [+0.0380, +0.0800], servers [+0.0278, +0.0860]); `minilm-cos` is at 0.6630, 0.1020 above the pair.
+  The gate's code computes no interval for the difference with `minilm-cos`, so none is given.
+- **G6 without the slates that show server-mates** (396 tool-right slates; `gate.json`, reported):
+  the model part reads 0.1692, with a server upper bound of 0.2421, above 0.2229; the pair 0.3081
+  [0.2208, 0.3974]. Both fail there too, so G6 does not fail only on the slates that show
+  server-mates.
+- **G4's first-call median** (reported, decides nothing): 28.33 ms, of which the model part 28.30 ms
+  and the embedding part 0.04 ms; with the tool list cached, the model part takes 13.86 ms and the
+  embedding part 0.01 ms (`g4.json`, under `bench`).
+
+**Every system on T5** (`readings.json`; accuracy over all slates, *none* included; the two
+rewritten copies hold the 1,600 tool-gold slates only, so their columns are not on the same slates
+as the first two).
+
+| system | T5-tools (2,000) | names masked (2,000) | a distractor rewritten (1,600) | masked and rewritten (1,600) |
+|---|---:|---:|---:|---:|
+| **the pair (v7)** | **0.5610** | 0.5440 | 0.57625 | 0.541875 |
+| the pair, fast mode | 0.5595 | 0.5395 | 0.58125 | 0.5425 |
+| the model part (v7, full depth) | 0.4905 | 0.4610 | 0.481875 | 0.40625 |
+| `potion-cos-4bit` (the embedding part) | 0.5025 | 0.4750 | 0.56875 | 0.529375 |
+| the published pair (v3), for comparison | 0.5530 | 0.2810 | 0.604375 | 0.183125 |
+| `potion-cos` | 0.4940 | 0.4700 | 0.555625 | 0.519375 |
+| `static-ft` | 0.4985 | 0.4640 | 0.558125 | 0.520625 |
+| `pair-lr` | 0.1940 | 0.1805 | 0.16375 | 0.156875 |
+| BM25 | 0.5675 | 0.5580 | 0.58125 | 0.56375 |
+| `minilm-cos` (91.6 MB) | 0.6630 | 0.5925 | 0.734375 | 0.6300 |
+| `toolrouter` | 0.5895 | 0.5220 | 0.685625 | 0.599375 |
+| `name-prior` | 0.2000 | 0.1190 | 0.0 | 0.14875 |
+
+- **The ask threshold on T5-tools** (the log of the stage `read`): at τ_ask7 the pair answers 0.5325
+  of the slates and is right on 0.7127 of those; the published pair, at its τ_ask3, answers 0.5880
+  and is right on 0.6930. The announced goal, 0.95 among the answered at a coverage of at least
+  0.80, is not met.
+- **The other announced goals** (v4 §8, not gates): T5-tools ≥ 0.80, not met (0.5610); the pair ≥
+  `minilm-cos` − 0.03, not met (0.5610 against 0.6330); the fast mode within 0.015 of full depth,
+  met (0.5595).
+
+**The blind readings** (B0: the request replaced by `?`, so every BM25 score is 0.00; on the 1,600
+tool-right slates of T5-tools; chance c = 0.1429; `readings.json`, "T5 blind").
+
+| system | blind accuracy | slates 95% | servers 95% | *none* share | Δ_none (servers 95%) |
+|---|---:|---|---|---:|---|
+| the model part (v7) | 0.1406 | [0.1233, 0.1573] | [0.1113, 0.1720] | 0.0405 | −0.0069 [−0.0220, +0.0081] |
+| the pair (v7) | 0.1969 | [0.1769, 0.2168] | [0.1599, 0.2350] | 0.8120 | −0.0087 [−0.0521, +0.0371] |
+| the embedding part (`potion-cos-4bit`) | 0.1931 | [0.1743, 0.2129] | [0.1589, 0.2278] | 0.8215 | −0.0112 [−0.0507, +0.0324] |
+| the published pair (v3) | 0.1794 | [0.1603, 0.1989] | [0.1466, 0.2138] | 0.6710 | +0.0113 [−0.0367, +0.0608] |
+| `potion-cos` | 0.2000 | [0.1807, 0.2213] | [0.1633, 0.2353] | 0.8495 | |
+| `minilm-cos` | 0.1850 | [0.1659, 0.2032] | [0.1440, 0.2308] | 1.0 | |
+| `toolrouter` | 0.1644 | | [0.1332, 0.1945] | 1.0 | |
+| `pair-lr` | 0.1519 | | [0.1203, 0.1879] | 0.0 | |
+| `static-ft` | 0.1331 | | [0.1034, 0.1628] | 0.7040 | |
+| BM25, `name-prior` | 0.1429 | every option tied: c exactly | | 1.0 | |
+| the model part in B1 (reported) | 0.1813 | [0.1637, 0.2018] | [0.1451, 0.2194] | 0.0130 | |
+
+- **The pair's announced goal** (v6 §8): it answers *none* or asks on 0.9955 of the blind slates,
+  where at least 0.80 was announced: met. Its mean top probability in B0 is not in the gate's
+  files, so the other announced goal is not reported.
+- **On the masked copy** (announced goal: G6 (a) and (b) hold there too): the model part reads
+  0.1488, servers [0.1216, 0.1794], within both bars; the pair 0.1906, servers [0.1574, 0.2241],
+  under 0.1929 and 0.0012 above 0.2229: not met for the pair. The embedding part reads 0.2031
+  (servers [0.1679, 0.2366]), the published pair 0.1556 ([0.1237, 0.1887]), the model part in B1
+  0.1394.
+- **By server-mates shown** (the tool-right slates by the number of the right tool's own server's
+  tools that the slate shows: none on 396, some on 1,204): the model part 0.1692 and 0.1312; the
+  pair 0.3081 and 0.1603; the embedding part 0.2904 and 0.1611; the published pair 0.2854 and
+  0.1445. The finer split (1 to 2 on 348 slates, 3 or more on 856): the model part 0.0891 and
+  0.1484, the pair 0.1638 and 0.1589. The blind preference of the pair and of its embedding part is
+  largest on the slates that show no server-mate.
+- **B0 and B1 disagree for the model part** (reported): 0.1406 in B0 and 0.1813 in B1, both under
+  0.1929, with server upper bounds of 0.1720 and 0.2194. Its blind preference depends on the
+  format of the scores.
+
+**Validation** (`v5_tools`, 1,144 slates, read for the fit and reported; `fit.json`,
+`readings.json`, `v5_tools.eval.json`).
+
+- **The fit:** β = 0.7 (NLL 0.3557); τ_ask7 = 0.762097, accuracy 0.9507 among the answered at a
+  coverage of 0.7981. The pair 0.8802 (ECE 0.0232), its fast mode 0.8785; the model part 0.8418
+  (ECE 0.0215), its first exit 0.8427; `potion-cos-4bit` 0.7194. Amendment 2's baselines on the
+  same file: `potion-cos` 0.7281, BM25 0.8383.
+- **The copies:** the pair 0.8715 masked, 0.8776 with a distractor rewritten, 0.8671 with both.
+  Blind (B0, 915 tool-right slates, c = 0.1429): the pair 0.1235 on `v5_tools` and on its masked
+  copy.
+- **The model file's own ask threshold** (`models/s6-route7/tau.json`, v3's rule on the model part
+  alone): 0.784774, accuracy 0.9510 at a coverage of 0.7142. The pair does not use it.
+- **From validation to T5:** the pair goes from 0.8802 to 0.5610, the model part from 0.8418 to
+  0.4905, and BM25 from 0.8383 to 0.5675. On validation the pair is 0.0420 above BM25; on T5 it
+  is 0.0065 below.
+
+**The pilot and the checkpoints** (validation only).
+
+- **The pilot** (`runs/s6-route7-pilot/summary.json`): `abort: false`. At its last checkpoint the
+  model part reads 0.8392 on `v5_tools` (rule 1's bar: 0.578147), answers the rewritten distractor
+  of `v5_tools_masked_rw` on 0.0077 (rule 2's bar: 0.30), and reads 0.1552 and 0.1399 blind on
+  `v5_tools` and its masked copy (rules 3 and 4, bar 0.1929). Over its five checkpoints: 0.8164 to
+  0.8470 on `v5_tools`; blind 0.1541 to 0.1803, and 0.1268 to 0.1628 on the masked copy.
+- **The main run's 14 kept checkpoints** (`runs/s6-route7/read/*/readings.json`): the model part
+  0.8077 to 0.8531 on `v5_tools`; the rewritten distractor at most 0.0120; blind in B0, 0.1257 to
+  0.1672 on `v5_tools` and 0.1279 to 0.1749 on its masked copy, all under 0.1929; the pair in B0,
+  0.1104 to 0.1355.
+
+**What is measured, and what is not.**
+
+- **Measured.** On tools of a family that no training slate holds (the MCP servers of Toucan), the
+  trained model part does not pick the right tool from the options alone: 0.1406 in B0, at chance,
+  and its *none* answer does not depend on whether *none* is right. The pair rarely follows a
+  rewritten description (0.0494 and 0.0513), and masking the names costs it 0.0170 (0.5610 to
+  0.5440), where it costs the published pair 0.2720 on the same slates (0.5530 to 0.2810).
+- **Measured.** The system does not beat BM25 there (−0.0065, an interval that holds zero), falls
+  from 0.8802 on validation to 0.5610, answers *none* on a third of the masked slates (0.3345,
+  where the true share is 0.20), and its probabilities do not mean what they say (ECE 0.1845,
+  against 0.0232 on validation).
+- **Measured.** The pair's blind accuracy fails G6 (b) while its model part holds G6 (a). The
+  embedding part alone, the frozen `potion-cos-4bit` that no version trained, reads 0.1931 in B0,
+  above 0.1929, with a server upper bound of 0.2278, above 0.2229; the pair reads 0.1969. Both are
+  highest on the slates that show no server-mate (0.2904 and 0.3081).
+- **Not measured.** Why the system falls from validation to T5: no file of the gate separates the
+  change of tool family from the change of request source (Toucan's requests were written by
+  language models, `DATA_LICENSES.md`) or from T5's construction. Whether the fusion adds to the
+  embedding part's blind preference: the pair is 0.0038 above it, with no interval for the
+  difference. Whether the model uses a cue together with the request: B0 hides the request, so it
+  cannot see such a cue (§10).
+
+**Disclosure** (§10, written into every place that reports v7; with v6's, v5's and v4's §10).
+
+- v7 was designed after v4's, v5's and v6's tables were read. Its one change follows v6's table and
+  the mechanism count made after v6's stop, and it is the third construction of the When2Call
+  group's no-call slates.
+- The anchor is chosen with the request. A tool-right slate's cell is the right tool's, and an
+  anchored no-call slate's is the request's own first tool's; an unanchored no-call slate's cell is
+  now the one nearest to the request's text. A model could, in principle, learn that a request
+  close to every option of its slate is more often a no-call request. B0 does not see that cue,
+  since it hides the request.
+- The stop rule was written before v6's rebuild and was not changed. The prediction of the
+  mechanism count (0.133 against 0.143) was written before v7's rebuild, as a count and not as a
+  bar. The rule that closes the line (§11) was written before any computation of v7.
+- v6 relaxed what stopped v4 and v5: their data checks are reported, and a test on the model (G6)
+  replaces them. The training data are v5's records with v6's and v7's rebuilt slates; outside
+  those slates they hold the cues that v5's table names (R12 inverse in the intents; N2, N3 and N4
+  in the hard cells of the tools and When2Call groups). The blind reading was fixed before any model
+  was trained.
+- The teacher (GLM-5.3-Flash, open weights, MIT) rewrote the descriptions of the 1,448 Toucan tools
+  that T5 shows, for the two probe copies: it saw the fresh test's tools, never a fresh request. The
+  field names and split values of two T5 files were read once before T5 was opened (amendment 3,
+  point 7), with no request text. all-MiniLM-L6-v2 defines the clusters that make a "new family"
+  and is a reported baseline; the latency bar was set after v2 was measured; the bar against MiniLM
+  is a reported number, not a gate (v4 §10).
+- A reader who holds that the data should have been blind may hold v7 to that view; v4's, v5's,
+  v6's and v7's tables are published.
+
+**The sentences of §11 applied** (v7 §11 is v6 §11 with its first point replaced; v6 §11 is v5 §11
+and v4 §11 for G1 to G5). v7's own point, the stop rule, did not fire (amendment 1). These apply:
+
+- "**G1 fails against BM25:** on a new family the pair adds nothing to a score of no byte; the
+  recommendation there is BM25; not published as a replacement." (v4 §11)
+- "**G2 fails:** the shortcut is not gone, or the model still does not answer from the descriptions
+  under masked names. Not published as a replacement; the published s6-route stays, with its
+  disclosure." (v4 §11) Of G2, only (c) fails: under masked names the pair answers *none* on 0.3345
+  of the slates, 0.0345 above the band. (a) and (b) hold: it does not follow the rewrite, and
+  masking the names costs it 0.0170.
+- G3 fails together with G1, G2 and G6, so the case "G3 or G4 fails alone" does not apply: ECE
+  0.1845 on T5-tools, where the bar is 0.05.
+- "**G6 (b) fails, (a) holds.** The embedding part's own blind preference, or the fusion, gives the
+  system a request-blind preference that the model part alone does not have. The embedding part's
+  blind accuracy is reported, so the two cases are told apart. Not published as a replacement."
+  (v6 §11) By how much: the pair 0.1969, c + 0.0540 (slates [0.1769, 0.2168], servers [0.1599,
+  0.2350]); the embedding part alone 0.1931, c + 0.0503 (servers [0.1589, 0.2278]), itself above
+  both bars; the model part 0.1406, c − 0.0022.
+- "**In every case** the files are published as evaluated, with the verdict and the numbers first
+  (owner's decision of 15/11/2026), and a Space (owner's decision of 17/11/2026)." (v4 §11)
+
+**What follows.**
+
+- **The route line is closed: there is no v8** (the lead's decision, announced before the run). No
+  fourth construction of the When2Call group, no version without it, no new fresh test of this
+  line.
+- **The published router stays the v3 pair** (`s6-route`), with the limits already published: a
+  pass on fresh slates of v2's held-out tools, the names-masked weakness, the cues of v2's training
+  data named by v4's table, and its blind reading at chance on the files already read
+  (`runs/s6-route6/diagnostic.md`). Its reading on T5 is reported here and decides nothing about it:
+  0.5530 on T5-tools, 0.2810 under masked names, 0.1794 in B0 (servers [0.1466, 0.2138]).
+- **v7's files are published as a failed result** (`gate: failed`):
+  `site/public/models/s6-route7-nano.gguf` (the exported model, 2,418,976 bytes, sha256
+  `5fbe51b451023730c0517254eed43ce5c96c9a2384563bca6d8ddac3b77c7a9d`) and
+  `site/public/models/s6-route7-embed.gguf` (the embedding file with v7's β and τ_ask7, 1,273,312
+  bytes, sha256 `717dc3d89f096d063de9af52636fdafca834c53d484ecde533d2043047e7dafd`), the hashes
+  that `FRESH-OPEN` recorded; one manifest entry, `s6-route7-nano`, with both files; the card
+  `hf/cards/s6-route7-nano.md`; and a Space that runs the pair in the browser, its failed gate
+  first.
+- **The result files in the repository:** `runs/s6-route7/GATE.md`, `gate.json`, `readings.json`,
+  `g4.json`, `fit.json`, `embed.json`, `FRESH-OPEN`, `config.json`, `window.json`, `init.sha256`,
+  `truncation/`, `gate-stages/`; the validation readings `v5_tools.eval.json` and
+  `v5_tools.exit0.eval.json` with their dumps (`v5_tools.dump.jsonl`, `v5_tools.exit0.jsonl`:
+  probabilities, targets and uids, no text); the main run's checkpoint readings
+  `read/*/readings.json`; and `runs/s6-route7-pilot/summary.json`. Left out: the checkpoints, the
+  training logs, the model copies under `runs/`, and every T5 file. T5's slates, their blind copies
+  and every dump on T5 stay in the data folder (`<data>/s6-route/toucan5/fresh/`,
+  `<data>/s6-route/eval/t5/`); only their hashes, and the counts and accuracies above, are here.

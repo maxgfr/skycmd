@@ -1,0 +1,25 @@
+{
+  "model": "runs/s6-route7/full-depth.gguf",
+  "n_params": 5587201,
+  "split": "val",
+  "sources": {
+    "all": {
+      "n": 1144,
+      "accuracy": 0.8426573426573427,
+      "nll": 0.4779477356454245,
+      "ece": 0.020417477714119257,
+      "mean_layers": 2.0,
+      "early_exit_rate": 1.0,
+      "median_us": 10374.332999999999
+    },
+    "v5-tools": {
+      "n": 1144,
+      "accuracy": 0.8426573426573427,
+      "nll": 0.4779477356454245,
+      "ece": 0.020417477714119257,
+      "mean_layers": 2.0,
+      "early_exit_rate": 1.0,
+      "median_us": 10374.332999999999
+    }
+  }
+}

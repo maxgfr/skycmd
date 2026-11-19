@@ -1,0 +1,23 @@
+{
+ "about": "s6-route v7 (docs/s6-route7-prereg.md): T5 opened by scripts/route7-gate.sh open, once; the system read on it",
+ "opened": "2026-11-19T04:22:53",
+ "model": {
+  "file": "models/s6-route7/skycmd-s6-route7-nano-ternary.gguf",
+  "sha256": "5fbe51b451023730c0517254eed43ce5c96c9a2384563bca6d8ddac3b77c7a9d"
+ },
+ "embedding": {
+  "file": "models/s6-route7/skycmd-s6-route7-embed.gguf",
+  "sha256": "717dc3d89f096d063de9af52636fdafca834c53d484ecde533d2043047e7dafd"
+ },
+ "fit": {
+  "file": "runs/s6-route7/fit.json",
+  "sha256": "0c91ee54790c55f32de6584719df12464168571d6618554a908492006bb1c60e"
+ },
+ "T5": {
+  "t5_tools.jsonl": "c7586ea4bf8a686819d2be453657e36181bb5c66a7062901b74c1fe831bf2e66",
+  "t5_tools.servers.jsonl": "906ea3d5bf743c41d2af2bc679e089097fe3d0e4ad30ee882bd1d0961ff257a6",
+  "t5_tools_masked.jsonl": "6a00450c028f5bc8c9116b8dd594af514591b9cf0d064e56f6ae48aebdc2a6bc",
+  "t5_tools_rw.jsonl": "4c7e7a54f385d19a0f4f7cddc87c8dd144e12a9efb7de77ded72e47866157ea5",
+  "t5_tools_masked_rw.jsonl": "39b1f68cc7d2af4ea71ba1e4290098802b74bd76f56a45d3379d91725b9d7fa9"
+ }
+}

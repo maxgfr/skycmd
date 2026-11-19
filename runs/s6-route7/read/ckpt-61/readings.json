@@ -1,0 +1,202 @@
+{
+ "checkpoint": "ckpt-61",
+ "model": {
+  "v5_tools": {
+   "n": 1144,
+   "accuracy": 0.8452797202797203,
+   "none answers": 0.1590909090909091,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.9092896174863389
+  },
+  "v5_tools_masked": {
+   "n": 1144,
+   "accuracy": 0.8548951048951049,
+   "none answers": 0.24562937062937062,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.8688524590163934
+  },
+  "v5_tools_rw": {
+   "n": 1144,
+   "accuracy": 0.8382867132867133,
+   "none answers": 0.15122377622377622,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.9081967213114754,
+   "answer = the rewritten distractor (tool-gold slates)": 0.013114754098360656
+  },
+  "v5_tools_masked_rw": {
+   "n": 1144,
+   "accuracy": 0.8522727272727273,
+   "none answers": 0.2368881118881119,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.8699453551912568,
+   "answer = the rewritten distractor (tool-gold slates)": 0.009836065573770493
+  },
+  "r_tools_renamed": {
+   "n": 1126,
+   "accuracy": 0.8463587921847247,
+   "none answers": 0.24067495559502664,
+   "tool-gold slates": 901,
+   "tool-gold accuracy": 0.8612652608213096
+  },
+  "r_tools_natural": {
+   "n": 1126,
+   "accuracy": 0.8632326820603907,
+   "none answers": 0.10390763765541741,
+   "tool-gold slates": 1126,
+   "tool-gold accuracy": 0.8632326820603907
+  },
+  "v4_tools": {
+   "n": 1144,
+   "accuracy": 0.8409090909090909,
+   "none answers": 0.145979020979021,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.912568306010929
+  },
+  "v_tools": {
+   "n": 1144,
+   "accuracy": 0.8732517482517482,
+   "none answers": 0.15122377622377622,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.9355191256830601
+  }
+ },
+ "pair": {
+  "v5_tools": {
+   "n": 1144,
+   "accuracy": 0.8741258741258742,
+   "none answers": 0.1853146853146853,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.9169398907103825
+  },
+  "v5_tools_masked": {
+   "n": 1144,
+   "accuracy": 0.8697552447552448,
+   "none answers": 0.2097902097902098,
+   "tool-gold slates": 915,
+   "tool-gold accuracy": 0.9005464480874317
+  }
+ },
+ "renamed - natural (model)": -0.01687388987566607,
+ "blind": {
+  "model B0 v5_tools": {
+   "tool-right slates": 915,
+   "blind accuracy": 0.16065573770491803,
+   "chance c": 0.14285714285714282,
+   "blind accuracy - c": 0.017798594847775212,
+   "answer with none allowed: accuracy": 0.15996503496503497,
+   "none share": 0.5061188811188811,
+   "blind none gap": 0.0005392893788627173,
+   "share asked": null,
+   "intervals, slates resampled": {
+    "blind accuracy": [
+     0.13695652173913042,
+     0.18466522678185746
+    ],
+    "blind none gap": [
+     -0.07674480962230901,
+     0.07156216580374353
+    ]
+   }
+  },
+  "model B1 v5_tools": {
+   "tool-right slates": 915,
+   "blind accuracy": 0.16612021857923498,
+   "chance c": 0.14285714285714282,
+   "blind accuracy - c": 0.023263075722092158,
+   "answer with none allowed: accuracy": 0.14248251748251747,
+   "none share": 0.06293706293706294,
+   "blind none gap": 0.01412651824277568,
+   "share asked": null,
+   "intervals, slates resampled": {
+    "blind accuracy": [
+     0.14095449500554938,
+     0.19104803493449782
+    ],
+    "blind none gap": [
+     -0.02355891409931831,
+     0.05685290922120253
+    ]
+   }
+  },
+  "pair B0 v5_tools": {
+   "tool-right slates": 915,
+   "blind accuracy": 0.12131147540983607,
+   "chance c": 0.14285714285714282,
+   "blind accuracy - c": -0.02154566744730675,
+   "answer with none allowed: accuracy": 0.19667832167832167,
+   "none share": 0.9414335664335665,
+   "blind none gap": 0.013167251294533111,
+   "share asked": 0.28146853146853146,
+   "intervals, slates resampled": {
+    "blind accuracy": [
+     0.10032017075773746,
+     0.14332965821389196
+    ],
+    "blind none gap": [
+     -0.019775190146059107,
+     0.04353020234450833
+    ]
+   }
+  },
+  "model B0 v5_tools_masked": {
+   "tool-right slates": 915,
+   "blind accuracy": 0.1540983606557377,
+   "chance c": 0.14285714285714282,
+   "blind accuracy - c": 0.011241217798594882,
+   "answer with none allowed: accuracy": 0.16171328671328672,
+   "none share": 0.583041958041958,
+   "blind none gap": -0.019199656381988728,
+   "share asked": null,
+   "intervals, slates resampled": {
+    "blind accuracy": [
+     0.1303395399780942,
+     0.17672413793103448
+    ],
+    "blind none gap": [
+     -0.09204642755208825,
+     0.05497858358270258
+    ]
+   }
+  },
+  "model B1 v5_tools_masked": {
+   "tool-right slates": 915,
+   "blind accuracy": 0.11038251366120219,
+   "chance c": 0.14285714285714282,
+   "blind accuracy - c": -0.03247462919594063,
+   "answer with none allowed: accuracy": 0.08828671328671328,
+   "none share": 0.0,
+   "blind none gap": 0.0,
+   "share asked": null,
+   "intervals, slates resampled": {
+    "blind accuracy": [
+     0.09130913091309131,
+     0.12967032967032968
+    ],
+    "blind none gap": [
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "pair B0 v5_tools_masked": {
+   "tool-right slates": 915,
+   "blind accuracy": 0.126775956284153,
+   "chance c": 0.14285714285714282,
+   "blind accuracy - c": -0.01608118657298982,
+   "answer with none allowed: accuracy": 0.1896853146853147,
+   "none share": 0.9361888111888111,
+   "blind none gap": -0.013033622067912254,
+   "share asked": 0.3688811188811189,
+   "intervals, slates resampled": {
+    "blind accuracy": [
+     0.10509209100758396,
+     0.14818880351262348
+    ],
+    "blind none gap": [
+     -0.0502230749670588,
+     0.022954822954822984
+    ]
+   }
+  }
+ }
+}

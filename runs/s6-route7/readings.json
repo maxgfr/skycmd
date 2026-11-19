@@ -1,0 +1,2065 @@
+{
+ "about": "s6-route v7 (docs/s6-route7-prereg.md 7 and 9): every reading of scripts/route7-gate.sh read; reported, the gate is gate.json",
+ "readings": {
+  "T5": {
+   "t5_tools": {
+    "pair": {
+     "slates": 2000,
+     "accuracy": 0.561
+    },
+    "pair, fast mode": {
+     "slates": 2000,
+     "accuracy": 0.5595
+    },
+    "model part": {
+     "slates": 2000,
+     "accuracy": 0.4905
+    },
+    "embedding part (potion-cos-4bit, in the pair)": {
+     "slates": 2000,
+     "accuracy": 0.5025
+    },
+    "published pair (v3)": {
+     "slates": 2000,
+     "accuracy": 0.553
+    },
+    "potion-cos": {
+     "slates": 2000,
+     "accuracy": 0.494
+    },
+    "potion-cos-4bit": {
+     "slates": 2000,
+     "accuracy": 0.5025
+    },
+    "static-ft": {
+     "slates": 2000,
+     "accuracy": 0.4985
+    },
+    "pair-lr": {
+     "slates": 2000,
+     "accuracy": 0.194
+    },
+    "bm25": {
+     "slates": 2000,
+     "accuracy": 0.5675
+    },
+    "minilm-cos": {
+     "slates": 2000,
+     "accuracy": 0.663
+    },
+    "toolrouter": {
+     "slates": 2000,
+     "accuracy": 0.5895
+    },
+    "name-prior": {
+     "slates": 2000,
+     "accuracy": 0.2
+    }
+   },
+   "t5_tools_masked": {
+    "pair": {
+     "slates": 2000,
+     "accuracy": 0.544
+    },
+    "pair, fast mode": {
+     "slates": 2000,
+     "accuracy": 0.5395
+    },
+    "model part": {
+     "slates": 2000,
+     "accuracy": 0.461
+    },
+    "embedding part (potion-cos-4bit, in the pair)": {
+     "slates": 2000,
+     "accuracy": 0.475
+    },
+    "published pair (v3)": {
+     "slates": 2000,
+     "accuracy": 0.281
+    },
+    "potion-cos": {
+     "slates": 2000,
+     "accuracy": 0.47
+    },
+    "potion-cos-4bit": {
+     "slates": 2000,
+     "accuracy": 0.475
+    },
+    "static-ft": {
+     "slates": 2000,
+     "accuracy": 0.464
+    },
+    "pair-lr": {
+     "slates": 2000,
+     "accuracy": 0.1805
+    },
+    "bm25": {
+     "slates": 2000,
+     "accuracy": 0.558
+    },
+    "minilm-cos": {
+     "slates": 2000,
+     "accuracy": 0.5925
+    },
+    "toolrouter": {
+     "slates": 2000,
+     "accuracy": 0.522
+    },
+    "name-prior": {
+     "slates": 2000,
+     "accuracy": 0.119
+    }
+   },
+   "t5_tools_rw": {
+    "pair": {
+     "slates": 1600,
+     "accuracy": 0.57625
+    },
+    "pair, fast mode": {
+     "slates": 1600,
+     "accuracy": 0.58125
+    },
+    "model part": {
+     "slates": 1600,
+     "accuracy": 0.481875
+    },
+    "embedding part (potion-cos-4bit, in the pair)": {
+     "slates": 1600,
+     "accuracy": 0.56875
+    },
+    "published pair (v3)": {
+     "slates": 1600,
+     "accuracy": 0.604375
+    },
+    "potion-cos": {
+     "slates": 1600,
+     "accuracy": 0.555625
+    },
+    "potion-cos-4bit": {
+     "slates": 1600,
+     "accuracy": 0.56875
+    },
+    "static-ft": {
+     "slates": 1600,
+     "accuracy": 0.558125
+    },
+    "pair-lr": {
+     "slates": 1600,
+     "accuracy": 0.16375
+    },
+    "bm25": {
+     "slates": 1600,
+     "accuracy": 0.58125
+    },
+    "minilm-cos": {
+     "slates": 1600,
+     "accuracy": 0.734375
+    },
+    "toolrouter": {
+     "slates": 1600,
+     "accuracy": 0.685625
+    },
+    "name-prior": {
+     "slates": 1600,
+     "accuracy": 0.0
+    }
+   },
+   "t5_tools_masked_rw": {
+    "pair": {
+     "slates": 1600,
+     "accuracy": 0.541875
+    },
+    "pair, fast mode": {
+     "slates": 1600,
+     "accuracy": 0.5425
+    },
+    "model part": {
+     "slates": 1600,
+     "accuracy": 0.40625
+    },
+    "embedding part (potion-cos-4bit, in the pair)": {
+     "slates": 1600,
+     "accuracy": 0.529375
+    },
+    "published pair (v3)": {
+     "slates": 1600,
+     "accuracy": 0.183125
+    },
+    "potion-cos": {
+     "slates": 1600,
+     "accuracy": 0.519375
+    },
+    "potion-cos-4bit": {
+     "slates": 1600,
+     "accuracy": 0.529375
+    },
+    "static-ft": {
+     "slates": 1600,
+     "accuracy": 0.520625
+    },
+    "pair-lr": {
+     "slates": 1600,
+     "accuracy": 0.156875
+    },
+    "bm25": {
+     "slates": 1600,
+     "accuracy": 0.56375
+    },
+    "minilm-cos": {
+     "slates": 1600,
+     "accuracy": 0.63
+    },
+    "toolrouter": {
+     "slates": 1600,
+     "accuracy": 0.599375
+    },
+    "name-prior": {
+     "slates": 1600,
+     "accuracy": 0.14875
+    }
+   }
+  },
+  "T5 blind": {
+   "t5_tools": {
+    "model part, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.140625,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": -0.002232142857142849,
+     "fewest-words share of the blind picks": 0.19,
+     "answer with none allowed: accuracy on the tool-right slates": 0.135,
+     "answer with none allowed: accuracy": 0.115,
+     "none share": 0.0405,
+     "blind none gap": -0.006874999999999999,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.12333121424030515,
+       0.15733830845771143
+      ],
+      "blind none gap": [
+       -0.026297085998578537,
+       0.014506910624468728
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.11125654450261781,
+       0.17202889034799737
+      ],
+      "blind none gap": [
+       -0.021962040300748345,
+       0.008050909113424785
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1691919191919192,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.13122923588039867,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1691919191919192,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.08908045977011494,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.1483644859813084,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "model part, B1": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.18125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.038392857142857145,
+     "fewest-words share of the blind picks": 0.155625,
+     "answer with none allowed: accuracy on the tool-right slates": 0.171875,
+     "answer with none allowed: accuracy": 0.1395,
+     "none share": 0.013,
+     "blind none gap": -0.00375,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.16373902132998747,
+       0.20175438596491227
+      ],
+      "blind none gap": [
+       -0.014669954396528104,
+       0.00858601485148515
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.14507422402159245,
+       0.2193698949824971
+      ],
+      "blind none gap": [
+       -0.01563983367527435,
+       0.0066392786339059
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1919191919191919,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1777408637873754,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1919191919191919,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.11494252873563218,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.20327102803738317,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "pair, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.196875,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.054017857142857145,
+     "fewest-words share of the blind picks": 0.16,
+     "answer with none allowed: accuracy on the tool-right slates": 0.04125,
+     "answer with none allowed: accuracy": 0.194,
+     "none share": 0.812,
+     "blind none gap": -0.008749999999999925,
+     "share asked": 0.8385,
+     "share none or asked": 0.9955,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.176875,
+       0.21679197994987467
+      ],
+      "blind none gap": [
+       -0.05555420458174665,
+       0.03282364110125846
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.1598802395209581,
+       0.23500309214594928
+      ],
+      "blind none gap": [
+       -0.05205258328081641,
+       0.03708038851002271
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.30808080808080807,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.16029900332225913,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.30808080808080807,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.16379310344827586,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.1588785046728972,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "the pair's model part, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.140625,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": -0.002232142857142849,
+     "fewest-words share of the blind picks": 0.19,
+     "answer with none allowed: accuracy on the tool-right slates": 0.135,
+     "answer with none allowed: accuracy": 0.115,
+     "none share": 0.0405,
+     "blind none gap": -0.006874999999999999,
+     "share asked": 0.8385,
+     "share none or asked": 0.8465,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.12333121424030515,
+       0.15733830845771143
+      ],
+      "blind none gap": [
+       -0.026297085998578537,
+       0.014506910624468728
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.11125654450261781,
+       0.17202889034799737
+      ],
+      "blind none gap": [
+       -0.021962040300748345,
+       0.008050909113424785
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1691919191919192,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.13122923588039867,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1691919191919192,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.08908045977011494,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.1483644859813084,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "embedding part, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.193125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.05026785714285714,
+     "fewest-words share of the blind picks": 0.15,
+     "answer with none allowed: accuracy on the tool-right slates": 0.02875,
+     "answer with none allowed: accuracy": 0.1855,
+     "none share": 0.8215,
+     "blind none gap": -0.011249999999999982,
+     "share asked": 0.8385,
+     "share none or asked": 0.9955,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.17427122940430925,
+       0.21288692356285535
+      ],
+      "blind none gap": [
+       -0.056488479323295926,
+       0.02912820512820513
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.15894428152492668,
+       0.22778891115564462
+      ],
+      "blind none gap": [
+       -0.05065423855341733,
+       0.032382738894944585
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2904040404040404,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1611295681063123,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2904040404040404,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.16954022988505746,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.15771028037383178,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "published pair (v3), B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.179375,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.03651785714285716,
+     "fewest-words share of the blind picks": 0.17,
+     "answer with none allowed: accuracy on the tool-right slates": 0.06125,
+     "answer with none allowed: accuracy": 0.185,
+     "none share": 0.671,
+     "blind none gap": 0.011250000000000093,
+     "share asked": 0.7045,
+     "share none or asked": 0.9635,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.1603295310519645,
+       0.19890176937156803
+      ],
+      "blind none gap": [
+       -0.04128153815096991,
+       0.06364769893448197
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.1466275659824047,
+       0.21375590020229265
+      ],
+      "blind none gap": [
+       -0.03667938851405561,
+       0.06083516333544248
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.14451827242524917,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.16954022988505746,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.13434579439252337,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "potion-cos, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.2,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.05714285714285716,
+     "fewest-words share of the blind picks": 0.15,
+     "answer with none allowed: accuracy on the tool-right slates": 0.025,
+     "answer with none allowed: accuracy": 0.188,
+     "none share": 0.8495,
+     "blind none gap": -0.01187500000000008,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.18073047858942065,
+       0.22133660331085223
+      ],
+      "blind none gap": [
+       -0.05623932954040933,
+       0.027748557218958192
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.16327716443927948,
+       0.23529411764705882
+      ],
+      "blind none gap": [
+       -0.05210237345312474,
+       0.030920128761855348
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2727272727272727,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1760797342192691,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2727272727272727,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.1839080459770115,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.17289719626168223,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "potion-cos-4bit, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.193125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.05026785714285714,
+     "fewest-words share of the blind picks": 0.15,
+     "answer with none allowed: accuracy on the tool-right slates": 0.02875,
+     "answer with none allowed: accuracy": 0.1855,
+     "none share": 0.8215,
+     "blind none gap": -0.011249999999999982,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.17427122940430925,
+       0.21288692356285535
+      ],
+      "blind none gap": [
+       -0.056488479323295926,
+       0.02912820512820513
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.15894428152492668,
+       0.22778891115564462
+      ],
+      "blind none gap": [
+       -0.05065423855341733,
+       0.032382738894944585
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2904040404040404,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1611295681063123,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2904040404040404,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.16954022988505746,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.15771028037383178,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "static-ft, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.133125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": -0.009732142857142856,
+     "fewest-words share of the blind picks": 0.124375,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0375,
+     "answer with none allowed: accuracy": 0.167,
+     "none share": 0.704,
+     "blind none gap": -0.023749999999999938,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.11614550095724314,
+       0.14993726474278546
+      ],
+      "blind none gap": [
+       -0.07518258762100372,
+       0.02669947453161825
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.10336391437308869,
+       0.1628498727735369
+      ],
+      "blind none gap": [
+       -0.0762348910250309,
+       0.023891588272242248
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.08838383838383838,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1478405315614618,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.08838383838383838,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.14080459770114942,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.15070093457943926,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "pair-lr, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.151875,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.00901785714285716,
+     "fewest-words share of the blind picks": 0.239375,
+     "answer with none allowed: accuracy on the tool-right slates": 0.151875,
+     "answer with none allowed: accuracy": 0.1215,
+     "none share": 0.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.1352686843730698,
+       0.16905801621958827
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.12026143790849673,
+       0.1878631375080697
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2601010101010101,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.11627906976744186,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2601010101010101,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.14655172413793102,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.10397196261682243,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "bm25, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.14285714285714285,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.0,
+     "fewest-words share of the blind picks": 0.14285714285714285,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0,
+     "answer with none allowed: accuracy": 0.2,
+     "none share": 1.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.14285714285714285,
+       0.14285714285714285
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.14285714285714285,
+       0.14285714285714285
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "minilm-cos, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.185,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.04214285714285715,
+     "fewest-words share of the blind picks": 0.2,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0,
+     "answer with none allowed: accuracy": 0.2,
+     "none share": 1.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.16594427244582044,
+       0.2031545741324921
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.14395393474088292,
+       0.23076923076923078
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.24494949494949494,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.16528239202657807,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.24494949494949494,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.13505747126436782,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.17757009345794392,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "toolrouter, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.164375,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.021517857142857144,
+     "fewest-words share of the blind picks": 0.166875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0,
+     "answer with none allowed: accuracy": 0.2,
+     "none share": 1.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.14649286157666047,
+       0.18112244897959184
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.13320825515947468,
+       0.1944770857814336
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.21464646464646464,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1478405315614618,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.21464646464646464,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.13218390804597702,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.1542056074766355,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "name-prior, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.14285714285714285,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.0,
+     "fewest-words share of the blind picks": 0.14285714285714285,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0,
+     "answer with none allowed: accuracy": 0.2,
+     "none share": 1.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.14285714285714285,
+       0.14285714285714285
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.14285714285714285,
+       0.14285714285714285
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      }
+     }
+    }
+   },
+   "t5_tools_masked": {
+    "model part, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.14875,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.005892857142857144,
+     "fewest-words share of the blind picks": 0.16375,
+     "answer with none allowed: accuracy on the tool-right slates": 0.13,
+     "answer with none allowed: accuracy": 0.121,
+     "none share": 0.1135,
+     "blind none gap": -0.03562499999999999,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.13024420788979335,
+       0.16509730069052103
+      ],
+      "blind none gap": [
+       -0.06707533759772566,
+       -0.00365811904204133
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.12156593406593406,
+       0.17943107221006566
+      ],
+      "blind none gap": [
+       -0.07637575878196834,
+       0.004198982097656026
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2222222222222222,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.12458471760797342,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2222222222222222,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.1235632183908046,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.125,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "model part, B1": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.139375,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": -0.0034821428571428503,
+     "fewest-words share of the blind picks": 0.121875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.139375,
+     "answer with none allowed: accuracy": 0.1115,
+     "none share": 0.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.12262958280657396,
+       0.15716969317470256
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.11688311688311688,
+       0.16334405144694533
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.12626262626262627,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.143687707641196,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.12626262626262627,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.15517241379310345,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.13901869158878505,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "pair, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.190625,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.04776785714285714,
+     "fewest-words share of the blind picks": 0.155,
+     "answer with none allowed: accuracy on the tool-right slates": 0.035,
+     "answer with none allowed: accuracy": 0.1855,
+     "none share": 0.802,
+     "blind none gap": -0.018125000000000058,
+     "share asked": 0.927,
+     "share none or asked": 0.997,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.17098765432098764,
+       0.21046077210460773
+      ],
+      "blind none gap": [
+       -0.061143697733495705,
+       0.027033201340237678
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.15737298636926889,
+       0.2241490044958253
+      ],
+      "blind none gap": [
+       -0.057681865645666464,
+       0.024958632101489187
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.15946843853820597,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.1839080459770115,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.14953271028037382,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "the pair's model part, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.14875,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.005892857142857144,
+     "fewest-words share of the blind picks": 0.16375,
+     "answer with none allowed: accuracy on the tool-right slates": 0.13,
+     "answer with none allowed: accuracy": 0.121,
+     "none share": 0.1135,
+     "blind none gap": -0.03562499999999999,
+     "share asked": 0.927,
+     "share none or asked": 0.9375,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.13024420788979335,
+       0.16509730069052103
+      ],
+      "blind none gap": [
+       -0.06707533759772566,
+       -0.00365811904204133
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.12156593406593406,
+       0.17943107221006566
+      ],
+      "blind none gap": [
+       -0.07637575878196834,
+       0.004198982097656026
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2222222222222222,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.12458471760797342,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2222222222222222,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.1235632183908046,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.125,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "embedding part, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.203125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.06026785714285715,
+     "fewest-words share of the blind picks": 0.146875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.031875,
+     "answer with none allowed: accuracy": 0.1845,
+     "none share": 0.804,
+     "blind none gap": -0.011249999999999982,
+     "share asked": 0.927,
+     "share none or asked": 0.997,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.18470149253731344,
+       0.22215308027380212
+      ],
+      "blind none gap": [
+       -0.05497330921059729,
+       0.03306696527035513
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.16790582403965304,
+       0.23655913978494625
+      ],
+      "blind none gap": [
+       -0.051393568790300104,
+       0.03242470668938657
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1760797342192691,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.20114942528735633,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.1658878504672897,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "published pair (v3), B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.155625,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.012767857142857164,
+     "fewest-words share of the blind picks": 0.176875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.155625,
+     "answer with none allowed: accuracy": 0.1245,
+     "none share": 0.0,
+     "blind none gap": 0.0,
+     "share asked": 0.58,
+     "share none or asked": 0.58,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.13916876574307305,
+       0.17439703153988867
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.12372304199772985,
+       0.18871725990597715
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1994949494949495,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.14119601328903655,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.1994949494949495,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.08045977011494253,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.1658878504672897,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "potion-cos, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.19625,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.05339285714285716,
+     "fewest-words share of the blind picks": 0.146875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.025625,
+     "answer with none allowed: accuracy": 0.1865,
+     "none share": 0.8445,
+     "blind none gap": -0.018125000000000058,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.1774294670846395,
+       0.2155227710070558
+      ],
+      "blind none gap": [
+       -0.06224260128340198,
+       0.02216932347142153
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.16447779862414008,
+       0.2284829721362229
+      ],
+      "blind none gap": [
+       -0.05600489539660669,
+       0.020157438611866807
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.27525252525252525,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.17026578073089702,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.27525252525252525,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.1896551724137931,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.16238317757009346,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "potion-cos-4bit, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.203125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.06026785714285715,
+     "fewest-words share of the blind picks": 0.146875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.031875,
+     "answer with none allowed: accuracy": 0.1845,
+     "none share": 0.804,
+     "blind none gap": -0.011249999999999982,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.18470149253731344,
+       0.22215308027380212
+      ],
+      "blind none gap": [
+       -0.05497330921059729,
+       0.03306696527035513
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.16790582403965304,
+       0.23655913978494625
+      ],
+      "blind none gap": [
+       -0.051393568790300104,
+       0.03242470668938657
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1760797342192691,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.28535353535353536,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.20114942528735633,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.1658878504672897,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "static-ft, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.148125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.0052678571428571574,
+     "fewest-words share of the blind picks": 0.099375,
+     "answer with none allowed: accuracy on the tool-right slates": 0.03375,
+     "answer with none allowed: accuracy": 0.1815,
+     "none share": 0.777,
+     "blind none gap": -0.005624999999999991,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.12989434431323804,
+       0.16458852867830423
+      ],
+      "blind none gap": [
+       -0.051950319673326084,
+       0.04113745647487976
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.11819887429643527,
+       0.17970660146699266
+      ],
+      "blind none gap": [
+       -0.053246281281720265,
+       0.037422101561053855
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.08585858585858586,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1686046511627907,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.08585858585858586,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.15229885057471265,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.17523364485981308,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "pair-lr, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.1378125,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": -0.005044642857142845,
+     "fewest-words share of the blind picks": 0.4159375,
+     "answer with none allowed: accuracy on the tool-right slates": 0.138125,
+     "answer with none allowed: accuracy": 0.1105,
+     "none share": 0.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.12146003775959723,
+       0.15485893416927898
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.10423905489923559,
+       0.17197096594081518
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.18813131313131312,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.1212624584717608,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.18813131313131312,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.11781609195402298,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.12266355140186916,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "bm25, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.14285714285714285,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.0,
+     "fewest-words share of the blind picks": 0.14285714285714285,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0,
+     "answer with none allowed: accuracy": 0.2,
+     "none share": 1.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.14285714285714285,
+       0.14285714285714285
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.14285714285714285,
+       0.14285714285714285
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.14285714285714285,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "minilm-cos, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.2,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.05714285714285716,
+     "fewest-words share of the blind picks": 0.211875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0,
+     "answer with none allowed: accuracy": 0.2,
+     "none share": 1.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.18147448015122875,
+       0.2198492462311558
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.1623296158612144,
+       0.23847087378640777
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2702020202020202,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.17691029900332225,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.2702020202020202,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.16091954022988506,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.18341121495327103,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "toolrouter, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.17375,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.03089285714285714,
+     "fewest-words share of the blind picks": 0.136875,
+     "answer with none allowed: accuracy on the tool-right slates": 0.0,
+     "answer with none allowed: accuracy": 0.2,
+     "none share": 1.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.15604128718882818,
+       0.19230769230769232
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.1425091352009744,
+       0.2032181168057211
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.22727272727272727,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.15614617940199335,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.22727272727272727,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.1235632183908046,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.169392523364486,
+       "chance c": 0.14285714285714285
+      }
+     }
+    },
+    "name-prior, B0": {
+     "slates": 2000,
+     "tool-right slates": 1600,
+     "none-right slates": 400,
+     "blind accuracy": 0.14875,
+     "chance c": 0.14285714285714285,
+     "blind accuracy - c": 0.005892857142857144,
+     "fewest-words share of the blind picks": 0.13,
+     "answer with none allowed: accuracy on the tool-right slates": 0.14875,
+     "answer with none allowed: accuracy": 0.119,
+     "none share": 0.0,
+     "blind none gap": 0.0,
+     "intervals, slates resampled": {
+      "blind accuracy": [
+       0.13135068153655513,
+       0.166875
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ]
+     },
+     "intervals, servers resampled": {
+      "blind accuracy": [
+       0.13226205191594562,
+       0.16624365482233502
+      ],
+      "blind none gap": [
+       0.0,
+       0.0
+      ],
+      "servers": 262
+     },
+     "by server-mates shown (tool-right slates)": {
+      "no server-mate shown": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.13636363636363635,
+       "chance c": 0.14285714285714285
+      },
+      "server-mates shown": {
+       "tool-right slates": 1204,
+       "blind accuracy": 0.15282392026578073,
+       "chance c": 0.14285714285714285
+      },
+      "0": {
+       "tool-right slates": 396,
+       "blind accuracy": 0.13636363636363635,
+       "chance c": 0.14285714285714285
+      },
+      "1 to 2": {
+       "tool-right slates": 348,
+       "blind accuracy": 0.15804597701149425,
+       "chance c": 0.14285714285714285
+      },
+      "3 or more": {
+       "tool-right slates": 856,
+       "blind accuracy": 0.15070093457943926,
+       "chance c": 0.14285714285714285
+      }
+     }
+    }
+   }
+  },
+  "validation": {
+   "v5_tools": {
+    "slates": 1144,
+    "accuracy": 0.8802447552447552
+   },
+   "v5_tools_masked": {
+    "slates": 1144,
+    "accuracy": 0.8715034965034965
+   },
+   "v5_tools_rw": {
+    "slates": 1144,
+    "accuracy": 0.8776223776223776
+   },
+   "v5_tools_masked_rw": {
+    "slates": 1144,
+    "accuracy": 0.8671328671328671
+   },
+   "v5_tools.blind": {
+    "slates": 1144,
+    "tool-right slates": 915,
+    "none-right slates": 229,
+    "blind accuracy": 0.12349726775956284,
+    "chance c": 0.14285714285714282,
+    "blind accuracy - c": -0.019359875097579984,
+    "fewest-words share of the blind picks": 0.16174863387978142,
+    "answer with none allowed: accuracy on the tool-right slates": 0.007650273224043716,
+    "answer with none allowed: accuracy": 0.19667832167832167,
+    "none share": 0.9283216783216783,
+    "blind none gap": 0.02956069391748395,
+    "share asked": 0.763986013986014,
+    "share none or asked": 0.9956293706293706,
+    "intervals, slates resampled": {
+     "blind accuracy": [
+      0.10314875135722042,
+      0.14500537056928034
+     ],
+     "blind none gap": [
+      -0.005047415111654963,
+      0.060966556213446266
+     ]
+    },
+    "by server-mates shown (tool-right slates)": {
+     "no server-mate shown": {
+      "tool-right slates": 886,
+      "blind accuracy": 0.1252821670428894,
+      "chance c": 0.14285714285714285
+     },
+     "server-mates shown": {
+      "tool-right slates": 29,
+      "blind accuracy": 0.06896551724137931,
+      "chance c": 0.14285714285714285
+     },
+     "0": {
+      "tool-right slates": 886,
+      "blind accuracy": 0.1252821670428894,
+      "chance c": 0.14285714285714285
+     },
+     "1 to 2": {
+      "tool-right slates": 29,
+      "blind accuracy": 0.06896551724137931,
+      "chance c": 0.14285714285714285
+     }
+    }
+   },
+   "v5_tools_masked.blind": {
+    "slates": 1144,
+    "tool-right slates": 915,
+    "none-right slates": 229,
+    "blind accuracy": 0.12349726775956284,
+    "chance c": 0.14285714285714282,
+    "blind accuracy - c": -0.019359875097579984,
+    "fewest-words share of the blind picks": 0.20655737704918034,
+    "answer with none allowed: accuracy on the tool-right slates": 0.008743169398907104,
+    "answer with none allowed: accuracy": 0.19230769230769232,
+    "none share": 0.9152097902097902,
+    "blind none gap": 0.013195886128809065,
+    "share asked": 0.8784965034965035,
+    "share none or asked": 0.9973776223776224,
+    "intervals, slates resampled": {
+     "blind accuracy": [
+      0.10292524377031419,
+      0.14394765539803708
+     ],
+     "blind none gap": [
+      -0.025459042907430285,
+      0.04823631299300146
+     ]
+    },
+    "by server-mates shown (tool-right slates)": {
+     "no server-mate shown": {
+      "tool-right slates": 886,
+      "blind accuracy": 0.12641083521444696,
+      "chance c": 0.14285714285714285
+     },
+     "server-mates shown": {
+      "tool-right slates": 29,
+      "blind accuracy": 0.034482758620689655,
+      "chance c": 0.14285714285714285
+     },
+     "0": {
+      "tool-right slates": 886,
+      "blind accuracy": 0.12641083521444696,
+      "chance c": 0.14285714285714285
+     },
+     "1 to 2": {
+      "tool-right slates": 29,
+      "blind accuracy": 0.034482758620689655,
+      "chance c": 0.14285714285714285
+     }
+    }
+   }
+  }
+ }
+}

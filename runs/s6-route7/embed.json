@@ -1,0 +1,33 @@
+{
+ "about": "s6-route v7: the embedding file of the pair (scripts/route7-gate.sh embed)",
+ "embedding": "models/s6-route7/skycmd-s6-route7-embed.gguf",
+ "sha256": "717dc3d89f096d063de9af52636fdafca834c53d484ecde533d2043047e7dafd",
+ "bytes": 1273312,
+ "from": "site/public/models/s6-route-embed.gguf",
+ "from_sha256": "c53fb76dc8a56a696d859e80b7383d7e9db168e54c024525f220851fbacda67a",
+ "fit": {
+  "about": "docs/s6-route6-prereg.md 3: beta and tau_ask6 read on v5_tools only (v3's rules)",
+  "slates": 1144,
+  "partner": "potion-cos-4bit",
+  "beta": 0.7,
+  "nll_at_beta": 0.35572345227168956,
+  "tau_ask6": {
+   "tau": 0.7620974643975091,
+   "accuracy": 0.9507119386637459,
+   "coverage": 0.7980769230769231
+  },
+  "system": {
+   "accuracy": 0.8802447552447552,
+   "ece": 0.023160701764203803
+  },
+  "fast_mode": {
+   "accuracy": 0.8784965034965035,
+   "ece": 0.017486405065949732
+  },
+  "alone": {
+   "model": 0.8417832167832168,
+   "model_exit0": 0.8426573426573427,
+   "potion-cos-4bit": 0.7194055944055944
+  }
+ }
+}

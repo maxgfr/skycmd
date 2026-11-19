@@ -1,0 +1,30 @@
+{
+ "about": "s6-route v7 (docs/s6-route7-prereg.md 8, v6 8 G4 and amendment 2 point 5): the engine's WASM bench (crates/sky-web/bench/route3-node.mjs --render scores-in-options) against the Python reference of the pair under D4; median_ms is the bench's median_cached_us / 1000",
+ "max_abs_diff": 9.07151106677162e-07,
+ "argmax_agree": 200,
+ "n": 200,
+ "median_ms": 13.869082999999636,
+ "bytes": 3692288,
+ "bench": {
+  "n": 200,
+  "max_abs_diff": 9.07151106677162e-07,
+  "argmax_agree": 200,
+  "median_cached_us": 13869.082999999635,
+  "median_first_us": 28331.4589999998,
+  "bytes_model": 2418976,
+  "bytes_embedding": 1273312,
+  "build": "simd128",
+  "fast": false,
+  "render": "scores-in-options",
+  "model": {
+   "median_first_us": 28297.375,
+   "median_cached_us": 13860.541999999434
+  },
+  "embedding": {
+   "median_first_us": 42.958000000566244,
+   "median_cached_us": 10.125000000931323
+  },
+  "static_hits": 197,
+  "tools_hits": 200
+ }
+}
