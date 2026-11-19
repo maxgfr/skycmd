@@ -126,7 +126,7 @@ answers `viewer: true` (and preview, search, filter, statistics) for all 15. For
 | [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot) | `3865516c` | 6 | 0.2 | `6cbcce8c` | `data/s4/heldout/` | 3 of 3 identical |
 | [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-series) | `6c6bd6fe` | 11 | 52.8 | `84c6d854` | `data/series/` | 8 of 8 identical; s6-cast v2's USCRN series are not in it (G5) |
 | [skycmd-text](https://huggingface.co/datasets/maxgfr/skycmd-text) | `efdf4e69` | 17 | 96.5 | `84c6d854` | `data/text/`, `data/text-open/`, `data/tok/` | 14 of 14 identical (11 text files, 3 tokenizers) |
-| [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math) | `dc89f289` | 5 | 0.2 | `84c6d854` | `data/lfm3/` | 2 of 2 identical |
+| [skycmd-math](https://huggingface.co/datasets/maxgfr/skycmd-math) (named `skycmd-lfm3-math` until 19/11/2026; the old address redirects) | `dc89f289` | 5 | 0.2 | `84c6d854` | `data/lfm3/` | 2 of 2 identical |
 | [skycmd-ear](https://huggingface.co/datasets/maxgfr/skycmd-ear) | `0b3deda1` | 11 | 42.7 | `84c6d854` | `data/ear/jev/`, `clips/`, `mimi/` | 8 of 8 identical; the audio features and WAVs are not in it (G1, G2) |
 | [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) | `20984f3e` | 8 | 78.2 | `8cc8e276` | `data/cast-synth/` | 5 of 5 identical |
 | [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals) | `d04e8159` | 6 | 0.0 | `8cc8e276` | `eval/s5/` (in git) | 3 of 3 identical |
@@ -210,7 +210,7 @@ The data folder is `skycmd-data/s6-route/` (`ROUTE_DATA`). Sources are pinned in
 
 | work | status | data | on Hugging Face | local | removable | rebuild |
 |---|---|---|---|---|---|---|
-| S1/S2 router | failed (inference only) | calibration and test questions `data/lfm3/` | skycmd-lfm3-math (2 configs, identical) | `data/lfm3` < 0.01 GiB; generations `runs/lfm3-s1s2` 12 MB | yes under the rule since 19/11 (the fine-tune, their only reader, is closed); not deleted on 19/11 | `scripts/lfm3-s1s2.sh data` at commit 5011585 (the LFM3 code was removed on 19/11/2026; [`scripts/lfm3-s1s2.sh`](https://github.com/maxgfr/skycmd/blob/5011585/scripts/lfm3-s1s2.sh)) |
+| S1/S2 router | failed (inference only) | calibration and test questions `data/lfm3/` | skycmd-math (2 configs, identical) | `data/lfm3` < 0.01 GiB; generations `runs/lfm3-s1s2` 12 MB | yes under the rule since 19/11 (the fine-tune, their only reader, is closed); not deleted on 19/11 | `scripts/lfm3-s1s2.sh data` at commit 5011585 (the LFM3 code was removed on 19/11/2026; [`scripts/lfm3-s1s2.sh`](https://github.com/maxgfr/skycmd/blob/5011585/scripts/lfm3-s1s2.sh)) |
 | fine-tune | closed on 19/11, nothing trained (`docs/lfm3-ft-prereg.md`, amendment 8) | GSM8K and MATH train solutions, downloaded from the Hub at the pinned revisions of `DATA_LICENSES.md` | — | — | — | — |
 
 ## 4. The gap: data on disk that is not on Hugging Face under `maxgfr`

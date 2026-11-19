@@ -23,8 +23,9 @@ Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) befor
     open-weight MIT model, published by the owner's decision (DATA_LICENSES.md, s6-nano / s6-micro);
   * every set a model reads is published: decisions, games, numeric, secrets, commands, zero-shot,
     the s6-cast series, the MLM text with its tokenizers and the s6-ear questions with their clip
-    index and Mimi codes; `skycmd-lfm3-math` (the LFM3-1.7B router's questions) is published, and
-    its entry was removed with the LFM3 code on 19/11/2026 (in the git history at commit 5011585);
+    index and Mimi codes; the LFM3-1.7B router's questions are published as `skycmd-math`
+    (renamed from `skycmd-lfm3-math` on 19/11/2026), and its entry was removed with the LFM3 code
+    on 19/11/2026 (in the git history at commit 5011585);
   * the audio itself (31 GB of log-mel features and test WAVs) is not: `sky-data fetch-audio`
     rebuilds it from the upstream sets; nor GIFT-Eval, which is an evaluation set never
     redistributed;

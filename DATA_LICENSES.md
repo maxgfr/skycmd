@@ -392,7 +392,7 @@ audio of s6-ear (31 GB of log-mel features, rebuilt by `sky-data fetch-audio`) a
 evaluation set). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-series) (s6-cast),
 [skycmd-text](https://huggingface.co/datasets/maxgfr/skycmd-text) (MLM text and tokenizers),
 [skycmd-ear](https://huggingface.co/datasets/maxgfr/skycmd-ear) (s6-ear questions, clip index, Mimi
-codes), [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math) (LFM3 router
+codes), [skycmd-math](https://huggingface.co/datasets/maxgfr/skycmd-math) (LFM3 router
 questions), [skycmd-route](https://huggingface.co/datasets/maxgfr/skycmd-route) (the slates of
 s6-route-nano and s6-route and the teacher's descriptions, each row under its sources' licences;
 published since 17/11/2026), [skycmd-route7](https://huggingface.co/datasets/maxgfr/skycmd-route7)

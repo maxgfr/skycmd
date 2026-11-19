@@ -123,6 +123,8 @@ whole body.
 |---|---|---|
 | skycmd-cast-synth, skycmd-commands, skycmd-decisions, skycmd-ear, skycmd-evals, skycmd-games, skycmd-glm-labels, skycmd-lfm3-math, skycmd-numeric, skycmd-route, skycmd-secrets, skycmd-series, skycmd-text, skycmd-trajectories, skycmd-zero-shot | 200 each | preview, viewer, search, filter and statistics all true, for each of the 15 |
 
+*Note of 19/11/2026: `skycmd-lfm3-math` was renamed `skycmd-math` on the Hub on 19/11/2026; the old address redirects. The table above records the name as checked on 18/11.*
+
 ## Defects
 
 1. **Medium. 16 of the 18 Spaces serve a front-end built before the size fix of 17 November
