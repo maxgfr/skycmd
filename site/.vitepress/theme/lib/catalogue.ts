@@ -111,7 +111,7 @@ export const CATALOGUE: CatalogueEntry[] = [
     brings:
       'The right answer on 0.8993 of the 31,527 test clips of Smart Turn v3.2 (bar 0.85; the teacher measured 0.9260 there, s6-ear-nano 0.5681, the silence timer 0.4979), at 2.4 ms per decision in WASM and 632 KB, where its teacher is 8.7 MB and about 32 ms natively.',
     caveat:
-      'On real conversations (eot-bench) it and its teacher are far weaker than on the test clips, and at its threshold it answers "finished" on about half of the real ends of turn. It is weakest on Vietnamese, Marathi and Bengali.',
+      'On real conversations (eot-bench) it and its teacher are far weaker than on the test clips, and at its threshold it answers "finished" on about half of the real ends of turn. It is weakest on Vietnamese, Marathi and Bengali. Its successor, trained on real conversations, failed its gate, so this stays the file to take.',
     try: { link: '/ear/', label: 'the Listen page' },
     get: HF + 's6-ear2-nano',
     read: { link: '/results/#s6-ear2-nano-passed', label: 'its section of Results' },
@@ -317,6 +317,27 @@ export const CATALOGUE: CatalogueEntry[] = [
     get: HF + 's6-micro-v1',
     read: { link: '/results/#s6-micro-v1-failed-on-calibration-only', label: 'its section of Results' },
     source: ['site/results/index.md#s6-micro-v1-failed-on-calibration-only', 'site/public/models/manifest.json'],
+  },
+  {
+    id: 's6-ear3-nano',
+    name: 's6-ear3-nano',
+    group: 'results',
+    status: 'failed',
+    statusNote: 'It missed E1, E2 and E3 (real speech addressed to an agent); A1, A2 and G3 (Smart Turn\'s clips, latency and size) hold.',
+    purpose:
+      "s6-ear2-nano's end-of-turn graph trained again on real two-speaker conversations and on the silences a voice agent asks at.",
+    size: '632 KB',
+    manifest: ['s6-ear3-nano'],
+    brings:
+      "Real conversations taught it its own corpus, not speech addressed to an agent: on held-out human-to-human conversations its AUC is 0.6878 against v2's 0.6031, and on eot-bench, 0.2 s into each pause, 0.7197 against v2's 0.7448 (at least +0.02 was asked), where Smart Turn reads 0.7873.",
+    caveat:
+      'A result, not a detector to use: s6-ear2-nano stays the file to take. It was designed after v2\'s eot-bench reading, and its label cross-check was amended after a measurement on five training sessions.',
+    lesson:
+      "trained on real two-speaker conversations, it learned them (0.6878 against v2's 0.6031) and did worse than v2 on speech addressed to an agent (0.7197 against 0.7448).",
+    try: { link: 'https://huggingface.co/spaces/maxgfr/s6-ear3-nano', label: 'its Space on Hugging Face' },
+    get: HF + 's6-ear3-nano',
+    read: { link: '/results/#s6-ear3-nano-failed', label: 'its section of Results' },
+    source: ['site/results/index.md#s6-ear3-nano-failed', 'hf/cards/s6-ear3-nano.md', 'site/public/models/manifest.json'],
   },
   {
     id: 's6-ear-nano',

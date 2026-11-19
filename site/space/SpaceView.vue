@@ -125,6 +125,13 @@ onMounted(async () => {
   <template v-else-if="cfg.kind === 'turn'">
     <section>
       <h2>Has the speaker finished their turn?</h2>
+      <p v-if="cfg.model === 's6-ear3-nano'">
+        s6-ear3-nano failed its pre-registered gate. It is v2's graph trained again on real two-speaker
+        conversations and on the silences this demo asks at; on eot-bench, real speech addressed to an agent,
+        read 0.2 s into each pause, its AUC is 0.7197, where v2 reads 0.7448 on the same cuts and Smart Turn
+        0.7873. The detector to use is
+        <a href="https://huggingface.co/spaces/maxgfr/s6-ear2-nano">s6-ear2-nano</a>, with its fallback timer.
+      </p>
       <p>
         Use the microphone: an energy detector finds each pause, and at 0.2 s of silence the model reads the
         last 4 s of audio and says whether the turn is finished, in about 2.4 ms. While it answers "not
@@ -132,8 +139,13 @@ onMounted(async () => {
         whatever it says. The log-mel front end runs in the same WebAssembly module, and the audio never
         leaves your browser.
       </p>
-      <TurnDemo />
-      <p class="space-note">
+      <TurnDemo :prefer="cfg.model" />
+      <p v-if="cfg.model === 's6-ear3-nano'" class="space-note">
+        On eot-bench, with this demo's policy replayed pause by pause at its cautious threshold (τ85 = 0.6656,
+        from Smart Turn's validation clips), it answers "finished" before the timer on 0.8232 of the real ends of
+        turn and cuts off 0.2589 of the pauses where the speaker went on; v2, 0.8610 and 0.3737.
+      </p>
+      <p v-else class="space-note">
         On real conversations (eot-bench) the model catches about half of the real ends of turn at its
         cautious threshold: the fallback timer is part of how it should be used.
       </p>

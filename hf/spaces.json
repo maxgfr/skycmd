@@ -86,6 +86,21 @@
     ]
   },
   {
+    "model": "s6-ear3-nano",
+    "kind": "turn",
+    "emoji": "🎙️",
+    "color_from": "gray",
+    "color_to": "blue",
+    "tagline": "Failed its pre-registered gate, published as a result: s6-ear2-nano's 632 KB end-of-turn graph trained again on real two-speaker conversations and on the silences this demo asks at (s6-ear v3). On eot-bench, real speech addressed to an agent, read 0.2 s into each pause, its AUC is 0.7197, where v2 reads 0.7448 and Smart Turn 0.7873. The detector to use stays s6-ear2-nano.",
+    "short_description": "Failed its gate: 632 KB end-of-turn v3, a result",
+    "notes": [
+      "The gate (docs/s6-ear3-prereg.md §9): E1 asked for an AUC at least 0.02 above v2's on eot-bench, 0.2 s into each pause (16,230 cuts, 14 languages), with the lower bound of a paired bootstrap above 0: −0.0252 [−0.0336, −0.0167], so E1 fails. E2 (recall at a false cut-off of 0.10, −0.0563 [−0.0832, −0.0315]) and E3 (the 13 languages other than English, −0.0209 [−0.0308, −0.0111], a lower bound above −0.02 asked) fail too. A1 holds (0.8978 on Smart Turn's 31,527 test clips, bar 0.8893), and so do A2 (false cut-off 0.0881, END recall 0.8597 at τ85) and G3 (2.39 ms in WASM, 631,936 bytes, v2's tensor list).",
+      "What it learned: on the 113 held-out sessions of its own corpus, human-to-human conversations (reported, not gated), its AUC is 0.6878 against v2's 0.6031. By the reading its pre-registration fixed before the run, the human-to-human signal was learned and does not transfer to speech addressed to an agent. In English, the language of its conversations, eot-bench reads 0.7375 against v2's 0.7737.",
+      "Its labels come from the other speaker's channel (end of turn when the other takes the floor within 4 s, hold when the same speaker resumes first), never from a generative model; before training they agreed with a second detector, Silero VAD, on 0.9509 of the validation records (bar 0.85). The corpus is otoSpeech (gated, CC BY 4.0), credited on the model card; no record derived from it is published.",
+      "Disclosure: v3 was designed after v2's eot-bench reading, which motivated the headline test, the bar outside English and the expected per-language effects; its label cross-check and caps were amended after a measurement on five training sessions, before any validation or test session was read. One training run, one seed."
+    ]
+  },
+  {
     "model": "s6-cast-pico",
     "kind": "forecast",
     "emoji": "📉",

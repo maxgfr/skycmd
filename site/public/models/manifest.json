@@ -112,6 +112,19 @@
     "file": "s6-ear2-nano.gguf"
   },
   {
+    "name": "s6-ear3-nano",
+    "arch": "skycmd-turn",
+    "weight_format": "ternary",
+    "task": "ear",
+    "gate": "failed",
+    "gate_note": "It failed E1, E2 and E3: on eot-bench (real human-to-agent speech, 14 languages) read 0.2 s into each pause, its AUC is 0.7197 against v2's 0.7448 on the same cuts (−0.0252 [−0.0336, −0.0167], at least +0.02 with a lower bound above 0 asked), its recall at a false cut-off of 0.10 is 0.0563 below v2's, and outside English it loses 0.0209 [−0.0308, −0.0111] (a lower bound above −0.02 asked); Smart Turn reads 0.7873. A1 (0.8978 on Smart Turn's test clips, bar 0.8893), A2 and G3 hold. On held-out human-to-human conversations (reported) it reads 0.6878 against v2's 0.6031: the human-to-human signal does not transfer to agents. v2 (s6-ear2-nano) stays the line's file",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear3-nano-s6-ear-v3-an-end-of-turn-detector-trained-on-real-conversations-pre-registered-gate-failed",
+    "params": 1306178,
+    "bytes": 631936,
+    "file": "s6-ear3-nano.gguf",
+    "sha256": "048fafa6a7ff427a457c3957a50da0418c64d3c64e55b3b30d6a5b6e77d20cde"
+  },
+  {
     "name": "s6-cast-pico",
     "arch": "skycmd-cast",
     "weight_format": "ternary",

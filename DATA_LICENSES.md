@@ -384,6 +384,14 @@ output. Licences read on each card or repository on 19/11/2026.
 | snakers4/silero-vad, release v6.2.3 (tag commit `5cd7945676eb32225748052e2e6a0580e4686a08`), file `src/silero_vad/data/silero_vad.onnx` (2,327,524 bytes, git blob `80c5592e`) | MIT (GitHub licence API, `LICENSE`) | the second detector of the label cross-check on the validation sessions only (§3.7); never a training label, never a selection; not redistributed |
 | s6-ear2-nano (`models/s6-ear2/s6-ear2-nano.gguf` and its EMA checkpoint) | Apache-2.0 (this project) | the comparator and the start of training (§4, §6) |
 
+**The result (19/11/2026).** v3 failed its gate, and its file is published as a result
+(`site/public/models/s6-ear3-nano.gguf`, the card `hf/cards/s6-ear3-nano.md`, its Space; §12 of
+the pre-registration). The file holds the model's weights only, under Apache-2.0; otoSpeech
+(CC-BY-4.0) and the other sources are credited on its card. The repository holds only counts and
+statistics of the run (`runs/s6-ear3-nano/`, `runs/s6-ear3-pilot/`): every per-record file of the
+conversation records (the test, validation and pilot readings, the 20 parity records) stays on
+this machine, and none of them is committed or published.
+
 ## Published on Hugging Face (`scripts/hf-publish-data.py`)
 
 One dataset repository per set, one parquet config per source, each config under its source's

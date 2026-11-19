@@ -407,11 +407,12 @@ export interface WasmTurnDetector {
   free(): void
 }
 
-/** The manifest entry of the end-of-turn detector (s6-ear2-nano); null when not published.
- * The Listen demo of v1 picks `s6-ear-nano` by name, so this entry stays invisible to it. */
-export async function loadTurnEntry(): Promise<ModelEntry | null> {
+/** The manifest entry of an end-of-turn detector, by name: s6-ear2-nano (the Listen page, the
+ * default) or s6-ear3-nano (its own Space; it failed its gate); null when not published. The
+ * Listen demo of v1 picks `s6-ear-nano` by name, so these entries stay invisible to it. */
+export async function loadTurnEntry(name = 's6-ear2-nano'): Promise<ModelEntry | null> {
   const list = await loadManifest()
-  return list.find((m) => m.task === 'ear' && m.name === 's6-ear2-nano') ?? null
+  return list.find((m) => m.task === 'ear' && m.arch === 'skycmd-turn' && m.name === name) ?? null
 }
 
 const turnDetectors = new Map<string, Promise<WasmTurnDetector>>()

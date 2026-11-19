@@ -202,6 +202,20 @@ test('the Space of s6-route7-nano opens with its failure and runs the router dem
   assert.match(await renderSpace(s.config), /data-stub="RouterDemo" data-props="\{&quot;prefer&quot;:&quot;s6-route7-nano&quot;\}"/)
 })
 
+test('the end-of-turn Spaces run the turn demo on their own file: s6-ear2-nano passed, s6-ear3-nano failed', async () => {
+  for (const [m, tone] of [['s6-ear2-nano', 'passed'], ['s6-ear3-nano', 'failed']] as const) {
+    const s = of(m)
+    assert.equal(s.config.kind, 'turn', m)
+    assert.equal(gateNotice(s.config)!.tone, tone, m)
+    assert.deepEqual(s.models, [m])
+    const html = await renderSpace(s.config)
+    assert.match(html, new RegExp(`data-stub="TurnDemo" data-props="\\{&quot;prefer&quot;:&quot;${m}&quot;\\}"`), m)
+  }
+  // the failed file's Space points to the file to use; the passed one's does not name v3
+  assert.match(unescape(text(await renderSpace(of('s6-ear3-nano').config))), /The detector to use is s6-ear2-nano/)
+  assert.doesNotMatch(await renderSpace(of('s6-ear2-nano').config), /s6-ear3-nano/)
+})
+
 test('the scope restricts the manifest readers to one Space, never a reference forecaster', () => {
   assert.equal(scopeFilter(), null)
   const universe = hubModels(spaces)

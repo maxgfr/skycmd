@@ -6,7 +6,9 @@
 // every `recheckMs` while the pause lasts. A fallback timer ends the turn after 2.5 s of silence
 // whatever the model says, because on real conversations the model answers "finished" on about
 // half of the real ends of turn at the cautious threshold (the file's tau85, the default here).
-// Everything runs in the page: no audio is sent anywhere.
+// Everything runs in the page: no audio is sent anywhere. `prefer` names the detector to load:
+// s6-ear2-nano by default (the Listen page); s6-ear3-nano in its own Space, where it is shown as
+// the result of a failed gate.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   engineLabel,
@@ -29,6 +31,8 @@ import {
   type TurnEvent,
   type TurnState,
 } from '../lib/turn'
+
+const props = withDefaults(defineProps<{ prefer?: string }>(), { prefer: 's6-ear2-nano' })
 
 /** Speech needed before a pause counts, and the recheck pace of a held pause (lib/turn.ts). */
 const MIN_SPEECH = TURN_DEFAULTS.minSpeechMs
@@ -360,7 +364,7 @@ function stop() {
 
 onMounted(async () => {
   try {
-    const found = await loadTurnEntry()
+    const found = await loadTurnEntry(props.prefer)
     if (!found) {
       missing.value = true
       status.value = ''
@@ -402,7 +406,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="turn">
     <p v-if="status" class="turn-status">{{ status }}</p>
-    <p v-if="missing" class="turn-note">The end-of-turn model (s6-ear2-nano) is not published on this site.</p>
+    <p v-if="missing" class="turn-note">The end-of-turn model ({{ prefer }}) is not published on this site.</p>
     <template v-if="det">
       <div class="turn-controls">
         <button @click="running === 'mic' ? stop() : startMic()">

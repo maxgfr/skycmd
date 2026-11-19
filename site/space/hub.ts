@@ -12,7 +12,8 @@ export interface SpaceConfig {
   /** `secrets`: the API-key demo of s6-secrets-pico (manifest `task: secrets`). `ear`: the Listen
    * demo (manifest `task: ear`). `forecast`: the Forecast demo (`models/forecast.json`). `router`:
    * the tool router of the Router page (manifest `task: router`, two files fused by `ToolRouter`).
-   * `turn`: the end-of-turn demo of the Listen page (s6-ear2-nano through `TurnDetector`).
+   * `turn`: the end-of-turn demo of the Listen page (`TurnDetector`) on the Space's own model:
+   * s6-ear2-nano, or s6-ear3-nano (s6-ear v3, the same graph trained again; it failed its gate).
    * `router-v2`: the same router demo showing the s6-route-nano file alone (it failed its gate; the
    * Space also carries s6-route's two files, which `ToolRouter` needs). `secrets-verify`: the
    * Secrets verifier demo (s6-secrets-verify-pico through `SecretVerifier`, with its word list).

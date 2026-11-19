@@ -53,6 +53,13 @@ tags:
 > [Space](https://huggingface.co/spaces/maxgfr/s6-ear2-nano); the demo runs a fallback timer
 > next to the model, for the reason above ([How to use it](#how-to-use-it)).
 
+**Its successor failed, so this stays the file to take.** [s6-ear3-nano](https://huggingface.co/{{USER}}/s6-ear3-nano)
+is this graph trained again on real two-speaker conversations and on the silences the demo asks
+at. On eot-bench read 0.2 s into each pause, it reads 0.7197 where this model reads 0.7448 on the
+same cuts: it failed its pre-registered gate and is published as a result. It was designed after
+this model's eot-bench reading, and its label cross-check was amended after a measurement on five
+training sessions; its card discloses both.
+
 **A dedicated model, not a shared one.** The first version, [s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano),
 shared one ternary model between end of turn and keywords on top of a codec pretraining, and
 failed three of its four gates (end of turn 0.5681). This version drops all of that: one task,
