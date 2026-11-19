@@ -1,0 +1,120 @@
+{
+  "repo": "otoearth/otoSpeech-full-duplex-280h",
+  "revision": "4b3c57b8947d5f651dd6b5e825e7f34b205759e5",
+  "splits": {
+    "repo": "anyreach-ai/dualturn-otospeech-turn-taking",
+    "revision": "5b700b4b7fe6a21aa3a5acce5f235913fb40cb2e",
+    "sha256": "7550074d7b1761d946dcf3f0bb61fbf1372fe97becd68d752ce631a21ef8b436"
+  },
+  "shards_done": 151,
+  "shards": 151,
+  "counts": {
+    "sessions": 1125,
+    "absent_from_splits": 0,
+    "silent_channel": 0,
+    "bleed": 17,
+    "kept_sessions": 1108,
+    "candidates": 674669,
+    "in_dropped_sessions": 8931,
+    "backchannel": 171926,
+    "overlap": 15714,
+    "no_follow": 19859,
+    "tie": 100,
+    "redaction": 1769,
+    "eligible": {
+      "test": [
+        44009,
+        2473
+      ],
+      "train": [
+        343858,
+        20536
+      ],
+      "val": [
+        43104,
+        2390
+      ]
+    },
+    "written": {
+      "test": 43947,
+      "train": 266829,
+      "val": 37734
+    },
+    "decoded_seconds": 1040448.4316249996
+  },
+  "caps": {
+    "test": 30000,
+    "train": 120000,
+    "val": 20000
+  },
+  "cap_seed": 3,
+  "rule": "docs/s6-ear3-prereg.md §3.2 (amendment 1): drops counted by the first rule that applies, in the order of item 5; sessions absent from splits.json are not decoded",
+  "class_ratio": "amendment 2: the caps keep every eligible end-of-turn record and draw the holds up to the total, so the stored ratio is not the natural one; counts.eligible holds the natural counts by split, [hold, end of turn]",
+  "stored": {
+    "test": [
+      27527,
+      2473
+    ],
+    "train": [
+      99464,
+      20536
+    ],
+    "val": [
+      17610,
+      2390
+    ]
+  },
+  "dmax_ms": {
+    "test": {
+      "200": 10648,
+      "400": 5465,
+      "600": 3776,
+      "800": 2577,
+      "1000": 1538,
+      "1200": 1117,
+      "1400": 739,
+      "1600": 621,
+      "1800": 438,
+      "2000": 342,
+      "2200": 306,
+      "2400": 2433
+    },
+    "train": {
+      "200": 39067,
+      "400": 20715,
+      "600": 14270,
+      "800": 9331,
+      "1000": 5621,
+      "1200": 3986,
+      "1400": 2953,
+      "1600": 2288,
+      "1800": 1844,
+      "2000": 1490,
+      "2200": 1345,
+      "2400": 17090
+    },
+    "val": {
+      "200": 6831,
+      "400": 3671,
+      "600": 2462,
+      "800": 1629,
+      "1000": 971,
+      "1200": 699,
+      "1400": 477,
+      "1600": 361,
+      "1800": 314,
+      "2000": 222,
+      "2200": 203,
+      "2400": 2160
+    }
+  },
+  "speaker_unseen_test": {
+    "records": 2061,
+    "hold_eot": [
+      1919,
+      142
+    ],
+    "training_speakers": 400
+  },
+  "final": true
+}

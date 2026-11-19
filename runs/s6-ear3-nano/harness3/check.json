@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "checks": {
+    "policy_port": {
+      "ok": true,
+      "vectors": 3
+    },
+    "smart_turn_test_v2": {
+      "accuracy": 0.8993243886192787,
+      "clips": 31527,
+      "missing": 0,
+      "want": 0.8993,
+      "ok": true
+    },
+    "eotbench_cuts": {
+      "value": 17934,
+      "want": 17934,
+      "ok": true
+    },
+    "eotbench_v2_auc": {
+      "value": 0.7299333055297704,
+      "want": 0.7299,
+      "tol": 0.0005,
+      "decided": 17934,
+      "ok": true
+    },
+    "eotbench_smart_turn_auc": {
+      "value": 0.7837508742112285,
+      "want": 0.7838,
+      "tol": 0.0005,
+      "ok": true
+    }
+  },
+  "cuts_8_3": {
+    "cuts": 16230,
+    "eot": 6798,
+    "hold": 9432,
+    "turns": 7342,
+    "rule": "spans of 0.2 s or more cut at start + 0.2 s, holds over 5 s ignored (\u00a78.3); counted before any model reads them"
+  },
+  "rule": "docs/s6-ear3-prereg.md \u00a78.1",
+  "checked": "2026-11-19T17:26:45+0100"
+}

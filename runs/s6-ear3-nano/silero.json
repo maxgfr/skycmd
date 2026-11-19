@@ -1,0 +1,12 @@
+{
+  "file": "src/silero_vad/data/silero_vad.onnx",
+  "tag": "v6.2.3",
+  "commit": "5cd7945676eb32225748052e2e6a0580e4686a08",
+  "url": "https://raw.githubusercontent.com/snakers4/silero-vad/5cd7945676eb32225748052e2e6a0580e4686a08/src/silero_vad/data/silero_vad.onnx",
+  "bytes": 2327524,
+  "git_blob": "80c5592ef1f4c9ede3e357bbd02eb863358a6a9d",
+  "sha256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
+  "licence": "MIT",
+  "first_use": "2026-11-19",
+  "use": "docs/s6-ear3-prereg.md \u00a73.7, the label cross-check only"
+}

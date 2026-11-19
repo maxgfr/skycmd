@@ -1,0 +1,25 @@
+{
+  "fixture": "crates/sky-data/tests/fixtures/turn-policy.json",
+  "passed": true,
+  "vectors": [
+    {
+      "vector": "turns and pauses over a low floor",
+      "frames": 1045,
+      "events": 35,
+      "first_mismatch": null
+    },
+    {
+      "vector": "short blips, a rising floor and digital silence",
+      "frames": 1072,
+      "events": 39,
+      "first_mismatch": null
+    },
+    {
+      "vector": "a scripted model: finished at some asks",
+      "frames": 990,
+      "events": 39,
+      "first_mismatch": null
+    }
+  ],
+  "rule": "docs/s6-ear3-prereg.md §8.1 item 1: the port replays the recorded turn.ts vectors bit for bit"
+}

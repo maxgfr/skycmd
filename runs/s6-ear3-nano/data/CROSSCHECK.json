@@ -1,0 +1,158 @@
+{
+  "about": "docs/s6-ear3-prereg.md §3.7 as amended (amendment 2): every eligible energy record of the validation sessions labelled again at its instant from Silero VAD v6.2.3's speech runs, with the same label code. The bars: the agreement on every record whose instant label is not a drop, and the share of records whose instant label is a drop. The offset matching (within 150 ms, one to one) is reported and decides nothing. Silero selects, drops and relabels nothing.",
+  "sessions": 109,
+  "eligible_energy_records": 45494,
+  "eligible_by_class": {
+    "hold": 43104,
+    "eot": 2390
+  },
+  "instant": {
+    "agreement": {
+      "value": 0.9509199451947543,
+      "wilson95": [
+        0.948782837974909,
+        0.9529722986657312
+      ],
+      "agree": 38866,
+      "labelled": 40872,
+      "bar": 0.85,
+      "pass": true
+    },
+    "drop_share": {
+      "value": 0.1015958148327252,
+      "records": 4622,
+      "drops": {
+        "backchannel": 1545,
+        "no_follow": 774,
+        "overlap": 2255,
+        "tie": 48
+      },
+      "bar": 0.3,
+      "pass": true
+    },
+    "table": {
+      "rows": "energy label (hold, eot)",
+      "columns": "instant Silero label (hold, eot)",
+      "counts": [
+        [
+          37070,
+          1940
+        ],
+        [
+          66,
+          1796
+        ]
+      ]
+    },
+    "agreement_by_class": {
+      "hold": 0.9502691617533966,
+      "eot": 0.9645542427497314
+    },
+    "eot_silero_hears_a_at_first_ask": {
+      "records": 312,
+      "share": 0.1305439330543933,
+      "median_remaining_ms": 298
+    }
+  },
+  "offset_matching_reported": {
+    "agreement": {
+      "value": 0.9580595995164766,
+      "wilson95": [
+        0.9551176923371403,
+        0.9608165840172467
+      ],
+      "agree": 18229,
+      "pairs_labelled_by_both": 19027,
+      "bar_before_amendment_2": 0.85
+    },
+    "unconfirmed": {
+      "value": 0.5817690244867455,
+      "records": 26467,
+      "bar_before_amendment_2": 0.3,
+      "unmatched": {
+        "hold": 23990,
+        "eot": 1028
+      },
+      "silero_dropped": {
+        "hold": 1216,
+        "eot": 233
+      },
+      "share_by_class": {
+        "unmatched": {
+          "hold": 0.556560876020787,
+          "eot": 0.4301255230125523
+        },
+        "silero_dropped": {
+          "hold": 0.028210838901262063,
+          "eot": 0.09748953974895397
+        }
+      }
+    },
+    "table": {
+      "rows": "energy label (hold, eot)",
+      "columns": "Silero label (hold, eot)",
+      "counts": [
+        [
+          17122,
+          776
+        ],
+        [
+          22,
+          1107
+        ]
+      ]
+    },
+    "time_difference_ms": {
+      "silero_minus_energy": true,
+      "n": 20476,
+      "p05": 0,
+      "p25": 68,
+      "median": 88,
+      "p75": 108,
+      "p95": 138,
+      "histogram_10ms": {
+        "-150": 44,
+        "-140": 55,
+        "-130": 49,
+        "-120": 59,
+        "-110": 73,
+        "-100": 81,
+        "-90": 73,
+        "-80": 68,
+        "-70": 85,
+        "-60": 69,
+        "-50": 67,
+        "-40": 53,
+        "-30": 48,
+        "-20": 65,
+        "-10": 115,
+        "0": 155,
+        "10": 178,
+        "20": 204,
+        "30": 340,
+        "40": 546,
+        "50": 1019,
+        "60": 1771,
+        "70": 2465,
+        "80": 2869,
+        "90": 2719,
+        "100": 2352,
+        "110": 1763,
+        "120": 1265,
+        "130": 948,
+        "140": 735,
+        "150": 143
+      }
+    },
+    "silero_offsets": 41703,
+    "silero_drops": {
+      "backchannel": 7541,
+      "no_follow": 1362,
+      "overlap": 2368,
+      "redaction": 145,
+      "tie": 45
+    }
+  },
+  "pass": true,
+  "shards": 85
+}
