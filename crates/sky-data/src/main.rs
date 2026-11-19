@@ -727,6 +727,20 @@ enum Cmd {
         #[arg(long, default_value_t = 2000)]
         st_max: usize,
     },
+    /// s6-ear v3, a measurement on training data (docs/s6-ear3-prereg.md amendment 1): `prepare`
+    /// the training sessions of one shard (the others skipped unread), then `measure` with Silero's
+    /// runs (scripts/turn-vadcheck.py --tag meas): both detectors' label counts and two variants.
+    ConvMeasure {
+        /// prepare | measure
+        action: String,
+        /// The folder of the measurement (temporary).
+        #[arg(long)]
+        dir: PathBuf,
+        #[arg(long)]
+        tar: Option<PathBuf>,
+        #[arg(long)]
+        splits: Option<PathBuf>,
+    },
     /// s6-ear v3, §8.1 item 1: the policy port replays the vectors recorded from turn.ts (exit
     /// status 1 when a frame or an event differs).
     TurnPolicyCheck {
@@ -1762,6 +1776,24 @@ fn main() -> Result<()> {
             if let Some(st) = st {
                 v["st_ext"] = sky_data::conv::ext_fixture(&st, &out.join("st-ext"), st_max)?;
             }
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::ConvMeasure {
+            action,
+            dir,
+            tar,
+            splits,
+        } => {
+            use sky_data::conv_measure;
+            let v = match action.as_str() {
+                "prepare" => conv_measure::prepare(
+                    &tar.ok_or_else(|| anyhow::anyhow!("prepare needs --tar"))?,
+                    &splits.ok_or_else(|| anyhow::anyhow!("prepare needs --splits"))?,
+                    &dir,
+                )?,
+                "measure" => conv_measure::measure(&dir)?,
+                a => anyhow::bail!("conv-measure {a}: prepare or measure"),
+            };
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
         Cmd::TurnPolicyCheck { fixture, out } => {

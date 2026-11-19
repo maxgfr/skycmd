@@ -6,6 +6,7 @@ pub mod audio;
 pub mod augment;
 pub mod commands;
 pub mod conv;
+pub mod conv_measure;
 pub mod csv;
 pub mod decisions;
 pub mod distill;
