@@ -1,94 +1,96 @@
-# Modèles de décision ultra-petits et rapides : état de l'art et plan pour skycmd (11 oct. 2026)
+# Ultra-small, fast decision models: state of the art and plan for skycmd (11 Oct. 2026)
+
+*Translated into English on 19/11/2026; the French original is this file at commit `1f180a5`.*
 
 ## Abstract / TL;DR
-Quatre résultats récents se combinent bien pour un modèle de décision sous le million de paramètres [S60][S14][S43][S2] :
-- **la profondeur par récursion d'un bloc minuscule** : TRM, un seul réseau à 2 couches, ~7M paramètres [S60] ; Ouro, un bloc partagé en boucle avec une profondeur apprise [S61] ;
-- **la sortie anticipée vue comme une « lecture » de la trajectoire**, séparée de la façon dont la trajectoire est entraînée [S14], avec un seuil calibré sous contrôle de risque [S30] ;
-- **des nombres encodés en un seul token** : FoNE [S43], FT-Transformer [S62] ;
-- **la quantification ternaire par QAT, qui tient même aux petites tailles** [S2][S1].
+Four recent results combine well for a decision model under one million parameters [S60][S14][S43][S2]:
+- **depth through recursion of a tiny block**: TRM, a single 2-layer network, ~7M parameters [S60]; Ouro, a shared block in a loop with a learned depth [S61];
+- **early exit seen as a "readout" of the trajectory**, separate from the way the trajectory is trained [S14], with a threshold calibrated under risk control [S30];
+- **numbers encoded as a single token**: FoNE [S43], FT-Transformer [S62];
+- **ternary quantization through QAT, which holds even at small sizes** [S2][S1].
 
-L'apprentissage par imitation avec DAgger, c'est-à-dire un enseignant qui étiquette les états visités par l'élève, reste la base pour contrôler un jeu en boucle fermée [S54][S53][S47].
+Imitation learning with DAgger, that is a teacher that labels the states visited by the student, remains the basis for controlling a game in closed loop [S54][S53][S47].
 
-Le plan qui en découle pour skycmd, « s3 », combine ces quatre briques avec le flux statique mis en cache de s2. [M]
+The plan that follows for skycmd, "s3", combines these four building blocks with the cached static stream of s2. [M]
 
 ## Background & motivation
-Les modèles de décision typés sont déjà nombreux sur Hugging Face [S42][S52][S56].
-- **Une seule passe** : decider-4b lit un état et des questions typées, puis rend une distribution sur les options en une passe, sans décodage [S42].
-- **Les trois types de questions** : Sev distingue choice, score ordinal et noul [S52].
-- **La calibration** : fragment-1 calibre une température par type de question [S56].
+Typed decision models are already numerous on Hugging Face [S42][S52][S56].
+- **A single pass**: decider-4b reads a state and typed questions, then returns a distribution over the options in one pass, without decoding [S42].
+- **The three question types**: Sev distinguishes choice, ordinal score and noul [S52].
+- **Calibration**: fragment-1 calibrates one temperature per question type [S56].
 
-Ces modèles font de 100M à plusieurs milliards de paramètres. Notre objectif est inverse : un modèle de quelques centaines de milliers de paramètres qui décide en quelques microsecondes dans le navigateur. [M]
+These models range from 100M to several billion parameters. Our goal is the reverse: a model of a few hundred thousand parameters that decides in a few microseconds in the browser. [M]
 
 ## Key papers (chronological)
-- **FT-Transformer** : chaque colonne, numérique ou catégorielle, devient un embedding (un token), puis un Transformer et un token de classe font la prédiction [S62].
-- **Early exit sous contrôle de risque** : le seuil de sortie est calculé sur des données de calibration pour respecter un niveau de risque toléré ; une correction assure le contrôle en espérance [S30].
-- **BitNet b1.58 aux petites échelles** : des modèles de 100K à 48M paramètres ont été étudiés. Ajouter de la capacité compense la précision réduite [S2].
-- **FoNE** : un nombre devient un seul token via des caractéristiques de Fourier [S43]. Un travail voisin souligne que xVal doit ramener les nombres dans une plage bornée [S36].
-- **TRM** : un unique réseau à 2 couches, appliqué récursivement, avec ~7M paramètres, obtient 45 % sur ARC-AGI-1 [S60].
-- **Ouro (LoopLM)** : le calcul se fait en itérant dans l'espace latent. Un objectif régularisé par l'entropie apprend la profondeur, et les modèles 1,4B et 2,6B égalent des modèles allant jusqu'à 12B [S61].
-- **LoopFormer** : un modèle en boucle conditionné par un budget de calcul. Son entraînement à profondeur variable coûte environ 1,5× les FLOPs d'un modèle à boucle fixe [S10].
-- **Adaptive Depth in Looped Transformers** : sépare la formation de la trajectoire (l'objectif d'entraînement) de la lecture qui choisit la sortie, et compare des priors fixes à des portes apprises [S14].
-- **Stochastic stopping** : tirer la profondeur au hasard autour d'une valeur, plutôt qu'une profondeur fixe, stabilise la généralisation hors distribution des boucles [S49].
-- **Universal Transformers Need Memory** : la récursion à poids partagés, l'arrêt adaptatif et un état persistant à travers les itérations sont trois lignes de recherche qui convergent de nouveau en 2025–2026 [S8].
+- **FT-Transformer**: each column, numerical or categorical, becomes an embedding (a token), then a Transformer and a class token make the prediction [S62].
+- **Early exit under risk control**: the exit threshold is computed on calibration data so as to respect a tolerated risk level; a correction ensures control in expectation [S30].
+- **BitNet b1.58 at small scales**: models from 100K to 48M parameters were studied. Adding capacity compensates for the reduced precision [S2].
+- **FoNE**: a number becomes a single token through Fourier features [S43]. A related work points out that xVal must bring numbers into a bounded range [S36].
+- **TRM**: a single 2-layer network, applied recursively, with ~7M parameters, reaches 45 % on ARC-AGI-1 [S60].
+- **Ouro (LoopLM)**: computation is done by iterating in latent space. An entropy-regularized objective learns the depth, and the 1,4B and 2,6B models match models of up to 12B [S61].
+- **LoopFormer**: a looped model conditioned on a compute budget. Its variable-depth training costs about 1,5× the FLOPs of a fixed-loop model [S10].
+- **Adaptive Depth in Looped Transformers**: separates the formation of the trajectory (the training objective) from the readout that chooses the exit, and compares fixed priors with learned gates [S14].
+- **Stochastic stopping**: drawing the depth at random around a value, rather than a fixed depth, stabilizes the out-of-distribution generalization of loops [S49].
+- **Universal Transformers Need Memory**: weight-shared recursion, adaptive halting and a state persistent across iterations are three lines of research that converge again in 2025–2026 [S8].
 
 ## Methods & approaches compared
-| Levier | Ce que disent les sources | Application skycmd |
+| Lever | What the sources say | skycmd application |
 |---|---|---|
-| Profondeur sans paramètres | un bloc minuscule récursif (TRM) [S60], une boucle partagée (Ouro) [S61] | `state_loops` : 1 bloc d'état bouclé 4 fois [M] |
-| Sortie anticipée | la lecture (readout) se sépare de la trajectoire [S14] ; seuil calibré sous risque [S30] | calibrer τ sur les états visités en jouant [M] |
-| Nombres | un token par nombre (FoNE) [S43] ; un token par feature (FT-Transformer) [S62] | `fuse_numbers` : « clé valeur » devient un seul token [M] |
-| Ternaire | le QAT 1,58 bit tient de 100K à 48M paramètres [S2] ; un modèle QAT de 2,1M paramètres atteint une perplexité de 10,1 contre 151,9 en quantification post-entraînement [S1] | QAT pendant toute la phase de décision [M] |
-| Imitation | la distillation on-policy : l'enseignant évalue les états visités par l'élève [S54] ; même boucle en conduite autonome [S47] ; BC puis DAgger sur Flappy Bird dans le cours de RL de Stanford [S53] | DAgger avec l'oracle comme enseignant |
-| Données | decider-4b : dix familles programmatiques à vérité vérifiable dans son mélange [S42] | curriculum numérique programmatique [M] |
-| WASM | les instructions Relaxed SIMD (produit scalaire, FMA) accélèrent les charges existantes [S7] | `relaxed_madd` derrière un cfg [M] |
+| Depth without parameters | a tiny recursive block (TRM) [S60], a shared loop (Ouro) [S61] | `state_loops`: 1 state block looped 4 times [M] |
+| Early exit | the readout separates from the trajectory [S14]; threshold calibrated under risk [S30] | calibrate τ on the states visited while playing [M] |
+| Numbers | one token per number (FoNE) [S43]; one token per feature (FT-Transformer) [S62] | `fuse_numbers`: "key value" becomes a single token [M] |
+| Ternary | 1,58-bit QAT holds from 100K to 48M parameters [S2]; a QAT model of 2,1M parameters reaches a perplexity of 10,1 against 151,9 with post-training quantization [S1] | QAT throughout the decision phase [M] |
+| Imitation | on-policy distillation: the teacher evaluates the states visited by the student [S54]; same loop in autonomous driving [S47]; BC then DAgger on Flappy Bird in Stanford's RL course [S53] | DAgger with the oracle as teacher |
+| Data | decider-4b: ten programmatic families with verifiable ground truth in its mix [S42] | programmatic numerical curriculum [M] |
+| WASM | the Relaxed SIMD instructions (dot product, FMA) speed up existing workloads [S7] | `relaxed_madd` behind a cfg [M] |
 
 ## Findings & consensus
-- **Profondeur.** Avec peu de paramètres, la récursion d'un bloc partagé est la façon la plus économique d'obtenir de la profondeur [S60][S61].
-- **Sortie anticipée.** La sortie doit être évaluée sur la trajectoire réelle : la règle de lecture se règle séparément de l'entraînement [S14], et un seuil choisi avec un contrôle de risque donne des garanties que le seuil naïf n'a pas [S30]. 
-> [model-hint] Mesure interne skycmd : un τ calibré sur des questions isolées (0,62) faisait échouer le modèle en partie réelle, alors que τ = 0,95 retrouvait la qualité à pleine profondeur avec ~3,3 couches sur 4.
+- **Depth.** With few parameters, recursion of a shared block is the cheapest way to get depth [S60][S61].
+- **Early exit.** The exit must be evaluated on the real trajectory: the readout rule is tuned separately from training [S14], and a threshold chosen with risk control gives guarantees that the naive threshold does not have [S30]. 
+> [model-hint] Internal skycmd measurement: a τ calibrated on isolated questions (0,62) made the model fail in a real game, whereas τ = 0,95 recovered full-depth quality with ~3,3 layers out of 4.
 
-- **Ternaire.** Le QAT est nettement supérieur à la quantification après entraînement aux petites tailles [S1], et le ternaire reste viable sous 1M paramètres [S2].
-- **Contrôle d'un jeu.** DAgger corrige le décalage de distribution du clonage pur. C'est la recette standard enseignée [S53][S39], et la distillation on-policy la généralise aux modèles de langage [S54][S40].
+- **Ternary.** QAT is clearly better than post-training quantization at small sizes [S1], and ternary remains viable under 1M parameters [S2].
+- **Controlling a game.** DAgger corrects the distribution shift of pure cloning. It is the standard recipe taught [S53][S39], and on-policy distillation generalizes it to language models [S54][S40].
 
 ## Gaps & open problems
-- Aucune source trouvée ne mesure un modèle de décision typé sous 1M paramètres en boucle fermée. C'est l'espace que skycmd occupe. [M]
-- Pour le Relaxed SIMD, la source ne donne pas de chiffres en int8 [S7].
-- Le clonage de comportement dans ViZDoom part des pixels [S38]. Aucune source ne traite d'un état textuel compact comme le nôtre. [M]
+- No source found measures a typed decision model under 1M parameters in closed loop. That is the space skycmd occupies. [M]
+- For Relaxed SIMD, the source gives no int8 figures [S7].
+- Behaviour cloning in ViZDoom starts from pixels [S38]. No source deals with a compact textual state like ours. [M]
 
 ## Future directions
-Les idées à essayer cette nuit, classées par gain attendu sur la vitesse et la qualité [M] :
-1. Fusionner chaque paire « clé valeur » en un token (`fuse_numbers`), soit environ deux fois moins de tokens d'état [M], d'après [S62][S43].
-2. Un encodeur d'état récursif (1 bloc × 4 boucles) avec supervision à chaque sortie et profondeur stochastique [M], d'après [S60][S61][S49].
-3. Calibrer τ en boucle fermée par contrôle de risque sur les états DAgger [M], d'après [S30][S14].
-4. QAT ternaire pendant toute la phase de décision [M], d'après [S2][S1].
-5. Un curriculum numérique programmatique à vérité exacte [M], d'après [S42].
-6. Des noyaux WASM spécialisés pour M ≤ 16 et `relaxed_madd` [M], d'après [S7][S3].
+The ideas to try tonight, ranked by expected gain in speed and quality [M]:
+1. Merge each "key value" pair into one token (`fuse_numbers`), that is about half as many state tokens [M], after [S62][S43].
+2. A recursive state encoder (1 block × 4 loops) with supervision at every exit and stochastic depth [M], after [S60][S61][S49].
+3. Calibrate τ in closed loop through risk control on the DAgger states [M], after [S30][S14].
+4. Ternary QAT throughout the decision phase [M], after [S2][S1].
+5. A programmatic numerical curriculum with exact ground truth [M], after [S42].
+6. Specialized WASM kernels for M ≤ 16 and `relaxed_madd` [M], after [S7][S3].
 
 
-## Implémentations et inspiration biologique (2e tour)
-- **Noyaux ternaires par table de correspondance** [S63][S64] :
-  - bitnet.cpp propose des noyaux à table de correspondance ternaire (TL) et un noyau I2_S pour l'inférence sur CPU [S63].
-  - T-MAC remplace la multiplication par des lectures de table bit à bit, sans déquantification [S64].
-  - C'est la réponse à notre mesure, où l'addition et la soustraction ternaires étaient plus lentes que le f32. [M]
-- **Réamorçage temporel des latents** [S65][S68] :
-  - RIN amorce les latents d'une étape à partir de l'étape précédente, avec un terme initialisé à zéro [S65].
-  - TRM transmet son état latent d'un passage de supervision à l'autre, détaché du graphe [S68].
-  - Pour le contrôle à haute fréquence, une étude VLA réutilise des tokens d'une étape à l'autre [S66], et le Latent Recurrent Transformer réutilise l'état caché précédent comme mémoire [S76].
-- **Calcul événementiel.** Les réseaux delta seuillent la variation d'activation et sautent les mises à jour sous le seuil, au prix d'une dérive qui demande des remises à zéro périodiques [S70].
-- **Expand-and-sparsify** [S71] :
-  - Chez la mouche, environ 50 neurones de projection alimentent environ 2 500 cellules de Kenyon, et l'inhibition k-WTA ne laisse qu'environ 5 % d'unités actives [S71].
-  - Ce motif s'est montré efficace pour suivre un itinéraire en robotique embarquée [S72], et son expressivité est étudiée formellement [S73].
-- **Circuits de commande inspirés de C. elegans.** Les Neural Circuit Policies sont organisées en neurones sensoriels, interneurones, neurones de commande récurrents et neurones moteurs, avec peu de paramètres [S74]. Des drones pilotés par ces réseaux ont surpassé d'autres réseaux sur les tâches difficiles, comme poursuivre une cible sous la pluie [S75].
+## Implementations and biological inspiration (2nd round)
+- **Ternary lookup-table kernels** [S63][S64]:
+  - bitnet.cpp offers ternary lookup-table (TL) kernels and an I2_S kernel for CPU inference [S63].
+  - T-MAC replaces multiplication with bit-wise table lookups, without dequantization [S64].
+  - This is the answer to our measurement, where ternary addition and subtraction were slower than f32. [M]
+- **Temporal re-seeding of latents** [S65][S68]:
+  - RIN seeds the latents of a step from the previous step, with a zero-initialized term [S65].
+  - TRM passes its latent state from one supervision pass to the next, detached from the graph [S68].
+  - For high-frequency control, a VLA study reuses tokens from one step to the next [S66], and the Latent Recurrent Transformer reuses the previous hidden state as memory [S76].
+- **Event-driven computation.** Delta networks threshold the change in activation and skip the updates under the threshold, at the cost of a drift that requires periodic resets [S70].
+- **Expand-and-sparsify** [S71]:
+  - In the fly, about 50 projection neurons feed about 2 500 Kenyon cells, and k-WTA inhibition leaves only about 5 % of units active [S71].
+  - This pattern has proven effective for route following in embedded robotics [S72], and its expressivity is studied formally [S73].
+- **Control circuits inspired by C. elegans.** Neural Circuit Policies are organized into sensory neurons, interneurons, recurrent command neurons and motor neurons, with few parameters [S74]. Drones piloted by these networks outperformed other networks on the hard tasks, such as chasing a target in the rain [S75].
 
-> [model-hint] Connexion proposée pour skycmd, la « récursion temporelle » : l'encodeur d'état bouclé de s3 démarre du latent final de la frame précédente, via une porte initialisée à zéro comme dans RIN et avec un latent détaché comme dans TRM. Les jeux changent peu d'une frame à l'autre, donc la sortie anticipée devrait se déclencher dès la première boucle la plupart du temps. On obtiendrait ainsi l'économie des réseaux delta sans leur dérive.
+> [model-hint] Proposed connection for skycmd, "temporal recursion": the looped state encoder of s3 starts from the final latent of the previous frame, through a zero-initialized gate as in RIN and with a detached latent as in TRM. Games change little from one frame to the next, so early exit should trigger at the first loop most of the time. This would give the savings of delta networks without their drift.
 
 ## Open questions / contradictions
-> [model-hint] TRM rapporte ses résultats sur des énigmes (ARC, Sudoku), pas sur du contrôle en temps réel. Le transfert à nos jeux reste à mesurer cette nuit.
+> [model-hint] TRM reports its results on puzzles (ARC, Sudoku), not on real-time control. The transfer to our games remains to be measured tonight.
 
-> [model-hint] LoopFormer rapporte que l'early exit peut s'effondrer vers des états dégénérés. La supervision à chaque sortie et la profondeur stochastique sont nos garde-fous, et c'est à vérifier sur les métriques en boucle fermée.
+> [model-hint] LoopFormer reports that early exit can collapse to degenerate states. Supervision at every exit and stochastic depth are our safeguards, and this is to be checked on the closed-loop metrics.
 
 ## References (see refs.bib)
-Toutes les sources sont listées dans `refs.bib` et `sources.json`.
+All sources are listed in `refs.bib` and `sources.json`.
 
 ## Sources
 
