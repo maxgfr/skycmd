@@ -12,6 +12,8 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import {
   MAX_TOOLS,
   ROUTER_PRESETS,
@@ -19,6 +21,7 @@ import {
   maskNames,
   parseTools,
   renderTools,
+  tauAskName,
 } from '../.vitepress/theme/lib/router.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -115,4 +118,41 @@ test('ToolRouter routes every preset request as the page calls it', { skip: !has
     }
   }
   router.free()
+})
+
+/** RouterDemo.vue's template, rendered with the bindings of one answer (no engine, no browser). */
+async function renderDemo(name: string, decision: 'tool' | 'none' | 'ask'): Promise<string> {
+  const sfc = readFileSync(join(here, '../.vitepress/theme/components/RouterDemo.vue'), 'utf8')
+  const start = sfc.indexOf('<template>') + '<template>'.length
+  const tpl = sfc.slice(start, sfc.lastIndexOf('</template>', sfc.indexOf('<style')))
+  const answer = { decision, answer: 'set_thermostat', top: 0.69, tau_ask3: 0.762097, fast: false, layers_used: null, micros_model: 1, micros_embedding: 1 }
+  const demo = {
+    template: tpl,
+    data: () => ({
+      ROUTER_PRESETS, MAX_TOOLS, presetIdx: 0, preset: null, toolsLabel: 'Tools', toolsText: '', request: '',
+      parsed: { tools: [], dropped: 0, duplicates: [] }, cutCount: 0, fast: false, masked: false, maskLabel: 'Mask',
+      modelOnly: false, entry: { name }, status: '', error: '', answer, modelAnswer: null, rows: [], intended: null,
+      shownAnswer: null, modelFile: null, modelSize: '', pairSize: '3.5 MB', cachedMedian: null, cachedUs: [],
+      encodedUs: null, clockStep: 0, tau: 0.762097,
+    }),
+    computed: { tauName(this: { entry: { name: string } }) { return tauAskName(this.entry.name) } },
+    methods: {
+      pct: (p: number) => `${(p * 100).toFixed(1)}%`, formatMicros: String, formatInt: String, engineLabel: () => '',
+      timeOf: () => 1, cachedOf: () => false, pickPreset() {}, pickRequest() {},
+    },
+  }
+  return (await renderToString(createSSRApp(demo))).replace(/<!--[^]*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+}
+
+test('the demo names the ask threshold of the router shown: τ_ask7 for s6-route7-nano, τ_ask3 for s6-route', async () => {
+  for (const decision of ['ask', 'none', 'tool'] as const) {
+    const v7 = await renderDemo('s6-route7-nano', decision)
+    assert.match(v7, /τ_ask7 = 76\.2%/, decision)
+    assert.match(v7, /below τ_ask7 = 0\.762097 \(fixed on validation\)/)
+    assert.doesNotMatch(v7, /τ_ask3/, decision)
+    const v3 = await renderDemo('s6-route', decision)
+    assert.match(v3, /τ_ask3 = 76\.2%/, decision)
+    assert.doesNotMatch(v3, /τ_ask7/, decision)
+  }
+  assert.match(await renderDemo('s6-route7-nano', 'ask'), /Ask the user\.\s*The top option, set_thermostat, has 69\.0%, below τ_ask7 = 76\.2%\./)
 })

@@ -16,7 +16,8 @@
 //
 // With `prefer="s6-route7-nano"` (its Space, s6-route v7, which failed its gate) the pair shown is
 // v7's two files: the engine reads the rendering of the scores from the model file and β and the
-// ask threshold from the embedding file, and only the names-masked banner names v7's own reading.
+// ask threshold from the embedding file. Only two things differ: the names-masked banner names v7's
+// own reading, and the threshold is named τ_ask7 (the engine stores it under the key `tau_ask3`).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   clockStepMicros,
@@ -35,6 +36,7 @@ import {
   maskNames,
   parseTools,
   renderTools,
+  tauAskName,
   type RouterPreset,
 } from '../lib/router'
 
@@ -168,6 +170,9 @@ const shownAnswer = computed(() => {
 
 const toolsLabel = `Tools (one per line, name: description, up to ${MAX_TOOLS})`
 const maskLabel = computed(() => (masked.value ? 'Show the real names' : 'Mask names (tool_<k>)'))
+
+/** The ask threshold's name for the router shown (τ_ask7 for s6-route7-nano, τ_ask3 for s6-route). */
+const tauName = computed(() => tauAskName(entry.value?.name))
 
 const pairSize = computed(() => (entry.value ? formatSize(entry.value.bytes) : ''))
 /** The model part's file and size (part `model`). */
@@ -359,15 +364,15 @@ function pct(p: number) {
       <p v-else class="router-verdict" :class="answer.decision">
         <template v-if="answer.decision === 'ask'">
           <strong>Ask the user.</strong>
-          <span>The top option, {{ answer.answer }}, has {{ pct(answer.top) }}, below τ_ask3 = {{ pct(answer.tau_ask3) }}.</span>
+          <span>The top option, {{ answer.answer }}, has {{ pct(answer.top) }}, below {{ tauName }} = {{ pct(answer.tau_ask3) }}.</span>
         </template>
         <template v-else-if="answer.decision === 'none'">
           <strong>None of these tools fits the request.</strong>
-          <span>{{ pct(answer.top) }}, at or above τ_ask3 = {{ pct(answer.tau_ask3) }}.</span>
+          <span>{{ pct(answer.top) }}, at or above {{ tauName }} = {{ pct(answer.tau_ask3) }}.</span>
         </template>
         <template v-else>
           Route to <strong><code>{{ answer.answer }}</code></strong>
-          <span>{{ pct(answer.top) }}, at or above τ_ask3 = {{ pct(answer.tau_ask3) }}.</span>
+          <span>{{ pct(answer.top) }}, at or above {{ tauName }} = {{ pct(answer.tau_ask3) }}.</span>
         </template>
       </p>
       <ul
@@ -416,7 +421,7 @@ function pct(p: number) {
       your browser; nothing you type is sent anywhere.
     </p>
     <p v-else-if="tau !== null" class="router-meta">
-      The decision: the option with the highest fused probability, unless that probability is below τ_ask3 =
+      The decision: the option with the highest fused probability, unless that probability is below {{ tauName }} =
       {{ tau.toFixed(6) }} (fixed on validation), in which case the router asks the user. Everything runs in your
       browser; nothing you type is sent anywhere.
     </p>

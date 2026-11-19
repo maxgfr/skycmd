@@ -191,3 +191,10 @@ export const ROUTE_RESULT = {
   bytes: 3692224,
   wasmMedianMs: 30.9,
 } as const
+
+/** The name the demo prints for the ask threshold of a router entry: τ_ask7 for s6-route7-nano
+ * (docs/s6-route7-prereg.md, amendment 3 point 1: stored under the engine's key `tau_ask3`), τ_ask3
+ * for s6-route. */
+export function tauAskName(entry?: string | null): string {
+  return entry === 's6-route7-nano' ? 'τ_ask7' : 'τ_ask3'
+}
