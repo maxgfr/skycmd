@@ -1,176 +1,178 @@
-# LFM3-1.7B fine-tuné pour répondre sans réfléchir (pré-enregistrement)
+# LFM3-1.7B fine-tuned to answer without thinking (pre-registration)
 
-**Statut : figé le 05/11/2026, avant tout job.** Aucun job Hugging Face n'a tourné, aucun essai de fumée, aucun poids n'a été entraîné. Ce fichier fixe le modèle, les données d'entraînement, l'entraînement, l'évaluation, les portes et l'ordre des jobs. Les résultats seront lus à travers ce texte.
+*Translated into English on 19/11/2026. The text frozen on 05/11/2026 was written in French; that original, which remains the reference in case of doubt, is this file at commit `1f180a5`. The translation changes no rule, number or threshold.*
+
+**Status: frozen on 05/11/2026, before any job.** No Hugging Face job has run, no smoke test, no weights have been trained. This file fixes the model, the training data, the training, the evaluation, the gates and the order of the jobs. The results will be read through this text.
 
 **Closed on 19/11/2026** (§10, amendment 8): nothing was trained, and there are no weights. Its code (`scripts/lfm3-ft.sh`, `experiments/lfm3-ft/`) was removed the same day and is in the git history at commit 5011585, the last commit that holds it: [`scripts/lfm3-ft.sh`](https://github.com/maxgfr/skycmd/blob/5011585/scripts/lfm3-ft.sh), [`experiments/lfm3-ft/`](https://github.com/maxgfr/skycmd/tree/5011585/experiments/lfm3-ft). The commands named below refer to that commit.
 
-**Modifications de ce fichier :**
+**Changes to this file:**
 
-- tout amendement est commité, daté et motivé en section 10 ;
-- il précède les jobs qu'il concerne ;
-- il ne touche jamais un seuil après la lecture d'un résultat de test.
+- every amendment is committed, dated and justified in section 10;
+- it precedes the jobs it concerns;
+- it never touches a threshold after a test result has been read.
 
-## 1. Pourquoi
+## 1. Why
 
-Le routage S1/S2 (`docs/lfm3-s1s2-prereg.md`) choisit, question par question, s'il faut réfléchir, sans toucher aux poids. Il ne corrige pas le défaut lui-même : sans réflexion, LFM3-1.7B peut partir en boucle. L'essai de fumée (`runs/lfm3-s1s2-smoke`) l'a montré : une question de GSM8K est partie en boucle jusqu'à la limite de 1 024 jetons et la réponse était fausse ; avec 256 jetons de réflexion, elle était juste. La documentation de Liquid AI le dit aussi : couper la réflexion marche de façon inconsistante sur le raisonnement.
+The S1/S2 routing (`docs/lfm3-s1s2-prereg.md`) chooses, question by question, whether to think, without touching the weights. It does not fix the defect itself: without thinking, LFM3-1.7B can go into a loop. The smoke test (`runs/lfm3-s1s2-smoke`) showed it: a GSM8K question went into a loop up to the limit of 1 024 tokens and the answer was wrong; with 256 thinking tokens, it was right. Liquid AI's documentation says so too: turning thinking off works inconsistently on reasoning.
 
-Ce projet essaie l'autre voie : **un fine-tuning LoRA qui apprend au modèle à répondre juste et court sans réfléchir (Système 1)**, sans dégrader la réflexion (Système 2) ni le reste. Il ne remplace pas le routeur : le routeur est mesuré sur le modèle de base **et** sur le modèle fine-tuné, avec le même protocole (§5).
+This project tries the other way: **a LoRA fine-tuning that teaches the model to answer right and short without thinking (System 1)**, without degrading thinking (System 2) or the rest. It does not replace the router: the router is measured on the base model **and** on the fine-tuned model, with the same protocol (§5).
 
-## 2. Modèle et environnement
+## 2. Model and environment
 
-- **Modèle de base** : `LiquidAI/LFM3-1.7B`, bf16, code personnalisé (`modeling_lfm3.py`, `trust_remote_code`), 24 couches, hybride convolution courte et attention (pleine ou à fenêtre glissante de 256). Sous LFM Open License v1.0.
-  - révision : épinglée par `lfm3-ft.sh smoke` avant tout autre job, puis recopiée ici par un amendement daté.
-  - Pour mémoire, la branche `main` du dépôt pointait le 05/11/2026 sur `0dc4268b561499c648c7ba7c9466bf3d8d01517a`. Seule la révision rendue par le smoke fait foi.
-- **Calcul** : Hugging Face Jobs (`hf jobs uv run`), compte `maxgfr`, scripts uv à dépendances épinglées dans `experiments/lfm3-ft/`. Rien ne tourne en local à part `route` et `gate` (CPU).
-- **Moteur d'inférence** : vLLM 0.33.0. Repli : `generate` de transformers 5.12.1 si vLLM ne charge pas LFM3 correctement.
-  - vLLM 0.33.0 n'a pas d'implémentation native de LFM3 (son registre n'a que LFM2) : il passerait par son backend transformers, sans garantie pour les couches de convolution à état. Les deux moteurs ne tiennent pas dans un même environnement (vLLM 0.33 exige transformers 5.16 à 5.20, LFM3 a été publié avec 5.12.1).
-  - **Règle de décision, fixée maintenant** : le smoke fait tourner les deux moteurs sur les mêmes 20 questions. vLLM est retenu s'il charge LFM3, fait tourner s1, s2-256 et s2-1024, et s'accorde avec transformers en s1 (glouton) sur au moins 0,8 des 64 premiers jetons en moyenne **et** sur au moins 0,8 des réponses. Sinon, le repli transformers est retenu.
-  - Le moteur retenu est noté par un amendement et sert à **tous** les jobs suivants : la génération, et l'évaluation de la base comme du modèle fine-tuné.
-  - Avec le repli : les requêtes sont groupées par lots (128, remplissage à gauche), chaque lot reçoit la graine de sa première requête, et les log-probabilités viennent d'une passe avant sur la séquence finie (distribution brute, comme celles de vLLM).
-- **Dépôts, tous privés** :
-  - `maxgfr/skycmd-lfm3-ft-work` (dataset) : les artefacts entre jobs (smoke, générations, journal d'entraînement, évaluations) ;
-  - `maxgfr/skycmd-lfm3-1.7b-s1` (modèle) : le modèle fusionné et l'adaptateur (`adapter/`).
+- **Base model**: `LiquidAI/LFM3-1.7B`, bf16, custom code (`modeling_lfm3.py`, `trust_remote_code`), 24 layers, hybrid of short convolution and attention (full or sliding-window of 256). Under LFM Open License v1.0.
+  - revision: pinned by `lfm3-ft.sh smoke` before any other job, then copied here by a dated amendment.
+  - For the record, the repository's `main` branch pointed on 05/11/2026 to `0dc4268b561499c648c7ba7c9466bf3d8d01517a`. Only the revision returned by the smoke is authoritative.
+- **Compute**: Hugging Face Jobs (`hf jobs uv run`), account `maxgfr`, uv scripts with pinned dependencies in `experiments/lfm3-ft/`. Nothing runs locally apart from `route` and `gate` (CPU).
+- **Inference engine**: vLLM 0.33.0. Fallback: transformers 5.12.1's `generate` if vLLM does not load LFM3 correctly.
+  - vLLM 0.33.0 has no native implementation of LFM3 (its registry only has LFM2): it would go through its transformers backend, with no guarantee for the stateful convolution layers. The two engines do not fit in the same environment (vLLM 0.33 requires transformers 5.16 to 5.20, LFM3 was published with 5.12.1).
+  - **Decision rule, fixed now**: the smoke runs both engines on the same 20 questions. vLLM is retained if it loads LFM3, runs s1, s2-256 and s2-1024, and agrees with transformers in s1 (greedy) on at least 0,8 of the first 64 tokens on average **and** on at least 0,8 of the answers. Otherwise, the transformers fallback is retained.
+  - The engine retained is recorded by an amendment and serves for **all** the following jobs: the generation, and the evaluation of the base as well as of the fine-tuned model.
+  - With the fallback: the requests are grouped in batches (128, left padding), each batch receives the seed of its first request, and the log-probabilities come from a forward pass over the finished sequence (raw distribution, like those of vLLM).
+- **Repositories, all private**:
+  - `maxgfr/skycmd-lfm3-ft-work` (dataset): the artefacts between jobs (smoke, generations, training log, evaluations);
+  - `maxgfr/skycmd-lfm3-1.7b-s1` (model): the merged model and the adapter (`adapter/`).
 
-  Les scripts refusent d'écrire dans un dépôt public.
+  The scripts refuse to write to a public repository.
 
-## 3. Données d'entraînement
+## 3. Training data
 
-Seulement des sources MIT. Aucune question de test, aucune des 600 questions de calibration du routeur.
+Only MIT sources. No test question, none of the router's 600 calibration questions.
 
-| source | licence | révision | usage |
+| source | licence | revision | use |
 |---|---|---|---|
-| `openai/gsm8k` (`main`, train) | MIT | `740312ad` | questions et solutions rédigées |
-| `DigitalLearningGmbH/MATH-lighteval` (train) | MIT | `0530c786` | problèmes et solutions rédigées (ceux qui ont un `\boxed{}`, comme dans `s1s2.py`) |
+| `openai/gsm8k` (`main`, train) | MIT | `740312ad` | questions and written solutions |
+| `DigitalLearningGmbH/MATH-lighteval` (train) | MIT | `0530c786` | problems and written solutions (those that have a `\boxed{}`, as in `s1s2.py`) |
 
-**Exclusions** (`select_train`), avant tout tirage :
-- les 600 ids de calibration (`gsm8k-train-<i>`, `math-train-<i>`, `data/lfm3/calib.jsonl`) ;
-- toute question dont le texte normalisé (NFKC, minuscules, lettres et chiffres seulement) est celui d'une question de calibration, de test (`data/lfm3/test.jsonl`) ou des 500 questions MMLU-Pro du §5.
+**Exclusions** (`select_train`), before any draw:
+- the 600 calibration ids (`gsm8k-train-<i>`, `math-train-<i>`, `data/lfm3/calib.jsonl`);
+- any question whose normalized text (NFKC, lower case, letters and digits only) is that of a calibration question, a test question (`data/lfm3/test.jsonl`) or one of the 500 MMLU-Pro questions of §5.
 
-Il reste environ 14 400 questions. Les nombres exacts d'exclusions sont écrits par `gen` et `sft`.
+About 14 400 questions remain. The exact numbers of exclusions are written by `gen` and `sft`.
 
-**(a) Solutions rédigées, cibles NO-THINK.** Pour chaque question gardée, la solution du jeu de données :
-- GSM8K : les annotations de calculatrice `<<...>>` retirées, la dernière ligne `#### réponse` remplacée par `\boxed{réponse}` ;
-- MATH : la solution telle quelle (elle finit par un `\boxed{}`).
+**(a) Written solutions, NO-THINK targets.** For each question kept, the data set's solution:
+- GSM8K: the calculator annotations `<<...>>` removed, the last line `#### réponse` replaced by `\boxed{réponse}` (réponse: the answer);
+- MATH: the solution as is (it ends with a `\boxed{}`).
 
-**(b) Auto-distillation** (`gen`).
-- Le modèle de base répond à chaque question gardée **4 fois** en s2-1024, avec le forçage de budget et l'échantillonnage de `docs/lfm3-s1s2-prereg.md` §4. Graine de l'échantillon k : graine de la question (celle de `s1s2.py`) + 1 000 003 × k.
-- Avec le repli transformers, seul un sous-ensemble tiré avec la graine 1234 est échantillonné : 1 000 questions par tâche. La règle est fixée maintenant, à cause du débit.
-- Un échantillon est **retenu** s'il est juste (même notation que `s1s2.py`) et si sa réponse a un `\boxed{}`.
-- Par question, parmi les échantillons retenus :
-  - **cible NO-THINK** : la réponse d'après `</think>` la plus courte en jetons ;
-  - **cible THINK** : la trace complète (réflexion, `</think>`, réponse) la plus courte en jetons, parmi les échantillons qui ont fermé leur réflexion eux-mêmes. Une trace forcée est coupée en pleine pensée : elle n'est jamais une cible THINK.
-  - Les égalités vont au plus petit k.
+**(b) Self-distillation** (`gen`).
+- The base model answers each question kept **4 times** in s2-1024, with the budget forcing and the sampling of `docs/lfm3-s1s2-prereg.md` §4. Seed of sample k: seed of the question (that of `s1s2.py`) + 1 000 003 × k.
+- With the transformers fallback, only a subset drawn with seed 1234 is sampled: 1 000 questions per task. The rule is fixed now, because of the throughput.
+- A sample is **retained** if it is right (same scoring as `s1s2.py`) and if its answer has a `\boxed{}`.
+- Per question, among the samples retained:
+  - **NO-THINK target**: the answer after `</think>` that is shortest in tokens;
+  - **THINK target**: the complete trace (thinking, `</think>`, answer) that is shortest in tokens, among the samples that closed their thinking themselves. A forced trace is cut in mid-thought: it is never a THINK target.
+  - Ties go to the smallest k.
 
 **Format.**
-- Le prompt est celui de l'inférence : le gabarit de chat de LFM3 sur « question + Solve the problem. Put the final answer in \boxed{}. ».
-  - Réflexion coupée (`enable_thinking=False`, prompt fini par `<think></think>`) pour les cibles NO-THINK.
-  - Réflexion active (prompt fini par `<think>`) pour les cibles THINK.
-- La cible est suivie du jeton de fin de tour `<|im_end|>`.
-- Les exemples de plus de 2 048 jetons sont écartés et comptés, jamais tronqués.
+- The prompt is the inference one: LFM3's chat template on « question + Solve the problem. Put the final answer in \boxed{}. ».
+  - Thinking off (`enable_thinking=False`, prompt ending with `<think></think>`) for the NO-THINK targets.
+  - Thinking on (prompt ending with `<think>`) for the THINK targets.
+- The target is followed by the end-of-turn token `<|im_end|>`.
+- Examples of more than 2 048 tokens are set aside and counted, never truncated.
 
-**Jamais utilisé** : les labels GLM / z.ai (les conditions de l'API de z.ai interdisent d'entraîner un modèle externe sur ses sorties, et ce ne sont pas des maths), et toute sortie d'un autre modèle que LFM3-1.7B lui-même.
+**Never used**: the GLM / z.ai labels (the terms of z.ai's API forbid training an external model on its outputs, and they are not maths), and any output of a model other than LFM3-1.7B itself.
 
-## 4. Entraînement (`sft`)
+## 4. Training (`sft`)
 
-- **LoRA** : r = 32, alpha = 64, dropout 0,05, sur toutes les projections linéaires sauf `lm_head` (liée aux embeddings).
-  - D'après `modeling_lfm3.py` (révision `0dc4268b`), ce sont : `q_proj`, `k_proj`, `v_proj`, `o_proj`, la porte d'attention `gate_proj`, le MLP `w1`, `w2`, `w3`, et les projections de la convolution courte `in_proj`, `out_proj`.
-  - Le smoke vérifie cette liste sur le modèle chargé. Un écart passe par un amendement.
-- **Optimisation** :
-  - 2 époques, lr 1e-4 en cosinus, warmup 3 % des pas ;
-  - lots de 8, accumulation 4 (32 exemples par pas) ;
-  - longueur max 2 048, bf16, graine 1234.
-- **Mise en œuvre** : TRL `SFTTrainer` (trl 1.17.1, peft 0.21.2, transformers 5.12.1).
-  - La perte porte sur la complétion seule (`completion_mask`). Le job vérifie que le collateur masque le prompt avant d'entraîner, et s'arrête sinon.
-  - Pas de checkpoint intermédiaire : **le dernier est le modèle**.
-- **Sortie** : l'adaptateur est fusionné dans les poids bf16 et poussé dans le dépôt privé, avec l'adaptateur dans `adapter/`. Le commit du dépôt est noté dans `sft/result.json`, et c'est lui qu'évalue `eval`.
+- **LoRA**: r = 32, alpha = 64, dropout 0,05, on all the linear projections except `lm_head` (tied to the embeddings).
+  - According to `modeling_lfm3.py` (revision `0dc4268b`), these are: `q_proj`, `k_proj`, `v_proj`, `o_proj`, the attention gate `gate_proj`, the MLP `w1`, `w2`, `w3`, and the projections of the short convolution `in_proj`, `out_proj`.
+  - The smoke checks this list on the loaded model. A discrepancy goes through an amendment.
+- **Optimization**:
+  - 2 epochs, lr 1e-4 with cosine, warmup 3 % of the steps;
+  - batches of 8, accumulation 4 (32 examples per step);
+  - max length 2 048, bf16, seed 1234.
+- **Implementation**: TRL `SFTTrainer` (trl 1.17.1, peft 0.21.2, transformers 5.12.1).
+  - The loss bears on the completion only (`completion_mask`). The job checks that the collator masks the prompt before training, and stops otherwise.
+  - No intermediate checkpoint: **the last one is the model**.
+- **Output**: the adapter is merged into the bf16 weights and pushed to the private repository, with the adapter in `adapter/`. The repository's commit is recorded in `sft/result.json`, and it is the one `eval` evaluates.
 
-## 5. Évaluation (`eval`, puis `route` et `gate` en local)
+## 5. Evaluation (`eval`, then `route` and `gate` locally)
 
-Le modèle de base et le modèle fine-tuné sont évalués de la même façon : même moteur, même révision de code, mêmes prompts, mêmes graines.
+The base model and the fine-tuned model are evaluated the same way: same engine, same code revision, same prompts, same seeds.
 
-- **Modes** : s1, s2-256 et s2-1024, exactement ceux de `docs/lfm3-s1s2-prereg.md` §4, sur la calibration (600) et le test (1 000) de `data/lfm3`.
-  - s1 garde la log-probabilité de chaque jeton, pour les traits du routeur.
-  - Réponse : le dernier `\boxed{}`, à défaut le dernier nombre pour GSM8K. Même notation.
-- **MMLU-Pro** : `TIGER-Lab/MMLU-Pro` (MIT), révision `b189ec76`, split test. 500 questions tirées avec la graine 1234, posées en s1 :
-  - prompt : la question, les options (A) à (J), puis « Choose the correct option. Put the letter of the final answer in \boxed{}. » ;
-  - réponse : la lettre du dernier `\boxed{}`, à défaut le dernier « answer is (X) ».
-- **Le routeur S1/S2** (H1 à H4 de `docs/lfm3-s1s2-prereg.md` §6) est calculé pour la base **et** pour le modèle fine-tuné, avec le même protocole. La sonde et τ sont ajustés sur la calibration du modèle concerné, puis le test est lu une fois (amendement 1 de ce pré-enregistrement-là). Le code est `route` de `s1s2.py`, inchangé, pointé sur `runs/lfm3-ft/eval/<base|ft>`.
+- **Modes**: s1, s2-256 and s2-1024, exactly those of `docs/lfm3-s1s2-prereg.md` §4, on the calibration (600) and the test (1 000) of `data/lfm3`.
+  - s1 keeps the log-probability of each token, for the router's features.
+  - Answer: the last `\boxed{}`, failing that the last number for GSM8K. Same scoring.
+- **MMLU-Pro**: `TIGER-Lab/MMLU-Pro` (MIT), revision `b189ec76`, test split. 500 questions drawn with seed 1234, asked in s1:
+  - prompt: the question, the options (A) to (J), then « Choose the correct option. Put the letter of the final answer in \boxed{}. »;
+  - answer: the letter of the last `\boxed{}`, failing that the last « answer is (X) ».
+- **The S1/S2 router** (H1 to H4 of `docs/lfm3-s1s2-prereg.md` §6) is computed for the base **and** for the fine-tuned model, with the same protocol. The probe and τ are fitted on the calibration of the model concerned, then the test is read once (amendment 1 of that other pre-registration). The code is `route` of `s1s2.py`, unchanged, pointed at `runs/lfm3-ft/eval/<base|ft>`.
 
-## 6. Portes (test, fine-tuné contre base, même moteur)
+## 6. Gates (test, fine-tuned against base, same engine)
 
-- **G1 (Système 1 réparé)** : précision s1 ≥ base + 0,03 **et** part des réponses s1 arrêtées par la limite de 1 024 jetons ≤ 0,5 × celle de la base.
-- **G2 (Système 2 gardé)** : précision s2-1024 ≥ base − 0,01 **et** jetons de réflexion moyens en s2-1024 ≤ 0,6 × ceux de la base.
-- **G3 (pas d'oubli)** : précision s1 sur les 500 questions MMLU-Pro ≥ base − 0,02.
+- **G1 (System 1 repaired)**: s1 accuracy ≥ base + 0,03 **and** share of s1 answers stopped by the limit of 1 024 tokens ≤ 0,5 × that of the base.
+- **G2 (System 2 kept)**: s2-1024 accuracy ≥ base − 0,01 **and** mean thinking tokens in s2-1024 ≤ 0,6 × those of the base.
+- **G3 (no forgetting)**: s1 accuracy on the 500 MMLU-Pro questions ≥ base − 0,02.
 
-**Verdict :**
-- **« LFM3 amélioré »** si G1 et G3 tiennent ;
-- G2 est rapporté à part : il dit si la réflexion raccourcit sans perte, mais ne conditionne pas le verdict.
-- Ce verdict est celui du fine-tuning. Il est distinct du « LFM3 amélioré » du routeur (H4 de `docs/lfm3-s1s2-prereg.md`), que le rapport donne sous son propre nom (« H4 »).
+**Verdict:**
+- **"LFM3 improved"** if G1 and G3 hold;
+- G2 is reported separately: it says whether thinking gets shorter without loss, but does not condition the verdict.
+- This verdict is that of the fine-tuning. It is distinct from the router's "LFM3 improved" (H4 of `docs/lfm3-s1s2-prereg.md`), which the report gives under its own name ("H4").
 
-Une évaluation incomplète (ids différents entre les deux modèles, ou moins de 1 000 / 500 questions) ne donne pas de verdict : elle est rapportée comme telle.
+An incomplete evaluation (different ids between the two models, or fewer than 1 000 / 500 questions) gives no verdict: it is reported as such.
 
-Le rapport (`runs/lfm3-ft/report.md`, `gate.json`) donne tout, quel que soit le résultat :
-- les précisions par tâche ;
-- les arrêts par limite ;
-- les jetons ;
-- H1 à H4 du routeur pour les deux modèles ;
-- les statistiques du mélange d'entraînement et le journal de perte.
+The report (`runs/lfm3-ft/report.md`, `gate.json`) gives everything, whatever the result:
+- the accuracies per task;
+- the stops by limit;
+- the tokens;
+- H1 to H4 of the router for both models;
+- the statistics of the training mix and the loss log.
 
-## 7. Règles
+## 7. Rules
 
-- **Pas de relance pour « voir ».** Un job interrompu (délai, panne) reprend où il s'était arrêté, par la même commande : les ids déjà écrits sont sautés. Un échec technique est noté.
-- **Pas de choix de checkpoint** : seul le dernier existe.
-- **Les échecs sont rapportés**, comme les succès.
-- Le smoke ne lit que des questions de calibration, jamais le test.
-- Aucun hyperparamètre, aucune donnée et aucun seuil ne change après la lecture d'un résultat de test. Ce qui change avant passe par un amendement.
+- **No rerun "to see".** An interrupted job (timeout, failure) resumes where it stopped, through the same command: the ids already written are skipped. A technical failure is noted.
+- **No checkpoint choice**: only the last one exists.
+- **Failures are reported**, like successes.
+- The smoke only reads calibration questions, never the test.
+- No hyperparameter, no data and no threshold changes after a test result has been read. What changes before goes through an amendment.
 
-## 8. Ordre des jobs et coût
+## 8. Order of the jobs and cost
 
-`scripts/lfm3-ft.sh`, dans cet ordre. Avant chaque job payant, le script affiche la machine, le coût estimé et le coût maximal (au délai), puis attend une confirmation. **L'utilisateur confirme le coût avant chaque job payant.**
+`scripts/lfm3-ft.sh`, in this order. Before each paid job, the script displays the machine, the estimated cost and the maximum cost (at the timeout), then waits for a confirmation. **The user confirms the cost before each paid job.**
 
-| étape | machine | durée estimée | coût estimé | délai (coût max) |
+| step | machine | estimated duration | estimated cost | timeout (max cost) |
 |---|---|---|---:|---|
-| `smoke` (20 questions de calibration, deux moteurs, 2 pas de LoRA) | L4 (`l4x1`, 0,80 $/h) | 30 à 40 min | environ 0,50 $ | 1 h (0,80 $) |
-| amendement : révision et moteur | — | — | — | — |
-| `gen` (auto-distillation) | A100 (`a100-large`, 2,50 $/h) ou L40S | environ 2 h | environ 5 $ | 4 h (10 $) |
-| `sft` | A100 | 1 à 2 h | environ 5 $ | 4 h (10 $) |
-| `eval` base, puis `eval` fine-tuné | A100, un job chacun | environ 1 h 30 chacun | environ 7,50 $ | 3 h chacun (15 $) |
-| `pull`, `route`, `gate` | local, CPU | quelques minutes | 0 | — |
+| `smoke` (20 calibration questions, two engines, 2 LoRA steps) | L4 (`l4x1`, 0,80 $/h) | 30 to 40 min | about 0,50 $ | 1 h (0,80 $) |
+| amendment: revision and engine | — | — | — | — |
+| `gen` (self-distillation) | A100 (`a100-large`, 2,50 $/h) or L40S | about 2 h | about 5 $ | 4 h (10 $) |
+| `sft` | A100 | 1 to 2 h | about 5 $ | 4 h (10 $) |
+| `eval` base, then `eval` fine-tuned | A100, one job each | about 1 h 30 each | about 7,50 $ | 3 h each (15 $) |
+| `pull`, `route`, `gate` | local, CPU | a few minutes | 0 | — |
 
-Total estimé : **environ 18 $**, au plus 36 $. Les prix sont ceux de `hf jobs hardware` au 05/11/2026.
+Estimated total: **about 18 $**, at most 36 $. The prices are those of `hf jobs hardware` as of 05/11/2026.
 
-## 9. Licences et publication
+## 9. Licences and publication
 
-- **Les poids dérivés restent privés** tant que l'utilisateur n'a pas donné son accord.
-- S'ils sont publiés un jour, c'est sous LFM Open License v1.0, avec :
-  - le texte de la licence ;
-  - un `NOTICE` ;
-  - la liste des fichiers modifiés (déjà écrits dans le dépôt privé par `sft`).
-- Le nom ne se présente pas comme « LFM3 » : la licence ne donne aucun droit sur les marques. Le dépôt s'appelle `maxgfr/skycmd-lfm3-1.7b-s1`, « fine-tuned from LiquidAI/LFM3-1.7B ».
-- L'usage commercial n'est permis que dans les limites de la licence (organisations sous 10 M$ de revenus).
-- Les sources de données sont dans `DATA_LICENSES.md`.
+- **The derived weights stay private** until the user has given their agreement.
+- If they are published one day, it is under LFM Open License v1.0, with:
+  - the text of the licence;
+  - a `NOTICE`;
+  - the list of modified files (already written to the private repository by `sft`).
+- The name does not present itself as "LFM3": the licence gives no right to the trademarks. The repository is called `maxgfr/skycmd-lfm3-1.7b-s1`, "fine-tuned from LiquidAI/LFM3-1.7B".
+- Commercial use is allowed only within the limits of the licence (organizations under 10 M$ of revenue).
+- The data sources are in `DATA_LICENSES.md`.
 
-## 10. Amendements
+## 10. Amendments
 
-**Amendement 1 (09/11/2026, avant tout run : aucune génération, aucun entraînement, aucun résultat n'existe). Tout en local, sur le M5.**
+**Amendment 1 (09/11/2026, before any run: no generation, no training, no result exists). Everything locally, on the M5.**
 
-- **Calcul.** Le §2 (« Calcul ») et le §8 sont remplacés : tout tourne sur le M5, rien n'est payé, aucun job Hugging Face n'est lancé (décision de l'utilisateur du 05/11/2026). `scripts/lfm3-ft.sh` passe en mode local par défaut. Les artefacts restent dans `runs/lfm3-ft/`, le modèle dans `models/lfm3-ft/`, et les deux dépôts privés du §2 ne servent plus.
-- **Moteur d'inférence.** mlx-vlm 0.7.11 sur `LiquidAI/LFM3-1.7B-MLX-4bit` (révision `deb2986b`), celui de `docs/lfm3-s1s2-prereg.md` : vLLM ne tourne pas sur Mac. Les résultats sont ceux du modèle en 4 bits, et le rapport le dit. Les prompts, les modes, les graines, l'extraction et la notation ne changent pas (les fonctions de `s1s2.py` sont réutilisées).
-- **Plafond de la génération.** La règle de débit du §3 (b) s'applique d'office : 1 000 questions par tâche (`hf_fallback_subset`, graine 1234), 4 échantillons chacune.
-- **La LoRA, règle écrite avant le smoke local.** Elle s'entraîne sur les poids bf16 de `LiquidAI/LFM3-1.7B`, aux hyperparamètres inchangés du §4.
-  1. transformers + peft + TRL sur MPS, si le smoke valide : `lora_targets_match`, le masque du prompt, 2 pas à perte finie sur un lot de la longueur maximale, la fusion et le rechargement.
-  2. Sinon, l'entraîneur LoRA de mlx-vlm, aux mêmes hyperparamètres, s'il charge LFM3 et valide les mêmes points.
-  3. Sinon, on s'arrête et le rapport le dit. Tout autre choix passe par un nouvel amendement.
-  - **Repli mémoire, autorisé d'avance.** Si un lot de 8 à longueur maximale ne tient pas en mémoire, on passe à des lots de 4 avec accumulation 8 : toujours 32 exemples par pas, et le rapport le note.
-- **Checkpoints.** Le §4 (« pas de checkpoint intermédiaire ») reste vrai pour le choix : **le dernier est le modèle**. Des points de sauvegarde techniques existent seulement pour reprendre après un arrêt du Mac. Ils ne sont jamais évalués, et une reprise est notée comme un échec technique.
-- **Conversion du modèle fine-tuné.** Le modèle fusionné est converti en MLX 4 bits (`mlx_vlm.convert -q --q-bits 4 --q-mode affine`) pour être évalué par le même moteur que la base.
-  - **Règle écrite avant le smoke.** Le smoke convertit aussi la base bf16 par la même commande, et compare cette conversion à la base publiée, en s1 (glouton), sur 20 questions de calibration.
-  - Si l'accord atteint au moins 0,8 sur les 64 premiers jetons en moyenne **et** au moins 0,8 sur les réponses (les seuils du §2), la base publiée sert de référence.
-  - Sinon, **la base est réévaluée avec la conversion locale**, pour que les deux modèles aient suivi la même chaîne.
-- **Évaluation de la base.** Si la base publiée sert de référence, ses générations sont celles de `docs/lfm3-s1s2-prereg.md` (`runs/lfm3-s1s2`, mêmes prompts, graines et moteur), copiées telles quelles dans `runs/lfm3-ft/eval/base`. Seules les 500 questions MMLU-Pro en s1 sont générées en plus. Le routeur (`route`) calcule sur ces fichiers ce qu'il a déjà calculé pour le §6 du TODO [`TODO.md`, removed on 19/11/2026; last version at commit `0e45b7b`] : aucun nouveau choix n'en dépend.
-- **La révision.** Le smoke local résout la révision de `LiquidAI/LFM3-1.7B` et la rend dans `runs/lfm3-ft/smoke/report.json`. Un amendement daté la recopie, avec la méthode LoRA retenue, avant `gen`.
-- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md` : une pause après chaque échantillon et chaque pas de LoRA. Le temps de génération et le nombre de jetons (`seconds`, `tokens`) n'en dépendent pas.
-- **Ce qui ne change pas.** Le modèle de base, les données, les exclusions, les hyperparamètres de la LoRA, les portes G1 à G3, le verdict, et le §9 : les poids dérivés restent privés tant que l'utilisateur n'a pas donné son accord.
+- **Compute.** §2 ("Compute") and §8 are replaced: everything runs on the M5, nothing is paid, no Hugging Face job is launched (the user's decision of 05/11/2026). `scripts/lfm3-ft.sh` switches to local mode by default. The artefacts stay in `runs/lfm3-ft/`, the model in `models/lfm3-ft/`, and the two private repositories of §2 are no longer used.
+- **Inference engine.** mlx-vlm 0.7.11 on `LiquidAI/LFM3-1.7B-MLX-4bit` (revision `deb2986b`), that of `docs/lfm3-s1s2-prereg.md`: vLLM does not run on a Mac. The results are those of the model in 4 bits, and the report says so. The prompts, the modes, the seeds, the extraction and the scoring do not change (the functions of `s1s2.py` are reused).
+- **Cap on the generation.** The throughput rule of §3 (b) applies automatically: 1 000 questions per task (`hf_fallback_subset`, seed 1234), 4 samples each.
+- **The LoRA, rule written before the local smoke.** It trains on the bf16 weights of `LiquidAI/LFM3-1.7B`, with the unchanged hyperparameters of §4.
+  1. transformers + peft + TRL on MPS, if the smoke validates: `lora_targets_match`, the prompt mask, 2 steps with a finite loss on a batch of the maximum length, the merge and the reload.
+  2. Otherwise, mlx-vlm's LoRA trainer, with the same hyperparameters, if it loads LFM3 and validates the same points.
+  3. Otherwise, we stop and the report says so. Any other choice goes through a new amendment.
+  - **Memory fallback, allowed in advance.** If a batch of 8 at maximum length does not fit in memory, we move to batches of 4 with accumulation 8: still 32 examples per step, and the report notes it.
+- **Checkpoints.** §4 ("no intermediate checkpoint") stays true for the choice: **the last one is the model**. Technical save points exist only to resume after the Mac stops. They are never evaluated, and a resumption is noted as a technical failure.
+- **Conversion of the fine-tuned model.** The merged model is converted to MLX 4 bits (`mlx_vlm.convert -q --q-bits 4 --q-mode affine`) to be evaluated by the same engine as the base.
+  - **Rule written before the smoke.** The smoke also converts the bf16 base with the same command, and compares this conversion with the published base, in s1 (greedy), on 20 calibration questions.
+  - If the agreement reaches at least 0,8 on the first 64 tokens on average **and** at least 0,8 on the answers (the thresholds of §2), the published base serves as the reference.
+  - Otherwise, **the base is re-evaluated with the local conversion**, so that both models have gone through the same chain.
+- **Evaluation of the base.** If the published base serves as the reference, its generations are those of `docs/lfm3-s1s2-prereg.md` (`runs/lfm3-s1s2`, same prompts, seeds and engine), copied as they are into `runs/lfm3-ft/eval/base`. Only the 500 MMLU-Pro questions in s1 are generated in addition. The router (`route`) computes on these files what it has already computed for §6 of the TODO [`TODO.md`, removed on 19/11/2026; last version at commit `0e45b7b`]: no new choice depends on it.
+- **The revision.** The local smoke resolves the revision of `LiquidAI/LFM3-1.7B` and returns it in `runs/lfm3-ft/smoke/report.json`. A dated amendment copies it, with the LoRA method retained, before `gen`.
+- **The braked mode.** The run is done in braked mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`: a pause after each sample and each LoRA step. The generation time and the number of tokens (`seconds`, `tokens`) do not depend on it.
+- **What does not change.** The base model, the data, the exclusions, the hyperparameters of the LoRA, the gates G1 to G3, the verdict, and §9: the derived weights stay private until the user has given their agreement.
 
 **Amendment 2 (12/11/2026, before any run: no generation, no training and no result exist). Two brake modes.**
 

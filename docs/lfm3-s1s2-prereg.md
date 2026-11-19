@@ -1,122 +1,124 @@
-# LFM3-1.7B : Système 1 d'abord, Système 2 seulement si besoin (pré-enregistrement)
+# LFM3-1.7B: System 1 first, System 2 only if needed (pre-registration)
 
-**Statut : figé le 03/11/2026, avant tout run.** Seul un essai de fumée a tourné : 3 questions de calibration par mode, dans `runs/lfm3-s1s2-smoke`, jamais mélangées au run. Ce fichier fixe les données, les modes, le routeur, les métriques et les critères de succès. Les résultats seront lus à travers ce texte.
+*Translated into English on 19/11/2026. The text frozen on 03/11/2026 was written in French; that original, which remains the reference in case of doubt, is this file at commit `1f180a5`. The translation changes no rule, number or threshold.*
+
+**Status: frozen on 03/11/2026, before any run.** Only a smoke test has run: 3 calibration questions per mode, in `runs/lfm3-s1s2-smoke`, never mixed with the run. This file fixes the data, the modes, the router, the metrics and the success criteria. The results will be read through this text.
 
 **The code was removed on 19/11/2026** (the LFM3 lines are closed: `docs/lfm3-ft-prereg.md`, amendment 8). The commands and files this pre-registration names (`scripts/lfm3-s1s2.sh`, `experiments/lfm3-s1s2/s1s2.py`, and `experiments/lfm3-ft/` in its amendment 1) are in the git history at commit 5011585, the last commit that holds them: [`scripts/lfm3-s1s2.sh`](https://github.com/maxgfr/skycmd/blob/5011585/scripts/lfm3-s1s2.sh), [`experiments/lfm3-s1s2/`](https://github.com/maxgfr/skycmd/tree/5011585/experiments/lfm3-s1s2), [`experiments/lfm3-ft/`](https://github.com/maxgfr/skycmd/tree/5011585/experiments/lfm3-ft). The commands named below refer to that commit. The result files `runs/lfm3-s1s2/`, the data set `maxgfr/skycmd-lfm3-math` and the result stay as they were.
 
-**Modifications de ce fichier :**
+**Changes to this file:**
 
-- tout amendement est commité, daté et motivé en section 8 ;
-- il précède les runs qu'il concerne ;
-- il ne touche jamais un seuil après la lecture d'un résultat de test.
+- every amendment is committed, dated and justified in section 8;
+- it precedes the runs it concerns;
+- it never touches a threshold after a test result has been read.
 
-## 1. Pourquoi
+## 1. Why
 
-LFM3-1.7B (Liquid AI, 27/10/2026) réfléchit par défaut. Sur un modèle de cette taille, une longue réflexion peut le faire renoncer à une bonne première réponse.
+LFM3-1.7B (Liquid AI, 27/10/2026) thinks by default. On a model of this size, a long reasoning can make it give up a good first answer.
 
-- **Une mesure communautaire** (30 prompts, budgets 0 / 64 / 128 / 256 / illimité) trouve l'optimum entre 0 et 64 jetons de réflexion. Avec un budget illimité, 9 réponses sur 30 n'arrivent jamais au bout.
-- **La documentation officielle** dit que couper la réflexion marche de façon inconsistante sur les tâches de raisonnement.
-- **L'essai de fumée** montre l'autre face. Sans réflexion, une question de GSM8K est partie en boucle jusqu'à la limite de 1 024 jetons ; avec 256 jetons de réflexion, la réponse était juste.
+- **A community measurement** (30 prompts, budgets 0 / 64 / 128 / 256 / unlimited) finds the optimum between 0 and 64 thinking tokens. With an unlimited budget, 9 answers out of 30 never reach the end.
+- **The official documentation** says that turning thinking off works inconsistently on reasoning tasks.
+- **The smoke test** shows the other side. Without thinking, a GSM8K question went into a loop up to the limit of 1 024 tokens; with 256 thinking tokens, the answer was right.
 
-Le meilleur mode dépend donc de la question. Ce projet ne touche pas aux poids : il choisit, question par question, s'il faut réfléchir. C'est le principe des sorties anticipées calibrées de skycmd. L'approche par édition des poids (Weight-Space Programming, issue #75, fermée) traitait un bug de boucles. Elle n'ajoutait pas de capacité, d'après ses propres auteurs.
+The best mode therefore depends on the question. This project does not touch the weights: it chooses, question by question, whether to think. This is the principle of skycmd's calibrated early exits. The weight-editing approach (Weight-Space Programming, issue #75, closed) dealt with a loop bug. It added no capability, according to its own authors.
 
-## 2. Modèle et environnement
+## 2. Model and environment
 
-- **Modèle** : `LiquidAI/LFM3-1.7B-MLX-4bit`, révision `deb2986b9660c15ff7dd4c2bb1211ce3bbb814d4` (0,97 Go, quantification affine 4 bits). Sous LFM Open License v1.0 ; les poids ne sont pas redistribués.
-- **Inférence locale** : mlx-vlm 0.7.11 (aucune version de mlx-lm ne charge LFM3), Python 3.12 via `uv`, `scripts/lfm3-s1s2.sh`.
-- **Aucun entraînement de LFM3.** Seule la sonde de confiance est ajustée : une régression logistique à 6 coefficients.
+- **Model**: `LiquidAI/LFM3-1.7B-MLX-4bit`, revision `deb2986b9660c15ff7dd4c2bb1211ce3bbb814d4` (0,97 GB, 4-bit affine quantization). Under LFM Open License v1.0; the weights are not redistributed.
+- **Local inference**: mlx-vlm 0.7.11 (no version of mlx-lm loads LFM3), Python 3.12 via `uv`, `scripts/lfm3-s1s2.sh`.
+- **No training of LFM3.** Only the confidence probe is fitted: a logistic regression with 6 coefficients.
 
-## 3. Données (`scripts/lfm3-s1s2.sh data`)
+## 3. Data (`scripts/lfm3-s1s2.sh data`)
 
-Révisions figées, tirage au hasard avec la graine 1234 :
+Frozen revisions, random draw with seed 1234:
 
-| split | tâche | source | questions |
+| split | task | source | questions |
 |---|---|---|---:|
-| calibration | GSM8K | `openai/gsm8k` (`main`, train), rév. `740312ad`, MIT | 300 |
-| calibration | MATH | `DigitalLearningGmbH/MATH-lighteval` (train), rév. `0530c786`, MIT | 300 |
-| test | GSM8K | `openai/gsm8k` (`main`, test), rév. `740312ad` | 500 |
-| test | MATH-500 | `HuggingFaceH4/MATH-500` (test), rév. `6e4ed1a2`, tiré du test de MATH (MIT) | 500 |
+| calibration | GSM8K | `openai/gsm8k` (`main`, train), rev. `740312ad`, MIT | 300 |
+| calibration | MATH | `DigitalLearningGmbH/MATH-lighteval` (train), rev. `0530c786`, MIT | 300 |
+| test | GSM8K | `openai/gsm8k` (`main`, test), rev. `740312ad` | 500 |
+| test | MATH-500 | `HuggingFaceH4/MATH-500` (test), rev. `6e4ed1a2`, drawn from the MATH test (MIT) | 500 |
 
-- Les questions MATH de calibration viennent du train de MATH. MATH-500 vient de son test : aucun recouvrement.
-- **Le split test n'est lu qu'une fois**, par `route --split test`. Les générations du test peuvent tourner avant, sans que rien n'en soit lu.
+- The MATH calibration questions come from the MATH train split. MATH-500 comes from its test split: no overlap.
+- **The test split is read only once**, by `route --split test`. The test generations may run before, without anything being read from them.
 
-## 4. Les modes (`gen`)
+## 4. The modes (`gen`)
 
-Le même prompt pour tous les modes : la question, puis « Solve the problem. Put the final answer in \boxed{}. ».
+The same prompt for all modes: the question, then « Solve the problem. Put the final answer in \boxed{}. ».
 
-- **s1 (Système 1)** : réflexion coupée, c'est-à-dire un bloc `<think></think>` vide dans le gabarit de LFM3. Décodage glouton, au plus 1 024 jetons. On garde la log-probabilité de chaque jeton généré.
-- **s2-B (Système 2)** pour B = 256 et B = 1 024 :
-  - réflexion active, avec l'échantillonnage recommandé par Liquid AI pour les maths (température 1,0, top_p 0,95, top_k 20, pas de pénalité de répétition) ;
-  - si B jetons passent sans `</think>`, la réflexion est fermée et la réponse est demandée (au plus 1 024 jetons) ;
-  - une graine par question, dérivée de son id.
-- **La réponse** est le dernier `\boxed{}`. À défaut, pour GSM8K, c'est le dernier nombre.
-- **La notation** est une égalité exacte après normalisation (espaces, `\left`/`\right`, `dfrac`, degrés, pourcents, `x=`), ou une égalité numérique. C'est la même pour tous les modes.
+- **s1 (System 1)**: thinking turned off, that is an empty `<think></think>` block in LFM3's template. Greedy decoding, at most 1 024 tokens. The log-probability of each generated token is kept.
+- **s2-B (System 2)** for B = 256 and B = 1 024:
+  - thinking on, with the sampling Liquid AI recommends for maths (temperature 1,0, top_p 0,95, top_k 20, no repetition penalty);
+  - if B tokens go by without `</think>`, the thinking is closed and the answer is requested (at most 1 024 tokens);
+  - one seed per question, derived from its id.
+- **The answer** is the last `\boxed{}`. Failing that, for GSM8K, it is the last number.
+- **The scoring** is an exact equality after normalization (spaces, `\left`/`\right`, `dfrac`, degrees, percents, `x=`), or a numeric equality. It is the same for all modes.
 
-## 5. Le routeur (`route`)
+## 5. The router (`route`)
 
-1. **Le score de confiance**, calculé sur la seule sortie de s1 : une régression logistique sur 6 traits.
-   - les log-probabilités moyennes des jetons de la réponse et de toute la génération ;
-   - la plus basse log-probabilité ;
-   - le logarithme du nombre de jetons ;
-   - la présence d'une réponse ;
-   - l'arrêt par limite de jetons, c'est-à-dire une boucle.
+1. **The confidence score**, computed on the output of s1 alone: a logistic regression on 6 features.
+   - the mean log-probabilities of the answer's tokens and of the whole generation;
+   - the lowest log-probability;
+   - the logarithm of the number of tokens;
+   - the presence of an answer;
+   - the stop by token limit, that is a loop.
 
-   Elle est ajustée sur la calibration pour prédire si s1 est juste.
-2. **La règle** : si le score est au moins τ, on garde la réponse de s1. Sinon, on prend celle de s2. Si s2 n'a donné aucune réponse, on garde celle de s1. Le coût d'une question routée vers s2 compte les jetons de s1 **et** de s2.
-3. **Le seuil, par contrôle conformal du risque** sur la calibration (n = 600) :
-   - la perte d'une question vaut 1 si le routeur se trompe alors que s2 seul a raison ;
-   - τ est le plus petit seuil tel que (n · R̂(τ) + 1) / (n + 1) ≤ **α = 0,02** ;
-   - la perte ne peut que baisser quand τ monte, donc la garantie tient : en espérance, au plus 2 points de précision perdus par rapport à s2 seul.
-4. **Le budget retenu, B\***, est celui de s2 dont la précision de calibration est la meilleure. Il est choisi avant la lecture du test, et tout est rapporté pour les deux budgets.
+   It is fitted on the calibration split to predict whether s1 is right.
+2. **The rule**: if the score is at least τ, the answer of s1 is kept. Otherwise, that of s2 is taken. If s2 gave no answer, that of s1 is kept. The cost of a question routed to s2 counts the tokens of s1 **and** of s2.
+3. **The threshold, by conformal risk control** on the calibration split (n = 600):
+   - the loss of a question is 1 if the router is wrong while s2 alone is right;
+   - τ is the smallest threshold such that (n · R̂(τ) + 1) / (n + 1) ≤ **α = 0,02**;
+   - the loss can only go down when τ goes up, so the guarantee holds: in expectation, at most 2 points of accuracy lost compared with s2 alone.
+4. **The budget retained, B\***, is the one of s2 whose calibration accuracy is the best. It is chosen before the test is read, and everything is reported for both budgets.
 
-## 6. Critères (test, budget B\*)
+## 6. Criteria (test, budget B\*)
 
-- **H1 (diagnostic)** : la précision de s1 et de s2-B\* par tâche. Elle dit si réfléchir aide LFM3-1.7B en maths. Pas de seuil.
-- **H2 (précision gardée)** : précision du routeur ≥ précision de s2-B\* − 0,02.
-- **H3 (calcul divisé par deux)** : jetons moyens du routeur ≤ 0,5 × ceux de s2-B\*.
-- **H4 (mieux que les deux modes)** : précision du routeur ≥ max(s1, s2-B\*) + 0,01.
+- **H1 (diagnostic)**: the accuracy of s1 and of s2-B\* per task. It says whether thinking helps LFM3-1.7B in maths. No threshold.
+- **H2 (accuracy kept)**: router accuracy ≥ accuracy of s2-B\* − 0,02.
+- **H3 (compute halved)**: mean tokens of the router ≤ 0,5 × those of s2-B\*.
+- **H4 (better than both modes)**: router accuracy ≥ max(s1, s2-B\*) + 0,01.
 
-**Verdict :**
-- **succès** si H2 et H3 tiennent ;
-- **« LFM3 amélioré »** seulement si H4 tient aussi.
+**Verdict:**
+- **success** if H2 and H3 hold;
+- **"LFM3 improved"** only if H4 holds too.
 
-Le rapport donne tout, quel que soit le résultat :
-- les tableaux par tâche et par budget ;
-- l'oracle, c'est-à-dire la meilleure des deux réponses : le plafond d'un routeur parfait ;
-- la part de questions routées vers s1, la part de réflexions forcées, et τ.
+The report gives everything, whatever the result:
+- the tables per task and per budget;
+- the oracle, that is the better of the two answers: the ceiling of a perfect router;
+- the share of questions routed to s1, the share of forced thinking, and τ.
 
-## 7. Interdits
+## 7. Forbidden
 
-- Lire le test avant que le routeur soit figé sur la calibration.
-- Changer α, les budgets, les traits ou la règle après avoir vu un résultat de test.
-- Relancer une génération pour « voir ». Une génération interrompue reprend où elle s'était arrêtée, et un échec technique est noté.
+- Reading the test before the router is frozen on the calibration split.
+- Changing α, the budgets, the features or the rule after seeing a test result.
+- Rerunning a generation "to see". An interrupted generation resumes where it stopped, and a technical failure is noted.
 
-## 8. Amendements
+## 8. Amendments
 
-**Amendement 1 (05/11/2026, avant tout run : seul l'essai de fumée local de 3 questions par mode a tourné, aucun résultat de calibration ni de test n'existe). Le run passe à distance, en bf16.**
+**Amendment 1 (05/11/2026, before any run: only the local smoke test of 3 questions per mode has run, no calibration or test result exists). The run moves to a remote machine, in bf16.**
 
-- **Changement.** Le run ne se fait plus en local. C'est la décision de l'utilisateur : le M5 chauffe trop pendant les 10 h d'inférence. Le même protocole tourne à distance, sur Hugging Face Jobs, par `scripts/lfm3-ft.sh eval` (`experiments/lfm3-ft/eval.py`) :
-  - **modèle** : `LiquidAI/LFM3-1.7B` en bf16, au lieu de `LiquidAI/LFM3-1.7B-MLX-4bit` (rév. `deb2986b`). La révision est épinglée par le smoke de `docs/lfm3-ft-prereg.md` ;
-  - **moteur** : vLLM au lieu de mlx-vlm. Les log-probabilités de s1 sont celles de vLLM (`logprobs=1`, le jeton tiré). Si le smoke montre que vLLM ne charge pas LFM3 correctement, c'est le repli `generate` de transformers, avec la règle de décision et les log-probabilités définies au §2 de `docs/lfm3-ft-prereg.md` ;
-  - **prompt** : le texte du gabarit de chat, tokenisé sans ajouter de jeton spécial (le gabarit commence déjà par BOS).
-- **Ce qui ne change pas.**
-  - Le prompt, les modes s1, s2-256 et s2-1024 : budget, forçage, échantillonnage, une graine par question dérivée de son id.
-  - L'extraction de la réponse, la notation, les 6 traits.
-  - Le routeur, α = 0,02, le choix de B\*, les critères H1 à H4 et les interdits.
-  - Le code de `route` est celui de `s1s2.py`, inchangé : `experiments/lfm3-ft/route.py` le pointe sur `runs/lfm3-ft/eval/<base|ft>` au lieu de `runs/lfm3-s1s2`.
-  - Les fonctions copiées dans `experiments/lfm3-ft/common.py` sont vérifiées identiques à celles de `s1s2.py` par `test_common.py`.
-- **Appliqué à deux modèles.**
-  - Le modèle de base.
-  - Le modèle fine-tuné de `docs/lfm3-ft-prereg.md`, avec exactement le même protocole. Sa sonde et son τ sont ajustés sur sa propre calibration, et son test est lu une fois.
-- **Où tourne `route`.** En local, sur CPU, sur les générations rapatriées (`scripts/lfm3-ft.sh pull route`) : `route --split calib`, puis `route --split test`, une fois par modèle.
-- **Pourquoi.** La sonde lit les log-probabilités des jetons : il faut un moteur qui les rende. Aucune API ne sert LFM3 avec ses log-probabilités au 05/11/2026 (`TODO.md` §6; removed on 19/11/2026; last version at commit `0e45b7b`). bf16 et 4 bits ne donnent pas exactement les mêmes sorties : les résultats de ce run sont ceux de LFM3-1.7B en bf16, et le rapport le dit.
+- **Change.** The run is no longer done locally. This is the user's decision: the M5 heats up too much during the 10 h of inference. The same protocol runs remotely, on Hugging Face Jobs, through `scripts/lfm3-ft.sh eval` (`experiments/lfm3-ft/eval.py`):
+  - **model**: `LiquidAI/LFM3-1.7B` in bf16, instead of `LiquidAI/LFM3-1.7B-MLX-4bit` (rev. `deb2986b`). The revision is pinned by the smoke of `docs/lfm3-ft-prereg.md`;
+  - **engine**: vLLM instead of mlx-vlm. The log-probabilities of s1 are those of vLLM (`logprobs=1`, the sampled token). If the smoke shows that vLLM does not load LFM3 correctly, the fallback is transformers' `generate`, with the decision rule and the log-probabilities defined in §2 of `docs/lfm3-ft-prereg.md`;
+  - **prompt**: the text of the chat template, tokenized without adding a special token (the template already starts with BOS).
+- **What does not change.**
+  - The prompt, the modes s1, s2-256 and s2-1024: budget, forcing, sampling, one seed per question derived from its id.
+  - The answer extraction, the scoring, the 6 features.
+  - The router, α = 0,02, the choice of B\*, the criteria H1 to H4 and the forbidden items.
+  - The code of `route` is that of `s1s2.py`, unchanged: `experiments/lfm3-ft/route.py` points it at `runs/lfm3-ft/eval/<base|ft>` instead of `runs/lfm3-s1s2`.
+  - The functions copied into `experiments/lfm3-ft/common.py` are checked identical to those of `s1s2.py` by `test_common.py`.
+- **Applied to two models.**
+  - The base model.
+  - The fine-tuned model of `docs/lfm3-ft-prereg.md`, with exactly the same protocol. Its probe and its τ are fitted on its own calibration split, and its test is read once.
+- **Where `route` runs.** Locally, on CPU, on the generations brought back (`scripts/lfm3-ft.sh pull route`): `route --split calib`, then `route --split test`, once per model.
+- **Why.** The probe reads the log-probabilities of the tokens: an engine that returns them is needed. No API serves LFM3 with its log-probabilities as of 05/11/2026 (`TODO.md` §6; removed on 19/11/2026; last version at commit `0e45b7b`). bf16 and 4 bits do not give exactly the same outputs: the results of this run are those of LFM3-1.7B in bf16, and the report says so.
 
-**Amendement 2 (09/11/2026, avant tout run : seul l'essai de fumée local de 3 questions par mode a tourné, aucun résultat de calibration ni de test n'existe). Retour au protocole local d'origine.**
+**Amendment 2 (09/11/2026, before any run: only the local smoke test of 3 questions per mode has run, no calibration or test result exists). Back to the original local protocol.**
 
-- **Changement.** L'amendement 1 est annulé (décision de l'utilisateur du 05/11/2026 : « finalement je ferai tout sur mon pc »). Le run se fait comme au §2 : `LiquidAI/LFM3-1.7B-MLX-4bit`, révision `deb2986b`, mlx-vlm 0.7.11, sur le M5, par `scripts/lfm3-s1s2.sh`. Les résultats sont ceux du modèle en 4 bits.
-- **Le mode bridé.** Le run se fait en mode bridé (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), comme l'amendement 5 de `docs/s6-prereg.md` : une pause après chaque question. H3 compte des jetons et `seconds` reste le temps de génération : le mode bridé ne change ni l'un ni l'autre.
-- **Le modèle fine-tuné.** Ce qui concerne le modèle fine-tuné est désormais dans l'amendement 1 de `docs/lfm3-ft-prereg.md`. Les générations de la base écrites ici y servent de référence si la règle de conversion de cet amendement le permet.
-- **Ce qui ne change pas.** Les données, le prompt, les modes, le budget et le forçage, l'échantillonnage, les graines, l'extraction et la notation, les 6 traits, le routeur, α = 0,02, le choix de B\*, les critères H1 à H4 et les interdits.
+- **Change.** Amendment 1 is cancelled (the user's decision of 05/11/2026: « finalement je ferai tout sur mon pc » [in the end I will do everything on my PC]). The run is done as in §2: `LiquidAI/LFM3-1.7B-MLX-4bit`, revision `deb2986b`, mlx-vlm 0.7.11, on the M5, through `scripts/lfm3-s1s2.sh`. The results are those of the model in 4 bits.
+- **The braked mode.** The run is done in braked mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`: a pause after each question. H3 counts tokens and `seconds` remains the generation time: the braked mode changes neither one nor the other.
+- **The fine-tuned model.** What concerns the fine-tuned model is now in amendment 1 of `docs/lfm3-ft-prereg.md`. The base generations written here serve there as the reference if that amendment's conversion rule allows it.
+- **What does not change.** The data, the prompt, the modes, the budget and the forcing, the sampling, the seeds, the extraction and the scoring, the 6 features, the router, α = 0,02, the choice of B\*, the criteria H1 to H4 and the forbidden items.
 
 **Amendment 3 (12/11/2026, before any run: only the local smoke of 3 questions per mode has run, no calibration or test result exists). Two brake modes.**
 
