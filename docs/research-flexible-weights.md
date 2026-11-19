@@ -174,7 +174,7 @@ The authors' own reading of the extra experiment: "Editing weights could remove 
 ## 7. Corrections to the text of §7 and of the pre-registration
 
 - The pre-registration says the post was read through secondary articles and is not reproduced. It has now been read at the source [1], and its writing and reading results are partly reproduced [3][4].
-- The TODO's table says the post shows a model "débarrassé de ses boucles" (Qwen3.5-0.8B) and no gain on Gemma 3 270M; the source agrees [1]. It also says Breakout 517 against 25 for PPO after 500M steps; the source agrees (517.4 and 25.3) [1].
+- The TODO's table says the post shows a model "débarrassé de ses boucles" [rid of its loops] (Qwen3.5-0.8B) and no gain on Gemma 3 270M; the source agrees [1]. It also says Breakout 517 against 25 for PPO after 500M steps; the source agrees (517.4 and 25.3) [1].
 - The TODO says no one has published this on ternary models. I found nothing that contradicts it.
 
 ---
