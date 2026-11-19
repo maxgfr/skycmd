@@ -131,6 +131,31 @@ These limits matter as much as the result:
 
 **All of this fits on a laptop.** The only training run in this story took about two hours of throttled GPU time. The rest, meaning the combination, the settings and the evaluation, took a few minutes of CPU.
 
+## 19 November 2026: four more versions, and the end of the line
+
+After the pass, I looked for the reason behind the names-masked failure. On validation files only, I found a shortcut: in v2's training data, the right tool of every renamed example was the only option whose description the teacher had rewritten, so the model learned to pick the description that reads like a rewrite. Counting the training data with no model, I also found weaker cues: rules that never read the request, such as "pick the shortest name", were right more often than chance.
+
+So I tried to retrain the model part without them. Versions 4 and 5 rebuilt the training data and stopped at their own checks, before any training, because a rule that never reads the request could still find the answer somewhere in the data. Version 6 kept those checks as reported numbers, kept one stop rule, and moved the real test onto the trained model: replace every request by `?` and see whether the router still finds the right tool. A router that reads the request should then be at chance, one in seven here. Version 6 tripped its stop rule; version 7 fixed the slates it pointed to, did not trip it, and trained for 120 working minutes.
+
+It was read once, on 2,000 fresh requests about the tools of MCP servers (the Model Context Protocol, a standard way for assistants to call outside tools), from a public dataset, Toucan. No training example came from that family of tools.
+
+| On 2,000 fresh requests about MCP tools | Right answers | Names masked | Request hidden (chance 0.143) |
+|---|---:|---:|---:|
+| v7, the retrained pair | 0.561 | 0.544 | 0.197 |
+| v7's model part alone | 0.491 | 0.461 | 0.141 |
+| s6-route (v3), the published pair | 0.553 | 0.281 | 0.179 |
+| BM25 alone | 0.568 | 0.558 | 0.143 |
+| all-MiniLM-L6-v2 (91.6 MB) | 0.663 | 0.593 | 0.185 |
+
+The retrained model part did what I wanted: with the request hidden it is at chance, and masking the names barely hurts the router (0.561 to 0.544, where the published router falls to 0.281). Everything else failed:
+
+- **It does not beat BM25** on these tools: −0.007, with an interval that contains zero. On validation, in the families it was trained on, it was 0.04 above.
+- **It loses a third of its accuracy** going from validation (0.880) to these tools (0.561). Why is not measured: the tools are new, but so are the requests, which language models wrote for that dataset.
+- **Its probabilities stop meaning what they say**: a calibration error of 0.18, where 0.05 was asked.
+- **With the request hidden, the router is still above chance**: 0.1969, where the bar was 0.1929. Its trained part is not; its static embedding, which no version trained, already is on its own (0.1931).
+
+The gate failed, and I publish v7 as [a failure](https://huggingface.co/maxgfr/s6-route7-nano), with its files and a demo. I had decided before the run that this would be the last version. The line stops here: s6-route stays the router, with its limits, and on tools of a new family the honest advice is BM25, or MiniLM when 92 MB are affordable. Removing a shortcut from the training data was not enough to make this router beat BM25, a score of shared words, on tools of a family it has never seen. Every number is on the [results page](/results/#s6-route7-nano-failed) and in [v7's pre-registration](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route7-prereg.md), with its result files in [`runs/s6-route7/`](https://github.com/maxgfr/skycmd/tree/main/runs/s6-route7).
+
 ## Try it and check it
 
 ::: tip Try it

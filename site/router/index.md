@@ -29,7 +29,7 @@ On 945 fresh requests about tools never seen in training, **s6-route** picks the
 
 ## What the result does not say
 
-- **The tools of the test are v2's held-out tools.** Its requests are fresh, but the project had already read how every system does on these tools. A confirmation on tools of other families has not been run.
+- **The tools of the test are v2's held-out tools.** Its requests are fresh, but the project had already read how every system does on these tools. On 2,000 fresh requests about the tools of MCP servers, a family unlike its training data, read on 19 November 2026 for its retrained successor and reported here, it picks the right option on 0.5530, where BM25 reads 0.5675 (no interval was computed for that difference). That successor, [s6-route7-nano](/results/#s6-route7-nano-failed), failed its own gate on the same requests, and the line is closed.
 - **The advantage over BM25 is fragile.** It holds on the slate bootstrap that the gate asked for (+0.0698 [0.0455, 0.0952]), but not when the three largest clusters are left out (+0.0202 [−0.0062, +0.0481]) nor on a bootstrap over clusters (+0.0698 [−0.0079, +0.1404]).
 - **MiniLM is more accurate on every test file.** With 91.6 MB to spend, all-MiniLM-L6-v2 with cosine is the better router on these tests.
 - **Outside the tool lists of its training families** (MetaTool, CLINC150 intents, MASSIVE held-out scenarios) it stays near its embedding part: 0.5175 against 0.5340, 0.8040 against 0.7855 and 0.5340 against 0.4755.

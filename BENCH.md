@@ -1031,6 +1031,66 @@ The model part natively (`sky-eval`, the same 200 slates): median 24,648 µs, p9
 
 **v6, When2Call's slates rebuilt without the request's own tools, stopped at its stop rule on 18/11/2026, before any training** ([result block](docs/s6-route6-prereg.md), [`runs/s6-route6/checks.md`](runs/s6-route6/checks.md), [`runs/s6-route6/spread.md`](runs/s6-route6/spread.md)): after the fix, *none* read from the spread of the options is right on 0.5792 of the training slates it picks and 0.6000 in validation, against a share of 0.20, so +0.38 and +0.40 where v5 had +0.24. The fix took the spread out of every slate that has a cell, so the 660 of 1,984 training no-call slates that have none (608 from requests that list no tool) now stand out more. No model was trained, no number above changes, and what comes next (closing the line, a v7 without When2Call, or a v7 that gives those slates a cell) is not decided.
 
+**v7, the no-call slates without an anchor given the cell of the pool tool nearest to the request, trained and failed its gate on 19/11/2026** (next section): the line is closed. This system's reading on v7's fresh test, T5-tools (2,000 requests about the tools of 262 MCP servers of Toucan), is reported and decides nothing about its pass: 0.5530 (BM25 0.5675), 0.2810 with the names masked, 0.1794 with the request hidden (servers [0.1466, 0.2138]).
+
+## s6-route7-nano (s6-route v7): the router retrained without its shortcut, pre-registered, gate failed
+
+Pre-registration: [`docs/s6-route7-prereg.md`](docs/s6-route7-prereg.md) (v6 with one change; amendments 1 to 3, all before the fresh test was opened; the result block of 19/11), on top of [`docs/s6-route6-prereg.md`](docs/s6-route6-prereg.md) (G6), [`docs/s6-route5-prereg.md`](docs/s6-route5-prereg.md) and [`docs/s6-route4-prereg.md`](docs/s6-route4-prereg.md) (the data, T5, G1 to G5). Results: [`runs/s6-route7/GATE.md`](runs/s6-route7/GATE.md), [`gate.json`](runs/s6-route7/gate.json), [`readings.json`](runs/s6-route7/readings.json) (every reading on T5, T2-tools and validation), [`g4.json`](runs/s6-route7/g4.json), [`fit.json`](runs/s6-route7/fit.json), [`FRESH-OPEN`](runs/s6-route7/FRESH-OPEN), the checkpoints' readings `runs/s6-route7/read/*/readings.json` and the pilot's [`runs/s6-route7-pilot/summary.json`](runs/s6-route7-pilot/summary.json).
+
+**Disclosure** (§10, with v6's, v5's and v4's). v7 was designed after v4's, v5's and v6's data tables were read; its one change follows v6's table and a count made after v6's stop, and it is the third construction of When2Call's no-call slates. The anchor of the unanchored no-call slates is chosen with the request (the pool tool nearest to its text), a cue that B0 cannot see since it hides the request. The stop rule was written before v6's rebuild and not changed; the rule that closes the line was written before any computation of v7. v6 relaxed what stopped v4 and v5: their data checks are reported and G6 replaces them; outside the rebuilt slates the training data hold the cues that v5's table names. The teacher rewrote the descriptions of the 1,448 Toucan tools that T5 shows, for the probe copies, and never saw a fresh request; the field names and split values of two T5 files were read once before T5 was opened (amendment 3). all-MiniLM-L6-v2 defines the clusters and is a reported baseline; the latency bar was set after v2 was measured.
+
+**Failed: "The gate fails (G1 fails, G2 fails, G3 fails, G4 holds, G5 holds, G6 fails)."** The model part (the s6-micro graph, 5,587,201 ternary parameters) was trained again from s6-micro's pretraining: a pilot of 20 working minutes (3,664 steps, `abort: false`), then 120 working minutes (22,214 steps, seed 0), on v5's records with v6's and v7's rebuilt When2Call slates (182,085 training records; 15,873 validation), each tool's BM25 score and rank in its own option (`score <s> rank <r>; <name>: <description>`, D4), a head window of 320. It is fused with potion-base-2M packed to 4 bits, `p ∝ (p_model · p_embedding)^0.7`, "ask the user" below τ_ask7 = 0.762097, both fitted on `v5_tools`. Published as a result: `site/public/models/s6-route7-nano.gguf` (2,418,976 bytes, sha256 `5fbe51b451023730c0517254eed43ce5c96c9a2384563bca6d8ddac3b77c7a9d`) and `site/public/models/s6-route7-embed.gguf` (1,273,312 bytes, sha256 `717dc3d89f096d063de9af52636fdafca834c53d484ecde533d2043047e7dafd`), with a card and a Space. The route line is closed, with no v8; s6-route stays the published router.
+
+**T5** (built once on 18/11/2026, read once on 19/11 by the stage `open` of `scripts/route7-gate.sh`): 2,000 slates from 262 servers and 458 clusters, 1,600 tool-right and 400 *none*-right, every tool-right slate with 7 tools (c = 1/7); a names-masked copy and two probe copies with one distractor's description rewritten (1,600 slates each).
+
+**The gate, as read** (`gate.json`):
+
+| gate | condition | measured | verdict |
+|---|---|---|---|
+| G1 | the pair − BM25, lower bound of the slate bootstrap > 0 | −0.0065 [−0.0235, +0.0120] (0.5610 against 0.5675) | **fails** |
+| G1 | the pair − `potion-cos-4bit`, lower bound > 0 | +0.0585 [+0.0380, +0.0800] | holds |
+| G1 | the pair > the model part | 0.5610 against 0.4905 | holds |
+| G2 (a) | rewritten distractor answered ≤ 0.1929, paired ≤ +0.03 (`t5_tools_rw`; `t5_tools_masked_rw`) | 0.0494, +0.0238; 0.0513, +0.0287 | holds |
+| G2 (b) | `t5_tools_masked`: the pair ≥ `potion-cos-4bit` − 0.02 | 0.5440 against 0.4550 | holds |
+| G2 (c) | `t5_tools_masked`: *none* on 0.10 to 0.30 | 0.3345 | **fails** |
+| G3 | ECE ≤ 0.05 on T5-tools | 0.1845 | **fails** |
+| G4 | WASM against the Python reference, 200 slates: max \|Δp\| ≤ 1e-3, same answer on ≥ 199 | 9.07e-7, 200 / 200 | holds |
+| G4 | WASM SIMD128 median ≤ 60 ms (`median_cached_us`) | 13,869 µs | holds |
+| G4 | the two files ≤ 4,000,000 bytes | 3,692,288 | holds |
+| G5 | T2-tools ≥ 0.8668 | 0.8815 | holds |
+| G6 (a) | the model part in B0: ≤ 0.1929, servers upper bound ≤ 0.2229 | 0.1406 [0.1113, 0.1720] | holds |
+| G6 (b) | the pair in B0: the same | 0.1969 [0.1599, 0.2350] | **fails** |
+| G6 (c) | Δ_none ≤ 0.05, servers upper bound ≤ 0.15 | model part −0.0069 [−0.0220, +0.0081]; pair −0.0087 [−0.0521, +0.0371] | holds |
+
+The headline (servers resampled) is not allowed: the pair − BM25 −0.0065 [−0.0309, +0.0170], − `potion-cos-4bit` +0.0585 [+0.0278, +0.0860]. Without the 1,204 slates that show server-mates, G6 fails too (the model part 0.1692, servers upper bound 0.2421; the pair 0.3081 [0.2208, 0.3974]). G4's first-call median is 28,331 µs (reported).
+
+**Every system on T5** (accuracy; `readings.json`; the rewritten copies hold the 1,600 tool-gold slates):
+
+| system | T5-tools | names masked | rewritten | masked, rewritten |
+|---|---:|---:|---:|---:|
+| **the pair (v7)** | **0.5610** | 0.5440 | 0.57625 | 0.541875 |
+| the pair, fast mode | 0.5595 | 0.5395 | 0.58125 | 0.5425 |
+| the model part | 0.4905 | 0.4610 | 0.481875 | 0.40625 |
+| `potion-cos-4bit` | 0.5025 | 0.4750 | 0.56875 | 0.529375 |
+| the published pair (v3) | 0.5530 | 0.2810 | 0.604375 | 0.183125 |
+| `potion-cos` | 0.4940 | 0.4700 | 0.555625 | 0.519375 |
+| `static-ft` | 0.4985 | 0.4640 | 0.558125 | 0.520625 |
+| `pair-lr` | 0.1940 | 0.1805 | 0.16375 | 0.156875 |
+| BM25 | 0.5675 | 0.5580 | 0.58125 | 0.56375 |
+| `minilm-cos` | 0.6630 | 0.5925 | 0.734375 | 0.6300 |
+| `toolrouter` | 0.5895 | 0.5220 | 0.685625 | 0.599375 |
+| `name-prior` | 0.2000 | 0.1190 | 0.0 | 0.14875 |
+
+**B0 on T5-tools** (the request replaced by `?`; 1,600 tool-right slates; servers resampled): the model part 0.1406 [0.1113, 0.1720], *none* share 0.0405; the pair 0.1969 [0.1599, 0.2350], *none* share 0.8120, *none* or asked 0.9955; the embedding part 0.1931 [0.1589, 0.2278]; the published pair 0.1794 [0.1466, 0.2138]; `potion-cos` 0.2000, `minilm-cos` 0.1850, `toolrouter` 0.1644, `pair-lr` 0.1519, `static-ft` 0.1331, BM25 and `name-prior` 0.1429 (every option tied); the model part in B1 0.1813 [0.1451, 0.2194]. On the masked copy: the model part 0.1488 [0.1216, 0.1794], the pair 0.1906 [0.1574, 0.2241], the embedding part 0.2031 [0.1679, 0.2366], the published pair 0.1556 [0.1237, 0.1887]. By server-mates shown (none on 396 slates, some on 1,204): the model part 0.1692 and 0.1312, the pair 0.3081 and 0.1603, the embedding part 0.2904 and 0.1611, the published pair 0.2854 and 0.1445.
+
+**Validation** (`v5_tools`, 1,144 slates): the pair 0.8802 (ECE 0.0232; masked 0.8715; B0 0.1235), the model part 0.8418 (first exit 0.8427), `potion-cos-4bit` 0.7194, BM25 0.8383; β 0.7, τ_ask7 0.762097 at accuracy 0.9507 and coverage 0.7981. The pilot's last checkpoint: 0.8392 (bar 0.578147), the rewritten distractor 0.0077 (bar 0.30), B0 0.1552 and 0.1399 (bar 0.1929). The 14 checkpoints of the main run: 0.8077 to 0.8531, B0 0.1257 to 0.1672 and 0.1279 to 0.1749.
+
+**Announced goals** (not gates): T5-tools ≥ 0.80, not met; the pair ≥ `minilm-cos` − 0.03, not met (0.5610 against 0.6330); ≥ 0.95 among answered at τ_ask7 with coverage ≥ 0.80, not met (0.7127 at coverage 0.5325, from the read stage's log); the fast mode within 0.015, met; the pair *none* or asked on ≥ 0.80 of the blind slates, met (0.9955); G6 (a) and (b) on the masked copy, met for the model part, not for the pair (servers upper bound 0.2241 against 0.2229).
+
+**What it means** (§11). G1 fails against BM25: on a new family the pair adds nothing to a score of no byte, and the recommendation there is BM25. G2 fails on (c) only. G6 (b) fails while (a) holds: the request-blind preference is the pair's and not its trained model part's, and the embedding part alone, never trained by this line, already reads above the bar. Not published as a replacement. Why the system falls from 0.8802 on validation to 0.5610 on T5 is not measured: no reading separates the new tool family from the new source of requests or from T5's construction.
+
+**Verdict: failed; published as s6-route7-nano, a result.** The route line is closed.
+
 ## LFM3-1.7B: System 1 first, System 2 when needed, pre-registered, failed
 
 Pre-registration: [`docs/lfm3-s1s2-prereg.md`](docs/lfm3-s1s2-prereg.md), its criteria in §6 and its amendments 1 to 5 (all before any run; amendment 2 cancels amendment 1, so the run is the original local protocol). No weight of LFM3 is trained: `LiquidAI/LFM3-1.7B-MLX-4bit` at revision `deb2986b`, 4-bit, mlx-vlm 0.7.11, on the Apple M5. Run: `scripts/lfm3-s1s2.sh` (`experiments/lfm3-s1s2/s1s2.py`); log `runs/lfm3-s1s2.log`; tables `runs/lfm3-s1s2/report-calib.md` (calibration) and `runs/lfm3-s1s2/report.md` (test), numbers `runs/lfm3-s1s2/summary.json`.

@@ -134,6 +134,13 @@ Paired bootstrap (slates): +0.0942 [0.0720, 0.1185] over the model alone, +0.148
   of the intents group's (chance 0.3721); what the model did with them is not measured
   ([v4's result](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-prereg.md)).
 - **Read with the request hidden** (18/11/2026, files already read; [diagnostic](https://github.com/maxgfr/skycmd/blob/main/runs/s6-route6/diagnostic.md)): with the request replaced by `?` (every BM25 score 0.00), the pair picks the right tool among the tools on 0.1104 [0.0906, 0.1310] of `v_tools` and 0.1402 [0.1158, 0.1658] of T2-tools (clusters [0.0658, 0.2311]), against a chance of 0.1429, and below chance under masked names (0.0699 and 0.0503); its *none* answer does not depend on whether *none* is right (gaps +0.0461 [−0.0066, +0.0969] and +0.0119 [−0.0204, +0.0432]): it does not answer from the options alone in that reading, which does not measure a cue used together with the request.
+- **On tools of a new family** (19/11/2026, reported with s6-route v7, deciding nothing about this
+  pass; [result](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route7-prereg.md)): on 2,000
+  fresh requests about the tools of 262 MCP servers (Toucan), which no training slate holds, it
+  picks the right option on 0.5530, where BM25 reads 0.5675 and all-MiniLM-L6-v2 0.6630; with the
+  names masked 0.2810; with the request hidden 0.1794 (servers [0.1466, 0.2138], chance 0.1429).
+  Its retrained successor, [s6-route7-nano](https://huggingface.co/{{USER}}/s6-route7-nano), failed
+  its gate on the same requests, and the line is closed: this file stays the published router.
 - **MiniLM is more accurate on every file.** If 91.6 MB and about 12 ms of CPU per request are
   affordable, all-MiniLM-L6-v2 with cosine is the better router on these tests.
 - **Outside the tool lists of its training families it stays near its embedding part, below it on MetaTool and above it on CLINC150 and MASSIVE:** MetaTool
