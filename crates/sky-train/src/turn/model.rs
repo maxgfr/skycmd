@@ -183,6 +183,10 @@ pub struct TurnBatch {
     pub smask: Array,
     /// `[B]`: the clip has teacher targets.
     pub tmask: Array,
+    /// s6-ear v3 (docs/s6-ear3-prereg.md §5): `[B]` the weight of each row's label term (the
+    /// weights' `hard` on Smart Turn rows, 1 on conversation rows, whose loss is the BCE alone).
+    /// With it, the loss is the batch mean of per-row losses ([`loss`]); without it, v2's.
+    pub hw: Option<Array>,
     pub rows: usize,
 }
 
@@ -273,6 +277,53 @@ fn cos_gap(a: &Array, b: &Array) -> R<Array> {
     Array::from_f32(1.0).subtract(dot.divide(&den)?)
 }
 
+/// s6-ear v3's loss (docs/s6-ear3-prereg.md §5): the mean over the batch of each row's loss,
+/// `hw · BCE(y, p)` on every row and, on the rows with teacher targets (`tmask`),
+/// `soft · BCE(σ(z_T), p) + pool · (1 − cos) + seq · (1 − cos)` averaged over the row's masked
+/// steps (`smask`: none at a trailing silence d > 0, where the teacher's states describe another
+/// window). A conversation row (`tmask` 0, `hw` 1) is `BCE(y, p)`, a Smart Turn row v2's loss.
+fn loss_rows(
+    p: &ParamMap,
+    cfg: &TurnConfig,
+    b: &TurnBatch,
+    f: &TurnForward,
+    lw: LossWeights,
+    hw: &Array,
+) -> R<Array> {
+    let z = &f.logit;
+    let sp = softplus(z)?;
+    let rows = Array::from_f32(b.rows.max(1) as f32);
+    let hard = sp.subtract(b.y.multiply(z)?)?.multiply(hw)?.sum(None)?;
+    if lw.soft == 0.0 && lw.pool == 0.0 && lw.seq == 0.0 {
+        return hard.divide(&rows);
+    }
+    let tm = &b.tmask;
+    let soft = sp.subtract(b.q.multiply(z)?)?.multiply(tm)?.sum(None)?;
+    let eps = cfg.norm_eps;
+    let pp = linear(&f.pooled, w(p, POOL_PROJ)?, None)?;
+    let pool = cos_gap(&pp, &ln_plain(&b.et, eps)?)?
+        .multiply(tm)?
+        .sum(None)?;
+    let (bs, d) = (b.rows as i32, cfg.hidden_size as i32);
+    let steps = sky_infer::turn::TEACHER_STEPS as i32;
+    let per = cfg.positions_per_step() as i32;
+    let hs = f
+        .hidden
+        .reshape(&[bs, steps, per, d])?
+        .mean_axis(2, false)?;
+    let sp_ = linear(&hs, w(p, SEQ_PROJ)?, None)?;
+    let n_s = ops::maximum(b.smask.sum_axis(1, false)?, Array::from_f32(1.0))?;
+    let seq = cos_gap(&sp_, &ln_plain(&b.st, eps)?)?
+        .multiply(&b.smask)?
+        .sum_axis(1, false)?
+        .divide(&n_s)?
+        .sum(None)?;
+    hard.add(soft.multiply(Array::from_f32(lw.soft))?)?
+        .add(pool.multiply(Array::from_f32(lw.pool))?)?
+        .add(seq.multiply(Array::from_f32(lw.seq))?)?
+        .divide(&rows)
+}
+
 /// The weights of the four terms of §5.2.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LossWeights {
@@ -340,6 +391,9 @@ pub fn loss_terms(p: &ParamMap, cfg: &TurnConfig, b: &TurnBatch, f: &TurnForward
 pub fn loss(p: &ParamMap, cfg: &TurnConfig, b: &TurnBatch, qat: bool, lw: LossWeights) -> R<Array> {
     let pq = &*prepare(p, cfg, qat)?;
     let f = forward_prepared(pq, cfg, b)?;
+    if let Some(hw) = &b.hw {
+        return loss_rows(pq, cfg, b, &f, lw, hw);
+    }
     if lw.soft == 0.0 && lw.pool == 0.0 && lw.seq == 0.0 {
         let sp = softplus(&f.logit)?;
         return sp
@@ -430,6 +484,7 @@ mod tests {
             st: Array::from_slice(&st, &[b, 25, 384]),
             smask: Array::from_slice(&smask, &[b, 25]),
             tmask: Array::from_slice(&vec![1.0f32; rows], &[b]),
+            hw: None,
             rows,
         }
     }
@@ -464,6 +519,40 @@ mod tests {
                     assert!(v.is_finite() && v > 0.0, "{v}");
                 }
             }
+            // v3's per-row loss: with every row a Smart Turn row at d = 0 and full windows, it is
+            // v2's; a row with no teacher target counts its label term alone
+            let full = batch(&c, &[100, 100, 100], 3);
+            let v2 = loss(&p, &c, &full, false, LossWeights::DISTIL)
+                .unwrap()
+                .item_exact::<f32>();
+            let hw = Array::from_slice(&[0.5f32; 3], &[3]);
+            let rows = TurnBatch {
+                hw: Some(hw),
+                ..batch(&c, &[100, 100, 100], 3)
+            };
+            let v3 = loss(&p, &c, &rows, false, LossWeights::DISTIL)
+                .unwrap()
+                .item_exact::<f32>();
+            assert!((v2 - v3).abs() < 1e-5, "{v2} vs {v3}");
+            let conv = TurnBatch {
+                hw: Some(Array::from_slice(&[1.0f32; 3], &[3])),
+                tmask: Array::from_slice(&[0.0f32; 3], &[3]),
+                smask: Array::from_slice(&[0.0f32; 75], &[3, 25]),
+                ..batch(&c, &[100, 100, 100], 3)
+            };
+            let hard = loss(
+                &p,
+                &c,
+                &batch(&c, &[100, 100, 100], 3),
+                false,
+                LossWeights::HARD,
+            )
+            .unwrap()
+            .item_exact::<f32>();
+            let lc = loss(&p, &c, &conv, false, LossWeights::DISTIL)
+                .unwrap()
+                .item_exact::<f32>();
+            assert!((hard - lc).abs() < 1e-5, "{hard} vs {lc}");
             let [h, s, po, se] = loss_terms(&p, &c, &b, &f).unwrap();
             // hard BCE near ln 2 at initialization; cosine gaps near 1
             assert!((h.item_exact::<f32>() - std::f32::consts::LN_2).abs() < 0.2);

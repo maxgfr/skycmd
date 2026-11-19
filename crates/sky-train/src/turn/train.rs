@@ -13,7 +13,10 @@ use serde_json::json;
 
 use super::{
     config::TurnConfig,
-    data::{host_batch, Augment, Data, HostBatch, Order},
+    data::{
+        conv_batch, host_batch, mixed_batch, st_draws_before, Augment, Conv, Data, Ext, HostBatch,
+        Mix, Order, Sources,
+    },
     model::{self, LossWeights},
 };
 use crate::{
@@ -106,6 +109,166 @@ pub struct TrainArgs {
     #[arg(long)]
     #[serde(default)]
     pub cpu: bool,
+    /// s6-ear v3 (docs/s6-ear3-prereg.md §3.6, §16): the conversation store (`sky-data
+    /// fetch-conv`); with it, every batch is the mix of §3.6 and `--st-ext` is needed.
+    #[arg(long)]
+    #[serde(default)]
+    pub conv: Option<PathBuf>,
+    /// s6-ear v3: the Smart Turn extension store (`sky-data turn-extend`).
+    #[arg(long)]
+    #[serde(default)]
+    pub st_ext: Option<PathBuf>,
+    /// s6-ear v3: the probability that a row is a conversation record.
+    #[arg(long, default_value_t = 0.5)]
+    #[serde(default = "half")]
+    pub conv_share: f64,
+    /// s6-ear v3: the probability that a Smart Turn row is v2's view (d = 0).
+    #[arg(long, default_value_t = 0.25)]
+    #[serde(default = "quarter")]
+    pub st_d0: f64,
+    /// s6-ear v3: keep the first conversation records of the training / validation split only
+    /// (0: all; the smoke run).
+    #[arg(long, default_value_t = 0)]
+    #[serde(default)]
+    pub conv_max_train: usize,
+    #[arg(long, default_value_t = 0)]
+    #[serde(default)]
+    pub conv_max_val: usize,
+    /// s6-ear v3: start from the weights of this checkpoint (`config.json`,
+    /// `model.safetensors`; the same graph), with a fresh optimizer.
+    #[arg(long)]
+    #[serde(default)]
+    pub init: Option<PathBuf>,
+    /// The sha256 of the files of `--init` (`runs/s6-ear3-nano/init.json`, `{"files": {name:
+    /// sha256}}`): `--init` refuses a checkpoint whose files differ.
+    #[arg(long)]
+    #[serde(default)]
+    pub init_sha256: Option<PathBuf>,
+}
+
+fn half() -> f64 {
+    0.5
+}
+fn quarter() -> f64 {
+    0.25
+}
+
+/// The ask of the conversation validation of §6.4 and §7 (d = 0.2 s).
+pub const CONV_VAL_MS: usize = 200;
+
+/// `--init`'s guard: every file listed in `list` has its sha256 (`shasum -a 256`), and the list
+/// names the two files read.
+pub fn check_init(dir: &Path, list: &Path) -> Result<()> {
+    let v: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(list).with_context(|| format!("reading {}", list.display()))?,
+    )?;
+    let files = v["files"]
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("{}: no `files`", list.display()))?;
+    for need in ["config.json", "model.safetensors"] {
+        if !files.contains_key(need) {
+            bail!("{}: no sha256 of {need}", list.display());
+        }
+    }
+    for (name, want) in files {
+        let p = dir.join(name);
+        let out = std::process::Command::new("shasum")
+            .args(["-a", "256"])
+            .arg(&p)
+            .output()
+            .context("running shasum")?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let got = text.split_whitespace().next().unwrap_or("");
+        if !out.status.success() || Some(got) != want.as_str() {
+            bail!(
+                "{}: sha256 {got:?}, {} records {want}: --init refuses this checkpoint",
+                p.display(),
+                list.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Two configs of the same graph (the names and the rung aside).
+pub fn same_graph(a: &TurnConfig, b: &TurnConfig) -> bool {
+    let strip = |c: &TurnConfig| TurnConfig {
+        name: String::new(),
+        rung: None,
+        qat_grad_a: 0.0,
+        ..c.clone()
+    };
+    strip(a) == strip(b)
+}
+
+/// The conversation validation at d = 0.2 s (§6.4, §7): AUC of end of turn against hold, BCE.
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct ConvMetrics {
+    pub auc: f64,
+    pub bce: f64,
+    pub n: usize,
+}
+
+/// AUC of `y` by score `z` (ties shared).
+pub fn auc(z: &[f64], y: &[bool]) -> f64 {
+    let mut o: Vec<usize> = (0..z.len()).collect();
+    o.sort_by(|&a, &b| z[a].total_cmp(&z[b]));
+    let (pos, neg) = (
+        y.iter().filter(|&&v| v).count() as f64,
+        y.iter().filter(|&&v| !v).count() as f64,
+    );
+    if pos == 0.0 || neg == 0.0 {
+        return f64::NAN;
+    }
+    let (mut s, mut below, mut i) = (0.0, 0.0, 0);
+    while i < o.len() {
+        let mut j = i;
+        let (mut gp, mut gn) = (0.0, 0.0);
+        while j < o.len() && z[o[j]] == z[o[i]] {
+            if y[o[j]] {
+                gp += 1.0
+            } else {
+                gn += 1.0
+            }
+            j += 1;
+        }
+        s += gp * (below + 0.5 * gn);
+        below += gn;
+        i = j;
+    }
+    s / (pos * neg)
+}
+
+pub fn validate_conv(
+    p: &ParamMap,
+    cfg: &TurnConfig,
+    conv: &Conv,
+    qat: bool,
+    limit: usize,
+) -> Result<ConvMetrics> {
+    let val = if limit > 0 && limit < conv.val.len() {
+        &conv.val[..limit]
+    } else {
+        &conv.val[..]
+    };
+    let (mut z, mut y) = (Vec::new(), Vec::new());
+    for chunk in val.chunks(256) {
+        let hb = conv_batch(cfg, conv, chunk, CONV_VAL_MS)?;
+        let f = model::forward(p, cfg, &hb.arrays(cfg), qat)?;
+        z.extend(host_f32(&f.logit)?.into_iter().map(|v| v as f64));
+        y.extend(hb.y.iter().map(|&v| v > 0.5));
+    }
+    let bce = z
+        .iter()
+        .zip(&y)
+        .map(|(&zr, &yr)| zr.max(0.0) + (-zr.abs()).exp().ln_1p() - if yr { zr } else { 0.0 })
+        .sum::<f64>()
+        / z.len().max(1) as f64;
+    Ok(ConvMetrics {
+        auc: auc(&z, &y),
+        bce,
+        n: z.len(),
+    })
 }
 
 impl TrainArgs {
@@ -264,12 +427,44 @@ pub fn validate_first(
     })
 }
 
-fn log_val(log: &mut JsonLog, step: u64, mode: &str, m: &ValMetrics) -> Result<()> {
+fn log_val(
+    log: &mut JsonLog,
+    step: u64,
+    mode: &str,
+    m: &ValMetrics,
+    c: Option<&ConvMetrics>,
+) -> Result<()> {
     println!(
         "step {step:>6} val {mode}: acc {:.4} bce {:.4} teacher agreement {:.4} ({} clips)",
         m.acc, m.bce, m.agree, m.n
     );
-    log.write(&json!({"step": step, "mode": mode, "val": m}))
+    let Some(c) = c else {
+        return log.write(&json!({"step": step, "mode": mode, "val": m}));
+    };
+    // §7: the checkpoint loss, the mean of the two validation BCEs
+    let ckpt = 0.5 * (m.bce + c.bce);
+    println!(
+        "step {step:>6} val {mode}: conversations at d = 0.2 s: AUC {:.4} bce {:.4} ({} records); checkpoint loss {ckpt:.4}",
+        c.auc, c.bce, c.n
+    );
+    log.write(&json!({"step": step, "mode": mode, "val": m, "conv": c, "ckpt_loss": ckpt}))
+}
+
+/// The validation of both sources: Smart Turn's clips at d = 0 and, in a v3 run, the
+/// conversation records at d = 0.2 s.
+fn val_both(
+    p: &ParamMap,
+    cfg: &TurnConfig,
+    data: &Data,
+    conv: Option<&Conv>,
+    qat: bool,
+    limit: usize,
+) -> Result<(ValMetrics, Option<ConvMetrics>)> {
+    let m = validate_first(p, cfg, data, qat, limit)?;
+    let c = conv
+        .map(|c| validate_conv(p, cfg, c, qat, limit))
+        .transpose()?;
+    Ok((m, c))
 }
 
 /// The batch of a training step: a function of the seed and the step.
@@ -319,7 +514,37 @@ fn train_on(a: &TrainArgs) -> Result<()> {
         }
         let mut cfg = TurnConfig::load(&a.config, a.rung.as_deref())?;
         cfg.qat_grad_a = a.qat_grad_a;
-        let params = model::init(&cfg, a.seed)?;
+        let mut params = model::init(&cfg, a.seed)?;
+        if let Some(dir) = &a.init {
+            // s6-ear v3 (§4, §6): the weights of a checkpoint of the same graph, its files the
+            // recorded ones; the optimizer starts fresh
+            let list = a.init_sha256.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("--init needs --init-sha256 (runs/s6-ear3-nano/init.json)")
+            })?;
+            check_init(dir, list)?;
+            let (icfg, ip) = load_run(dir)?;
+            if !same_graph(&icfg, &cfg) {
+                bail!(
+                    "{}: not the graph of {} ({icfg:?})",
+                    dir.display(),
+                    a.config.display()
+                );
+            }
+            let n = params::load_matching(&mut params, &ip)?;
+            if n != params.len() || n != ip.len() {
+                bail!(
+                    "{}: {} tensors, {n} of them in the {} of the graph",
+                    dir.display(),
+                    ip.len(),
+                    params.len()
+                );
+            }
+            println!(
+                "weights from {} ({n} tensors, sha256 as {}); a fresh optimizer",
+                dir.display(),
+                list.display()
+            );
+        }
         Session {
             state: TurnState {
                 step: 0,
@@ -361,22 +586,89 @@ fn train_on(a: &TrainArgs) -> Result<()> {
     if lw != LossWeights::HARD && data.with_teacher(&data.train) < data.train.len() {
         bail!("distillation needs the teacher's targets of every training part (turn-teacher.py)");
     }
+    // s6-ear v3: the conversation records and the Smart Turn extension (§3.6)
+    let v3: Option<(Conv, Ext)> = match &a.conv {
+        None => None,
+        Some(c) => {
+            let e = a
+                .st_ext
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("--conv needs --st-ext (sky-data turn-extend)"))?;
+            let conv = Conv::open(c, a.conv_max_train, a.conv_max_val)?;
+            let ext = Ext::open(e)?;
+            println!(
+                "conversations {}: {} hold and {} end-of-turn training records, {} val, {} skipped; extension {}: {} clips; share {}, d = 0 on {} of the Smart Turn rows",
+                c.display(),
+                conv.train[0].len(),
+                conv.train[1].len(),
+                conv.val.len(),
+                conv.skipped,
+                e.display(),
+                ext.by_id.len(),
+                a.conv_share,
+                a.st_d0
+            );
+            Some((conv, ext))
+        }
+    };
     let mut log = JsonLog::open(&a.out.join("log.jsonl"))?;
     log.write(&json!({"step": s.state.step, "data": {
         "train": data.train.len(), "val": data.val.len(), "skipped": data.skipped,
-        "with_teacher": data.with_teacher(&data.train)}, "weights": lw}))?;
+        "with_teacher": data.with_teacher(&data.train),
+        "conv": v3.as_ref().map(|(c, e)| json!({"train_hold": c.train[0].len(),
+            "train_eot": c.train[1].len(), "val": c.val.len(), "skipped": c.skipped,
+            "ext": e.by_id.len(), "conv_share": a.conv_share, "st_d0": a.st_d0})),
+        "init": a.init}, "weights": lw}))?;
     let aug = (!a.no_augment).then_some(Augment::PREREG);
     // the batches are prepared ahead by a producer thread, deterministically in the step
     let (tx, rx) = std::sync::mpsc::sync_channel::<Result<HostBatch>>(4);
     let data = std::sync::Arc::new(data);
+    let v3 = std::sync::Arc::new(v3);
     let producer = {
-        let (cfg, data, seed, batch, start) =
-            (cfg.clone(), data.clone(), a.seed, a.batch, s.state.step);
+        let (cfg, data, v3, seed, batch, start) = (
+            cfg.clone(),
+            data.clone(),
+            v3.clone(),
+            a.seed,
+            a.batch,
+            s.state.step,
+        );
+        let mix = Mix {
+            conv_share: a.conv_share,
+            st_d0: a.st_d0,
+        };
         std::thread::spawn(move || {
             let mut order = Order::new(seed, data.train.len());
             let mut step = start;
+            // the Smart Turn rows of a v3 run take the epoch order where the earlier steps left it
+            let mut st_k = match &*v3 {
+                Some(_) => st_draws_before(seed, start, batch, mix.conv_share),
+                None => 0,
+            };
             loop {
-                let b = step_batch(&cfg, &data, &mut order, seed, step, batch, aug.as_ref());
+                let b = match &*v3 {
+                    None => step_batch(&cfg, &data, &mut order, seed, step, batch, aug.as_ref()),
+                    Some((conv, ext)) => {
+                        let src = Sources {
+                            st: &data,
+                            ext,
+                            conv,
+                            mix,
+                            st_hard: lw.hard,
+                        };
+                        mixed_batch(
+                            &cfg,
+                            &src,
+                            seed,
+                            step,
+                            batch,
+                            aug.as_ref(),
+                            &mut order,
+                            &mut st_k,
+                        )
+                        .map(|(b, _)| b)
+                    }
+                };
                 if tx.send(b).is_err() {
                     break;
                 }
@@ -384,6 +676,7 @@ fn train_on(a: &TrainArgs) -> Result<()> {
             }
         })
     };
+    let conv = (*v3).as_ref().map(|(c, _)| c);
     let mut ema: Option<ParamMap> = (a.ema > 0.0).then(|| params::deep_clone(&s.params));
     let ema_dir = a.out.join("last-ema");
     if resumed && a.ema > 0.0 && ema_dir.join("model.safetensors").exists() {
@@ -402,10 +695,10 @@ fn train_on(a: &TrainArgs) -> Result<()> {
         let frac = progress.frac(s.state.step, s.state.elapsed_secs);
         if !s.state.qat && qat_due(frac, a.qat_frac) {
             println!("step {}: starting ternary QAT", s.state.step);
-            let f = validate(&s.params, &cfg, &data, false)?;
-            let t = validate(&s.params, &cfg, &data, true)?;
-            log_val(&mut log, s.state.step, "f32", &f)?;
-            log_val(&mut log, s.state.step, "ternary", &t)?;
+            let f = val_both(&s.params, &cfg, &data, conv, false, 0)?;
+            let t = val_both(&s.params, &cfg, &data, conv, true, 0)?;
+            log_val(&mut log, s.state.step, "f32", &f.0, f.1.as_ref())?;
+            log_val(&mut log, s.state.step, "ternary", &t.0, t.1.as_ref())?;
             s.save(&a.out.join("pre-qat"), None)?;
             s.state.qat = true;
         }
@@ -453,8 +746,14 @@ fn train_on(a: &TrainArgs) -> Result<()> {
             (wl, wn, wtime) = (0.0, 0, Instant::now());
         }
         if step % a.eval_every == 0 {
-            let m = validate_first(&s.params, &cfg, &data, qat, a.curve_val)?;
-            log_val(&mut log, step, if qat { "ternary" } else { "f32" }, &m)?;
+            let (m, c) = val_both(&s.params, &cfg, &data, conv, qat, a.curve_val)?;
+            log_val(
+                &mut log,
+                step,
+                if qat { "ternary" } else { "f32" },
+                &m,
+                c.as_ref(),
+            )?;
         }
         if last_ckpt.elapsed().as_secs_f64() >= a.checkpoint_minutes * 60.0 {
             s.save(&last, None)?;
@@ -488,8 +787,8 @@ fn train_on(a: &TrainArgs) -> Result<()> {
             )
             .collect();
     for (mode, p, qat) in finals {
-        let m = validate(p, &cfg, &data, qat)?;
-        log_val(&mut log, s.state.step, mode, &m)?;
+        let (m, c) = val_both(p, &cfg, &data, conv, qat, 0)?;
+        log_val(&mut log, s.state.step, mode, &m, c.as_ref())?;
     }
     log.write(&json!({"step": s.state.step, "final": true,
         "elapsed_min": s.state.elapsed_secs / 60.0,
@@ -580,7 +879,203 @@ pub(crate) mod tests {
             ns_polish: 2,
             wd_mode: WdMode::Decoupled,
             cpu: true,
+            conv: None,
+            st_ext: None,
+            conv_share: 0.5,
+            st_d0: 0.25,
+            conv_max_train: 0,
+            conv_max_val: 0,
+            init: None,
+            init_sha256: None,
         }
+    }
+
+    /// A tiny conversation store (s6-ear v3): each record a tone that falls (end of turn) or
+    /// rises (hold) for 2 s, then the trailing silence; three holds for one end of turn; the
+    /// asks up to 2.4 s (every third record up to 0.6 s only).
+    pub(crate) fn tiny_conv(dir: &Path, n: usize) {
+        std::fs::create_dir_all(dir).unwrap();
+        let mut fe = TurnFrontEnd::new();
+        let (mut feat, mut man) = (Vec::new(), String::new());
+        for i in 0..n {
+            let eot = i % 4 == 0;
+            let o = 32_000usize;
+            let dmax = if i % 3 == 2 { 600 } else { 2400 };
+            let mut ph = 0.0f32;
+            let mut pcm: Vec<f32> = (0..o)
+                .map(|k| {
+                    let u = k as f32 / o as f32;
+                    let f = if eot {
+                        230.0 - 100.0 * u
+                    } else {
+                        130.0 + 100.0 * u
+                    };
+                    ph += f / 16_000.0;
+                    0.3 * (std::f32::consts::TAU * ph).sin()
+                })
+                .collect();
+            pcm.extend((0..dmax * 16).map(|k| 0.001 * ((k * 7919 % 97) as f32 / 97.0 - 0.5)));
+            let (h, hops) = fe.hops(&pcm, 0);
+            let cut = (o - 640) / 160 + 1;
+            assert_eq!(hops, cut + dmax / 10);
+            let off = feat.len();
+            feat.extend(encode_hops(&h));
+            let split = if i % 5 == 4 { "val" } else { "train" };
+            man.push_str(&format!(
+                "{{\"id\":\"r{i}\",\"hops\":{hops},\"offset\":{off},\"split\":\"{split}\",\"label\":{eot},\"cut_hops\":{cut},\"dmax_ms\":{dmax}}}\n"
+            ));
+        }
+        std::fs::write(dir.join(feat_name("00000")), feat).unwrap();
+        std::fs::write(dir.join(manifest_name("00000")), man).unwrap();
+    }
+
+    /// The extension store of [`tiny_store`]'s clips: 240 hops of a quiet background each.
+    pub(crate) fn tiny_ext(dir: &Path, n: usize) {
+        std::fs::create_dir_all(dir).unwrap();
+        let mut fe = TurnFrontEnd::new();
+        let (mut feat, mut man) = (Vec::new(), String::new());
+        for i in 0..n {
+            let pcm: Vec<f32> = (0..39_040)
+                .map(|k| 0.002 * (((k + i) * 104_729 % 101) as f32 / 101.0 - 0.5))
+                .collect();
+            let (h, hops) = fe.hops(&pcm, 240);
+            assert_eq!(hops, 240);
+            let off = feat.len();
+            feat.extend(encode_hops(&h));
+            man.push_str(&format!(
+                "{{\"id\":\"c{i}\",\"hops\":240,\"offset\":{off},\"split\":\"train\"}}\n"
+            ));
+        }
+        std::fs::write(dir.join(feat_name("00000")), feat).unwrap();
+        std::fs::write(dir.join(manifest_name("00000")), man).unwrap();
+    }
+
+    fn sha256_list(dir: &Path, out: &Path, corrupt: bool) {
+        let mut files = serde_json::Map::new();
+        for name in ["config.json", "model.safetensors"] {
+            let o = std::process::Command::new("shasum")
+                .args(["-a", "256"])
+                .arg(dir.join(name))
+                .output()
+                .unwrap();
+            let mut h = String::from_utf8_lossy(&o.stdout)
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .to_string();
+            if corrupt && name == "model.safetensors" {
+                h = "0".repeat(64);
+            }
+            files.insert(name.to_string(), serde_json::Value::String(h));
+        }
+        std::fs::write(out, serde_json::json!({"files": files}).to_string()).unwrap();
+    }
+
+    /// s6-ear v3: a CPU run on both tiny sources learns, logs the conversation validation and the
+    /// checkpoint loss, resumes; `--init` starts from a checkpoint's weights (unchanged by a zero
+    /// rate) and refuses one whose sha256 differ.
+    #[test]
+    fn a_v3_cpu_run_mixes_both_sources_resumes_and_starts_from_a_checkpoint() {
+        let _g = test_util::lock();
+        let dir = tempfile::tempdir().unwrap();
+        tiny_store(&dir.path().join("store"), 60);
+        tiny_ext(&dir.path().join("ext"), 60);
+        tiny_conv(&dir.path().join("conv"), 60);
+        let a = TrainArgs {
+            conv: Some(dir.path().join("conv")),
+            st_ext: Some(dir.path().join("ext")),
+            steps: Some(60),
+            qat_frac: 0.0,
+            ..args(dir.path())
+        };
+        train(&TrainArgs {
+            stop_after: Some(30),
+            ..a.clone()
+        })
+        .unwrap();
+        train(&TrainArgs {
+            resume: true,
+            ..a.clone()
+        })
+        .unwrap();
+        let log = std::fs::read_to_string(a.out.join("log.jsonl")).unwrap();
+        let lines: Vec<serde_json::Value> = log
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        let losses: Vec<f64> = lines.iter().filter_map(|v| v["loss"].as_f64()).collect();
+        assert_eq!(losses.len(), 6);
+        assert!(losses.iter().all(|l| l.is_finite()), "{losses:?}");
+        let fin = lines
+            .iter()
+            .rev()
+            .find(|v| v["mode"] == "ema-ternary")
+            .unwrap();
+        assert!(
+            fin["conv"]["auc"].is_number() && fin["ckpt_loss"].is_number(),
+            "{fin}"
+        );
+        assert_eq!(fin["conv"]["n"], 12);
+        assert!(lines[0]["data"]["conv"]["train_eot"].as_u64().unwrap() > 0);
+        // the hard labels of both sources are learnt: the loss falls
+        let h = TrainArgs {
+            out: dir.path().join("hard"),
+            hard_only: true,
+            ema: 0.0,
+            steps: Some(300),
+            adam_lr: 5e-3,
+            log_every: 50,
+            ..a.clone()
+        };
+        train(&h).unwrap();
+        let hl: Vec<f64> = std::fs::read_to_string(h.out.join("log.jsonl"))
+            .unwrap()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter_map(|v| v["loss"].as_f64())
+            .collect();
+        let late = hl[hl.len() - 3..].iter().sum::<f64>() / 3.0;
+        assert!(late < 0.5 * hl[0], "{hl:?}");
+        // --init: the weights of last-ema, the optimizer fresh; a zero rate keeps them
+        let ck = a.out.join("last-ema");
+        let list = dir.path().join("init.json");
+        sha256_list(&ck, &list, false);
+        let b = TrainArgs {
+            out: dir.path().join("init-run"),
+            init: Some(ck.clone()),
+            init_sha256: Some(list.clone()),
+            adam_lr: 0.0,
+            weight_decay: 0.0,
+            steps: Some(2),
+            ema: 0.0,
+            qat_frac: 0.0,
+            ..a.clone()
+        };
+        train(&b).unwrap();
+        let (p0, p1) = (
+            params::load(&ck.join("model.safetensors")).unwrap(),
+            params::load(&b.out.join("last/model.safetensors")).unwrap(),
+        );
+        assert_eq!(p0.len(), p1.len());
+        for (k, v) in &p0 {
+            assert_eq!(host_f32(v).unwrap(), host_f32(&p1[k]).unwrap(), "{k}");
+        }
+        // a checkpoint whose files differ from the list is refused, and --init needs the list
+        let bad = dir.path().join("bad.json");
+        sha256_list(&ck, &bad, true);
+        let e = train(&TrainArgs {
+            out: dir.path().join("bad-run"),
+            init_sha256: Some(bad),
+            ..b.clone()
+        })
+        .unwrap_err();
+        assert!(format!("{e:#}").contains("refuses"), "{e:#}");
+        assert!(train(&TrainArgs {
+            out: dir.path().join("no-list"),
+            init_sha256: None,
+            ..b.clone()
+        })
+        .is_err());
     }
 
     /// A short CPU run on a tiny store: it learns, logs what the scripts read, resumes, and the

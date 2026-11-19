@@ -1,0 +1,16 @@
+{
+  "name": "s6-ear3-nano",
+  "about": "docs/s6-ear3-prereg.md §4: the graph of configs/s6-ear2-nano.json, rung R4 (v2's rung, no latency probe); v3 starts from v2's EMA checkpoint (sky-train turn-train --init) and must export the same tensor list, shapes and types",
+  "rung": "R4",
+  "hidden_size": 160,
+  "intermediate_size": 640,
+  "head_count": 2,
+  "blocks": 4,
+  "hops_per_position": 8,
+  "window_hops": 400,
+  "channels": 43,
+  "pool_hidden": 64,
+  "head_hidden": 64,
+  "rope_theta": 10000.0,
+  "norm_eps": 1e-05
+}

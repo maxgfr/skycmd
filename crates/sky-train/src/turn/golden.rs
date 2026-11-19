@@ -97,6 +97,7 @@ pub fn golden(cfg: &TurnConfig, out_dir: &Path, prefix: &str, seed: u64) -> Resu
                 smask: vec![0.0; 25],
                 tmask: vec![0.0],
                 positions: vec![*positions],
+                hw: None,
                 rows: 1,
             };
             hb.x[(t - positions) * wd..].copy_from_slice(x);

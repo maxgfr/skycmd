@@ -186,4 +186,17 @@ mod tests {
         let text = serde_json::to_string(&r1).unwrap();
         assert!(text.contains("\"rung\":\"R1\"") && !text.contains("rungs"));
     }
+
+    /// s6-ear v3 (docs/s6-ear3-prereg.md §4): its config is v2's rung R4, unchanged.
+    #[test]
+    fn the_v3_config_is_v2s_r4() {
+        let path =
+            |n: &str| Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../configs/{n}.json"));
+        let v3 = TurnConfig::load(path("s6-ear3-nano"), None).unwrap();
+        let r4 = TurnConfig::load(path("s6-ear2-nano"), Some("R4")).unwrap();
+        assert_eq!(v3.name, "s6-ear3-nano");
+        assert!(crate::turn::train::same_graph(&v3, &r4));
+        let r3 = TurnConfig::load(path("s6-ear2-nano"), Some("R3")).unwrap();
+        assert!(!crate::turn::train::same_graph(&v3, &r3));
+    }
 }
