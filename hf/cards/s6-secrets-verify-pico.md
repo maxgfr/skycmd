@@ -18,8 +18,9 @@ tags:
 
 # s6-secrets-verify-pico
 
-> **Failed its pre-registered gate (G1): published as a result, not recommended as a standalone
-> detector; secretgate ships it only as an experimental option, off by default.** Gate G1
+> **Failed its pre-registered gate: published as a result, not for use.** It is not recommended as
+> a standalone detector; secretgate ships it only as an experimental option, off by default (below).
+> Gate G1
 > ([`docs/s6-secrets2-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets2-prereg.md)
 > §8) asked for a line F1 at least 0.15 above the best rule scanner on the CredData test, on every
 > repository and without the largest one. On every repository the model reached **0.8561**,
