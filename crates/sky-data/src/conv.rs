@@ -1730,6 +1730,28 @@ impl Crosscheck {
     }
 }
 
+/// The energy records of one cross-check session (`(channel, o, eot)` each, as `fetch-conv`
+/// writes them): a record without one of the three fields, or with a value of another type, is
+/// an error that names `at` (the file and line) and the record's index.
+fn energy_records(session: &Value, at: &str) -> Result<Vec<(usize, u64, bool)>> {
+    session["energy"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .map(|(j, r)| {
+            let field = |f: &str, ty: &str| anyhow!("{at}: energy record {j}: no {ty} `{f}`");
+            Ok((
+                r["channel"]
+                    .as_u64()
+                    .ok_or_else(|| field("channel", "integer"))? as usize,
+                r["o"].as_u64().ok_or_else(|| field("o", "integer"))?,
+                r["eot"].as_bool().ok_or_else(|| field("eot", "boolean"))?,
+            ))
+        })
+        .collect()
+}
+
 /// `conv-crosscheck`: every validation session's cross-check (`xcheck-*.jsonl` of `fetch-conv`,
 /// `silero-*.jsonl` of `scripts/turn-vadcheck.py`) into `<data>/conv/CROSSCHECK.json`.
 pub fn conv_crosscheck(data: &Path) -> Result<Value> {
@@ -1769,7 +1791,8 @@ pub fn conv_crosscheck(data: &Path) -> Result<Value> {
                 .collect();
             runs.insert(key, r);
         }
-        for line in BufReader::new(File::open(cd.dir.join(&name))?).lines() {
+        let input = cd.dir.join(&name);
+        for (k, line) in BufReader::new(File::open(&input)?).lines().enumerate() {
             let s: Value = serde_json::from_str(&line?)?;
             let id = s["session"].as_str().unwrap_or("").to_string();
             let red: Vec<(u64, u64)> = s["redactions"]
@@ -1778,18 +1801,7 @@ pub fn conv_crosscheck(data: &Path) -> Result<Value> {
                 .flatten()
                 .map(|p| (p[0].as_u64().unwrap_or(0), p[1].as_u64().unwrap_or(0)))
                 .collect();
-            let energy: Vec<(usize, u64, bool)> = s["energy"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|r| {
-                    (
-                        r["channel"].as_u64().unwrap_or(0) as usize,
-                        r["o"].as_u64().unwrap_or(0),
-                        r["eot"].as_bool().unwrap_or(false),
-                    )
-                })
-                .collect();
+            let energy = energy_records(&s, &format!("{}:{}", input.display(), k + 1))?;
             let (a, b) = (
                 runs.get(&(id.clone(), 0))
                     .ok_or_else(|| anyhow!("{}: no Silero runs of {id}:0", sil.display()))?,
@@ -2287,6 +2299,99 @@ mod tests {
             ry["instant"]["eot_silero_hears_a_at_first_ask"]["median_remaining_ms"],
             300
         );
+    }
+
+    #[test]
+    fn energy_records_read_as_before_and_a_missing_field_is_an_error() {
+        let dir = tmp("energy-records");
+        let cd = ConvDir::new(&dir);
+        conv_fixture(&dir, 5).unwrap();
+        let before = conv_crosscheck(&dir).unwrap();
+        // the reading of the code before the check, with its defaults
+        let old = |s: &Value| -> Vec<(usize, u64, bool)> {
+            s["energy"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|r| {
+                    (
+                        r["channel"].as_u64().unwrap_or(0) as usize,
+                        r["o"].as_u64().unwrap_or(0),
+                        r["eot"].as_bool().unwrap_or(false),
+                    )
+                })
+                .collect()
+        };
+        let mut shards: Vec<PathBuf> = fs::read_dir(&cd.dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("xcheck-") && n.ends_with(".jsonl"))
+            })
+            .collect();
+        shards.sort();
+        let mut n = 0;
+        for p in &shards {
+            for line in fs::read_to_string(p).unwrap().lines() {
+                let s: Value = serde_json::from_str(line).unwrap();
+                let new = energy_records(&s, "t").unwrap();
+                assert_eq!(new, old(&s));
+                n += new.len();
+            }
+        }
+        assert!(n > 0, "the fixture has no energy record");
+
+        let s = json!({"energy": [
+            {"channel": 0, "o": 16000, "eot": true},
+            {"channel": 1, "o": 32000, "eot": false}
+        ]});
+        assert_eq!(
+            energy_records(&s, "f:2").unwrap(),
+            [(0, 16000, true), (1, 32000, false)]
+        );
+        assert!(energy_records(&json!({"session": "x"}), "f:2")
+            .unwrap()
+            .is_empty());
+        for f in ["channel", "o", "eot"] {
+            let mut bad = s.clone();
+            bad["energy"][1].as_object_mut().unwrap().remove(f);
+            let e = energy_records(&bad, "f:7").unwrap_err().to_string();
+            assert!(
+                e.starts_with("f:7: energy record 1: ") && e.contains(&format!("`{f}`")),
+                "{e}"
+            );
+            let mut bad = s.clone();
+            bad["energy"][0][f] = json!("1");
+            assert!(energy_records(&bad, "f:7").is_err(), "{f} as a string");
+        }
+
+        // through conv-crosscheck: a shard line whose record lacks `eot` stops it, with its place
+        let first = &shards[0];
+        let text = fs::read_to_string(first).unwrap();
+        let mut lines: Vec<Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let k = lines
+            .iter()
+            .position(|s| s["energy"].as_array().is_some_and(|a| !a.is_empty()))
+            .unwrap();
+        lines[k]["energy"][0].as_object_mut().unwrap().remove("eot");
+        let patched: String = lines.iter().map(|s| format!("{s}\n")).collect();
+        fs::write(first, patched).unwrap();
+        let e = conv_crosscheck(&dir).unwrap_err().to_string();
+        assert!(
+            e.contains(&format!(
+                ".jsonl:{}: energy record 0: no boolean `eot`",
+                k + 1
+            )),
+            "{e}"
+        );
+        // restored, the report is the one before
+        fs::write(first, text).unwrap();
+        assert_eq!(conv_crosscheck(&dir).unwrap(), before);
     }
 
     #[test]
