@@ -20,7 +20,7 @@
 //! step that would cross it stops cleanly with [`DiskLow`] (exit status 3) and resumes where it
 //! stopped on the next run (a finished part is never redone).
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -185,7 +185,7 @@ pub fn pcm16_sha256(pcm: &[f32]) -> String {
     sha256_hex(&wav[44..])
 }
 
-fn sha256_hex(b: &[u8]) -> String {
+pub(crate) fn sha256_hex(b: &[u8]) -> String {
     ring::digest::digest(&ring::digest::SHA256, b)
         .as_ref()
         .iter()
@@ -194,7 +194,7 @@ fn sha256_hex(b: &[u8]) -> String {
 }
 
 /// The data chunk of a 16-bit PCM WAV file (as `write_wav` writes them).
-fn wav_data(bytes: &[u8]) -> Result<&[u8]> {
+pub(crate) fn wav_data(bytes: &[u8]) -> Result<&[u8]> {
     let mut i = 12usize;
     while i + 8 <= bytes.len() {
         let len =
@@ -208,7 +208,7 @@ fn wav_data(bytes: &[u8]) -> Result<&[u8]> {
 }
 
 /// Writes one part of a store: hops appended to `feat-<tag>.bin`, the manifest written last.
-struct PartWriter {
+pub(crate) struct PartWriter {
     dir: PathBuf,
     tag: String,
     feat: std::io::BufWriter<File>,
@@ -217,7 +217,7 @@ struct PartWriter {
 }
 
 impl PartWriter {
-    fn new(dir: &Path, tag: &str) -> Result<Self> {
+    pub(crate) fn new(dir: &Path, tag: &str) -> Result<Self> {
         fs::create_dir_all(dir)?;
         Ok(PartWriter {
             dir: dir.to_path_buf(),
@@ -228,7 +228,7 @@ impl PartWriter {
         })
     }
 
-    fn put(&mut self, hops: &[f32], n: usize, mut meta: Value) -> Result<()> {
+    pub(crate) fn put(&mut self, hops: &[f32], n: usize, mut meta: Value) -> Result<()> {
         self.feat.write_all(&encode_hops(hops))?;
         meta["hops"] = json!(n);
         meta["offset"] = json!(self.offset);
@@ -237,7 +237,7 @@ impl PartWriter {
         Ok(())
     }
 
-    fn finish(mut self) -> Result<usize> {
+    pub(crate) fn finish(mut self) -> Result<usize> {
         self.feat.flush()?;
         let tmp = self.dir.join(format!("{}.tmp", manifest_name(&self.tag)));
         let mut f = File::create(&tmp)?;
@@ -251,7 +251,7 @@ impl PartWriter {
 }
 
 /// Runs `f` over `items` on `threads` threads, each with its own front end; results in order.
-fn par_map<T: Sync, U: Send>(
+pub(crate) fn par_map<T: Sync, U: Send>(
     items: &[T],
     threads: usize,
     f: impl Fn(&mut TurnFrontEnd, &T) -> U + Sync,
@@ -428,7 +428,7 @@ pub fn leak_rule(id: &str, pcm: &[f32], ids: &HashSet<String>, hashes: &HashSet<
     Leak::Keep
 }
 
-fn shard_tag(i: usize) -> String {
+pub(crate) fn shard_tag(i: usize) -> String {
     format!("{i:05}")
 }
 
@@ -439,7 +439,7 @@ pub fn shard_path(out: &Path, i: usize) -> PathBuf {
 }
 
 /// Rows of one parquet row group.
-fn group_rows(path: &Path, rg: usize) -> Result<Vec<Row>> {
+pub(crate) fn group_rows(path: &Path, rg: usize) -> Result<Vec<Row>> {
     let reader = SerializedFileReader::new(File::open(path)?)?;
     let g = reader.get_row_group(rg)?;
     g.get_row_iter(None)?
@@ -447,7 +447,7 @@ fn group_rows(path: &Path, rg: usize) -> Result<Vec<Row>> {
         .collect()
 }
 
-fn row_groups(path: &Path) -> Result<usize> {
+pub(crate) fn row_groups(path: &Path) -> Result<usize> {
     Ok(SerializedFileReader::new(File::open(path)?)?.num_row_groups())
 }
 
@@ -659,9 +659,37 @@ pub struct EotOptions {
     /// Turns read per file (0: all; a dry run).
     pub max_turns: usize,
     pub threads: usize,
-    /// Only remove the parquet files whose Smart Turn pass is written (`smartturn-<tag>.done`).
+    /// Only remove the parquet files whose Smart Turn pass is written (`smartturn-<tag>.done`;
+    /// in span mode, `smartturn200-<tag>.done` as well).
     pub drop_only: bool,
+    /// s6-ear v3 (docs/s6-ear3-prereg.md §8.3, §16): one record per span ([`span_hops`]) instead
+    /// of one cut at the span's start.
+    pub spans: bool,
+    /// The revision of eot-bench (v2: `main`, its commit recorded; v3: v2's commit).
+    pub revision: String,
     pub guard: Guard,
+}
+
+/// v3's span records (docs/s6-ear3-prereg.md §8.3 and amendment 1): the hops of a span from its
+/// start − 4.0 s (the window of v2's cut, for the harness check of §8.1) to its start + `dmax`,
+/// the largest ask of 0, 0.2, …, 2.4 s that fits inside the span (`start + d ≤ end`, in samples)
+/// and inside the audio. `cut` and `end` are samples, `len` the audio's; hop `j` reads
+/// `[160 j, 160 j + 640)`. Returns `(first hop, hops stored, cut_hops, dmax_ms)`, `cut_hops` the
+/// stored hops whose span ends at or before the cut.
+pub fn span_hops(cut: usize, end: usize, len: usize) -> (usize, usize, usize, u64) {
+    let upto = |x: usize| dsp::turn_hop_count(x.min(len));
+    let c = upto(cut);
+    let first = c.saturating_sub(TURN_WINDOW_HOPS);
+    let mut d = if end >= cut {
+        ((end - cut) / 3200 * 200).min(2400) as u64
+    } else {
+        0
+    };
+    while d > 0 && cut + d as usize * 16 > len {
+        d -= 200;
+    }
+    let last = upto(cut + d as usize * 16);
+    (first, last - first, c - first, d)
 }
 
 /// The cuts of one turn (§8.4): every span labelled `eot` or `hold`, the audio cut at its start.
@@ -697,7 +725,7 @@ fn field_json(row: &Row, col: &str) -> Value {
 
 /// `turn-eotbench`.
 pub fn turn_eotbench(hf: &Hf, o: &EotOptions) -> Result<Value> {
-    let commit = hf.repo_commit(RepoKind::Dataset, EOT_REPO, EOT_REVISION)?;
+    let commit = hf.repo_commit(RepoKind::Dataset, EOT_REPO, &o.revision)?;
     let mut files: Vec<RepoFile> = hf
         .repo_files(RepoKind::Dataset, EOT_REPO, &commit)?
         .into_iter()
@@ -728,7 +756,8 @@ pub fn turn_eotbench(hf: &Hf, o: &EotOptions) -> Result<Value> {
             .unwrap_or("00000");
         let tag = format!("{lang}-{k}");
         let path = base.join("parquet").join(format!("{tag}.parquet"));
-        let st_done = store.join(format!("smartturn-{tag}.done")).exists();
+        let st_done = store.join(format!("smartturn-{tag}.done")).exists()
+            && (!o.spans || store.join(format!("smartturn200-{tag}.done")).exists());
         if o.drop_only {
             if st_done && path.exists() {
                 fs::remove_file(&path)?;
@@ -766,12 +795,35 @@ pub fn turn_eotbench(hf: &Hf, o: &EotOptions) -> Result<Value> {
                 row += 1;
                 turns += 1;
             }
+            let spans = o.spans;
             let results = par_map(&items, o.threads, |fe, (_, bytes, cs)| {
                 let pcm = decode_16k(bytes.as_ref()?).ok()?;
                 Some(
                     cs.iter()
-                        .map(|&(_, _, _, _, cut)| {
-                            fe.hops(&pcm[..cut.min(pcm.len())], TURN_WINDOW_HOPS)
+                        .map(|&(_, _, _, end, cut)| {
+                            if !spans {
+                                let (h, n) = fe.hops(&pcm[..cut.min(pcm.len())], TURN_WINDOW_HOPS);
+                                return (h, n, json!({}));
+                            }
+                            let end_s = (end * SAMPLE_RATE as f64).round().max(0.0) as usize;
+                            let (first, n, cut_hops, dmax) = span_hops(cut, end_s, pcm.len());
+                            let mut h = vec![0.0f32; n * dsp::TURN_CHANNELS];
+                            for (i, row) in h
+                                .as_chunks_mut::<{ dsp::TURN_CHANNELS }>()
+                                .0
+                                .iter_mut()
+                                .enumerate()
+                            {
+                                let s = (first + i) * dsp::HOP;
+                                fe.hop(&pcm[s..s + dsp::TURN_SPAN], row);
+                            }
+                            let len = end_s.saturating_sub(cut);
+                            (
+                                h,
+                                n,
+                                json!({"end_sample": end_s, "dmax_ms": dmax, "cut_hops": cut_hops,
+                                "short": len < 3200, "long_hold": len > 80_000}),
+                            )
                         })
                         .collect::<Vec<_>>(),
                 )
@@ -782,8 +834,17 @@ pub fn turn_eotbench(hf: &Hf, o: &EotOptions) -> Result<Value> {
                     continue;
                 };
                 let turn = meta["turn"].as_str().unwrap_or("");
-                for (&(k, eot, start, end, cut), (h, n)) in cs.iter().zip(hops) {
+                for (&(k, eot, start, end, cut), (h, n, extra)) in cs.iter().zip(hops) {
                     let mut m = meta.clone();
+                    if let Value::Object(x) = extra {
+                        for (key, v) in x {
+                            m[key.as_str()] = v;
+                        }
+                    }
+                    if o.spans {
+                        // the 5 s rule of §8.3 concerns holds only
+                        m["long_hold"] = json!(!eot && m["long_hold"] == true);
+                    }
                     m["id"] = json!(format!("{turn}#{k}"));
                     m["span"] = json!(k);
                     m["label"] = json!(eot);
@@ -805,7 +866,7 @@ pub fn turn_eotbench(hf: &Hf, o: &EotOptions) -> Result<Value> {
         eprintln!("[turn-eotbench] {tag}: {r}");
         report.insert(tag, r);
     }
-    let v = json!({"repo": EOT_REPO, "revision": EOT_REVISION, "commit": commit, "files": report});
+    let v = json!({"repo": EOT_REPO, "revision": o.revision, "commit": commit, "spans": o.spans, "files": report});
     fs::write(
         base.join(format!("REPORT-{}.json", chrono_free_stamp())),
         serde_json::to_string_pretty(&v)? + "\n",
@@ -819,6 +880,326 @@ fn chrono_free_stamp() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+// ----------------------------------------------------------------------------- turn-extend
+
+/// s6-ear v3 (docs/s6-ear3-prereg.md §3.4): the hops that follow a clip's end, 240 of them, the
+/// trailing silence of the asks up to 2.4 s.
+pub const EXT_HOPS: usize = 240;
+/// The fill appended to the clip's PCM: 2.44 s, more than the 240 hops read (2.4 s).
+pub const FILL_SAMPLES: usize = 39_040;
+/// The quietest share of the clip's 10 ms frames makes its background, at least this many.
+pub const FILL_SHARE: f64 = 0.10;
+pub const FILL_MIN_FRAMES: usize = 20;
+/// The raised-cosine cross-fade between the frames of the fill (2.5 ms).
+pub const FILL_FADE: usize = 40;
+/// Below this RMS the clip's floor is digital silence and the fill is zeros.
+pub const DIGITAL_SILENCE: f64 = 1e-5;
+
+/// The fill of a clip (§3.4 and amendment 1): its 10 ms frames of lowest RMS (the lowest 10%,
+/// at least 20, all of them for a shorter clip), joined in an order drawn from a seed of the clip
+/// id (seeded permutations, one after the other) with 2.5 ms raised-cosine cross-fades, cut to
+/// [`FILL_SAMPLES`]; zeros when the pooled RMS of those frames is below 1e-5. Returns the fill
+/// and whether it is zeros.
+pub fn fill(pcm: &[f32], id: &str) -> (Vec<f32>, bool) {
+    let frames: Vec<&[f32]> = pcm.as_chunks::<160>().0.iter().map(|f| &f[..]).collect();
+    if frames.is_empty() {
+        return (vec![0.0; FILL_SAMPLES], true);
+    }
+    let rms: Vec<f64> = frames
+        .iter()
+        .map(|f| (f.iter().map(|&x| x as f64 * x as f64).sum::<f64>() / 160.0).sqrt())
+        .collect();
+    let mut order: Vec<usize> = (0..frames.len()).collect();
+    order.sort_by(|&a, &b| rms[a].total_cmp(&rms[b]).then(a.cmp(&b)));
+    let k = ((frames.len() as f64 * FILL_SHARE) as usize)
+        .max(FILL_MIN_FRAMES)
+        .min(frames.len());
+    let quiet = &order[..k];
+    let pooled = (quiet.iter().map(|&i| rms[i] * rms[i]).sum::<f64>() / k as f64).sqrt();
+    if pooled < DIGITAL_SILENCE {
+        return (vec![0.0; FILL_SAMPLES], true);
+    }
+    let mut rng = crate::rng::Rng::derived(0, &format!("turn3/fill/{id}"));
+    let fade: Vec<f32> = (0..FILL_FADE)
+        .map(|i| {
+            (0.5 - 0.5 * (std::f64::consts::PI * (i as f64 + 0.5) / FILL_FADE as f64).cos()) as f32
+        })
+        .collect();
+    let mut out: Vec<f32> = Vec::with_capacity(FILL_SAMPLES + 160);
+    let mut perm: Vec<usize> = Vec::new();
+    while out.len() < FILL_SAMPLES {
+        if perm.is_empty() {
+            perm = quiet.to_vec();
+            rng.shuffle(&mut perm);
+            perm.reverse();
+        }
+        let f = frames[perm.pop().expect("non-empty")];
+        if out.is_empty() {
+            out.extend_from_slice(f);
+            continue;
+        }
+        let at = out.len() - FILL_FADE;
+        for i in 0..FILL_FADE {
+            out[at + i] = out[at + i] * (1.0 - fade[i]) + f[i] * fade[i];
+        }
+        out.extend_from_slice(&f[FILL_FADE..]);
+    }
+    out.truncate(FILL_SAMPLES);
+    (out, false)
+}
+
+/// The 240 hops after a clip's end on its PCM extended by [`fill`]: the hops `n .. n + 240` of
+/// the extended clip, `n` the clip's own hop count. With the clip's own hops before them, they
+/// are the hops of the extended clip, exactly (a hop exists once its whole span has arrived).
+/// Returns the hops, whether the fill is zeros, and the clip's last own hop (`None` when the clip
+/// is shorter than one span).
+pub fn extension_hops(
+    fe: &mut TurnFrontEnd,
+    pcm: &[f32],
+    id: &str,
+) -> (Vec<f32>, bool, Option<Vec<f32>>) {
+    let n = dsp::turn_hop_count(pcm.len());
+    let (f, zeros) = fill(pcm, id);
+    let mut ext = Vec::with_capacity(pcm.len() + f.len());
+    ext.extend_from_slice(pcm);
+    ext.extend_from_slice(&f);
+    let mut out = vec![0.0f32; EXT_HOPS * dsp::TURN_CHANNELS];
+    for (i, row) in out
+        .as_chunks_mut::<{ dsp::TURN_CHANNELS }>()
+        .0
+        .iter_mut()
+        .enumerate()
+    {
+        let s = (n + i) * dsp::HOP;
+        fe.hop(&ext[s..s + dsp::TURN_SPAN], row);
+    }
+    let last = (n > 0).then(|| {
+        let mut row = vec![0.0f32; dsp::TURN_CHANNELS];
+        let s = (n - 1) * dsp::HOP;
+        fe.hop(&pcm[s..s + dsp::TURN_SPAN], &mut row);
+        row
+    });
+    (out, zeros, last)
+}
+
+/// Options of `turn-extend`.
+#[derive(Clone, Debug)]
+pub struct ExtendOptions {
+    /// v3's data folder: `shards/` (transient), `st-ext/`, `st-ext-test/`.
+    pub out: PathBuf,
+    /// v2's data folder: `train/` (its manifests give the kept clips and their rows), `test/`.
+    pub v2: PathBuf,
+    /// Shards to process (all when empty).
+    pub shards: Vec<usize>,
+    pub threads: usize,
+    /// The test clips instead (v1's WAVs, named by `clips`), into `st-ext-test/`.
+    pub test: bool,
+    pub clips: PathBuf,
+    pub guard: Guard,
+}
+
+/// v2's stored last hop of each clip of a part: id → its f16 bytes.
+fn v2_last_hops(dir: &Path, tag: &str) -> Result<HashMap<String, Vec<u8>>> {
+    let man = dir.join(manifest_name(tag));
+    let mut feat = File::open(dir.join(feat_name(tag)))
+        .with_context(|| format!("{} (v2's store)", dir.display()))?;
+    let mut out = HashMap::new();
+    for line in BufReader::new(File::open(&man)?).lines() {
+        let v: Value = serde_json::from_str(&line?)?;
+        let (n, off) = (
+            v["hops"].as_u64().unwrap_or(0),
+            v["offset"].as_u64().unwrap_or(0),
+        );
+        if n == 0 {
+            continue;
+        }
+        let mut b = vec![0u8; HOP_BYTES];
+        use std::io::{Seek, SeekFrom};
+        feat.seek(SeekFrom::Start(off + (n - 1) * HOP_BYTES as u64))?;
+        feat.read_exact(&mut b)?;
+        out.insert(v["id"].as_str().unwrap_or("").to_string(), b);
+    }
+    Ok(out)
+}
+
+/// What `turn-extend` did to one part.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct ExtendReport {
+    pub clips: usize,
+    pub zero_fill: usize,
+    /// Clips whose recomputed last hop is not v2's stored one (the decoding changed).
+    pub last_hop_mismatch: usize,
+    /// v2's clips without a hop (shorter than 40 ms): no extension.
+    pub no_hops: usize,
+    pub undecodable: usize,
+}
+
+/// Extends the clips `(meta, pcm)` of one part into `dir` under `tag`.
+fn extend_part(
+    items: &[(Value, Option<Vec<f32>>)],
+    dir: &Path,
+    tag: &str,
+    last: &HashMap<String, Vec<u8>>,
+    threads: usize,
+) -> Result<ExtendReport> {
+    let mut part = PartWriter::new(dir, tag)?;
+    let mut rep = ExtendReport::default();
+    for chunk in items.chunks(1024) {
+        let out = par_map(chunk, threads, |fe, (meta, pcm)| {
+            let id = meta["id"].as_str().unwrap_or("");
+            pcm.as_ref().map(|p| extension_hops(fe, p, id))
+        });
+        for ((meta, _), r) in chunk.iter().zip(out) {
+            let Some((h, zeros, own)) = r else {
+                rep.undecodable += 1;
+                continue;
+            };
+            let Some(own) = own else {
+                rep.no_hops += 1;
+                continue;
+            };
+            let id = meta["id"].as_str().unwrap_or("");
+            let matches = last.get(id).is_some_and(|b| *b == encode_hops(&own));
+            rep.last_hop_mismatch += !matches as usize;
+            rep.zero_fill += zeros as usize;
+            rep.clips += 1;
+            let mut m = json!({"id": id, "split": meta["split"], "zero_fill": zeros, "last_hop_match": matches});
+            if let Some(l) = meta.get("label") {
+                m["label"] = l.clone();
+            }
+            part.put(&h, EXT_HOPS, m)?;
+        }
+    }
+    part.finish()?;
+    fs::write(
+        dir.join(format!("ext-{tag}.json")),
+        serde_json::to_string_pretty(&rep)? + "\n",
+    )?;
+    Ok(rep)
+}
+
+/// `turn-extend`: the 83 training shards again (v2's kept clips, from v2's manifests), or with
+/// `test` v1's test WAVs; one `st-ext` record of 240 hops per clip id.
+pub fn turn_extend(hf: &Hf, o: &ExtendOptions) -> Result<Value> {
+    if o.test {
+        let dir = o.out.join("st-ext-test");
+        if dir.join(manifest_name("test")).exists() {
+            return Ok(json!({"test": "done"}));
+        }
+        let base = o
+            .clips
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| anyhow!("{}: no data folder above it", o.clips.display()))?
+            .to_path_buf();
+        let mut items = Vec::new();
+        for line in BufReader::new(File::open(&o.clips)?).lines() {
+            let v: Value = serde_json::from_str(&line?)?;
+            if v["split"].as_str() != Some("test") {
+                continue;
+            }
+            if let (Some(id), Some(wav)) = (v["id"].as_str(), v["wav"].as_str()) {
+                let pcm = fs::read(base.join(wav))
+                    .ok()
+                    .and_then(|b| dsp::read_wav(&b).ok())
+                    .map(|(p, r)| dsp::resample(&p, r, SAMPLE_RATE));
+                // no label is written: the test's labels are read by the gate only
+                items.push((json!({"id": id, "split": "test"}), pcm));
+            }
+        }
+        o.guard.check(
+            (items.len() * EXT_HOPS * HOP_BYTES) as u64,
+            "turn-extend --test",
+        )?;
+        let last = v2_last_hops(&o.v2.join("test"), "test")?;
+        let rep = extend_part(&items, &dir, "test", &last, o.threads)?;
+        return Ok(json!({"test": rep}));
+    }
+    let files: Vec<RepoFile> = {
+        let mut f: Vec<RepoFile> = hf
+            .repo_files(RepoKind::Dataset, TRAIN_REPO, TRAIN_REVISION)?
+            .into_iter()
+            .filter(|f| f.path.starts_with("data/train-") && f.path.ends_with(".parquet"))
+            .collect();
+        f.sort_by(|a, b| a.path.cmp(&b.path));
+        f
+    };
+    let shards: Vec<usize> = if o.shards.is_empty() {
+        (0..files.len()).collect()
+    } else {
+        o.shards.clone()
+    };
+    let dir = o.out.join("st-ext");
+    fs::create_dir_all(&dir)?;
+    let mut total = ExtendReport::default();
+    for &i in &shards {
+        let file = files
+            .get(i)
+            .ok_or_else(|| anyhow!("shard {i}: the release has {} shards", files.len()))?;
+        let tag = shard_tag(i);
+        let path = shard_path(&o.out, i);
+        if dir.join(manifest_name(&tag)).exists() {
+            fs::remove_file(&path).ok();
+            continue;
+        }
+        let v2dir = o.v2.join("train");
+        let mut want: HashMap<usize, Value> = HashMap::new();
+        for line in BufReader::new(
+            File::open(v2dir.join(manifest_name(&tag)))
+                .with_context(|| format!("v2's manifest of shard {tag}"))?,
+        )
+        .lines()
+        {
+            let v: Value = serde_json::from_str(&line?)?;
+            want.insert(v["row"].as_u64().unwrap_or(u64::MAX) as usize, v);
+        }
+        let reserve = (want.len() * EXT_HOPS * HOP_BYTES) as u64;
+        download_guarded(
+            hf,
+            TRAIN_REPO,
+            TRAIN_REVISION,
+            file,
+            &path,
+            &o.guard,
+            reserve,
+        )?;
+        o.guard
+            .check(reserve, &format!("extension of shard {tag}"))?;
+        let last = v2_last_hops(&v2dir, &tag)?;
+        let mut items = Vec::with_capacity(want.len());
+        let mut row = 0usize;
+        for rg in 0..row_groups(&path)? {
+            for r in group_rows(&path, rg)? {
+                if let Some(m) = want.get(&row) {
+                    let id = field_str(&r, "id").unwrap_or_default();
+                    if m["id"].as_str() != Some(id.as_str()) {
+                        bail!(
+                            "shard {tag} row {row}: id {id}, v2's manifest says {}",
+                            m["id"]
+                        );
+                    }
+                    let pcm = audio_bytes(&r, "audio").and_then(|b| decode_16k(&b).ok());
+                    items.push((
+                        json!({"id": m["id"], "split": m["split"], "label": m["label"]}),
+                        pcm,
+                    ));
+                }
+                row += 1;
+            }
+        }
+        // v2's manifest order (the rows of its part)
+        let rep = extend_part(&items, &dir, &tag, &last, o.threads)?;
+        eprintln!("[turn-extend] shard {tag}: {rep:?}");
+        total.clips += rep.clips;
+        total.zero_fill += rep.zero_fill;
+        total.last_hop_mismatch += rep.last_hop_mismatch;
+        total.no_hops += rep.no_hops;
+        total.undecodable += rep.undecodable;
+        fs::remove_file(&path)?;
+    }
+    Ok(json!({"repo": TRAIN_REPO, "revision": TRAIN_REVISION, "this_run": total}))
 }
 
 #[cfg(test)]
@@ -869,6 +1250,90 @@ mod tests {
         assert_eq!(c.len(), 2);
         assert_eq!(c[0], (0, true, 1.8, 3.0, 28_800));
         assert_eq!(c[1], (1, false, 0.5, 0.7, 8_000));
+    }
+
+    #[test]
+    fn the_extension_is_the_tail_of_the_hops_of_the_extended_pcm() {
+        for (secs, id) in [(1.73, "a"), (3.2, "b"), (0.05, "c")] {
+            let pcm = dsp::synth_speech(secs, 3, 0.4);
+            let mut fe = TurnFrontEnd::new();
+            let (ext, zeros, last) = extension_hops(&mut fe, &pcm, id);
+            assert!(!zeros);
+            let (f, _) = fill(&pcm, id);
+            assert_eq!(f.len(), FILL_SAMPLES);
+            let mut whole = pcm.clone();
+            whole.extend_from_slice(&f);
+            let (all, n_all) = fe.hops(&whole, 0);
+            let (own, n) = fe.hops(&pcm, 0);
+            assert!(n_all >= n + EXT_HOPS, "{id}");
+            // the clip's hops are the extended clip's first ones, the extension the next 240,
+            // bit for bit
+            let c = dsp::TURN_CHANNELS;
+            assert_eq!(&all[..n * c], &own[..], "{id}");
+            assert_eq!(&all[n * c..(n + EXT_HOPS) * c], &ext[..], "{id}");
+            assert_eq!(
+                last.as_deref(),
+                (n > 0).then(|| &own[(n - 1) * c..]),
+                "{id}"
+            );
+            // the view at d ends with the last hop whose span ends at or before clip end + d
+            let d_hops = 120; // d = 1.2 s
+            let end = n + d_hops;
+            assert!((end - 1) * 160 + 640 <= pcm.len() + 1200 * 16);
+            assert!(end * 160 + 640 > pcm.len() + 1200 * 16);
+        }
+    }
+
+    #[test]
+    fn the_fill_is_the_clips_own_background() {
+        let mut pcm = dsp::synth_speech(2.0, 1, 0.5);
+        // a quiet stretch at the start: the background
+        for x in pcm[..4800].iter_mut() {
+            *x *= 0.01;
+        }
+        let (a, za) = fill(&pcm, "x");
+        let (b, _) = fill(&pcm, "x");
+        let (c, _) = fill(&pcm, "y");
+        assert!(!za && a == b && a != c, "seeded by the clip id");
+        let rms = |v: &[f32]| {
+            (v.iter().map(|&x| x as f64 * x as f64).sum::<f64>() / v.len() as f64).sqrt()
+        };
+        assert!(rms(&a) < 0.2 * rms(&pcm), "{} {}", rms(&a), rms(&pcm));
+        // digital silence gives zeros
+        let mut silent = dsp::synth_speech(1.0, 2, 0.5);
+        for x in silent[..8000].iter_mut() {
+            *x = 0.0;
+        }
+        let (z, zz) = fill(&silent, "s");
+        assert!(zz && z.iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn span_records_hold_v2s_cut_and_the_asks_inside_the_span() {
+        let len = 240_000;
+        // a span of 1.3 s at 5.0 s: asks 0.2 to 1.2 s fit
+        let (first, n, cut_hops, dmax) = span_hops(80_000, 80_000 + 20_800, len);
+        assert_eq!(dmax, 1200);
+        let c = dsp::turn_hop_count(80_000);
+        assert_eq!((first, cut_hops), (c - 400, 400));
+        assert_eq!(n, 400 + 120);
+        // the d = 0 window is v2's cut: the hops of pcm[..cut], at most 400
+        let pcm = dsp::synth_speech(15.0, 4, 0.4);
+        let mut fe = TurnFrontEnd::new();
+        let (v2, v2n) = fe.hops(&pcm[..80_000], TURN_WINDOW_HOPS);
+        let (all, _) = fe.hops(&pcm, 0);
+        let c43 = dsp::TURN_CHANNELS;
+        assert_eq!(
+            &all[first * c43..(first + cut_hops) * c43],
+            &v2[..v2n * c43]
+        );
+        // a short span (0.15 s): d = 0 only; a span near the start: fewer hops before the cut
+        assert_eq!(span_hops(80_000, 82_400, len).3, 0);
+        let (first, _, cut_hops, _) = span_hops(8_000, 60_000, len);
+        assert_eq!((first, cut_hops), (0, dsp::turn_hop_count(8_000)));
+        // asks capped at 2.4 s, and at the audio's end
+        assert_eq!(span_hops(80_000, 230_000, len).3, 2400);
+        assert_eq!(span_hops(230_000, 300_000, len).3, 600);
     }
 
     #[test]

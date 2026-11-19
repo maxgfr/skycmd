@@ -658,6 +658,85 @@ enum Cmd {
         /// Only remove the files whose Smart Turn pass is written.
         #[arg(long)]
         drop: bool,
+        /// s6-ear v3 (docs/s6-ear3-prereg.md §8.3): one record per span, from its start - 4 s to
+        /// its start + the largest ask of 0-2.4 s inside it, instead of one cut at its start.
+        #[arg(long)]
+        spans: bool,
+        /// The dataset revision (v3 pins v2's commit, ae834af9).
+        #[arg(long, default_value = "main")]
+        revision: String,
+    },
+    /// s6-ear v3: the conversation records of docs/s6-ear3-prereg.md §3.2 from
+    /// otoearth/otoSpeech-full-duplex-280h (gated: HF_TOKEN), one shard at a time, each deleted
+    /// once its records are written; `--finalize` makes the store the caps' exact draw and writes
+    /// conv/CONV.json. Exit status 3: stopped by the disk rule (resumable).
+    FetchConv {
+        #[arg(long)]
+        out: PathBuf,
+        /// Shards to process (`0,1,2` or `0-150`; default: all).
+        #[arg(long, default_value = "")]
+        shards: String,
+        /// Sessions read per shard (0: all; a dry run).
+        #[arg(long, default_value_t = 0)]
+        max_sessions: usize,
+        #[arg(long, default_value_t = 4)]
+        threads: usize,
+        #[arg(long, default_value_t = 8.0)]
+        min_free_gb: f64,
+        #[arg(long)]
+        finalize: bool,
+    },
+    /// s6-ear v3: the label cross-check of §3.7 (Silero's runs from scripts/turn-vadcheck.py) into
+    /// conv/CROSSCHECK.json; exit status 1 when a bar fails.
+    ConvCrosscheck {
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// s6-ear v3: the 240 hops after each Smart Turn clip's end on its PCM extended by its own
+    /// background (§3.4), streaming the 83 training shards again (v2's kept clips), or `--test`
+    /// from v1's test WAVs. Exit status 3: stopped by the disk rule (resumable).
+    TurnExtend {
+        /// v3's data folder.
+        #[arg(long)]
+        out: PathBuf,
+        /// v2's data folder (its train/ and test/ stores).
+        #[arg(long)]
+        v2: PathBuf,
+        #[arg(long, default_value = "")]
+        shards: String,
+        #[arg(long, default_value_t = 4)]
+        threads: usize,
+        #[arg(long)]
+        test: bool,
+        #[arg(long, default_value = "data/ear/clips/smart-turn.jsonl")]
+        clips: PathBuf,
+        #[arg(long, default_value_t = 8.0)]
+        min_free_gb: f64,
+    },
+    /// s6-ear v3, SMOKE=1 only: a conversation store of synthetic sessions with the cross-check's
+    /// inputs (nothing of it is a result).
+    Turn3Fixture {
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 10)]
+        sessions: usize,
+        /// Also an extension store (`st-ext/`) for the first clips of this Smart Turn store
+        /// (v2's train/), each clip's last hop repeated: a stand-in for `turn-extend`.
+        #[arg(long)]
+        st: Option<PathBuf>,
+        #[arg(long, default_value_t = 2000)]
+        st_max: usize,
+    },
+    /// s6-ear v3, §8.1 item 1: the policy port replays the vectors recorded from turn.ts (exit
+    /// status 1 when a frame or an event differs).
+    TurnPolicyCheck {
+        #[arg(
+            long,
+            default_value = "crates/sky-data/tests/fixtures/turn-policy.json"
+        )]
+        fixture: PathBuf,
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// s6-ear: the audio jev from the clip manifests of fetch-audio, one record per question
     /// (<dir>/jev/{turn_end,keyword,keyword_zs[,about]}.jsonl and REPORT.json).
@@ -1603,6 +1682,8 @@ fn main() -> Result<()> {
             threads,
             min_free_gb,
             drop,
+            spans,
+            revision,
         } => {
             use sky_data::turn;
             let hf = Hf::new(out.join("hf"))?;
@@ -1613,9 +1694,94 @@ fn main() -> Result<()> {
                 max_turns,
                 threads,
                 drop_only: drop,
+                spans,
+                revision,
             };
             let v = disk_rule(turn::turn_eotbench(&hf, &o))?;
             println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::FetchConv {
+            out,
+            shards,
+            max_sessions,
+            threads,
+            min_free_gb,
+            finalize,
+        } => {
+            use sky_data::{conv, turn};
+            let hf = Hf::new(out.join("hf"))?;
+            let o = conv::ConvOptions {
+                guard: turn::Guard::new(&out, min_free_gb),
+                out,
+                shards: parse_ranges(&shards)?,
+                max_sessions,
+                threads,
+                finalize,
+            };
+            let v = disk_rule(conv::fetch_conv(&hf, &o))?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::ConvCrosscheck { out } => {
+            let v = sky_data::conv::conv_crosscheck(&out)?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
+            if v["pass"] != true {
+                eprintln!("the label cross-check fails a bar (docs/s6-ear3-prereg.md §3.7): the build stops before any training");
+                std::process::exit(1);
+            }
+        }
+        Cmd::TurnExtend {
+            out,
+            v2,
+            shards,
+            threads,
+            test,
+            clips,
+            min_free_gb,
+        } => {
+            use sky_data::turn;
+            let hf = Hf::new(out.join("hf"))?;
+            let o = turn::ExtendOptions {
+                guard: turn::Guard::new(&out, min_free_gb),
+                out,
+                v2,
+                shards: parse_ranges(&shards)?,
+                threads,
+                test,
+                clips,
+            };
+            let v = disk_rule(turn::turn_extend(&hf, &o))?;
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::Turn3Fixture {
+            out,
+            sessions,
+            st,
+            st_max,
+        } => {
+            let mut v = sky_data::conv::conv_fixture(&out, sessions)?;
+            if let Some(st) = st {
+                v["st_ext"] = sky_data::conv::ext_fixture(&st, &out.join("st-ext"), st_max)?;
+            }
+            println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::TurnPolicyCheck { fixture, out } => {
+            let v = sky_data::turn_policy::check_vectors(&fixture)?;
+            let text = serde_json::to_string_pretty(&v)?;
+            if let Some(o) = out {
+                if let Some(d) = o.parent() {
+                    std::fs::create_dir_all(d)?;
+                }
+                std::fs::write(
+                    o,
+                    text.clone()
+                        + "
+",
+                )?;
+            }
+            println!("{text}");
+            if v["passed"] != true {
+                std::process::exit(1);
+            }
         }
         Cmd::AudioJev { dir, about } => {
             let r = sky_data::audio::write_jev(&dir, cli.seed, about.as_deref())?;

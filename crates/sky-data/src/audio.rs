@@ -102,6 +102,25 @@ fn decode_flac(bytes: &[u8]) -> Result<(Vec<f32>, usize)> {
     Ok((mono, info.sample_rate as usize))
 }
 
+/// Decodes FLAC bytes to one vector per channel, never mixed (s6-ear v3, docs/s6-ear3-prereg.md
+/// §3.2 item 1), at the file's own rate: `(channels, rate)`.
+pub fn decode_flac_channels(bytes: &[u8]) -> Result<(Vec<Vec<f32>>, usize)> {
+    let mut r = claxon::FlacReader::new(std::io::Cursor::new(bytes))?;
+    let info = r.streaminfo();
+    let (ch, bits) = (info.channels as usize, info.bits_per_sample);
+    let scale = 1.0 / (1u64 << (bits - 1)) as f32;
+    let per = info.samples.unwrap_or(0) as usize;
+    let mut out: Vec<Vec<f32>> = (0..ch).map(|_| Vec::with_capacity(per)).collect();
+    for (i, s) in r.samples().enumerate() {
+        out[i % ch].push(s? as f32 * scale);
+    }
+    let n = out.iter().map(Vec::len).min().unwrap_or(0);
+    for c in &mut out {
+        c.truncate(n);
+    }
+    Ok((out, info.sample_rate as usize))
+}
+
 /// The samples whose frames are the last `max_frames` frames of `pcm` on the grid of its start
 /// (what `Engine::decide_audio` keeps).
 pub fn tail_pcm(pcm: &[f32], max_frames: usize) -> &[f32] {
@@ -1255,5 +1274,84 @@ mod tests {
         let back = decode_16k(&fs::read(wav).unwrap()).unwrap();
         assert_eq!(back.len(), 16_000);
         fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A FLAC stream of one frame of verbatim subframes (16-bit, independent channels), with its
+    /// CRCs, enough for the decoder.
+    fn verbatim_flac(channels: &[Vec<i16>], rate: u32) -> Vec<u8> {
+        let n = channels[0].len();
+        let ch = channels.len();
+        let mut b = b"fLaC".to_vec();
+        b.extend_from_slice(&[0x80, 0, 0, 34]);
+        b.extend_from_slice(&(n as u16).to_be_bytes());
+        b.extend_from_slice(&(n as u16).to_be_bytes());
+        b.extend_from_slice(&[0; 6]);
+        let packed: u64 =
+            ((rate as u64) << 44) | (((ch as u64) - 1) << 41) | (15u64 << 36) | n as u64;
+        b.extend_from_slice(&packed.to_be_bytes());
+        b.extend_from_slice(&[0; 16]);
+        let crc8 = |d: &[u8]| {
+            let mut c = 0u8;
+            for &x in d {
+                c ^= x;
+                for _ in 0..8 {
+                    c = if c & 0x80 != 0 {
+                        (c << 1) ^ 0x07
+                    } else {
+                        c << 1
+                    };
+                }
+            }
+            c
+        };
+        let crc16 = |d: &[u8]| {
+            let mut c = 0u16;
+            for &x in d {
+                c ^= (x as u16) << 8;
+                for _ in 0..8 {
+                    c = if c & 0x8000 != 0 {
+                        (c << 1) ^ 0x8005
+                    } else {
+                        c << 1
+                    };
+                }
+            }
+            c
+        };
+        let mut f = vec![
+            0xFF,
+            0xF8,
+            0x60,
+            (((ch as u8) - 1) << 4) | 0x08,
+            0x00,
+            (n - 1) as u8,
+        ];
+        f.push(crc8(&f));
+        for c in channels {
+            f.push(0x02);
+            for &x in c {
+                f.extend_from_slice(&x.to_be_bytes());
+            }
+        }
+        let c = crc16(&f);
+        f.extend_from_slice(&c.to_be_bytes());
+        b.extend(f);
+        b
+    }
+
+    #[test]
+    fn flac_channels_are_decoded_apart() {
+        let left: Vec<i16> = (0..16).map(|i| (i * 1000) as i16).collect();
+        let right: Vec<i16> = (0..16).map(|i| -(i * 500) as i16).collect();
+        let bytes = verbatim_flac(&[left.clone(), right.clone()], 48_000);
+        let (chs, rate) = decode_flac_channels(&bytes).unwrap();
+        assert_eq!((chs.len(), rate), (2, 48_000));
+        for (got, want) in chs.iter().zip([&left, &right]) {
+            let want: Vec<f32> = want.iter().map(|&x| x as f32 / 32768.0).collect();
+            assert_eq!(got, &want);
+        }
+        // the mono decoder of v2 mixes the same samples
+        let (mono, _) = decode_flac(&bytes).unwrap();
+        assert!((mono[3] - (3000.0 - 1500.0) / 2.0 / 32768.0).abs() < 1e-7);
     }
 }

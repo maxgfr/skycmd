@@ -5,6 +5,7 @@
 pub mod audio;
 pub mod augment;
 pub mod commands;
+pub mod conv;
 pub mod csv;
 pub mod decisions;
 pub mod distill;
@@ -28,6 +29,7 @@ pub mod teacher;
 pub mod text;
 pub mod tok;
 pub mod turn;
+pub mod turn_policy;
 pub mod typed;
 
 pub use record::{DecisionRecord, MlmRecord, QType, Question};

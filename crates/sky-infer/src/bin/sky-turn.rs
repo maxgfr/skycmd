@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! sky-turn <model.gguf> --store <dir> [--split S] --out probs.jsonl
+//! sky-turn <model.gguf> --store <dir> --trail-ms 200[,400,...] [--ext <dir>] [--split S] --out probs.jsonl
 //! sky-turn <model.gguf> --records <file.jsonl> [--split S] [--max N] --out probs.jsonl
 //! sky-turn <model.gguf> --bench N [--mode auto|f32|packed|int8|lut]
 //! ```
@@ -10,6 +11,13 @@
 //! `--records` the 16 kHz WAV named by each JSONL row (`wav`, relative to the file; the deployed
 //! path: samples → front end → model). Each prints one line per item: `{id, logit, prob,
 //! positions}` (with `wav` for records), `prob` the calibrated probability. No label is read.
+//!
+//! `--trail-ms` (s6-ear v3, docs/s6-ear3-prereg.md §16) reads each record at a trailing silence
+//! of d ms (a list gives one line per record and d, with `d_ms`): a conversation or eot-bench span
+//! record (`cut_hops` and `dmax_ms` in its manifest line) through its first `cut_hops + d / 10`
+//! hops, skipped when d is above its `dmax_ms`; a Smart Turn clip through its own hops followed by
+//! the first `d / 10` hops of its extension (`--ext`, the `st-ext` store of `sky-data
+//! turn-extend`, joined by id). The model is unchanged: the window is the last 4 s before the cut.
 //!
 //! `--bench N` times N decisions on a full 4 s window whose hops are already computed (one
 //! thread), and the front end per 10 ms hop: one JSON line with the medians and p95.
@@ -26,7 +34,7 @@ use sky_infer::TernaryCompute;
 
 fn usage() -> ! {
     eprintln!(
-        "usage: sky-turn <model.gguf> (--store DIR | --records FILE [--max N]) [--split S] --out FILE\n       sky-turn <model.gguf> --bench N [--mode auto|f32|packed|int8|lut]"
+        "usage: sky-turn <model.gguf> (--store DIR [--trail-ms D[,D...]] [--ext DIR] | --records FILE [--max N]) [--split S] --out FILE\n       sky-turn <model.gguf> --bench N [--mode auto|f32|packed|int8|lut]"
     );
     std::process::exit(2);
 }
@@ -41,6 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Some(path) = args.first() else { usage() };
     let (mut store, mut records, mut out, mut split) = (None, None, None, None);
     let (mut bench, mut max, mut mode) = (0usize, 0usize, "auto".to_string());
+    let (mut trail, mut ext): (Option<Vec<usize>>, Option<PathBuf>) = (None, None);
     let mut i = 1;
     while i < args.len() {
         let v = || args.get(i + 1).cloned().unwrap_or_else(|| usage());
@@ -52,6 +61,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--bench" => bench = v().parse()?,
             "--max" => max = v().parse()?,
             "--mode" => mode = v(),
+            "--trail-ms" => {
+                trail = Some(
+                    v().split(',')
+                        .map(|x| x.trim().parse::<usize>())
+                        .collect::<Result<_, _>>()?,
+                )
+            }
+            "--ext" => ext = Some(PathBuf::from(v())),
             _ => usage(),
         }
         i += 2;
@@ -110,7 +127,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .as_deref()
             .is_none_or(|want| want == "all" || want == s)
     };
-    if let Some(dir) = store {
+    if let (Some(dir), Some(ds)) = (store.as_ref(), trail.as_ref()) {
+        if let Some(d) = ds.iter().find(|&&d| d % 10 != 0 || d > 2400) {
+            return Err(format!("--trail-ms {d}: a multiple of 10 ms, at most 2400").into());
+        }
+        let st = Store::open(dir)?;
+        let ex = ext.as_ref().map(|e| Store::open(e)).transpose()?;
+        let by_id: std::collections::HashMap<&str, usize> = ex
+            .as_ref()
+            .map(|e| {
+                e.clips
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| (c.id.as_str(), i))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for c in st.clips.iter().filter(|c| keep(c.split())) {
+            let h = st.hops(c)?;
+            for &d in ds {
+                // the hops up to the cut at d
+                let window: Option<Vec<f32>> =
+                    match (c.meta["cut_hops"].as_u64(), c.meta["dmax_ms"].as_u64()) {
+                        (Some(cut), Some(dmax)) => (d as u64 <= dmax).then(|| {
+                            let end = (cut as usize + d / 10).min(c.hops);
+                            h[..end * audio::TURN_CHANNELS].to_vec()
+                        }),
+                        _ if d == 0 => Some(h.clone()),
+                        _ => match (&ex, by_id.get(c.id.as_str())) {
+                            (Some(e), Some(&i)) => {
+                                let x = e.hops(&e.clips[i])?;
+                                let mut joined = h.clone();
+                                joined.extend_from_slice(&x[..(d / 10) * audio::TURN_CHANNELS]);
+                                Some(joined)
+                            }
+                            _ => None,
+                        },
+                    };
+                let Some(win) = window else { continue };
+                let k = win.len() / audio::TURN_CHANNELS;
+                if k == 0 {
+                    writeln!(w, "{}", json!({"id": c.id, "d_ms": d, "positions": 0}))?;
+                    continue;
+                }
+                let o = m.decide_hops(&win, k)?;
+                writeln!(
+                    w,
+                    "{}",
+                    json!({"id": c.id, "d_ms": d, "logit": o.logit, "prob": o.prob, "positions": o.positions})
+                )?;
+                n += 1;
+            }
+        }
+    } else if let Some(dir) = store {
         let st = Store::open(&dir)?;
         for c in st.clips.iter().filter(|c| keep(c.split())) {
             if c.hops == 0 {
