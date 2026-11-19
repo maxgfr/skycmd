@@ -2,6 +2,8 @@
 
 **Statut : figé le 05/11/2026, avant tout job.** Aucun job Hugging Face n'a tourné, aucun essai de fumée, aucun poids n'a été entraîné. Ce fichier fixe le modèle, les données d'entraînement, l'entraînement, l'évaluation, les portes et l'ordre des jobs. Les résultats seront lus à travers ce texte.
 
+**Closed on 19/11/2026** (§10, amendment 8): nothing was trained, and there are no weights.
+
 **Modifications de ce fichier :**
 
 - tout amendement est commité, daté et motivé en section 10 ;
@@ -277,3 +279,10 @@ Total estimé : **environ 18 $**, au plus 36 $. Les prix sont ceux de `hf jobs h
   - transformers 5.18.0 instead of 5.12.1.
   - `smoke-mlx` generates without the brake's rests, as before.
 - **What does not change:** everything else: the base model, the data, the hyperparameters, the gates, the verdict, the test read once, and §9.
+
+**Amendment 8 (19/11/2026, after amendment 7, before any other step: no training, no evaluation and no gate reading exist). The fine-tune is closed.**
+
+- **The decision.** The owner decided on 19/11/2026 not to rent compute for this fine-tune ("no LFM3 if it does not fit"). Amendment 7 found that no LoRA method allowed by amendment 1 (peft on MPS, then the LoRA trainer of mlx-vlm) fits this 16 GB Mac under the memory bound set before the run that decides. Every other option that amendment 7 lists (a looser bound, a Mac left free, a shorter maximum length, smaller batches with more accumulation, or remote compute) is declined. So the pre-registration is closed here.
+- **What exists.** Nothing was trained: there are no weights, no adapter and no fine-tuned model. `sft`, `eval`, `route` and `gate` never ran, and G1 to G3 are not read and never will be. What exists is the smoke of 18/11 and its files (`runs/lfm3-ft/smoke/report.json`, `runs/lfm3-ft/smoke.log`, `runs/lfm3-ft/smoke-attempts/`), which record why nothing was trained.
+- **What stays published, unchanged.** The System 1 / System 2 router of `docs/lfm3-s1s2-prereg.md` (inference only, failed: H3, 1,032 tokens against at most 0.5 × 958), its result files `runs/lfm3-s1s2/`, and the data set `maxgfr/skycmd-lfm3-math`. This closing changes no number and no verdict of that router.
+- **What does not change:** the text of §1 to §9 and of amendments 1 to 7 stays as the record of what was planned and tried.

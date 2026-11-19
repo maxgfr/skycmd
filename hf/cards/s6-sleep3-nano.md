@@ -117,7 +117,9 @@ is not known.
   frozen, at the nano size on training sequences, and `recall` stayed at 0.2579 and 0.2546 over
   the last 100 `recall` steps of seeds 0 and 1, against a bar of 0.95 and a chance of 0.25
   ([docs/s6-sleep4-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-prereg.md)
-  §15). Whether v4 goes on is the owner's decision; nothing about this file changes.
+  §15). On 19/11/2026 it was decided that v4 goes on to its check K1 (the same recipe with more
+  steps, on two seeds) and stops there if K1 fails; K1 has not run. Nothing about this file
+  changes.
 
 ## How to ask it
 

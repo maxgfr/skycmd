@@ -2,6 +2,8 @@
 
 **Statut : figé le 09/11/2026, avant tout calcul de ce §7.** Aucune édition, aucune génération GLM et aucune mesure d'arena de ce protocole n'existent à cette date. Le code n'est pas écrit.
 
+**Closed on 19/11/2026 without running** (§9, amendment 1): none of 7.1 to 7.4 was run, and nothing was computed.
+
 **Modifications de ce fichier :**
 
 - tout amendement est commité, daté et motivé en section 9 ;
@@ -105,4 +107,15 @@ Sur les graines dev, pour chaque jeu : `écart = (oracle − modèle) / |oracle|
 
 ## 9. Amendements
 
-Aucun à ce jour.
+**Amendment 1 (19/11/2026). Closed without running: §7 ends here.** Written before any computation of this pre-registration: no edit, no GLM-5.3-flash request, no adapter, no arena measurement and no training of §7 exist, and no code of §7 was written. Nothing was computed for §7.
+
+- **Why.** A literature review of 19/11/2026, [`docs/research-flexible-weights.md`](research-flexible-weights.md), read the source and its follow-ups. The lead decided, on that review, to close all four experiments. In the review's words:
+  - **The source** is "a **blog post** published on 2 November 2026, not a peer-reviewed paper, with one LLM (GPT-6 Astra)" (its §0, source [1]).
+  - **The project's LLM has already been measured on the post's tasks.** A third-party re-run (one person's runs, one run per cell, with their own harness, its §1.5) gives GLM-5.3-Flash 1/4 on naming a policy's game, 0/6 on reading a transformer's middle blocks, "no edits block" on the car repair, at or below random on writing MinAtar policies (0.0 on Breakout) and an all-zero Go network (§0, source [5]). GLM-5.3-Flash is the only teacher the project's rules allow (`docs/s6-gen-prereg.md`, amendments 1 and 3).
+- **The status of each experiment:**
+  - **7.1, targeted editing without forgetting (§4): closed, not run.** The review's verdict: "Contradicted for GLM-5.3-Flash in one shot; untested with a tool loop; no LLM-specific advantage over search shown" (§6.1, sources [5][6][12][32]). With tools, an open model repaired the car in 4 of 10 runs, but a greedy search with no LLM made the same kind of edit (§0, [6]).
+  - **7.2, one-shot initialisation (§5): closed, not run.** The review's verdict: "Contradicted" (§6.1, [5][17][3]): GLM-5.3-Flash cannot write a working policy [5], and on 20 unpublished games "a single standard PPO update removes most of the fixed actor's success" of a written network [17].
+  - **7.4, weight audit (§6): closed, not run.** "Weight statistics detect planted trojans in small models without an LLM" [60][61]; frontier LLMs detect that a model is poisoned but "never found the trigger" [3]; GLM-5.3-Flash was not tested on an audit (§0, §5.2). The review's verdict: "Supported for non-LLM detectors; for LLMs, presence only and with frontier models; untested for GLM-5.3-Flash" (§6.1).
+  - **7.3, flexible weights with a guardrail (§7): closed as untested, not run; not refuted.** The review's verdict: "Untested; no LLM involved" (§6.1): no source tests an online adapter whose labels come from a safety veto, and the nearest literature warns of error accumulation and forgetting under online updates [41][42][47] (§0, §5.1). It is closed for a reason of this project, not of the literature: its verdict (§7 above) asks for a gain of at least 2% on the target game, and its base, s6-nano, already plays at the oracle's score in every game at full depth on its gate's 30 seeds (0 crashes, Dodge completion 87%, equal to the oracle; `BENCH.md`, the arena table of the s6 section), so there is no score gap for an adapter to close. The review names that precondition itself (§6.2). The dev-seed gap check that the review proposes before any code (§6.2) was not run.
+- **What follows.** None of the four is run, and nothing of §7 is published, as the header of this file already required for models. Reopening any of them needs a new dated pre-registration. What would change the review's reading is listed in its §6.3.
+- **The text above §9 does not change.** Two statements of §1 are corrected by the review (§7 of the review): the post has now been read at the source, and its writing and reading results are partly reproduced [3][4].
