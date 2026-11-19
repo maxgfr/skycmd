@@ -16,6 +16,7 @@
 
     uv run --python 3.12 scripts/turn-teacher.py --data DIR --shard 0 [--procs 4] [--min-free-gb 8]
     uv run --python 3.12 scripts/turn-teacher.py --data DIR --shard 0 --check 20
+    uv run --python 3.12 scripts/turn-teacher.py --records DIR/conv --tag 00012 [--procs 4]
 
 For shard <tag> (five digits), reads the clips `sky-data fetch-turn` kept
 (`DIR/train/manifest-<tag>.jsonl`: id and parquet row) from `DIR/shards/train-<tag>.parquet`,
@@ -35,6 +36,14 @@ Writes `DIR/train/teacher-<tag>.bin`, one record per manifest line in its order 
 Train and validation clips only: the manifest holds no test clip (§3.2). CPU only (onnxruntime's
 CPU provider, one thread per process). `--check N` runs N clips and prints the outputs' check
 without writing anything.
+
+`--records` (s6-ear v3, docs/s6-ear3-prereg.md §5): Smart Turn's opinion of the conversation
+validation and test records of one shard of `sky-data fetch-conv`, recorded only, never a target.
+Each record's tail (`DIR/tails-<tag>.bin`, 8 s of float32 PCM up to o + 0.2 s, already left-padded
+with zeros as Pipecat does; `tails-<tag>.jsonl` names them) goes through the same preprocessing and
+the same graph; writes `DIR/teacher-conv-<tag>.jsonl` {id, logit, prob} and `.done`, then removes
+the tails (the transient files of the shard). A shard without validation or test records has no
+tails: its `.done` is written with 0 records.
 """
 import argparse
 import json
@@ -156,6 +165,76 @@ def score(item):
     return row, cid, encode_record(z, np.asarray(pooled).reshape(-1), pool_states(states)), gap
 
 
+def score_tail(item):
+    """(index, id, 8 s of float32 PCM) -> (index, id, logit, prob)."""
+    import numpy as np
+
+    if not _W:
+        _init()
+    idx, cid, data = item
+    x = left_pad(np.frombuffer(data, dtype="<f4"))
+    feats = _W["fe"](
+        x,
+        sampling_rate=RATE,
+        return_tensors="np",
+        padding="max_length",
+        max_length=SECONDS * RATE,
+        truncation=True,
+        do_normalize=True,
+    ).input_features.astype(np.float32)
+    prob, z = _W["sess"].run([OUT_PROB, OUT_LOGIT], {"input_features": feats})
+    return idx, cid, float(np.asarray(z).reshape(-1)[0]), float(np.asarray(prob).reshape(-1)[0])
+
+
+def tail_items(binf, rows):
+    """(index, id, bytes) of each tail, in the order of its lines."""
+    size = SECONDS * RATE * 4
+    with open(binf, "rb") as f:
+        for r in rows:
+            f.seek(int(r["index"]) * size)
+            b = f.read(size)
+            if len(b) != size:
+                raise SystemExit(f"{binf}: the tail of {r['id']} is cut short")
+            yield int(r["index"]), r["id"], b
+
+
+def run_records(a):
+    conv = Path(a.records)
+    tag = a.tag
+    lines, binf = conv / f"tails-{tag}.jsonl", conv / f"tails-{tag}.bin"
+    out, done = conv / f"teacher-conv-{tag}.jsonl", conv / f"teacher-conv-{tag}.done"
+    if done.exists():
+        for p in (lines, binf):
+            p.unlink(missing_ok=True)
+        print(f"teacher-conv {tag}: done")
+        return 0
+    if not lines.exists():
+        if (conv / f"conv-{tag}.json").exists():
+            done.write_text(json.dumps({"shard": tag, "records": 0}) + "\n")
+            print(f"teacher-conv {tag}: no validation or test record")
+            return 0
+        raise SystemExit(f"no {lines} (sky-data fetch-conv --shards {int(tag)})")
+    rows = [json.loads(l) for l in lines.read_text().splitlines() if l.strip()]
+    t0 = time.time()
+    tmp = out.with_suffix(".part")
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(a.procs) as pool, open(tmp, "w") as f:
+        n = 0
+        for _, cid, z, p in pool.imap(score_tail, tail_items(binf, rows), chunksize=8):
+            f.write(json.dumps({"id": cid, "logit": z, "prob": p}) + "\n")
+            n += 1
+    if n != len(rows):
+        raise SystemExit(f"{n} tails scored, {lines} has {len(rows)}")
+    tmp.rename(out)
+    done.write_text(json.dumps({"shard": tag, "records": n, "seconds": round(time.time() - t0, 1),
+                                "model": f"{REPO}/{FILE}", "revision": REVISION,
+                                "use": "recorded only, never a target (docs/s6-ear3-prereg.md §5)"}) + "\n")
+    for p in (lines, binf):
+        p.unlink(missing_ok=True)
+    print(f"teacher-conv {tag}: {n} records")
+    return 0
+
+
 def manifest(path):
     rows = []
     for line in path.read_text().splitlines():
@@ -185,12 +264,20 @@ def items(parquet, wanted):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--data", required=True)
-    ap.add_argument("--shard", type=int, required=True)
+    ap.add_argument("--data")
+    ap.add_argument("--shard", type=int)
+    ap.add_argument("--records", default=None, help="s6-ear v3: DIR/conv of sky-data fetch-conv")
+    ap.add_argument("--tag", default=None, help="s6-ear v3: the shard's tag (five digits)")
     ap.add_argument("--procs", type=int, default=4)
     ap.add_argument("--min-free-gb", type=float, default=8.0)
     ap.add_argument("--check", type=int, default=0, help="score N clips, print the check, write nothing")
     a = ap.parse_args()
+    if a.records:
+        if not a.tag:
+            raise SystemExit("--records needs --tag")
+        return run_records(a)
+    if a.data is None or a.shard is None:
+        raise SystemExit("--data and --shard are needed (or --records and --tag)")
     data = Path(a.data)
     tag = f"{a.shard:05d}"
     man = data / "train" / f"manifest-{tag}.jsonl"

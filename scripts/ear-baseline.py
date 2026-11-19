@@ -38,7 +38,9 @@ accuracy (the test's share of finished clips, §8.1's second check).
 for each cut of `<store>/manifest-<tag>.jsonl`, the turn's audio (HF `datasets` decoding of
 `<store>/../parquet/<tag>.parquet`) cut at the span's start, the last 8 s left-padded. Writes
 `<store>/smartturn-<tag>.jsonl` {id, prob} and `smartturn-<tag>.done`; no label is read.
-CPU only, one thread, about 30 ms a clip.
+CPU only, one thread, about 30 ms a clip. `--offset-ms 200` (s6-ear v3, docs/s6-ear3-prereg.md
+§8.3) cuts each span at its start + 0.2 s instead, for the span records whose `dmax_ms` reaches it
+(`sky-data turn-eotbench --spans`), into `smartturn200-<tag>.jsonl` and `.done`.
 """
 import argparse
 import json
@@ -227,7 +229,7 @@ def run_eotbench(a):
     if a.tag == "all":
         tags = sorted(p.name[len("manifest-"):-len(".jsonl")] for p in store.glob("manifest-*.jsonl"))
         for tag in tags:
-            if (Path(a.eotbench) / "parquet" / f"{tag}.parquet").exists() or (store / f"smartturn-{tag}.done").exists():
+            if (Path(a.eotbench) / "parquet" / f"{tag}.parquet").exists() or (store / f"{stem_of(a)}-{tag}.done").exists():
                 run_eotbench_tag(a, tag)
             else:
                 print(f"smart turn eot-bench {tag}: no parquet file and no result", file=sys.stderr)
@@ -235,12 +237,18 @@ def run_eotbench(a):
     run_eotbench_tag(a, a.tag)
 
 
+def stem_of(a):
+    """The name of a Smart Turn pass: `smartturn` at the span's start, `smartturn<ms>` later."""
+    return "smartturn" if not a.offset_ms else f"smartturn{a.offset_ms}"
+
+
 def run_eotbench_tag(a, tag):
     import pyarrow.parquet as pq
     from datasets import Audio
 
     store = Path(a.eotbench) / "store"
-    done = store / f"smartturn-{tag}.done"
+    stem = stem_of(a)
+    done = store / f"{stem}-{tag}.done"
     if done.exists():
         print(f"smart turn eot-bench {tag}: done")
         return
@@ -248,10 +256,12 @@ def run_eotbench_tag(a, tag):
     for line in (store / f"manifest-{tag}.jsonl").read_text().splitlines():
         if line.strip():
             v = json.loads(line)
-            cuts[int(v["row"])].append((v["id"], int(v["cut"])))
+            if a.offset_ms and int(v.get("dmax_ms", 0)) < a.offset_ms:
+                continue  # the ask does not fit inside the span
+            cuts[int(v["row"])].append((v["id"], int(v["cut"]) + a.offset_ms * RATE // 1000))
     st = SmartTurn()
     dec = Audio(sampling_rate=RATE)
-    out = open(store / f"smartturn-{tag}.jsonl.part", "w")
+    out = open(store / f"{stem}-{tag}.jsonl.part", "w")
     n, row = 0, 0
     f = pq.ParquetFile(Path(a.eotbench) / "parquet" / f"{tag}.parquet")
     for batch in f.iter_batches(batch_size=16, columns=["audio"]):
@@ -264,8 +274,8 @@ def run_eotbench_tag(a, tag):
                     n += 1
             row += 1
     out.close()
-    (store / f"smartturn-{tag}.jsonl.part").rename(store / f"smartturn-{tag}.jsonl")
-    done.write_text(json.dumps({"tag": tag, "cuts": n, "model": f"{REPO}/{FILE}", "revision": REVISION}) + "\n")
+    (store / f"{stem}-{tag}.jsonl.part").rename(store / f"{stem}-{tag}.jsonl")
+    done.write_text(json.dumps({"tag": tag, "cuts": n, "offset_ms": a.offset_ms, "model": f"{REPO}/{FILE}", "revision": REVISION}) + "\n")
     print(f"smart turn eot-bench {tag}: {n} cuts")
 
 
@@ -279,6 +289,7 @@ def main() -> None:
     ap.add_argument("--pad", choices=["left", "right"], default="left")
     ap.add_argument("--eotbench", default=None, help="DIR/eotbench of sky-data turn-eotbench")
     ap.add_argument("--tag", default=None, help="the eot-bench file's tag (e.g. ar-00000), or all")
+    ap.add_argument("--offset-ms", type=int, default=0, help="cut each span at its start + this (s6-ear v3: 200)")
     ap.add_argument("--bench", type=int, default=0, help="time N decisions on computed features (§8.3)")
     a = ap.parse_args()
     if a.bench:

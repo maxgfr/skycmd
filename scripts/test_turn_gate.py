@@ -316,5 +316,297 @@ class Data(unittest.TestCase):
         self.assertEqual(gate.TEACHER_RECORD, 10472)
 
 
+# ============================================================================= s6-ear v3
+
+
+def conv_store(d, recs, energy):
+    """A conversation store: `recs` manifest fields (cut_hops, dmax_ms, label, split, ...), each record's
+    hops with channel 42 at `energy(record, hop index)`."""
+    Path(d).mkdir(parents=True, exist_ok=True)
+    feat, lines, off = bytearray(), [], 0
+    for r in recs:
+        n = r["cut_hops"] + r["dmax_ms"] // 10
+        for h in range(n):
+            row = [0.0] * 43
+            row[42] = energy(r, h)
+            feat += struct.pack("<43e", *row)
+        lines.append({**r, "hops": n, "offset": off})
+        off += n * 86
+    Path(d, "feat-00000.bin").write_bytes(bytes(feat))
+    jsonl(Path(d, "manifest-00000.jsonl"), lines)
+
+
+def v3_log(path, acc, auc, ckpt=None, ema=None):
+    rows = [{"step": 10, "loss": 0.5}]
+    rows.append({"step": 10, "mode": "f32", "val": {"acc": acc, "bce": 0.4, "agree": 0.9, "n": 5},
+                 "conv": {"auc": auc, "bce": 0.5, "n": 9}, "ckpt_loss": 0.45})
+    if ckpt is not None:
+        rows.append({"step": 10, "mode": "ternary", "val": {"acc": acc, "bce": 0.4, "agree": 0.9, "n": 5},
+                     "conv": {"auc": auc, "bce": 0.5, "n": 9}, "ckpt_loss": ckpt})
+    if ema is not None:
+        rows.append({"step": 10, "mode": "ema-ternary", "val": {"acc": acc, "bce": 0.4, "agree": 0.9, "n": 5},
+                     "conv": {"auc": auc, "bce": 0.5, "n": 9}, "ckpt_loss": ema})
+    rows.append({"step": 10, "final": True, "elapsed_min": 12.0})
+    jsonl(path, rows)
+
+
+class Bleed(unittest.TestCase):
+    def run_bleed(self, leak):
+        with tempfile.TemporaryDirectory() as d:
+            recs = [{"id": f"r{i}", "split": "train", "label": i % 2 == 0, "cut_hops": 380, "dmax_ms": 2400}
+                    for i in range(40)]
+            recs.append({"id": "v", "split": "val", "label": True, "cut_hops": 380, "dmax_ms": 200})
+
+            def energy(r, h):
+                # silence after o; with a leak, the end-of-turn records are louder there from 0.6 s on
+                if h >= r["cut_hops"] + 3:
+                    base = -3.0 + 0.01 * (int(r["id"][1:]) % 7 if r["id"] != "v" else 0)
+                    return base + (1.0 if leak and r["label"] and h >= r["cut_hops"] + 60 else 0.0)
+                return 1.0
+            conv_store(f"{d}/store", recs, energy)
+            st = gate.cmd_bleed(Namespace(store=f"{d}/store", out=f"{d}/bleed.json"))
+            return st, json.load(open(f"{d}/bleed.json"))
+
+    def test_no_leak_passes(self):
+        st, b = self.run_bleed(False)
+        self.assertEqual((st, b["pass"]), (0, True))
+        self.assertEqual(b["records"], 40)
+        self.assertEqual(sorted(b["by_d_ms"], key=int)[0], "200")
+
+    def test_a_leak_stops_the_build(self):
+        st, b = self.run_bleed(True)
+        self.assertEqual((st, b["pass"]), (1, False))
+        # at 0.2-0.6 s nothing leaks yet: the AUC stays near 0.5 there
+        self.assertLess(b["by_d_ms"]["200"]["auc"], 0.6)
+        self.assertGreater(b["by_d_ms"]["2400"]["auc"], 0.6)
+
+
+class Pilot3(unittest.TestCase):
+    def run_pilot(self, arms, v2_low):
+        with tempfile.TemporaryDirectory() as d:
+            for name, (acc, auc) in arms.items():
+                v3_log(f"{d}/pilot/{name}/log.jsonl", acc, auc)
+            recs = [{"id": f"r{i}", "split": "val", "label": i % 2 == 0, "cut_hops": 380, "dmax_ms": 200}
+                    for i in range(20)]
+            conv_store(f"{d}/conv", recs, lambda r, h: 0.0)
+            # v2's file on the same cuts: the first v2_low records' ends of turn below every hold
+            # (AUC 0.6 with 8, 1.0 with none)
+            probs = [{"id": r["id"], "d_ms": 200, "prob": (0.3 if i < v2_low else 0.6) if r["label"] else 0.4}
+                     for i, r in enumerate(recs)]
+            jsonl(f"{d}/v2.jsonl", probs)
+            st = gate.cmd_pilot3(Namespace(dir=f"{d}/pilot", v2_probs=f"{d}/v2.jsonl", conv_store=f"{d}/conv",
+                                           base=gate.V2_RATE, out=f"{d}/choice.json"))
+            return st, json.load(open(f"{d}/choice.json"))
+
+    def test_the_best_eligible_from_v2_arm(self):
+        st, c = self.run_pilot({"P1": (0.90, 0.70), "P2": (0.89, 0.74), "P3": (0.87, 0.80), "P4": (0.90, 0.744)}, 8)
+        # P3 is not eligible (0.87 < 0.88); P4 is not better than P2 by more than 0.005
+        self.assertEqual((c["arm"], c["start"], c["minutes"]), ("P2", "v2", 120))
+        self.assertEqual(c["lr"], float(f"{0.5 * gate.V2_RATE:.4g}"))
+        self.assertAlmostEqual(c["v2_metric"], 0.6)
+        self.assertEqual((st, c["stop"]), (0, False))
+
+    def test_the_scratch_arm_when_better_by_more_than_the_margin(self):
+        _, c = self.run_pilot({"P1": (0.90, 0.70), "P2": (0.89, 0.74), "P3": (0.88, 0.73), "P4": (0.90, 0.746)}, 8)
+        self.assertEqual((c["arm"], c["start"], c["minutes"]), ("P4", "scratch", 240))
+
+    def test_the_stop_rule(self):
+        # v2's file ranks the cuts perfectly (AUC 1): no arm can beat it by 0.01
+        st, c = self.run_pilot({"P1": (0.90, 0.95), "P2": (0.89, 0.74), "P3": (0.88, 0.73), "P4": (0.90, 0.7)}, 0)
+        self.assertEqual((st, c["stop"], c["arm"]), (4, True, "P1"))
+        # no eligible arm at all
+        st, c = self.run_pilot({"P1": (0.80, 0.95), "P2": (0.80, 0.74), "P3": (0.8, 0.73), "P4": (0.8, 0.9)}, 8)
+        self.assertEqual((st, c["stop"], c["arm"]), (4, True, None))
+
+    def test_checkpoint3(self):
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            v3_log(f"{d}/a.jsonl", 0.9, 0.8, ckpt=0.40, ema=0.39)
+            v3_log(f"{d}/b.jsonl", 0.9, 0.8, ckpt=0.40, ema=0.41)
+            for f, want in (("a", "last-ema"), ("b", "last")):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    gate.cmd_checkpoint3(Namespace(log=f"{d}/{f}.jsonl"))
+                self.assertEqual(out.getvalue().strip(), want)
+
+
+def gguf_bytes(tensors):
+    def s(x):
+        b = x.encode()
+        return struct.pack("<Q", len(b)) + b
+    out = b"GGUF" + struct.pack("<IQQ", 3, len(tensors), 2)
+    out += s("general.name") + struct.pack("<I", 8) + s("x")
+    out += s("skycmd-turn.list") + struct.pack("<IIQ", 9, 4, 2) + struct.pack("<II", 1, 2)
+    for name, dims, t in tensors:
+        out += s(name) + struct.pack("<I", len(dims)) + struct.pack(f"<{len(dims)}Q", *dims) + struct.pack("<IQ", t, 0)
+    return out
+
+
+class RankedStats(unittest.TestCase):
+    def test_auc_recall_at_fc_and_weights(self):
+        p = [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9, 0.35, 0.95]
+        y = [False, False, False, False, True, True, True, True, True, False]
+        rk = gate.Ranked(p, y, list(range(10)))
+        w = [1.0] * 10
+        self.assertAlmostEqual(rk.auc(w), gate.Scores(p, y).stats()["auc"])
+        # at most 0.10 of the 5 holds: none may be above the threshold, and 0.95 is a hold
+        self.assertEqual(rk.recall_at_fc(w, 0.10), 0.0)
+        self.assertEqual(rk.recall_at_fc(w, 0.20), 4 / 5)
+        # weights repeat units: without the 0.95 hold
+        w[9] = 0.0
+        self.assertEqual(rk.recall_at_fc(w, 0.10), 4 / 5)
+
+    def test_paired_bootstrap_is_seeded_and_by_unit(self):
+        a = gate.paired_bootstrap(5, {"sum": lambda w: sum(w)}, reps=50)
+        self.assertEqual(a["sum"]["value"], 5.0)
+        self.assertEqual((a["sum"]["lo"], a["sum"]["hi"]), (5.0, 5.0))
+        b = gate.paired_bootstrap(5, {"first": lambda w: w[0]}, reps=200)
+        c = gate.paired_bootstrap(5, {"first": lambda w: w[0]}, reps=200)
+        self.assertEqual(b, c)
+        self.assertLess(b["first"]["lo"], 1.0)
+
+    def test_tau_c_and_gguf_tensors(self):
+        p = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+        y = [False] * 10 + [True]
+        # holds at or above tau: at most 1 of 10
+        self.assertEqual(gate.tau_lowest_fc(p, y), 0.95)
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "x.gguf").write_bytes(gguf_bytes([("a.weight", (4, 2), 0), ("b", (3,), 1)]))
+            self.assertEqual(gate.gguf_tensors(f"{d}/x.gguf"), [("a.weight", (4, 2), 0), ("b", (3,), 1)])
+
+
+class Harness3AndGate3(unittest.TestCase):
+    """Synthetic test sets with known answers for §8.1 and §9."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        rng = random.Random(3)
+        # Smart Turn's test: 50 clips, v1's manifest
+        self.test = [{"id": f"t{i}", "split": "test", "lang": "eng", "wav": f"wav/t{i}.wav",
+                      "label": {"endpoint": i % 2 == 0, "dataset": "d1"}} for i in range(50)]
+        jsonl(self.d / "clips.jsonl", self.test)
+        # eot-bench spans: 120 turns, each a hold span and an eot span; half English
+        self.spans = []
+        for t in range(120):
+            lang = "en" if t % 2 == 0 else "fr"
+            for k, lab in enumerate((False, True)):
+                self.spans.append({"id": f"u{t}#{k}", "turn": f"u{t}", "label": lab, "lang": lang, "cohort": "general",
+                                   "dmax_ms": 2400 if lab else 600, "short": False, "long_hold": False, "cut_hops": 400,
+                                   "row": t, "cut": 64000, "split": "eotbench"})
+        self.spans.append({"id": "short#0", "turn": "short", "label": True, "lang": "en", "cohort": "general",
+                           "dmax_ms": 0, "short": True, "long_hold": False, "cut_hops": 400, "split": "eotbench"})
+        jsonl(self.d / "spans" / "manifest-en-00000.jsonl", self.spans)
+        self.noise = {s["id"]: rng.random() for s in self.spans}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def probs(self, path, skill, d_list, other_skill=None):
+        """A dump whose probability separates the classes by `skill` (0: noise only); `other_skill` for the
+        languages other than English."""
+        rows = []
+        for s in self.spans:
+            for d in d_list:
+                if d > s["dmax_ms"]:
+                    continue
+                k = skill if other_skill is None or s["lang"] == "en" else other_skill
+                rows.append({"id": s["id"], "d_ms": d, "prob": 0.5 * self.noise[s["id"]] + k * (0.5 if s["label"] else 0.0)})
+        jsonl(path, rows)
+
+    def test_harness3(self):
+        d = self.d
+        Path(d, "policy.json").write_text(json.dumps({"passed": True, "vectors": [{}, {}, {}]}))
+        jsonl(d / "v2test.jsonl", [{"id": c["id"], "prob": 0.9 if c["label"]["endpoint"] else 0.1} for c in self.test])
+        self.probs(d / "v2eot.jsonl", 0.3, [0])
+        jsonl(d / "spans" / "smartturn-en-00000.jsonl", [{"id": s["id"], "prob": 0.5} for s in self.spans])
+        a = Namespace(policy=str(d / "policy.json"), labels=str(d / "clips.jsonl"), v2_test=str(d / "v2test.jsonl"),
+                      spans=str(d / "spans"), v2_eot=str(d / "v2eot.jsonl"), out=str(d / "check.json"))
+        self.assertEqual(gate.cmd_harness3(a), 1)
+        c = json.load(open(d / "check.json"))
+        self.assertTrue(c["checks"]["policy_port"]["ok"])
+        # v2's test accuracy is 1.0 here, not 0.8993; the counts are not v2's either
+        self.assertFalse(c["checks"]["smart_turn_test_v2"]["ok"])
+        self.assertFalse(c["checks"]["eotbench_cuts"]["ok"])
+        self.assertEqual(c["cuts_8_3"]["cuts"], 240)
+        # with this set's own numbers as the bars, it passes
+        saved = (gate.V2_TEST_ACC, gate.V2_EOT_CUTS, gate.V2_EOT_AUC, gate.ST_EOT_AUC, gate.TEST_CLIPS)
+        try:
+            gate.V2_TEST_ACC, gate.V2_EOT_CUTS, gate.TEST_CLIPS = 1.0, 241, 50
+            gate.V2_EOT_AUC = c["checks"]["eotbench_v2_auc"]["value"]
+            gate.ST_EOT_AUC = 0.5
+            self.assertEqual(gate.cmd_harness3(a), 0)
+        finally:
+            gate.V2_TEST_ACC, gate.V2_EOT_CUTS, gate.V2_EOT_AUC, gate.ST_EOT_AUC, gate.TEST_CLIPS = saved
+
+    def run_gate(self, v3_skill, v3_other_skill, acc_ok=True):
+        d = self.d
+        jsonl(d / "test.jsonl", [{"id": c["id"], "prob": (0.9 if c["label"]["endpoint"] else 0.1)
+                                  if (acc_ok or i % 5) else (0.1 if c["label"]["endpoint"] else 0.9)}
+                                 for i, c in enumerate(self.test)])
+        asks = list(range(0, 2401, 200))
+        self.probs(d / "eot3.jsonl", v3_skill, asks, v3_other_skill)
+        self.probs(d / "eot2.jsonl", 0.3, asks)
+        jsonl(d / "spans" / "smartturn200-en-00000.jsonl", [{"id": s["id"], "prob": 0.5 + 0.1 * s["label"]} for s in self.spans])
+        Path(d, "calib.json").write_text(json.dumps({"temperature": 1.0, "tau50": 0.5, "tau85": 0.7}))
+        Path(d, "latency.json").write_text(json.dumps({"wasm": {"median_ms": 2.4, "frontend_ms_per_hop": 0.02},
+                                                       "gguf_bytes": 631_940}))
+        for f in ("parity.json", "parity-conv.json"):
+            Path(d, f).write_text(json.dumps({"mode": "turn", "n": 20, "max_abs_diff": 1e-7, "same_decision": 20}))
+        if not Path(d, "v2.gguf").exists():
+            Path(d, "v2.gguf").write_bytes(gguf_bytes([("a.weight", (4, 2), 0)]))
+        Path(d, "v3.gguf").write_bytes(gguf_bytes([("a.weight", (4, 2), 0)]))
+        Path(d, "h3.json").write_text(json.dumps({"passed": True}))
+        a = Namespace(run=str(d / "run"), test_probs=str(d / "test.jsonl"), labels=str(d / "clips.jsonl"), labels_store=None,
+                      test_ext=None, v2_test_ext=None, spans=str(d / "spans"), eot_v3=str(d / "eot3.jsonl"),
+                      eot_v2=str(d / "eot2.jsonl"), conv_store=None, conv_v3=None, conv_v2=None, conv_val=None, sessions=None,
+                      calib=str(d / "calib.json"), latency=str(d / "latency.json"), parity=str(d / "parity.json"),
+                      parity_conv=str(d / "parity-conv.json"), model=str(d / "v3.gguf"), v2_model=str(d / "v2.gguf"),
+                      harness3=str(d / "h3.json"), pilot=None, crosscheck=None, bleed=None, conv_summary=None,
+                      out=str(d / "GATE.md"), v2_tau85=0.7, boot=200, smoke=False)
+        gate.cmd_gate3(a)
+        return json.load(open(d / "GATE.json"))
+
+    def test_v3_better_everywhere_passes(self):
+        r = self.run_gate(0.9, 0.9)
+        for k in ("A1", "A2", "E1", "E2", "E3", "G3"):
+            self.assertTrue(r[k]["pass"], (k, r[k]))
+        self.assertEqual(r["verdict"], "pass")
+        self.assertEqual(r["test_b_eotbench"]["cuts"], 240)
+        self.assertIn("v3@tau85", r["test_b_eotbench"]["policy_simulated"])
+        self.assertIn("Take v3", r["sentence"])
+        self.assertTrue(Path(self.d, "GATE.md").read_text().startswith("# s6-ear3-nano"))
+
+    def test_no_gain_fails_e1(self):
+        r = self.run_gate(0.3, 0.3)
+        self.assertFalse(r["E1"]["pass"])
+        self.assertAlmostEqual(r["E1"]["delta"], 0.0)
+        self.assertEqual(r["verdict"], "fail")
+
+    def test_harm_outside_english_fails_e3(self):
+        r = self.run_gate(1.5, 0.15)
+        self.assertTrue(r["E1"]["pass"], r["E1"])
+        self.assertFalse(r["E3"]["pass"])
+        self.assertLess(r["E3"]["upper"], 0)
+        self.assertIn("E3 fails", r["meaning"])
+
+    def test_a1_and_a_differing_tensor_list(self):
+        r = self.run_gate(0.9, 0.9, acc_ok=False)
+        self.assertFalse(r["A1"]["pass"])
+        self.assertIn("A1 or A2 fails", r["meaning"])
+        Path(self.d, "v2.gguf").write_bytes(gguf_bytes([("a.weight", (4, 3), 0)]))
+        r = self.run_gate(0.9, 0.9)
+        self.assertFalse(r["G3"]["terms"]["same_tensor_list_as_v2"])
+        self.assertFalse(r["G3"]["pass"])
+
+    def test_the_gate_refuses_before_the_harness_check(self):
+        Path(self.d, "h3.json").write_text(json.dumps({"passed": False}))
+        a = Namespace(run=str(self.d), test_probs=str(self.d / "x"), labels=str(self.d / "clips.jsonl"), labels_store=None,
+                      calib=str(self.d / "c"), latency=None, harness3=str(self.d / "h3.json"), smoke=False)
+        with self.assertRaises(SystemExit):
+            gate.cmd_gate3(a)
+
+
 if __name__ == "__main__":
     unittest.main()
