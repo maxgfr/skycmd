@@ -1,5 +1,7 @@
 # s6-ear v3 (s6-ear3-nano): pre-registration
 
+*Status on 19/11/2026: v3 ran on 19/11/2026 and its gate was read once, at 23:39: **it failed** (A1, A2 and G3 hold; E1, E2 and E3 fail). See the result block at the end of this file (§17) and `runs/s6-ear3-nano/`. v2, `s6-ear2-nano`, stays the line's published file; the frozen text below is unchanged.*
+
 **Status: frozen on 19/11/2026, before any line of v3's code is written, before any v3 data is built and before any v3 computation.** The draft of 17/11/2026 became this pre-registration when the three conditions it left open were met (below). Nothing of the draft's bars, rules, thresholds or choices moved at the freeze: the freeze records the conditions, the corpus and the values the draft said were "fixed at the freeze".
 
 **The lead accepted the draft on 17/11/2026** with three changes, all applied here:
@@ -720,3 +722,133 @@ The old statistics (offset matching, matched agreement, unconfirmed share, time 
 **After the result:** `hf/cards/s6-ear3-nano.md`, the result block of this file, and the site's pages as `AGENTS.md` asks.
 
 About 2,000 lines in all.
+
+## 17. Result (19/11/2026): v3 trained once, its tests read once, and the gate failed
+
+**Verdict: FAIL.** A1, A2 and G3 hold; **E1, E2 and E3 fail.** This is `runs/s6-ear3-nano/GATE.md`, read once by the stage `gate` at 23:39:28 on 19/11/2026. The case of §12 that applies is **"E1 fails on its lower bound. No improvement on real human-to-agent speech is shown."** Test (c) improves over v2 (§17.7), so by §12 **"the human-to-human signal does not transfer to agents."** v3 does not pass; v2 (`s6-ear2-nano`) stays the published file.
+
+**The sentence of the report (§9),** as `GATE.md` writes it: "Keep v2 (or take Smart Turn's 8.7 MB file when real conversations matter most): v3 does not pass; on eot-bench at the policy's first question (0.2 s into each pause) its AUC is 0.7197 against v2's 0.7448 (change -0.0252, 95% interval [-0.0336, -0.0167]) and Smart Turn's 0.7873; on Smart Turn's test clips its accuracy is 0.8978 against v2's 0.8993."
+
+### 17.1 What ran, in order
+
+Every stage of `scripts/train-turn3.sh` ran once, with exit status 0, and wrote its marker (`runs/s6-ear3-nano/stages/*.done`, the times below).
+
+- **The data, on the CPU** (the log `runs/all/ear3-data.log`, local; the code of commit `4857ed7`, amendment 3): `conv-data` from 12:18:34 to 15:31:33, `st-extend` to 16:57:33, `eotbench-data` to 17:22:41, `teacher-conv`, `crosscheck` and `bleed` to 17:22:46, `harness3` at 17:26:45. Their counts, the cross-check, the bleed probe and the harness check were committed before the smoke run (commit `d1d6966`; §17.3).
+- **The GPU chain** (the console `runs/all/queue-70-ear3-gpu.log`, local): `smoke` from 17:38:40 to 18:05:48 (its numbers not looked at, §6.3), `pilot` to 20:18:31, `train` to 23:22:12, `export` and `calibrate` to 23:23:20, `latency` to 23:23:40, `wasm` to 23:23:41; then the stage `eval` opened the tests once (`runs/s6-ear3-nano/TEST-OPEN`, 23:23:41, with the file's sha256 `048fafa6a7ff427a457c3957a50da0418c64d3c64e55b3b30d6a5b6e77d20cde` and the calibration's) and read test (a) to 23:30:15, `eotbench` test (b) to 23:33:29, `conv-test` test (c) to 23:38:35, and `gate` wrote its verdict at 23:39:28. **No stage was run twice and no run was restarted.**
+- **The guards of amendment 3.** The teacher check before the smoke run read 151 shards, 0 incomplete, 81,681 teacher records for the 81,681 validation and test records written, and the store's 50,000 validation and test records each with an opinion. Both parity runs exited 0 (`parity-node.mjs` on the Smart Turn clips and on the conversation records), and `turn3-guard.py parity` found both files complete (`n` 20 each). The gate refused nothing: no partial input and no missing reading (`GATE.json`: 0 clips missing in test (a), 0 cuts missing in test (b)).
+- **The listening check (§3.7, optional)** was not done.
+
+### 17.2 The gate (§9; the ternary GGUF as exported)
+
+| term | measured | bar | verdict |
+|---|---|---|---|
+| A1, accuracy at τ₀.₅ on the 31,527 clips of Smart Turn's test | **0.8978** [0.8946, 0.9013] | ≥ 0.8893 (v2's 0.8993 − 0.01) | holds |
+| A2, false cut-off at τ₈₅ = 0.6656 | **0.0881** [0.0836, 0.0926] | ≤ 0.20 | holds |
+| A2, END recall at τ₈₅ | **0.8597** [0.8544, 0.8650] | ≥ 0.80 | holds |
+| E1, AUC(v3) − AUC(v2), eot-bench at start + 0.2 s, 14 languages pooled | **−0.0252** [−0.0336, −0.0167] (0.7197 against 0.7448) | ≥ +0.02 and 95% lower bound > 0 | **fails** |
+| E2, recall at a false cut-off of 0.10, v3 − v2, same cuts | **−0.0563** [−0.0832, −0.0315] (0.2754 against 0.3317) | 95% lower bound > 0 | **fails** |
+| E3, AUC(v3) − AUC(v2), the 13 languages other than English pooled | **−0.0209** [−0.0308, −0.0111] (0.7179 against 0.7388) | 95% lower bound > −0.02 | **fails** |
+| G3, WASM median per decision | **2.39 ms** (p95 2.41 ms) | ≤ 5.0 ms | holds |
+| G3, front end per 10 ms hop (WASM) | **0.0176 ms** | ≤ 0.10 ms | holds |
+| G3, GGUF size | **631,936 bytes** | ≤ 3 MB | holds |
+| G3, WASM parity, 20 Smart Turn test clips | **max \|Δp\| 5.96e-7, same decision 20 of 20** | ≤ 1e-4, same decision | holds |
+| G3, WASM parity, 20 conversation test records | **max \|Δp\| 1.04e-6, same decision 20 of 20** | ≤ 1e-4, same decision | holds |
+| G3, the tensor list, shapes and types of v2's file | identical | identical | holds |
+
+Test (a): 95% bootstrap intervals by clip, 1,000 resamples. Test (b): the paired bootstrap of §8.3, 2,000 resamples by turn (all the cuts of a turn together), seed 20261117, percentile intervals.
+
+### 17.3 Before training: the data, the label cross-check, the bleed probe, the harness
+
+Committed before the smoke run (`runs/s6-ear3-nano/data/CONV.json`, `CROSSCHECK.json`, `bleed.json`, `harness3/check.json`; commit `d1d6966`).
+
+- **The data (§3.2, §10).** 1,125 sessions of otoSpeech at `4b3c57b8`, all in `splits.json`; no silent channel; 17 sessions removed by the bleed filter, 1,108 kept; 1,040,448 s decoded. 674,669 candidate pauses, of which 8,931 in the dropped sessions; dropped by rule: A's utterance a backchannel 171,926, an overlap 15,714, nobody within 4 s 19,859, a tie 100, near a redaction 1,769. Eligible records, holds / ends of turn: training 343,858 / 20,536, validation 43,104 / 2,390, test 44,009 / 2,473. Stored by the caps of amendment 2 (every end of turn kept): training 99,464 / 20,536 (120,000), validation 17,610 / 2,390 (20,000), test 27,527 / 2,473 (30,000). The distribution of the largest valid ask of the stored records is in `CONV.json` (`dmax_ms`). The speaker-unseen test subset (§3.3): 2,061 records (1,919 holds, 142 ends of turn).
+- **The fill of the Smart Turn extension (§3.4).** Zeros on 13 of the 270,946 training and validation clips and on 3 of the 31,527 test clips; the clip's last own hop differed from v2's stored one on no clip (`runs/all/ear3-data.log`, local).
+- **The label cross-check (§3.7 as amended by amendment 2), on the 109 validation sessions the session rules kept.** 45,494 eligible energy records (43,104 holds, 2,390 ends of turn). **Agreement 0.9509** (Wilson 95% [0.9488, 0.9530]; 38,866 of the 40,872 records whose instant label is not a drop; bar ≥ 0.85): **holds**. **Drop share 0.1016** (4,622 records: backchannel 1,545, nobody within 4 s 774, overlap 2,255, tie 48; bar ≤ 0.30): **holds**. Energy label × instant Silero label: hold × hold 37,070, hold × eot 1,940, eot × hold 66, eot × eot 1,796; agreement 0.9503 on holds and 0.9646 on ends of turn. Silero hears A still speaking at the first ask in 312 of the end-of-turn records (0.1305), for a median 298 ms more. The statistics before amendment 2, deciding nothing: agreement 0.9581 [0.9551, 0.9608] on the 19,027 offset pairs both paths label; unconfirmed share 0.5818 (26,467 records); Silero's offsets a median 88 ms after the energy VAD's (5th to 95th percentile 0 to 138 ms).
+- **The bleed probe (§3.7).** On the 120,000 training records, the AUC of the mean raw log10-energy of A's hops over [o, o + d] is at most **0.4396** over the twelve asks (at d = 2.4 s; bar: no d above 0.60): **holds**.
+- **The harness checks (§8.1), 17:26:45, before any v3 score.** The policy port replays the 3 recorded `turn.ts` vectors bit for bit. v2's file through v3's evaluation path gives 0.8993 on the 31,527 clips (0 missing). The span builder, cut at each span's start, gives v2's 17,934 cuts, v2's AUC 0.7299 and Smart Turn's 0.7838 (both within ± 0.0005). The cuts of §8.3, counted before any model read them: **16,230 cuts** (6,798 `eot`, 9,432 `hold`) from 7,342 turns.
+
+### 17.4 The run (§6, §7)
+
+- **The pilot (§6.4–6.5; `runs/s6-ear3-pilot/choice.json`).** Four arms of 12 working minutes, f32 weights, the metric being the AUC on the 20,000 conversation validation records cut at d = 0.2 s:
+
+  | arm | start | rate | Smart Turn validation accuracy (f32, d = 0) | metric | eligible (≥ 0.88) |
+  |---|---|---|---:|---:|---|
+  | P1 | v2 | 0.0001936 (× 0.25) | 0.8952 | 0.7413 | yes |
+  | **P2** | v2 | 0.0003873 (× 0.5) | 0.8949 | **0.7429** | yes, **chosen** |
+  | P3 | v2 | 0.0007745 (× 1) | 0.8939 | 0.7314 | yes |
+  | P4 | scratch | 0.0007745 | 0.8291 | 0.7338 | no |
+
+  v2's file on the same 20,000 validation cuts: **0.6175**. The chosen arm is above v2's metric + 0.01, so **the stop rule did not fire**, and the main run started from v2 at 0.0003873 for 120 working minutes.
+- **The training** (`runs/s6-ear3-nano/args.json`). 120.0 working minutes, from 20:18:31 to 23:22:12 on 19/11/2026: **155,300 steps by the gate report** (its last logged step; the trainer's log ends at 155,327), batch 128, seed 1, once, no restart, from v2's EMA checkpoint (its sha256 as `runs/s6-ear3-nano/init.json`); half of the rows conversation records and half Smart Turn clips (d = 0 on a quarter of those). Ternary QAT over the last 15 %, from step 131,662; EMA 0.999.
+- **The brake (§6.6; `runs/brake.log`, local).** The automatic modes during the GPU chain: duty 0.5 with 45 minutes of work and 15 of rest (on battery) from before the smoke run to 20:16:27, then 0.85 (50 and 10, no input) to 20:18:29; duty 0.5 (the Mac in use) from 20:18:29, when the training started, to 21:26:50; 0.85 to 21:46:59; **0.95 (55 and 5, night) from 21:46:59** to 23:27:43, so through the end of the training, the export, the calibration, the latency and the parity; then 0.5 (in use) to 23:38:15, and 0.85 during the end of test (c) and the gate. Cooling pauses of 900 s and of 300 s (`SKY_COOL`) are recorded in the console. Working minutes count only the work.
+- **The checkpoint (§7).** **The EMA** (`exported.json`): its ternary checkpoint loss 0.4572 against 0.4701 for `last`. Its final ternary validation: Smart Turn accuracy 0.8913 at d = 0 (13,593 clips), teacher–student agreement 0.9092; conversation AUC at d = 0.2 s 0.7022 (20,000 records). These four numbers are the trainer's final validation lines (`runs/s6-ear3-nano/train.log`, local); the Smart Turn validation curve is in `GATE.json` (`training.validation`).
+- **Calibration (§7; `runs/s6-ear3-nano/calib.json`).** Temperature 1.2522 (validation NLL 0.2721 → 0.2648); **τ₀.₅ = 0.5 and τ₈₅ = 0.6656, both from Smart Turn validation**, where at τ₈₅ the END recall is 0.8501 and the false cut-off 0.0920 (13,593 clips). The conversation operating point **τ_c = 0.6948** (the lowest threshold whose false cut-off on the conversation validation records at d = 0.2 s is ≤ 0.10), reported and not stored.
+
+### 17.5 Test (b): eot-bench at the policy's first question (gated by E1 to E3)
+
+16,230 cuts at span start + 0.2 s, 7,342 turns. Smart Turn v3.2 CPU reads the last 8 s, v2 and v3 the last 4 s.
+
+| cuts | model | AUC | recall at false cut-off 0.10 | at 0.05 | at 0.20 |
+|---|---|---:|---:|---:|---:|
+| all (16,230) | **v3** | **0.7197** | **0.2754** | 0.1499 | 0.4735 |
+| | v2 | 0.7448 | 0.3317 | 0.1840 | 0.5094 |
+| | Smart Turn | 0.7873 | 0.3854 | 0.2284 | 0.5818 |
+| English (3,902) | **v3** | **0.7375** | 0.3119 | 0.1709 | 0.5155 |
+| | v2 | 0.7737 | 0.3469 | 0.2443 | 0.5636 |
+| | Smart Turn | 0.8172 | 0.4358 | 0.3073 | 0.6474 |
+| the 13 others (12,328) | **v3** | **0.7179** | 0.2681 | 0.1369 | 0.4691 |
+| | v2 | 0.7388 | 0.3144 | 0.1771 | 0.5067 |
+| | Smart Turn | 0.7852 | 0.3825 | 0.2406 | 0.5892 |
+
+Recall at a false cut-off is a ranking measure (the ROC point), not a deployable threshold.
+
+- **The announced goal (not gated): not met.** v3 is below Smart Turn on the same cuts: AUC 0.7197 against 0.7873, a change of −0.0676 [−0.0763, −0.0590] (the same paired bootstrap).
+- **At the file's thresholds** (all cuts): v3 at τ₈₅ cuts off 0.1598 of the `hold` cuts and answers "finished" on 0.4007 of the `eot` cuts; at τ₀.₅, 0.2271 and 0.5237. v2 at its own τ₈₅ (0.7244): 0.2992 and 0.6614; at τ₀.₅: 0.4202 and 0.7810. Smart Turn at 0.5: 0.4422 and 0.8566.
+- **By language** (AUC; v3, v2, Smart Turn): ar 0.7219, 0.7251, 0.7806; de 0.6986, 0.7128, 0.8000; en 0.7375, 0.7737, 0.8172; es 0.7495, 0.7724, 0.8005; fr 0.7541, 0.7497, 0.8162; hi 0.6860, 0.6981, 0.7217; id 0.7088, 0.7707, 0.7769; it 0.6813, 0.7146, 0.7741; ja 0.7670, 0.8119, 0.8299; ko 0.7686, 0.7632, 0.8474; nl 0.7328, 0.7214, 0.7829; pt 0.7203, 0.7544, 0.8006; tr 0.6560, 0.6973, 0.7074; zh 0.6946, 0.6692, 0.7493. v3 reads above v2 in French, Korean, Dutch and Chinese, and below it in the ten others, English included: the judgement of §8.3 (English +0.03 to +0.08) did not hold.
+- **By cohort** (AUC; v3, v2, Smart Turn): `general` (13,433 cuts) 0.7197, 0.7434, 0.7885; `accented` (1,709) 0.7525, 0.7793, 0.8056; `short_turns` (1,088) 0.7079, 0.7539, 0.8034.
+- **The policy reading (reported).** The AUC at each ask d (v3, v2): 0.2 s 0.7197, 0.7448; 0.4 s 0.7100, 0.7369; 0.6 s 0.7103, 0.7383; 0.8 s 0.7115, 0.7398; 1.0 s 0.7107, 0.7361; 1.2 s 0.7176, 0.7270; 1.4 s 0.7203, 0.7292; 1.6 s 0.7164, 0.7423; 1.8 s 0.7329, 0.7444; 2.0 s 0.7549, 0.7508; 2.2 s 0.7690, 0.7954; 2.4 s 0.7920, 0.7773 (from 16,230 cuts at 0.2 s down to 1,620 at 2.4 s).
+- **The policy simulated per span (reported).** Of the 6,798 `eot` spans, v3 at τ₈₅ answers "finished" on 0.8232 before the 2.5 s timer (median answer at 400 ms), and 0.2589 of the 9,432 `hold` spans get at least one false cut-off; v3 at τ_c, 0.8029 (400 ms) and 0.2425; v2 at its τ₈₅, 0.8610 (200 ms) and 0.3737.
+- **Continuity (reported).** v3 at v2's cut (the span's start, 17,934 cuts): AUC 0.6754, where v2 read 0.7299 and Smart Turn 0.7838.
+
+### 17.6 Test (a): Smart Turn's test clips (gated by A1 and A2)
+
+31,527 clips, d = 0. Accuracy at τ₀.₅ 0.8978 [0.8946, 0.9013] (v2 0.8993); precision 0.8794, recall 0.9211, F1 0.8998; false cut-off 0.1252 at τ₀.₅; at τ₈₅ false cut-off 0.0881 and END recall 0.8597. AUC 0.9586 [0.9566, 0.9606], ECE 0.0068 [0.0053, 0.0102]. The per-language and per-dataset tables are in `GATE.json` (`test_a`).
+
+**Extended by the clips' own background (reported, not gated, §8.2):** at + 0.2 s, v3 0.8959 (AUC 0.9585) and v2 0.8805 (0.9473); at + 0.6 s, v3 0.8935 (0.9572) and v2 0.8512 (0.9220).
+
+### 17.7 Test (c): the 113 held-out conversation sessions (reported, not gated, §8.4)
+
+30,000 test records at d = 0.2 s, session-disjoint and not speaker-disjoint; no interval is computed for (c).
+
+| records | model | AUC | recall at false cut-off 0.10 |
+|---|---|---:|---:|
+| all (30,000) | **v3** | **0.6878** | 0.2543 |
+| | v2 | 0.6031 | 0.1808 |
+| | Smart Turn (recorded opinion) | 0.6430 | 0.2050 |
+| speaker-unseen (2,061) | **v3** | **0.6663** | 0.1831 |
+| | v2 | 0.6137 | 0.2254 |
+| | Smart Turn (recorded opinion) | 0.5989 | 0.1901 |
+
+- **Agreement (§10).** Smart Turn's recorded opinion against the conversation labels at 0.5: 0.7013 (speaker-unseen 0.6890); Smart Turn against v3: 0.7033 (0.7045).
+- **At later asks** (all records; v3, v2): 0.4 s (19,352 records) 0.6992, 0.6099; 0.8 s (10,111) 0.6807, 0.6002; 1.2 s (5,996) 0.6632, 0.5893; 2.4 s (2,433) 0.5965, 0.5387. Every d is in `GATE.json` (`test_c_conversations`).
+
+### 17.8 Latency and size (G3; §8.5)
+
+`runs/s6-ear3-nano/latency/`, measured at 23:23:40, after the training had ended; Apple M5, one thread, 1,000 decisions on a full 4 s window, features already computed: v3's WASM median 2.39 ms (p95 2.41 ms), native 1.41 ms (p95 1.42 ms), front end 0.0176 ms per hop in WASM and 0.0134 ms natively; v2 in the same session, 2.39 ms in WASM and 1.40 ms natively. GGUF 631,936 bytes, the size of v2's, with v2's tensor list, shapes and types. Parity (`runs/s6-ear3-nano/parity/`): max |Δp| 5.96e-7 on 20 Smart Turn test clips and 1.04e-6 on 20 conversation test records, the same decision on 20 of 20 each.
+
+### 17.9 Disclosure (§11, stated in every report of v3)
+
+**What v3's design read.** v3 was designed after v2's eot-bench reading: the overall, per-language and per-cohort numbers of `runs/s6-ear2-nano/GATE.json` were seen, and that reading motivated making eot-bench the headline, the no-harm bar outside English and the expected per-language effects. eot-bench has never been used for training or for any choice of v2's or v3's training: no eot-bench file was opened for v3's design, and the cut point (0.2 s) comes from the demo's policy and LiveKit's card, not from a reading. The variable trailing silence was motivated by the microphone demo (`turn.ts`), through the code. v3's study measured the trailing silence of 3,160 of v2's training clips. Smart Turn's test is still partly in-sample for the design, as v2's disclosure says; v3 adds no reading of it before the gate. **The label cross-check and the caps were amended after a measurement on five training sessions** (amendment 2, 19/11/2026), before any validation or test session was read: the cross-check reads Silero's label at the energy record's instant instead of matching offsets, and the caps keep every end-of-turn record.
+
+**What it means.** The corpus is human-to-human; eot-bench is human-to-agent: the labels of the training conversations are the listener's behaviour, not an agent's need. The training conversations are English; eot-bench has 14 languages. The conversation test is session-disjoint, not speaker-disjoint. Overlap of speakers or audio between otoSpeech and the two other tests cannot be checked; it is presumed nil (different producers, §3.5).
+
+**The limits of the reading.** One training run, on one seed. Every interval is a bootstrap over test items (clips, or the turns of eot-bench), not over training runs.
+
+### 17.10 What it means, by §12
+
+- **E1 fails on its lower bound** (−0.0252 [−0.0336, −0.0167]; the point estimate itself is below 0, so the case "fails on its minimum effect" does not apply). §12: "No improvement on real human-to-agent speech is shown. Test (c) separates the two causes." On test (c), v3's AUC is 0.6878 against v2's 0.6031 on the 30,000 records, and 0.6663 against 0.6137 on the 2,061 speaker-unseen ones (point estimates: no interval is computed for (c); on the speaker-unseen subset v3's recall at a false cut-off of 0.10 is below v2's, 0.1831 against 0.2254). So the case is **"(c) improves over v2: the human-to-human signal does not transfer to agents."**
+- **E2 fails.** §12's case "E1 holds and E2 fails" does not apply, since E1 fails too; E2 is reported as measured.
+- **E3 fails.** §12's sentence for E3, "The English gain was paid for by the other languages", presumes an English gain, and there is none: in English v3 reads 0.7375 against v2's 0.7737. Only the verdict of that case applies: it does not pass.
+- **A1, A2 and G3 hold.** v3 keeps v2's accuracy on Smart Turn's clips within the bar and is a drop-in file; that does not make it a pass.
+- **The announced goal is not met.** v3 is still below Smart Turn on the same eot-bench cuts, by −0.0676 [−0.0763, −0.0590] of AUC.
+- **Published as evaluated** (owner's decisions of 15/11/2026 and 17/11/2026, §12): `site/public/models/s6-ear3-nano.gguf` (631,936 bytes, sha256 `048fafa6a7ff427a457c3957a50da0418c64d3c64e55b3b30d6a5b6e77d20cde`, the file `TEST-OPEN` names), with its card and its Space, each opening with the verdict and the numbers. The demo of the site's Listen page keeps v2 (§3.9). No record derived from otoSpeech is committed or published (§13): the per-record files of the run stay on this machine.

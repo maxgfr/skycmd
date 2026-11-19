@@ -1,0 +1,18 @@
+{
+  "measured": "2026-11-19T23:23:40+0100",
+  "host": "Apple M5",
+  "native": {
+    "median_ms": 1.405208,
+    "p95_ms": 1.4248340000000002,
+    "frontend_ms_per_hop": 0.01337844966442953,
+    "decisions": 1000
+  },
+  "wasm": {
+    "median_ms": 2.387957999999969,
+    "p95_ms": 2.4110410000000115,
+    "frontend_ms_per_hop": 0.017636091722595098,
+    "decisions": 1000
+  },
+  "smart_turn_cpu_native": null,
+  "gguf_bytes": 631936
+}

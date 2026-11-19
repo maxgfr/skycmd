@@ -1,0 +1,26 @@
+{
+ "about": "s6-ear v3 (docs/s6-ear3-prereg.md): the tests opened by scripts/train-turn3.sh eval, once; the file read on them",
+ "opened": "2026-11-19T23:23:41",
+ "model": {
+  "file": "models/s6-ear3/s6-ear3-nano.gguf",
+  "sha256": "048fafa6a7ff427a457c3957a50da0418c64d3c64e55b3b30d6a5b6e77d20cde"
+ },
+ "calibration": {
+  "file": "runs/s6-ear3-nano/calib.json",
+  "sha256": "fc61e1d0f8ddd27e1af88d55cacae403e971b46aad02a368c9df2bf1e9467e78"
+ },
+ "harness3": "2026-11-19T17:26:45+0100",
+ "latency": "2026-11-19T23:23:40+0100",
+ "parity": {
+  "parity.json": {
+   "n": 20,
+   "max_abs_diff": 5.960464477539062e-07,
+   "same_decision": 20
+  },
+  "parity-conv.json": {
+   "n": 20,
+   "max_abs_diff": 1.043081283569336e-06,
+   "same_decision": 20
+  }
+ }
+}

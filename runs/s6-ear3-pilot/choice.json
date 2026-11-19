@@ -1,0 +1,49 @@
+{
+  "arm": "P2",
+  "start": "v2",
+  "lr": 0.0003873,
+  "minutes": 120,
+  "stop": false,
+  "v2_metric": 0.6175177069894198,
+  "v2_metric_records": 20000,
+  "arms": {
+    "P1": {
+      "start": "v2",
+      "lr": 0.0001936,
+      "rate_multiplier": 0.25,
+      "st_val_acc_f32": 0.895166629883028,
+      "conv_val_auc_d200": 0.7412835636845744,
+      "eligible": true
+    },
+    "P2": {
+      "start": "v2",
+      "lr": 0.0003873,
+      "rate_multiplier": 0.5,
+      "st_val_acc_f32": 0.8948723607739277,
+      "conv_val_auc_d200": 0.7428866016123399,
+      "eligible": true
+    },
+    "P3": {
+      "start": "v2",
+      "lr": 0.0007745,
+      "rate_multiplier": 1.0,
+      "st_val_acc_f32": 0.8939159861693519,
+      "conv_val_auc_d200": 0.731434355242243,
+      "eligible": true
+    },
+    "P4": {
+      "start": "scratch",
+      "lr": 0.0007745,
+      "rate_multiplier": 1.0,
+      "st_val_acc_f32": 0.8291032148900169,
+      "conv_val_auc_d200": 0.7337842942983613,
+      "eligible": false
+    }
+  },
+  "rules": {
+    "metric": "AUC on the conversation validation records cut at d = 0.2 s (\u00a76.4)",
+    "eligible": "Smart Turn validation accuracy at tau 0.5, d = 0, f32 >= 0.88",
+    "choice": "the eligible from-v2 arm with the highest metric; P4 instead if eligible and higher by more than 0.005 (amendment 1: or the only eligible arm)",
+    "stop": "no eligible arm, or the chosen arm below v2's file on the same cuts + 0.01 (\u00a76.5)"
+  }
+}

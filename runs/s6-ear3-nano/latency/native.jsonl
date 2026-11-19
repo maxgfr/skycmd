@@ -1,0 +1,1 @@
+{"model":"models/s6-ear3/s6-ear3-nano.gguf","name":"s6-ear3-nano","params":1306178,"file_bytes":631936,"mode":"auto","positions":50,"decisions":1000,"median_us":1405.208,"p95_us":1424.834,"frontend_us_per_hop":13.37844966442953,"prob":0.4150269329547882}
