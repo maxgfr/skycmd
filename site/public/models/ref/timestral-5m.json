@@ -2,8 +2,8 @@
   "model": "Timestral-5M",
   "file": "timestral-5m.onnx",
   "variant": "fp32",
-  "file_size_bytes": 22969292,
-  "sha256": "24f0a5689f22307b1cf61eb7ec84c8ed604f6f4294aa146371724b827feb05a2",
+  "file_size_bytes": 21329304,
+  "sha256": "6a5333dd91e7873a338a3a5040da994b42f999ccbd3ab7c0c964720468180e5c",
   "license": "Modified MIT (Mistral AI), see TIMESTRAL-LICENSE.txt",
   "hf_repo": "mistralai/Timestral-5M",
   "hf_revision": "bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f",
@@ -13,7 +13,8 @@
     "onnx_opset": 18,
     "onnx_ir_version": 10,
     "onnxruntime_python": "1.31.0",
-    "timestral": "1.0.0"
+    "timestral": "1.0.0",
+    "debug_strings": "cleared (doc_string, metadata_props)"
   },
   "input": {
     "name": "context",
@@ -117,7 +118,7 @@
     "int8_tolerance": 0.02,
     "candidates": {
       "fp32": {
-        "size_bytes": 22969292,
+        "size_bytes": 21329304,
         "worst": 0.0010891421672249723,
         "cases": {
           "sine_trend": {

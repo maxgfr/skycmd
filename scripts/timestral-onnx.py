@@ -173,6 +173,45 @@ def run_session(path: Path, threads: int | None = None) -> ort.InferenceSession:
     return ort.InferenceSession(str(path), so, providers=["CPUExecutionProvider"])
 
 
+def strip_debug_strings(path: Path) -> None:
+    """Clear every `doc_string` and `metadata_props` of the ONNX file at `path`, in place.
+
+    The dynamo exporter writes, on the graph and on each node, the stack trace of the export
+    (`pkg.torch.onnx.stack_trace`, with the absolute path of this script on the exporting
+    machine), the FX node, the module hierarchy and the export signature. The runtime reads none
+    of them; the graph, its attributes and its initializers are left as they are."""
+
+    def graph(g: onnx.GraphProto) -> None:
+        g.doc_string = ""
+        del g.metadata_props[:]
+        for vi in [*g.input, *g.output, *g.value_info]:
+            vi.doc_string = ""
+            del vi.metadata_props[:]
+        for t in g.initializer:
+            t.doc_string = ""
+        for n in g.node:
+            n.doc_string = ""
+            del n.metadata_props[:]
+            for a in n.attribute:
+                a.doc_string = ""
+                if a.type == onnx.AttributeProto.GRAPH:
+                    graph(a.g)
+                for sg in a.graphs:
+                    graph(sg)
+
+    m = onnx.load(str(path))
+    m.doc_string = ""
+    del m.metadata_props[:]
+    graph(m.graph)
+    for f in m.functions:
+        f.doc_string = ""
+        del f.metadata_props[:]
+        for n in f.node:
+            n.doc_string = ""
+            del n.metadata_props[:]
+    onnx.save(m, str(path))
+
+
 def rel_err(a: np.ndarray, b: np.ndarray, scale: float) -> tuple[float, float]:
     """(max abs error over all quantiles, over the median only), relative to `scale`."""
     d = np.abs(a.astype(np.float64) - b.astype(np.float64))
@@ -227,6 +266,7 @@ def main() -> None:
     with torch.no_grad():
         torch.onnx.export(wrapper, (example,), str(fp32_path), input_names=[INPUT_NAME], output_names=[OUTPUT_NAME],
                           opset_version=OPSET, dynamo=True, external_data=False, optimize=True)
+    strip_debug_strings(fp32_path)  # no local path in the published file
     onnx.checker.check_model(str(fp32_path), full_check=True)
     quantize_dynamic(str(fp32_path), str(int8_path), weight_type=QuantType.QInt8, per_channel=True)
 
@@ -295,7 +335,8 @@ def main() -> None:
         "timestral_code": f"https://github.com/mistralai/timestral@{TIMESTRAL_COMMIT}",
         "export": {"exporter": f"torch.onnx (dynamo) torch {torch.__version__}", "onnx_opset": OPSET,
                    "onnx_ir_version": onnx.load(str(onnx_out), load_external_data=False).ir_version,
-                   "onnxruntime_python": ort.__version__, "timestral": timestral.__version__},
+                   "onnxruntime_python": ort.__version__, "timestral": timestral.__version__,
+                   "debug_strings": "cleared (doc_string, metadata_props)"},
         "input": {"name": INPUT_NAME, "shape": [1, args.context], "dtype": "float32",
                   "semantics": "raw values, oldest first, last element = most recent step; NaN (or +/-inf) = "
                                "missing; left-pad shorter series with NaN; at least one finite value required"},
