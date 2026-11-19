@@ -1,0 +1,50 @@
+{
+  "pass": false,
+  "gates": [
+    {
+      "gate": "turn end",
+      "source": "ear:turn_end",
+      "n": 31527,
+      "accuracy": 0.5681479366891871,
+      "bar": 0.8518412789037968,
+      "bar_from": "Smart Turn v3.2, n 31527",
+      "control": 0.7647413328258318,
+      "pass": false
+    },
+    {
+      "gate": "keywords (12)",
+      "source": "ear:keyword",
+      "n": 4890,
+      "accuracy": 0.8885480572597138,
+      "bar": 0.9,
+      "bar_from": "pre-registered",
+      "control": 0.9216768916155419,
+      "pass": false
+    },
+    {
+      "gate": "zero-shot keywords en",
+      "source": "ear:keyword_zs:en",
+      "n": 1000,
+      "accuracy": 0.21,
+      "bar": 0.2,
+      "bar_from": "2 x chance",
+      "control": 0.302,
+      "pass": true
+    },
+    {
+      "gate": "zero-shot keywords fr",
+      "source": "ear:keyword_zs:fr",
+      "n": 1000,
+      "accuracy": 0.133,
+      "bar": 0.2,
+      "bar_from": "2 x chance",
+      "control": 0.152,
+      "pass": false
+    }
+  ],
+  "size": {
+    "n_params": 1532449,
+    "smart_turn_params": 8000000,
+    "ratio": 5.220402114523877
+  }
+}

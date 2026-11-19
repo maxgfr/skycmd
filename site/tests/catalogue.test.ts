@@ -13,7 +13,7 @@ import { formatSize } from '../.vitepress/theme/lib/size.ts'
 const here = dirname(fileURLToPath(import.meta.url))
 const site = join(here, '..')
 const repo = join(site, '..')
-const manifest: { name: string; bytes: number }[] = JSON.parse(
+const manifest: { name: string; bytes: number; gate?: string }[] = JSON.parse(
   readFileSync(join(site, 'public/models/manifest.json'), 'utf8'),
 )
 
@@ -57,6 +57,31 @@ test('the groups hold the statuses they promise', () => {
       assert.equal(e.try, undefined, `${e.id}: nothing to try before a result`)
     }
     if (e.status === 'failed') assert.equal(e.group, 'results', e.id)
+  }
+})
+
+// The models whose card says "usable as a part" although their gate failed. Each one is named
+// here on purpose: a new "part" entry with a failed gate must be added to this list by hand.
+// s6-secrets-verify-pico failed G1 and is shipped only as an experimental option, off by default,
+// inside secretgate (hf/cards/s6-secrets-verify-pico.md).
+const PART_WITH_FAILED_GATE = new Set(['s6-secrets-verify-pico'])
+
+test('every status agrees with the gate of the manifest', () => {
+  for (const e of CATALOGUE) {
+    for (const name of e.manifest ?? []) {
+      const m = manifest.find((x) => x.name === name)
+      assert.ok(m, `${e.id}: ${name} is not in the manifest`)
+      const where = `${e.id} is '${e.status}' but ${name} has gate ${m.gate ?? '(none)'} in the manifest`
+      if (e.status === 'passed' || e.status === 'second-look' || e.status === 'bench-only')
+        assert.equal(m.gate, 'passed', where)
+      if (e.status === 'failed') assert.equal(m.gate, 'failed', where)
+      if (e.status === 'ungated') assert.equal(m.gate, undefined, where)
+      if (e.status === 'part') {
+        assert.ok(m.gate === 'passed' || m.gate === 'failed', where)
+        if (m.gate === 'failed')
+          assert.ok(PART_WITH_FAILED_GATE.has(name), `${where}: a failed model used as a part must be listed in PART_WITH_FAILED_GATE`)
+      }
+    }
   }
 })
 

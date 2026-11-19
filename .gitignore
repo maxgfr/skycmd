@@ -1,6 +1,8 @@
 /target
 # build outputs of any crate (wasm-pack, cargo test in a crate directory)
 target/
+# run outputs: checkpoints and logs stay local; the small result files of a gated run
+# (results, summaries, gate files) are force-added (git add -f) and tracked under runs/<name>/
 /runs
 /data
 /models-src
@@ -20,7 +22,7 @@ site/public/lib/
 .venv-teacher/
 logs-s4/
 
-# Claude Code worktrees (isolated working copies, never committed)
+# local tool worktrees (isolated working copies, never committed)
 .claude/worktrees/
 
 # Python bytecode

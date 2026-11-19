@@ -1,6 +1,6 @@
 ---
 title: "What worked, what failed, on one laptop: the skycmd experiments as of 19 November 2026"
-description: "An overview of every line of experiments in skycmd: five models that passed a gate written before their test, each with the limit stated with the pass; the failures, published as results; the versions that stopped before training; and the method that held all of it together on one 16 GB MacBook."
+description: "An overview of every line of experiments in skycmd: five models that passed a gate written before their test (one of them on a second look), each with the limit stated with the pass; the failures, published as results; the versions that stopped before training; and the method that held all of it together on one 16 GB MacBook."
 date: 2026-11-19
 outline: [2, 2]
 ---
@@ -18,7 +18,7 @@ outline: [2, 2]
 Over the autumn of 2026 I trained very small models on one laptop and wrote down, before each test, what would count as a pass. This article looks back at all of it at once. It does not repeat the tables: every claim and its evidence is on [What we bring](/novelty/), and every number on [Results](/results/). It tells what the lines of experiments did together, which passes held and with what limits, which failures came, and what the whole does and does not show.
 
 ::: info The short version
-Five models passed the gate written for them before their test: a general decision model, its larger second version (on a second look at the same test), a secret detector on its own synthetic bench, an end-of-turn detector and a tool router. Each pass comes with a limit stated next to it, and two of those limits are about real data that the gate did not read. Ten rows of the Results status table are failures, each published with its file. Four more versions stopped at checks before their main training, a fifth (s6-sleep v4) failed both of its checks on training sequences and is closed, and one fine-tuning could not run at all on this machine and is closed. A planned series of four experiments was closed without running, after a literature review.
+Five models passed the gate written for them before their test, four at their first reading and one on a second look. At their first reading: a general decision model, a secret detector on its own synthetic bench, an end-of-turn detector and a tool router (on fresh slates, with a system defined after its first version's test was read). On a second look at the same test records: the general model's larger second version. Each pass comes with a limit stated next to it, and two of those limits are about real data that the gate did not read. Ten rows of the Results status table are failures, each published with its file. Four more versions stopped at checks before their main training, a fifth (s6-sleep v4) failed both of its checks on training sequences and is closed, and one fine-tuning could not run at all on this machine and is closed. A planned series of four experiments was closed without running, after a literature review.
 :::
 
 ## The context: skycmd, on one laptop
@@ -41,7 +41,7 @@ Every line below followed the same rules. They are the reason the failures are a
 
 ## What passed its gate, and the limit stated with each pass
 
-Five models cleared every condition of their gate. The second column is the gated number against its bar, from [Results](/results/#status); the third is the limit that the same page states with the pass.
+Five models cleared every condition of their gate, four at their first reading and s6-micro v2 on a second look. The second column is the gated number against its bar, from [Results](/results/#status); the third is the limit that the same page states with the pass.
 
 | model | gated number against its bar | the limit stated with the pass |
 |---|---|---|

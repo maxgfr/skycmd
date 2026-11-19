@@ -1,0 +1,70 @@
+{
+  "model": "site/public/models/s3-pico.gguf",
+  "n_params": 445345,
+  "split": "test",
+  "sources": {
+    "all": {
+      "n": 11000,
+      "accuracy": 0.26845454545454545,
+      "nll": 1.6472367735146587,
+      "ece": 0.06294644071500409,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 518.25
+    },
+    "notam:deel_subject": {
+      "n": 2000,
+      "accuracy": 0.1625,
+      "nll": 2.5366935824669423,
+      "ece": 0.06691754111647606,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 456.334
+    },
+    "notam:notam_multi": {
+      "n": 2000,
+      "accuracy": 0.3185,
+      "nll": 0.9881333214620792,
+      "ece": 0.13916147612407803,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 515.667
+    },
+    "typed_decisions_bench": {
+      "n": 2000,
+      "accuracy": 0.382,
+      "nll": 1.2110494373974277,
+      "ece": 0.039685427524149414,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 528.25
+    },
+    "when2call": {
+      "n": 2000,
+      "accuracy": 0.368,
+      "nll": 1.1675400807035299,
+      "ece": 0.1584507314413786,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 525.5830000000001
+    },
+    "zs_massive_en": {
+      "n": 2000,
+      "accuracy": 0.187,
+      "nll": 2.083291830079902,
+      "ece": 0.030382391616702083,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 355.20799999999997
+    },
+    "zs_massive_fr": {
+      "n": 1000,
+      "accuracy": 0.117,
+      "nll": 2.1461880044415054,
+      "ece": 0.07905078463256358,
+      "mean_layers": 4.0,
+      "early_exit_rate": 0.0,
+      "median_us": 404.0
+    }
+  }
+}

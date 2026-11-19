@@ -60,7 +60,9 @@ reach a test reading.
 
 ## The gate, as read
 
-`runs/s6-sleep3/gate.json`: `"pass": false`. Every reading is on test seeds read once (the first
+`runs/s6-sleep3/gate.json`: `"pass": false` (its `"published_as": null` is the report script's
+rule, which names a file only for a passed gate; the file is published as this result all the same,
+by the owner's decision of 15/11/2026). Every reading is on test seeds read once (the first
 1,000 `recall` episode seeds ≡ 19 mod 20 from 5,000,000,000; the arena from seed 5000, 200
 episodes per game), ternary weights, the last exit, the mean of three training seeds; intervals
 are paired bootstraps over episodes, the three seeds pooled.

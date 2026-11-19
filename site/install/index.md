@@ -71,8 +71,8 @@ included: owner's decision of 17/11/2026): [s6-micro-v1](https://huggingface.co/
 candidates with a simplified rule, not secretgate's engine),
 [s6-route-nano](https://huggingface.co/maxgfr/s6-route-nano) (its demo runs the file alone; the
 file, fused with a static embedding, is the model part of s6-route, which passed its own gate,
-above) and [s6-sleep3-nano](https://huggingface.co/maxgfr/s6-sleep3-nano) (with its control);
-[s6-route7-nano](https://huggingface.co/maxgfr/s6-route7-nano) once uploaded.
+above), [s6-sleep3-nano](https://huggingface.co/maxgfr/s6-sleep3-nano) (with its control) and
+[s6-route7-nano](https://huggingface.co/maxgfr/s6-route7-nano).
 
 Next to s6-cast-pico and s6-cast2-pico, the [Forecast](/forecast/) page runs two reference forecasters, which are not ours and keep their own licenses:
 
