@@ -324,6 +324,7 @@ fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
 
     // Experiment stages are rebuilt with other step lists: their resume key is the step name.
     let dynamic = exp::STAGES.iter().any(|(n, _)| *n == stage.name);
+    let worktrees = Worktrees::of(&store).context("listing the worktrees of the store")?;
     let mut pending = Vec::new();
     for (i, step) in stage.steps.iter().enumerate() {
         let argv = step.argv(&store, &bin, &root);
@@ -338,9 +339,9 @@ fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
         } else {
             state.join(format!("{i:02}-{}.done", step.name))
         };
-        let key = resume_key(&line, &store);
-        let unchanged =
-            fs::read_to_string(&done).is_ok_and(|s| resume_key(s.trim(), &store) == key);
+        let key = resume_key(&line, &store, &worktrees);
+        let unchanged = fs::read_to_string(&done)
+            .is_ok_and(|s| resume_key(s.trim(), &store, &worktrees) == key);
         if !force && !step.always && unchanged {
             log.line(&format!("[xtask] skip {} (done)", step.name));
             continue;
@@ -411,20 +412,86 @@ fn run_stage(stage: &Stage, force: bool, dry: bool, jobs: usize) -> Result<()> {
     Ok(())
 }
 
-/// A step's command line with every worktree checkout of the store (`<store>/.claude/worktrees/
-/// <name>`) written as the store itself: `{checkout}` arguments (the pre-registration, the demo
-/// cases) then compare equal from any worktree, and a step done from one is not redone from
-/// another.
-fn resume_key(line: &str, store: &Path) -> String {
+/// The linked worktrees of the store's repository, as `git worktree list --porcelain` lists them.
+#[derive(Debug, Default)]
+struct Worktrees {
+    /// Directories under the store that hold linked worktrees: any `<dir>/<name>` is a
+    /// worktree, including one created later or removed since.
+    dirs: Vec<String>,
+    /// Linked worktrees outside such a directory, matched as they are.
+    roots: Vec<String>,
+}
+
+impl Worktrees {
+    /// Reads them with git from the store.
+    fn of(store: &Path) -> Result<Self> {
+        let list = git(store, &["worktree", "list", "--porcelain"])?;
+        Ok(Self::parse(&list, store))
+    }
+
+    /// Parses `git worktree list --porcelain`: every `worktree <path>` line but the store's
+    /// own (the main worktree).
+    fn parse(porcelain: &str, store: &Path) -> Self {
+        let store = store.display().to_string();
+        let inside = format!("{store}/");
+        let mut wt = Self::default();
+        for path in porcelain
+            .lines()
+            .filter_map(|l| l.strip_prefix("worktree "))
+        {
+            let path = path.trim_end_matches('/');
+            if path == store {
+                continue;
+            }
+            match path.rsplit_once('/') {
+                Some((dir, _)) if dir.starts_with(&inside) => {
+                    if !wt.dirs.iter().any(|d| d == dir) {
+                        wt.dirs.push(dir.to_string());
+                    }
+                }
+                _ => {
+                    if !wt.roots.iter().any(|r| r == path) {
+                        wt.roots.push(path.to_string());
+                    }
+                }
+            }
+        }
+        wt
+    }
+
+    /// The earliest worktree path in `s`, as (start, end) byte offsets.
+    fn find(&self, s: &str) -> Option<(usize, usize)> {
+        let ends_path = |rest: &str| rest.is_empty() || rest.starts_with(['/', ' ']);
+        let in_dirs = self.dirs.iter().filter_map(|d| {
+            let prefix = format!("{d}/");
+            s.match_indices(&prefix).find_map(|(i, _)| {
+                let after = &s[i + prefix.len()..];
+                let name = after.find(['/', ' ']).unwrap_or(after.len());
+                (name > 0).then_some((i, i + prefix.len() + name))
+            })
+        });
+        let roots = self.roots.iter().filter_map(|r| {
+            s.match_indices(r.as_str())
+                .find(|(i, _)| ends_path(&s[i + r.len()..]))
+                .map(|(i, _)| (i, i + r.len()))
+        });
+        in_dirs
+            .chain(roots)
+            .min_by_key(|&(i, end)| (i, std::cmp::Reverse(end)))
+    }
+}
+
+/// A step's command line with every linked worktree of the store written as the store itself:
+/// `{checkout}` arguments (the pre-registration, the demo cases) then compare equal from any
+/// worktree, and a step done from one is not redone from another.
+fn resume_key(line: &str, store: &Path, wt: &Worktrees) -> String {
     let store = store.display().to_string();
-    let wt = format!("{store}/.claude/worktrees/");
     let mut out = String::with_capacity(line.len());
     let mut rest = line;
-    while let Some(i) = rest.find(&wt) {
+    while let Some((i, end)) = wt.find(rest) {
         out.push_str(&rest[..i]);
         out.push_str(&store);
-        let after = &rest[i + wt.len()..];
-        rest = &after[after.find(['/', ' ']).unwrap_or(after.len())..];
+        rest = &rest[end..];
     }
     out.push_str(rest);
     out
@@ -526,7 +593,7 @@ mod tests {
     fn store_must_be_the_main_checkout() {
         let main = Path::new("/r/skycmd");
         assert!(check_store(main, main).is_ok());
-        assert!(check_store(Path::new("/r/skycmd/.claude/worktrees/x"), main).is_err());
+        assert!(check_store(Path::new("/r/skycmd/.wt/x"), main).is_err());
         assert!(check_store(Path::new("/tmp/store"), main).is_err());
         let wt = Path::new("/r/worktrees/skycmd");
         assert!(check_store(wt, wt).is_err());
@@ -567,30 +634,53 @@ mod tests {
         }
     }
 
+    /// `git worktree list --porcelain` of a store with two worktrees in `.wt/` and one outside.
+    const PORCELAIN: &str = "worktree /r/skycmd\nHEAD 1f18\nbranch refs/heads/main\n\n\
+        worktree /r/skycmd/.wt/issue-8-x\nHEAD 1f18\nbranch refs/heads/issue-8-x\n\n\
+        worktree /r/skycmd/.wt/issue-9\nHEAD 1f18\ndetached\n\n\
+        worktree /r/skycmd-side\nHEAD 1f18\nbranch refs/heads/side\n";
+
+    #[test]
+    fn worktrees_come_from_git() {
+        let wt = Worktrees::parse(PORCELAIN, Path::new("/r/skycmd"));
+        assert_eq!(wt.dirs, ["/r/skycmd/.wt"]);
+        assert_eq!(wt.roots, ["/r/skycmd-side"]);
+        let none = Worktrees::parse("worktree /r/skycmd\nHEAD 1f18\n", Path::new("/r/skycmd"));
+        assert!(none.dirs.is_empty() && none.roots.is_empty());
+    }
+
     #[test]
     fn resume_key_ignores_the_worktree() {
         let st = Path::new("/r/skycmd");
+        let wt = Worktrees::parse(PORCELAIN, st);
         let line = |co: &str| {
             format!(
                 "sky-eval m.gguf --prereg {co}/docs/s5-prereg.md --records {co}/eval/s5/d.jsonl"
             )
         };
-        let main = resume_key(&line("/r/skycmd"), st);
+        let main = resume_key(&line("/r/skycmd"), st, &wt);
         assert_eq!(main, line("/r/skycmd"));
-        assert_eq!(
-            resume_key(&line("/r/skycmd/.claude/worktrees/issue-8-x"), st),
-            main
-        );
-        assert_eq!(
-            resume_key(&line("/r/skycmd/.claude/worktrees/issue-10"), st),
-            main
-        );
+        assert_eq!(resume_key(&line("/r/skycmd/.wt/issue-8-x"), st, &wt), main);
+        // a worktree of the same directory created later, or removed since
+        assert_eq!(resume_key(&line("/r/skycmd/.wt/issue-10"), st, &wt), main);
+        // a worktree outside the store, at its exact path only
+        assert_eq!(resume_key(&line("/r/skycmd-side"), st, &wt), main);
+        assert_ne!(resume_key(&line("/r/skycmd-side2"), st, &wt), main);
         // other arguments are compared as they are
-        assert_ne!(resume_key(&line("/elsewhere"), st), main);
+        assert_ne!(resume_key(&line("/elsewhere"), st, &wt), main);
+        assert_ne!(resume_key(&line("/r/skycmd/data"), st, &wt), main);
         assert_eq!(
-            resume_key("x --store /r/skycmd/.claude/worktrees/w", st),
+            resume_key("x --store /r/skycmd/.wt/w", st, &wt),
             "x --store /r/skycmd"
         );
+        assert_eq!(
+            resume_key("x /r/skycmd/.wt/ y", st, &wt),
+            "x /r/skycmd/.wt/ y"
+        );
+        // with no linked worktree, a line is its own key
+        let none = Worktrees::default();
+        let l = line("/r/skycmd/.wt/issue-8-x");
+        assert_eq!(resume_key(&l, st, &none), l);
     }
 
     #[test]
