@@ -1,6 +1,6 @@
 # s6-ear v3 (s6-ear3-nano): pre-registration
 
-**DRAFT of 17/11/2026: not frozen; it becomes the pre-registration when the owner has accepted the corpus's access conditions (or chosen the fallback) and the lead freezes it; no computation before that.**
+**Status: frozen on 19/11/2026, before any line of v3's code is written, before any v3 data is built and before any v3 computation.** The draft of 17/11/2026 became this pre-registration when the three conditions it left open were met (below). Nothing of the draft's bars, rules, thresholds or choices moved at the freeze: the freeze records the conditions, the corpus and the values the draft said were "fixed at the freeze".
 
 **The lead accepted the draft on 17/11/2026** with three changes, all applied here:
 
@@ -8,21 +8,27 @@
 - the automatic label cross-check of §3.7, in place of a listening bar;
 - "gate on all languages" recorded as decided (§15).
 
-**Conditions still open before the freeze:**
+**The three conditions of the draft, met on 19/11/2026:**
 
-1. The owner accepts otoSpeech's access conditions on Hugging Face, or chooses the fallback of §3.10.
-2. About 25 GB are free at the start (§3.8). 6.1 GB were free on 17/11/2026, so this needs the owner's decision on v1's `data/ear/audio` (20 GB) or another source of space.
-3. v2's EMA checkpoint is copied to a durable place, `../skycmd-data/s6-ear2/checkpoints/last-ema/`, by the lead, and its sha256 list is recorded before the run (§3.1, §16).
+1. **The corpus.** The owner accepted otoSpeech's access conditions on Hugging Face on 19/11/2026: the access form was submitted and access was granted. The use stated on the form is training and evaluation, with no derived records published. The revision at access is `4b3c57b8947d5f651dd6b5e825e7f34b205759e5`: 153 files (the 151 shards `data/train/shard-000000.tar` … `shard-000150.tar`, 48,757,534,720 bytes, with `README.md` and `.gitattributes`). The corpus of v3 is therefore otoSpeech at that revision, and **the AMI fallback of §3.10 is not taken.**
+2. **The disk.** At least 72 GB are free on the data disk on 19/11/2026 (the lead's reading; `df` gave 123 GiB available at the freeze), against the about 25 GB of §3.8. v1's `data/ear/audio` has not been touched.
+3. **v2's EMA checkpoint.** It is at `/Users/maxime/Documents/Code/skycmd-data/s6-ear2/checkpoints/last-ema/` (that is `../skycmd-data/s6-ear2/checkpoints/last-ema/` from the main checkout), with its sha256 list next to it, `last-ema.sha256`. The list, copied here and into `runs/s6-ear3-nano/init.json` (§16):
 
-Records derived from otoSpeech are not published (§13).
+   ```text
+   43269a549a6b06adeed59bf23854d23e2cee915f2e0eb4c09fcd85be40588f80  config.json
+   176cc9300fd374bbae1fb0276398cae5497f172090c2ec7ff32c644ae7a2f3ec  model.safetensors
+   1fc6be3017b6ca286effef4d908648a575f41f5cfd461430509ebdb6844746a3  optimizer.safetensors
+   1494ca9b8acc3bed2a3a363c12b674ec5e4385e85def61d1c763664f97d898de  state.json
+   ```
 
-- No line of v3's code is written, no v3 data is downloaded and no v3 model exists.
-- When frozen, this file fixes:
-  - the data, the label rule, the clip construction, the model and its start;
+Records derived from otoSpeech are not published (§13), as the owner stated on the access form.
+
+- At the freeze, no line of v3's code is written, no v3 data is built and no v3 model exists. The Hub listing of the corpus at the revision above and the two dataset cards were read for the freeze. For the tests of the code to come (the lead's permission of 19/11/2026), `splits.json` (sha256 `7550074d7b1761d946dcf3f0bb61fbf1372fe97becd68d752ce631a21ef8b436`) and one shard, `shard-000150.tar` (127,406,080 bytes, three training sessions), were downloaded into a temporary folder before this commit; only the shard's member names, its session metadata fields and a FLAC stream header (48 kHz, two channels, 16 bits) were read. No audio was decoded, no record was built and nothing of it is kept.
+- This file fixes:
+  - the data (otoSpeech at the revision above), the label rule, the clip construction, the model and its start;
   - the run, the choice of checkpoint, the evaluation and the gate.
 - The results are then read through it.
-- Four things are fixed later, by rules written here, before training starts:
-  - the corpus (otoSpeech, or the AMI fallback of §3.10), by the owner;
+- Three things are fixed later, by rules written here, before training starts:
   - the automatic label cross-check and the bleed probe of §3.7;
   - the harness checks of §8.1;
   - the start (from v2 or from scratch) and the rate, by the pilot of §6.
@@ -88,8 +94,8 @@ Does the s6-ear2-nano graph, unchanged, do measurably better on real conversatio
 
 | set | use | size | licence |
 |---|---|---|---|
-| `otoearth/otoSpeech-full-duplex-280h` (revision recorded at access; read on 17/11 at `4b3c57b8`) | conversation train / val / test by §3.3 | 151 shards, 48,757,552,521 bytes, about 280 h, 1,125 sessions | CC BY 4.0, gated |
-| `anyreach-ai/dualturn-otospeech-turn-taking`, file `splits.json` only (revision `5b700b4b`) | the session split (§3.3) | 54,992 bytes | licence `other`; only the session-to-split map is used, no feature and no label |
+| `otoearth/otoSpeech-full-duplex-280h` at `4b3c57b8947d5f651dd6b5e825e7f34b205759e5` (the revision at access, 19/11/2026; the same as read on 17/11) | conversation train / val / test by §3.3 | 151 shards, 48,757,534,720 bytes (48,757,552,521 with the card and `.gitattributes`), about 280 h, 1,125 sessions | CC BY 4.0, gated; conditions accepted by the owner on 19/11/2026 |
+| `anyreach-ai/dualturn-otospeech-turn-taking`, file `splits.json` only (revision `5b700b4b7fe6a21aa3a5acce5f235913fb40cb2e`) | the session split (§3.3) | 54,992 bytes | licence `other`; only the session-to-split map is used, no feature and no label |
 | `pipecat-ai/smart-turn-data-v3.2-train` at `f8c95d28` | train and val as v2 (257,353 / 13,593); streamed again for the trailing extension (§3.4) | 83 shards, 41,400,926,042 bytes | CC BY 4.0 |
 | `pipecat-ai/smart-turn-data-v3.2-test` | **test (a), gated**; v1's WAVs, as v2 | 31,527 clips | CC BY 4.0 |
 | `livekit/eot-bench-data`, config `all`, at `ae834af9` (v2's commit) | **test (b), gated** (§8.3) | 7,342 turns, 1,980,396,015 bytes | CC BY 4.0 (card) |
@@ -99,7 +105,7 @@ Does the s6-ear2-nano graph, unchanged, do measurably better on real conversatio
 
 - Every shard is streamed and deleted once its records are written, as in v2.
 - Every licence is recorded in `DATA_LICENSES.md` before the run.
-- v2's checkpoint lived in a session worktree and is not in git. The lead copies it to `../skycmd-data/s6-ear2/checkpoints/last-ema/`. The sha256 of each of its files is recorded before the run (§16).
+- v2's checkpoint lived in a session worktree and is not in git. The lead copied it to `../skycmd-data/s6-ear2/checkpoints/last-ema/`. The sha256 of each of its files is recorded at the freeze (condition 3 above, and `runs/s6-ear3-nano/init.json`, §16).
 - Silero's file is pinned by the sha256 of its download, recorded at the first use, and it must be the file of the tag above.
 
 ### 3.2 Conversation records (from one session)
@@ -227,6 +233,7 @@ Does the s6-ear2-nano graph, unchanged, do measurably better on real conversatio
 - **Reused, not copied:** v2's Smart Turn store (11 GB), its test store and v1's test WAVs.
 - **The rule of v2 holds:** every step leaves `MIN_FREE_GB` = 8 GB free, so v3 needs **about 25 GB free at its start**.
 - **On 17/11/2026, 6.1 GB were free.** The owner frees space first. v1's `data/ear` stays untouched unless the owner decides otherwise.
+- **On 19/11/2026, at the freeze, at least 72 GB are free** (condition 2 above), and v1's `data/ear/audio` is untouched.
 
 ### 3.9 Scope
 
@@ -240,6 +247,8 @@ v3 answers the same question as v2, "has the speaker finished?", asked by the de
 The demo gets the v3 file only after the result, and by the owner's decision.
 
 ### 3.10 The fallback: AMI (only if the owner does not accept otoSpeech's conditions)
+
+**Not taken:** the owner accepted otoSpeech's conditions on 19/11/2026 (condition 1 at the top). This section is kept as it was written and applies to nothing in v3.
 
 - **Source.** The AMI Meeting Corpus from the Edinburgh site, under CC BY 4.0:
   - the individual headset WAVs of every meeting (about 120 MB each, four or five per meeting);
@@ -502,13 +511,13 @@ Every report of v3 states this paragraph.
 
 ## 14. Amendments
 
-None. This file is a draft (see the top).
+None at the freeze (19/11/2026).
 
-## 15. Choices (the first value of each line is the one proposed; the alternative is recorded)
+## 15. Choices (the first value of each line is the one taken at the freeze; the alternative is recorded)
 
 | | choice | proposed | alternatives | why the proposal |
 |---|---|---|---|---|
-| O1 | corpus | **otoSpeech 280 h, raw** | the processed 141 h (half the download, noise-reduced, human-selected, 44.1 kHz); AMI (the fallback, §3.10); CANDOR (licence allows a model, forbids sharing derived data; about 346 GB) | dyads, natural microphone silence, CC BY 4.0, and the DualTurn split covers it |
+| O1 | corpus | **otoSpeech 280 h, raw (taken: the owner accepted its conditions on 19/11/2026)** | the processed 141 h (half the download, noise-reduced, human-selected, 44.1 kHz); AMI (the fallback, §3.10); CANDOR (licence allows a model, forbids sharing derived data; about 346 GB) | dyads, natural microphone silence, CC BY 4.0, and the DualTurn split covers it |
 | O2 | session split | **DualTurn's `splits.json`** | a new seeded split by session; a speaker-grouped split of a subset | comparability with DualTurn; a speaker-disjoint split is infeasible by its own count |
 | O3 | VAD for offsets and asks | **the demo's energy VAD and policy, ported** | Silero VAD (DualTurn's) | offsets and silences then mean exactly what they mean when the model is asked |
 | O4 | VAD for the other speaker | **the same energy VAD, cleaned 150 / 150 ms** | Silero on B's channel | one detector and no new dependency; bleed is handled by the session filter and the probe |
@@ -559,7 +568,7 @@ None. This file is a draft (see the top).
   - `turn-extend`: the 83 shards again; the fill and the 240 extension hops per kept clip into `st-ext/`; `--test` on v1's WAVs.
   - `turn-eotbench --spans`: one record per span from start − 3.8 s to min(end, start + 2.4 s), the 0.2 s and 5 s rules of §8.3. v2's cut mode is kept for §8.1.
   - Tests: the extension equals the tail of the hops of the extended PCM, bit for bit.
-- `src/ami.rs`: only if the fallback is chosen (§3.10). `fetch-ami`: the headsets meeting by meeting and the NXT word timings.
+- `src/ami.rs`: only if the fallback is chosen (§3.10). `fetch-ami`: the headsets meeting by meeting and the NXT word timings. **Not written: the fallback is not taken (condition 1 at the top).**
 
 **sky-train:**
 
@@ -604,8 +613,8 @@ None. This file is a draft (see the top).
 
 **Before the run:**
 
-- **v2's EMA checkpoint.** Expected at `../skycmd-data/s6-ear2/checkpoints/last-ema/` (`config.json`, `model.safetensors`, `optimizer.safetensors`, `state.json`), copied there by the lead from the session worktree. The sha256 of every file is recorded in `runs/s6-ear3-nano/init.json` before the run. `--init` refuses a checkpoint whose hashes differ.
-- **Licences.** The rows of `DATA_LICENSES.md`:
+- **v2's EMA checkpoint.** At `../skycmd-data/s6-ear2/checkpoints/last-ema/` (`config.json`, `model.safetensors`, `optimizer.safetensors`, `state.json`), copied there by the lead from the session worktree. The sha256 of every file is recorded in `runs/s6-ear3-nano/init.json` at the freeze (the list of condition 3 at the top). `--init` refuses a checkpoint whose hashes differ.
+- **Licences.** The rows of `DATA_LICENSES.md`, written at the freeze (section "s6-ear v3 audio"):
   - otoSpeech: CC BY 4.0, gated, its role, the conditions accepted;
   - DualTurn's `splits.json`: licence `other`; only session ids used;
   - Silero VAD v6.2.3: MIT; the cross-check only.

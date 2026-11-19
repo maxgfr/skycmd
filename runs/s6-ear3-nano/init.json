@@ -1,0 +1,10 @@
+{
+  "about": "s6-ear v3 (docs/s6-ear3-prereg.md §3.1, §16): the start of training, v2's EMA checkpoint, and the sha256 of each of its files, recorded at the freeze (19/11/2026) from the lead's list last-ema.sha256. sky-train turn-train --init refuses a checkpoint whose files differ.",
+  "checkpoint": "/Users/maxime/Documents/Code/skycmd-data/s6-ear2/checkpoints/last-ema",
+  "files": {
+    "config.json": "43269a549a6b06adeed59bf23854d23e2cee915f2e0eb4c09fcd85be40588f80",
+    "model.safetensors": "176cc9300fd374bbae1fb0276398cae5497f172090c2ec7ff32c644ae7a2f3ec",
+    "optimizer.safetensors": "1fc6be3017b6ca286effef4d908648a575f41f5cfd461430509ebdb6844746a3",
+    "state.json": "1494ca9b8acc3bed2a3a363c12b674ec5e4385e85def61d1c763664f97d898de"
+  }
+}

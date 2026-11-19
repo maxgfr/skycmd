@@ -347,6 +347,29 @@ and targets are written; no audio is redistributed.
 | livekit/eot-bench-data (config `all`, revision `main`, its commit recorded) | CC-BY-4.0 (card; the code repository is Apache-2.0) | second test, reported only (§8.4): one decision per `eot` / `hold` span, the audio cut at its start; never trained on |
 | pipecat-ai/smart-turn-v3 (`smart-turn-v3.2-cpu.onnx`, revision `f766f81d`) | BSD-2-Clause | the teacher (logit, pooled embedding and encoder states on the training and validation clips only, `scripts/turn-teacher.py`) and the baseline (`scripts/ear-baseline.py`); not redistributed |
 
+## s6-ear v3 audio (`sky-data fetch-conv`, `turn-extend`, `turn-eotbench --spans`, `docs/s6-ear3-prereg.md`)
+
+Only derived records are written, outside the repository (`skycmd-data/s6-ear3/`): float16 hops of
+one speaker's channel per conversation record, its label and a manifest line (§3.2 item 7), the
+240 hops that extend each Smart Turn clip with its own background (§3.4), and the eot-bench span
+records (§8.3). Each shard is deleted once its records are written; the transient PCM tails (for
+Smart Turn's recorded opinion) and the transient validation WAVs (for the label cross-check) are
+deleted with their shard. **Records derived from otoSpeech are never published and never
+committed** (§13; the use the owner stated on the access form). No label or example comes from a
+generative model: the labels come from the rule of §3.2 applied to a voice-activity detector's
+output. Licences read on each card or repository on 19/11/2026.
+
+| dataset / model | license | how it is used |
+|---|---|---|
+| otoearth/otoSpeech-full-duplex-280h (revision `4b3c57b8947d5f651dd6b5e825e7f34b205759e5`, 151 WebDataset shards) | CC-BY-4.0 (card metadata `license: cc-by-4.0` and "Licensing Information"), **gated**: the owner accepted its conditions on 19/11/2026 (not to attempt to identify speakers, de-anonymize participants or link them to external identities; to respect the redaction segments and not reconstruct or infer removed content; to follow the licence and the law). Stated use: training and evaluation, no derived records published | conversation training, validation and test records by DualTurn's session split (§3.2-3.3): one record per pause of one speaker's channel, labelled from the other channel; only the session id, the duration, the redacted segments and each speaker's pseudonymous `speaker_id` and `channel` are read from the metadata (no profile, survey, topic or score); records near a redaction are dropped. Credited on the model card |
+| anyreach-ai/dualturn-otospeech-turn-taking, file `splits.json` only (revision `5b700b4b7fe6a21aa3a5acce5f235913fb40cb2e`, sha256 `7550074d…1ef8b436`) | `other` (card metadata; the card states no terms) | the session-to-split map (900 / 112 / 113 sessions, seed 42) and nothing else: no feature, no label |
+| pipecat-ai/smart-turn-data-v3.2-train (revision `f8c95d28`, 83 shards, streamed again) | CC-BY-4.0 | v2's training and validation clips (v2's store, reused) and, new, the 240 hops after each clip's end on the PCM extended by its own quietest frames (`turn-extend`, §3.4) |
+| pipecat-ai/smart-turn-data-v3.2-test | CC-BY-4.0 | test (a), gated, v1's WAVs as v2; the same extension for a reported reading at 0.2 and 0.6 s (§8.2); never trained on |
+| livekit/eot-bench-data (config `all`, commit `ae834af9e9bddf73d1f550c190aaeb99bf31f523`, v2's) | CC-BY-4.0 (card) | test (b), gated: one record per `eot` / `hold` span, read at the span's start + 0.2 s (§8.3); never trained on |
+| pipecat-ai/smart-turn-v3 (`smart-turn-v3.2-cpu.onnx`, revision `f766f81d`) | BSD-2-Clause | v2's teacher targets on Smart Turn clips (reused, unchanged); its opinion on the conversation validation and test records, recorded and never a target (§5); the baseline on eot-bench; not redistributed |
+| snakers4/silero-vad, release v6.2.3 (tag commit `5cd7945676eb32225748052e2e6a0580e4686a08`), file `src/silero_vad/data/silero_vad.onnx` (2,327,524 bytes, git blob `80c5592e`) | MIT (GitHub licence API, `LICENSE`) | the second detector of the label cross-check on the validation sessions only (§3.7); never a training label, never a selection; not redistributed |
+| s6-ear2-nano (`models/s6-ear2/s6-ear2-nano.gguf` and its EMA checkpoint) | Apache-2.0 (this project) | the comparator and the start of training (§4, §6) |
+
 ## Published on Hugging Face (`scripts/hf-publish-data.py`)
 
 One dataset repository per set, one parquet config per source, each config under its source's
