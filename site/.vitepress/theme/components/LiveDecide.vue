@@ -89,6 +89,20 @@ const ins = ref(first?.ins ?? '')
 const optionsText = ref(first ? linesOf(first) : '')
 const state = ref(first?.state ?? '')
 const lang = ref<'en' | 'fr'>('en')
+/** Banner shown when Français is picked: English source string, `fr` the variant the banner shows. */
+const NO_FRENCH: Record<'en' | 'fr', { before: string; link: string; after: string }> = {
+  en: {
+    before: 's5 is a small English model; it has no French version, see',
+    link: 'the results',
+    after: '. The demo stays on the English presets.',
+  },
+  fr: {
+    before: "s5 est un petit modèle anglais ; il n'a pas de version française, voir",
+    link: 'les résultats',
+    after: '. La démo reste sur les presets anglais.',
+  },
+}
+const noFrench = computed(() => NO_FRENCH[lang.value])
 const adaptive = ref(true)
 
 const models = ref<ModelEntry[]>([])
@@ -368,8 +382,8 @@ function caseLabel(c: DemoCase) {
     <GateNotice v-if="verdict" :notice="verdict" class="live-banner" />
 
     <p v-if="lang === 'fr'" class="live-banner">
-      s5 est un petit modèle anglais ; il n'a pas de version française, voir
-      <a :href="withBase('/results/')">les résultats</a>. La démo reste sur les presets anglais.
+      {{ noFrench.before }}
+      <a :href="withBase('/results/')">{{ noFrench.link }}</a>{{ noFrench.after }}
     </p>
 
     <template v-if="isSecrets">
