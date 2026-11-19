@@ -397,21 +397,32 @@ impl StaticEmbedding {
         let vocab_text = g
             .get_str(keys::VOCAB)
             .ok_or_else(|| Error::Missing(keys::VOCAB.into()))?;
-        let mut vocab = HashMap::with_capacity(n_vocab);
-        let mut n = 0usize;
-        for (i, t) in vocab_text.split('\n').enumerate() {
-            vocab.insert(t.to_string(), i as u32);
-            n += 1;
-        }
-        if n != n_vocab {
+        // the declared count is checked against the tokens the file holds before it sizes anything
+        let n = vocab_text.split('\n').count();
+        if n != n_vocab || u32::try_from(n).is_err() {
             return Err(Error::Format(format!("{n} tokens, {n_vocab} declared")));
         }
+        let mut vocab = HashMap::with_capacity(n);
+        for (i, t) in vocab_text.split('\n').enumerate() {
+            vocab.insert(t.to_string(), i as u32);
+        }
+        // a token id read from the file, checked against the vocabulary
+        let token_id = |what: &str, id: i64| -> Result<u32> {
+            u32::try_from(id)
+                .ok()
+                .filter(|&i| (i as usize) < n_vocab)
+                .ok_or_else(|| {
+                    Error::Format(format!(
+                        "{what}: id {id} is outside the vocabulary of {n_vocab} tokens"
+                    ))
+                })
+        };
         let codes_t = g
             .tensor(keys::CODES)
             .ok_or_else(|| Error::Missing(keys::CODES.into()))?;
         let codes = g.tensor_bytes(codes_t).to_vec();
         let scales = g.tensor_f32(keys::SCALES)?;
-        if codes.len() != n_vocab * dim / 2 || scales.len() != n_vocab {
+        if n_vocab.checked_mul(dim / 2) != Some(codes.len()) || scales.len() != n_vocab {
             return Err(Error::Format("embedding tensors: wrong sizes".into()));
         }
         let added_t = g
@@ -428,8 +439,8 @@ impl StaticEmbedding {
             .iter()
             .zip(&added_i)
             .filter(|(t, _)| !t.is_empty())
-            .map(|(t, &i)| (t.to_string(), i as u32))
-            .collect();
+            .map(|(t, &i)| Ok((t.to_string(), token_id(keys::ADDED_IDS, i)?)))
+            .collect::<Result<_>>()?;
         // leftmost-longest: at one position, the longer literal first
         added.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
         let norm = NormTable {
@@ -461,13 +472,35 @@ impl StaticEmbedding {
         {
             return Err(Error::Format("normaliser table: malformed".into()));
         }
+        for (k, (&o, &arg)) in norm.ops.iter().zip(&norm.args).enumerate() {
+            let start = norm.starts[k];
+            let end = norm.starts.get(k + 1).copied().unwrap_or(0x11_0000);
+            if o == op::STR
+                && usize::try_from(arg)
+                    .ok()
+                    .is_none_or(|a| a >= norm.strings.len())
+            {
+                return Err(Error::Format(format!(
+                    "normaliser table: run {k} reads string {arg} of {}",
+                    norm.strings.len()
+                )));
+            }
+            if o == op::HANGUL && (start < 0xAC00 || end > 0xD7A4) {
+                return Err(Error::Format(format!(
+                    "normaliser table: run {k} ({start:#x}..{end:#x}) decomposes code points \
+                     outside the Hangul syllables"
+                )));
+            }
+        }
+        let unk_id = u(keys::UNK_ID)?;
+        let unk_id = token_id(keys::UNK_ID, i64::try_from(unk_id).unwrap_or(i64::MAX))?;
         Ok(StaticEmbedding {
             dim,
             codes,
             scales,
             vocab,
             n_vocab,
-            unk_id: u(keys::UNK_ID)? as u32,
+            unk_id,
             prefix: g.get_str(keys::PREFIX).unwrap_or("##").to_string(),
             max_chars: u(keys::MAX_CHARS)? as usize,
             max_length: u(keys::MAX_LENGTH)? as usize,
@@ -826,6 +859,11 @@ mod tests {
 
     /// The file of [`tiny`].
     pub(crate) fn tiny_bytes() -> Vec<u8> {
+        tiny_spec().to_gguf().unwrap()
+    }
+
+    /// What the file of [`tiny`] holds.
+    fn tiny_spec() -> EmbedSpec {
         let vocab: Vec<String> = [
             "[PAD]", "[UNK]", "[CLS]", "[SEP]", "turn", "on", "the", "light", "##s", "cafe", "!",
             "un", "##aff", "##able", "一", "weather",
@@ -864,7 +902,7 @@ mod tests {
             args: vec![0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             strings: vec!["e".into()],
         };
-        let spec = EmbedSpec {
+        EmbedSpec {
             dim,
             codes,
             scales,
@@ -887,8 +925,115 @@ mod tests {
             beta: 0.81,
             tau_ask: 0.67,
             meta: vec![("general.name".into(), OwnedValue::from("tiny"))],
-        };
-        spec.to_gguf().unwrap()
+        }
+    }
+
+    /// The file of `spec` with the metadata value of `key` replaced.
+    fn with_kv(spec: &EmbedSpec, key: &str, value: OwnedValue) -> Vec<u8> {
+        let bytes = spec.to_gguf().unwrap();
+        let g = Gguf::parse(&bytes).unwrap();
+        let mut w = GgufWriter::new().with_alignment(g.alignment);
+        for (k, v) in &g.kvs {
+            if *k != "general.alignment" {
+                let v = if *k == key {
+                    value.clone()
+                } else {
+                    OwnedValue::from_value(v)
+                };
+                w.add_kv(*k, v);
+            }
+        }
+        for t in &g.tensors {
+            w.add_tensor(t.name, &t.dims, t.dtype, g.tensor_bytes(t).to_vec())
+                .unwrap();
+        }
+        w.to_bytes().unwrap()
+    }
+
+    /// The loader's message for a file it must refuse.
+    fn refused(bytes: &[u8]) -> String {
+        match StaticEmbedding::from_gguf(bytes) {
+            Ok(_) => panic!("a malformed file was loaded"),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn malformed_files_are_refused_at_load() {
+        let spec = tiny_spec();
+        // the unchanged fixture loads, and so does a copy through the same rewriting
+        assert!(StaticEmbedding::from_gguf(&tiny_bytes()).is_ok());
+        assert!(
+            StaticEmbedding::from_gguf(&with_kv(&spec, keys::BETA, OwnedValue::F64(0.81))).is_ok()
+        );
+
+        // a declared vocabulary far larger than the file: refused before anything is sized
+        let m = refused(&with_kv(&spec, keys::N_VOCAB, OwnedValue::U32(u32::MAX)));
+        assert!(m.contains("16 tokens, 4294967295 declared"), "{m}");
+        let m = refused(&with_kv(&spec, keys::N_VOCAB, OwnedValue::U64(u64::MAX)));
+        assert!(m.contains("declared"), "{m}");
+
+        // the unknown token's id
+        let mut s = tiny_spec();
+        s.unk_id = 16;
+        let m = refused(&s.to_gguf().unwrap());
+        assert!(m.contains(keys::UNK_ID) && m.contains("id 16"), "{m}");
+        let m = refused(&with_kv(&spec, keys::UNK_ID, OwnedValue::U64(u64::MAX)));
+        assert!(m.contains(keys::UNK_ID), "{m}");
+
+        // an added token's id
+        let mut s = tiny_spec();
+        s.added[1].1 = 99;
+        let m = refused(&s.to_gguf().unwrap());
+        assert!(m.contains(keys::ADDED_IDS) && m.contains("id 99"), "{m}");
+        let ids = OwnedValue::Array(vec![
+            OwnedValue::I32(2),
+            OwnedValue::I32(-1),
+            OwnedValue::I32(1),
+        ]);
+        let m = refused(&with_kv(&spec, keys::ADDED_IDS, ids));
+        assert!(m.contains(keys::ADDED_IDS) && m.contains("id -1"), "{m}");
+
+        // a string of the normaliser's table (run 3, é -> string 0)
+        let mut s = tiny_spec();
+        s.norm.args[3] = 1;
+        let m = refused(&s.to_gguf().unwrap());
+        assert!(m.contains("run 3 reads string 1 of 1"), "{m}");
+        let mut s = tiny_spec();
+        s.norm.args[3] = -1;
+        assert!(refused(&s.to_gguf().unwrap()).contains("run 3"));
+
+        // a Hangul run over code points that are not Hangul syllables
+        let mut s = tiny_spec();
+        s.norm.ops[1] = op::HANGUL;
+        let m = refused(&s.to_gguf().unwrap());
+        assert!(m.contains("run 1") && m.contains("Hangul"), "{m}");
+        let mut s = tiny_spec();
+        s.norm.ops[10] = op::HANGUL;
+        assert!(refused(&s.to_gguf().unwrap()).contains("run 10"));
+
+        // a truncated file
+        let bytes = tiny_bytes();
+        for cut in [8, bytes.len() / 2, bytes.len() - 1] {
+            assert!(
+                StaticEmbedding::from_gguf(&bytes[..cut]).is_err(),
+                "cut at {cut}"
+            );
+        }
+    }
+
+    /// The published embedding files load with the checks, and route ordinary text.
+    #[test]
+    fn published_files_load() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../site/public/models");
+        for name in ["s6-route-embed.gguf", "s6-route7-embed.gguf"] {
+            let bytes = std::fs::read(dir.join(name)).unwrap();
+            let e =
+                StaticEmbedding::from_gguf(&bytes).unwrap_or_else(|err| panic!("{name}: {err}"));
+            let v = e.embed("Turn on the lights in the kitchen, café 각 一 !");
+            assert_eq!(v.len(), e.dim());
+            assert!(v.iter().all(|x| x.is_finite()));
+        }
     }
 
     #[test]
