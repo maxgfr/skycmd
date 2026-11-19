@@ -230,8 +230,12 @@ records); intents of MASSIVE in English and French (14 of 18 scenarios) and Bank
 surface cell (v5), the hard ones nearest to the request, and each description is the teacher's
 rewrite with probability 0.5 (v4). When2Call's no-call slates are drawn without the request's own
 tools (v6), and those whose request has no tool in the pool around the pool tool nearest to the
-request (v7). The rebuilt data are not published as a data set; every source is in
-[DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
+request (v7). **The data set:**
+[skycmd-route7](https://huggingface.co/datasets/{{USER}}/skycmd-route7) holds these records, the
+validation files of the pilot and the fit (with their masked, rewritten and blind copies), the
+fresh test T5 with its probe and blind copies, and the teacher's rewrites, each file checked
+against the sha256 that `runs/s6-route7/` records and each row under its sources' licences; every
+source is in [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
 
 **The teacher**, GLM-5.3-Flash (open weights, MIT), filtered the hard distractors that also serve
 the request (v5's 58,984 answers, v6's 694 and v7's 296) and wrote the description rewrites (v4's
@@ -249,8 +253,10 @@ and stays under the MIT licence.
 **The fresh test** T5 was built from
 [Agent-Ark/Toucan-1.5M](https://huggingface.co/datasets/Agent-Ark/Toucan-1.5M) (Apache-2.0 on its
 card; its requests were written by Mistral-Small, DevStral-Small, GPT-OSS, Kimi-K2 and Qwen3-32B,
-its tool descriptions are the MCP servers' own), test only, never trained. Its files are not
-published; their hashes are in
+its tool descriptions are the MCP servers' own), test only, never trained. It was read once and
+nothing is gated on it again, so its files are published in
+[skycmd-route7](https://huggingface.co/datasets/{{USER}}/skycmd-route7) (configs `t5_*`); their
+hashes are in
 [`runs/s6-route7/test-files.json`](https://github.com/maxgfr/skycmd/blob/main/runs/s6-route7/test-files.json).
 
 ## Disclosure

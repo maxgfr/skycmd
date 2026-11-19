@@ -358,7 +358,10 @@ evaluation set). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-s
 codes), [skycmd-lfm3-math](https://huggingface.co/datasets/maxgfr/skycmd-lfm3-math) (LFM3 router
 questions), [skycmd-route](https://huggingface.co/datasets/maxgfr/skycmd-route) (the slates of
 s6-route-nano and s6-route and the teacher's descriptions, each row under its sources' licences;
-published since 17/11/2026), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) (a fixed sample of
+published since 17/11/2026), [skycmd-route7](https://huggingface.co/datasets/maxgfr/skycmd-route7)
+(what s6-route v7, the failed s6-route7-nano, was trained, validated and tested on, T5 included,
+and v4's and T5's teacher rewrites; each row under its sources' licences; assembled on 19/11/2026,
+see the s6-route section below), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth) (a fixed sample of
 our four synthetic series generators, Apache-2.0), [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals) (our hand-written
 evaluation material: demo cases, s5 zero-shot definitions and paraphrases, Apache-2.0), [skycmd-trajectories](https://huggingface.co/datasets/maxgfr/skycmd-trajectories) (complete game episodes played by
 our models and the oracle, Apache-2.0), [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
@@ -399,6 +402,27 @@ keys (listed by hash in the script). Requests
 are counted after the clusters' split, the cross-split deduplication and the caps of §4.2 (30 per
 cluster in training, 10 on the validation and test sides).
 
+Since 19/11/2026 the dataset `skycmd-route7` (`scripts/hf-publish-data.py --only route7`, at
+https://huggingface.co/datasets/maxgfr/skycmd-route7 once uploaded) holds what s6-route v7
+(`docs/s6-route7-prereg.md`; the model s6-route7-nano, gate failed) read: the training and
+validation records of `build7/records/` (182,085 and 15,873, the sources of this table that v7
+trains on: glaive, hermes, ToolACE, Seal-Tools, API-Bank, When2Call, MASSIVE, Banking77); the
+validation files of the pilot, the calibration and the fit (`build7/val/`: `v5_tools` and its
+masked, rewritten and blind copies, and the model copies of `v4_tools`, `v_tools` and the
+`r_tools_*` readings); the fresh test T5 with its two probe copies, its blind copies and the
+server of each slate (`toucan5/fresh/`, Toucan, Apache-2.0; opened and read once on 19/11/2026,
+and nothing is gated on it again); v4's 13,687 description rewrites and T5's 1,448 (GLM-5.3-Flash,
+MIT, marked as machine-generated). Each row carries its `source` and `option_sources`; 66 When2Call
+rows show tool texts that BFCL `multiple` also holds (Apache-2.0, listed as a source). Every file is
+checked before assembly against the sha256 of `runs/s6-route7/inputs6.json`, `test-files.json` and
+`FRESH-OPEN`, and the script refuses on a difference; the blind copies and the teacher's files,
+which no run file hashes, are checked row by row against the files they derive from or went into.
+T2-tools and v2's teacher files are skycmd-route's, by reference. Left out, with the reason in the
+script (`ROUTE7_EXCLUDED`): the items and answers of the false-negative filter of v5, v6 and v7, the
+plans, the Toucan stage files, and the run files that hold absolute paths of the build machine.
+Every string was scanned with the builder's key rule; 53 matches are tool names of ToolACE and
+Toucan, reviewed by hand (`ROUTE_NOT_KEYS`).
+
 | source | licence (checked on the card or the LICENSE file) | URL @ commit | role | requests used (train / val / test) |
 |---|---|---|---|---:|
 | glaiveai/glaive-function-calling-v2 | Apache-2.0 | https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2 @ `e7f4b645` | train / val / T-tools: the first user turn answered by a call | 1,881 / 80 / 161 |
@@ -416,7 +440,7 @@ cluster in training, 10 on the validation and test sides).
 | minishlab/potion-base-2M | MIT | https://huggingface.co/minishlab/potion-base-2M @ `389b9f64` | hard negatives of the training slates; s6-route v5 (`docs/s6-route5-prereg.md` §4.1): the embeddings of the training and validation requests (`scripts/route-embed.py --requests`), whose nearest tools within the right tool's surface cell are the hard distractors; baselines potion-cos, potion-cos-4bit, static-ft; s6-nano v3 (`docs/s6-nano3-prereg.md`): its table packed to 4 bits with its tokenizer in the engine's embedding file `skycmd-s6-route-embed.gguf` (`scripts/s6-route3-embed-export.py`, `sky-route embed-gguf`), a derived copy that carries the licence (MIT, from the model card), the authors (Stephan Tulkens and Thomas van Dongen, Minish Lab) and the commit in its metadata; shipped as `site/public/models/s6-route-embed.gguf`, the embedding part of the published router s6-route (and of its Hugging Face repository once uploaded), under the MIT licence; s6-route v7 (`docs/s6-route7-prereg.md`, amendment 3, point 1): a copy of that file with v7's β and ask threshold in place of v3's (`sky-route embed-params`, every other key and every tensor byte for byte), shipped as `site/public/models/s6-route7-embed.gguf`, the embedding part of the failed result s6-route7-nano, under the MIT licence | — |
 | sentence-transformers/all-MiniLM-L6-v2 | Apache-2.0 | https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 @ `1110a243` | tool clustering (§4.2), the test distractor rule (§4.4); baseline minilm-cos | — |
 | stanley-nv/toolrouter | MIT | https://huggingface.co/stanley-nv/toolrouter @ `b2607a34` | baseline toolrouter (reported) | — |
-| Agent-Ark/Toucan-1.5M (config `SFT`: `SFT/train-0000{0,1,2}-of-00003.parquet`, 425,496,735 bytes) | Apache-2.0 (dataset card: "This dataset is released under Apache 2.0"; its GitHub repository shows MIT, LICENSE text not read); its requests were written by Mistral-Small, DevStral-Small, GPT-OSS, Kimi-K2 and Qwen3-32B, its tool descriptions are the MCP servers' own metadata | https://huggingface.co/datasets/Agent-Ark/Toucan-1.5M @ `0df3cf37` | s6-route v4 (`docs/s6-route4-prereg.md` §6): test only (T4-tools, its masked copy and the two probe copies), never trained; fetched on 18/11/2026 by `scripts/build-route4-data.sh fetch` (the entry `v4_sources` of `scripts/route/pins.json`; every file in `<data>/MANIFEST4.json`); rows read by amendment 1 of the pre-registration (the right tool is a row's single target, listed as `<server>-<tool>` in its own `tools`); s6-route v5 (`docs/s6-route5-prereg.md` §6): the same fetch, hash-checked again against `<data>/MANIFEST4.json`, test only (T5-tools, `t5_*`, its fill within v5's surface cell), never trained; read by s6-route v6 (`docs/s6-route6-prereg.md` §6, its blind copies too), never trained; built for s6-route v7 on 18/11/2026 (`docs/s6-route7-prereg.md`, amendment 2: T5 under v5's rule, `<data>/s6-route/toucan5/fresh/`), test only, never trained; opened once and read by v7's gate on 19/11/2026 (`runs/s6-route7/FRESH-OPEN`, the result block); its slates, their blind copies and the dumps on them stay in the data folder and are not published, only their hashes, counts and accuracies | 119,287 rows, 26,134 that qualify (321 servers, 1,770 tools); T5: 2,000 slates (1,600 tool-right) on 262 servers |
+| Agent-Ark/Toucan-1.5M (config `SFT`: `SFT/train-0000{0,1,2}-of-00003.parquet`, 425,496,735 bytes) | Apache-2.0 (dataset card: "This dataset is released under Apache 2.0"; its GitHub repository shows MIT, LICENSE text not read); its requests were written by Mistral-Small, DevStral-Small, GPT-OSS, Kimi-K2 and Qwen3-32B, its tool descriptions are the MCP servers' own metadata | https://huggingface.co/datasets/Agent-Ark/Toucan-1.5M @ `0df3cf37` | s6-route v4 (`docs/s6-route4-prereg.md` §6): test only (T4-tools, its masked copy and the two probe copies), never trained; fetched on 18/11/2026 by `scripts/build-route4-data.sh fetch` (the entry `v4_sources` of `scripts/route/pins.json`; every file in `<data>/MANIFEST4.json`); rows read by amendment 1 of the pre-registration (the right tool is a row's single target, listed as `<server>-<tool>` in its own `tools`); s6-route v5 (`docs/s6-route5-prereg.md` §6): the same fetch, hash-checked again against `<data>/MANIFEST4.json`, test only (T5-tools, `t5_*`, its fill within v5's surface cell), never trained; read by s6-route v6 (`docs/s6-route6-prereg.md` §6, its blind copies too), never trained; built for s6-route v7 on 18/11/2026 (`docs/s6-route7-prereg.md`, amendment 2: T5 under v5's rule, `<data>/s6-route/toucan5/fresh/`), test only, never trained; opened once and read by v7's gate on 19/11/2026 (`runs/s6-route7/FRESH-OPEN`, the result block); since 19/11/2026 its slates, probe copies and blind copies are published in `skycmd-route7` (the route line is closed and nothing is gated on T5 again), each row under this licence; the dumps on them stay in the data folder | 119,287 rows, 26,134 that qualify (321 servers, 1,770 tools); T5: 2,000 slates (1,600 tool-right) on 262 servers |
 
 Teacher: GLM-5.3-flash (MIT, https://huggingface.co/zai-org/GLM-5.3-Flash) through a hosted
 endpoint used as a proxy, `sky-data teacher describe-intent | false-negatives |
@@ -456,7 +480,10 @@ validation, `sky-data route v5-fix-items`, under `<build7>/fix7/`), run on 18/11
 none refused. Its answers filter those slates only; v5's and v6's answers are used as they are, by
 id. No new source. The `fresh-tools` job of v7 (v5 §6.4): one rewrite of each of the 1,448
 Toucan tools that a T5 slate shows, names and descriptions only, 1,448 answers, none refused; for
-the two probe copies of T5, never trained.
+the two probe copies of T5, never trained. v4's 13,687 rewrites and these 1,448 are published in
+`skycmd-route7` (`teacher_rewrite_description_v4`, `teacher_rewrite_description_t5`), outputs of
+an open-weight model under the MIT licence; the answers of the false-negative filter are not (their
+effect is in the hard slates).
 
 ## Rejected
 

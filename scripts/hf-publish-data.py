@@ -29,7 +29,16 @@ Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) befor
     redistributed;
   * `skycmd-route` (`--only route`, data folder `--route-data`, outside the repository): the slates
     of s6-route-nano and s6-route, every row with its source, and the teacher's descriptions;
-    refused if a file has no licence entry or a string looks like a key (the builder's rule).
+    refused if a file has no licence entry or a string looks like a key (the builder's rule);
+  * `skycmd-route7` (`--only route7`, the same data folder): what s6-route v7 (s6-route7-nano, gate
+    failed) read: the training and validation records of `build7/`, the validation files of the
+    pilot and the fit with their masked, rewritten and blind copies, the fresh test T5 with its
+    probe and blind copies (`toucan5/fresh/`, open and read once), and the teacher's rewrites of v4
+    and of T5's tools; skycmd-route's files that v7 read again (T2-tools, v2's teacher files) by
+    reference. Refused as skycmd-route, and also when a file's sha256 differs from the one that
+    `runs/s6-route7/inputs6.json`, `test-files.json` or `FRESH-OPEN` records, when a file without
+    such a record does not match, row by row, the recorded file it derives from or went into, or
+    when a source has no row in DATA_LICENSES.md.
 """
 import argparse
 import hashlib
@@ -305,6 +314,8 @@ ROUTE_NOT_KEYS = {
     "4e1c552e6c6d1b66": "URL path: co/sentence-transformers/all-MiniLM-L6-v2",
     "f87e0a2e258f7f02": "repository: NousResearch/hermes-function-calling-v1",
     "e9e2c8815f70dad4": "repository: sentence-transformers/all-MiniLM-L6-v2",
+    # skycmd-route7 (19/11/2026): read in T5's slates and in the Toucan tool catalogue
+    "991f9f6c4d1bb8cc": "tool name, Toucan (DefiLlama MCP server): get_v2_historicalChainTvl__by_chain",
 }
 
 SETS = {
@@ -468,6 +479,18 @@ def set_files(data: Path, s: dict) -> list:
         pattern, prefix = (spec, "") if isinstance(spec, str) else spec
         out += [(prefix + f.stem, f, prefix + f.name) for f in sorted(data.glob(pattern))]
     return out
+
+
+def iter_jsonl(p):
+    """The rows of a JSON-lines file, the file closed at the end."""
+    with open(p) as f:
+        for line in f:
+            yield json.loads(line)
+
+
+def read_json(p):
+    with open(p) as f:
+        return json.load(f)
 
 
 def sha256(p: Path) -> str:
@@ -761,17 +784,72 @@ def key_scan(cfg: str, rows, found: list, reviewed: Counter) -> None:
                         found.append((cfg, i, field))
 
 
-def route_schema():
-    """Explicit types of the slate rows: `follow` exists in the swapped files only."""
+ROUTE_FIELDS = ["src", "t", "ins", "opts", "state", "target", "split", "uid", "kind", "lang", "request", "tools",
+                "follow", "source", "option_sources"]
+# the fields that s6-route v5's builder added (docs/s6-route5-prereg.md §4.3), in skycmd-route7 only
+ROUTE7_FIELDS = ["from", "rewritten", "cell_level", "roles"]
+
+
+def route_schema(v7: bool = False):
+    """Explicit types of the slate rows: `follow` exists in the swapped and rewritten files only;
+    with v7, the fields of v5's builder too (`from` in the removed slates, `rewritten` in the
+    records, `cell_level` and `roles` in v5's files)."""
     import pyarrow as pa
 
     s = pa.string()
     strs = pa.list_(s)
-    return pa.schema([
-        ("src", s), ("t", s), ("ins", s), ("opts", strs), ("state", s), ("target", pa.list_(pa.float32())),
-        ("split", s), ("uid", s), ("kind", s), ("lang", s), ("request", s), ("tools", strs),
-        ("follow", pa.int64()), ("source", s), ("option_sources", strs),
-    ])
+    types = {"opts": strs, "target": pa.list_(pa.float32()), "tools": strs, "follow": pa.int64(),
+             "option_sources": strs, "rewritten": pa.list_(pa.bool_()), "cell_level": pa.int64(), "roles": strs}
+    names = ROUTE_FIELDS[:-2] + ROUTE7_FIELDS + ROUTE_FIELDS[-2:] if v7 else ROUTE_FIELDS
+    return pa.schema([(n, types.get(n, s)) for n in names])
+
+
+def route_owners(path: Path) -> dict:
+    """Tool identifier -> the sources whose requests hold it (`<build>/stage/requests.jsonl`)."""
+    owners = {}
+    for r in iter_jsonl(path):
+        for t in r.get("tools", []) + [r["gold"]] * bool(r.get("gold")) + r.get("exclude", []):
+            owners.setdefault(t, set()).add(r["source"])
+    return owners
+
+
+def slate_rows(data: Path, rel: str, split: str, fields, owners: dict, sources: dict, cfg: str, nolicence: list,
+               tally=None, name: str = "route") -> list:
+    """The rows of one slate file, each with its `source` (the request's) and `option_sources` (the
+    sources that hold its option texts); a row whose sources have no licence entry goes to
+    `nolicence` as (config, row index). `tally` = (rows by (source, split), request ids by (source,
+    split), rows by language), counted when given."""
+    recs = []
+    for i, r in enumerate(iter_jsonl(data / rel)):
+        if not set(r) <= set(fields) or r["split"] != split:
+            raise SystemExit(f"{name}: {rel} row {i}: unexpected fields or split")
+        r["source"] = r["request"].split(":", 1)[0]
+        r["option_sources"] = sorted(set().union(*(owners.get(t, {"?"}) for t in r["tools"])))
+        if r["source"] not in sources or not set(r["option_sources"]) <= set(sources):
+            nolicence.append((cfg, i))
+        if tally is not None:
+            by_source, requests, lang = tally
+            by_source[(r["source"], split)] += 1
+            requests.setdefault((r["source"], split), set()).add(r["request"])
+            lang[r["lang"]] += 1
+        recs.append(r)
+    return recs
+
+
+def route_refuse(name: str, out: Path, found: list, nolicence: list, other: list = ()) -> None:
+    """Remove the assembly and stop when a string looks like a key, a row has no licence entry or
+    (skycmd-route7) a derived file does not match its parent."""
+    if not (found or nolicence or other):
+        return
+    shutil.rmtree(out, ignore_errors=True)
+    for cfg, i, field in found[:50]:
+        print(f"  key-like: {cfg} row {i} field {field}")
+    for cfg, i in nolicence[:50]:
+        print(f"  no licence entry for a source: {cfg} row {i}")
+    for x in other[:50]:
+        print(f"  {x}")
+    tail = f", {len(other)} rows that do not match the file they derive from" if other else ""
+    raise SystemExit(f"{name}: refused ({len(found)} key-like strings, {len(nolicence)} rows without a licence entry{tail})")
 
 
 def publish_route(a, api, user: str, sha: str) -> None:
@@ -791,10 +869,7 @@ def publish_route(a, api, user: str, sha: str) -> None:
     if unknown:
         raise SystemExit(f"route: no licence entry for {unknown}: add them to ROUTE_FILES or ROUTE_EXCLUDED")
     # the sources that hold each tool text, and the tools' own names and descriptions
-    owners = {}
-    for r in map(json.loads, open(data / "build" / "stage" / "requests.jsonl")):
-        for t in r.get("tools", []) + [r["gold"]] * bool(r.get("gold")) + r.get("exclude", []):
-            owners.setdefault(t, set()).add(r["source"])
+    owners = route_owners(data / "build" / "stage" / "requests.jsonl")
     tools = {t["id"]: t for t in map(json.loads, open(data / "build" / "stage" / "tools.jsonl"))}
 
     out = OUT / "skycmd-route"
@@ -806,18 +881,8 @@ def publish_route(a, api, user: str, sha: str) -> None:
     requests = {}  # (source, split) -> request ids
     lang = Counter()
     for cfg, (rel, split, _) in ROUTE_FILES.items():
-        recs = []
-        for i, r in enumerate(map(json.loads, open(data / rel))):
-            if not set(r) <= set(schema.names) or r["split"] != split:
-                raise SystemExit(f"route: {rel} row {i}: unexpected fields or split")
-            r["source"] = r["request"].split(":", 1)[0]
-            r["option_sources"] = sorted(set().union(*(owners.get(t, {"?"}) for t in r["tools"])))
-            if r["source"] not in ROUTE_SOURCES or not set(r["option_sources"]) <= set(ROUTE_SOURCES):
-                nolicence.append((cfg, i))
-            by_source[(r["source"], split)] += 1
-            requests.setdefault((r["source"], split), set()).add(r["request"])
-            lang[r["lang"]] += 1
-            recs.append(r)
+        recs = slate_rows(data, rel, split, schema.names, owners, ROUTE_SOURCES, cfg, nolicence,
+                          (by_source, requests, lang))
         key_scan(cfg, recs, found, reviewed)
         pq.write_table(pa.Table.from_pylist(recs, schema), out / "data" / f"{cfg}.parquet", compression="zstd")
         rows[cfg] = len(recs)
@@ -850,13 +915,7 @@ def publish_route(a, api, user: str, sha: str) -> None:
         manifest[rel] = {"sha256": sha256(f)}
     print(f"route: key-like strings: {len(found)} left; {sum(reviewed.values())} matches of the {len(ROUTE_NOT_KEYS)} "
           f"reviewed tokens (ROUTE_NOT_KEYS), by config and field: {dict(sorted(reviewed.items()))}")
-    if found or nolicence:
-        shutil.rmtree(out)
-        for cfg, i, field in found[:50]:
-            print(f"  key-like: {cfg} row {i} field {field}")
-        for cfg, i in nolicence[:50]:
-            print(f"  no licence entry for a source: {cfg} row {i}")
-        raise SystemExit(f"route: refused ({len(found)} key-like strings, {len(nolicence)} rows without a licence entry)")
+    route_refuse("route", out, found, nolicence)
     (out / "MANIFEST.json").write_text(json.dumps({"commit": sha, "data": "s6-route", "source_files": manifest}, indent=2) + "\n")
     counts = json.load(open(data / "build" / "counts" / "slates.json"))["counts"]
     assigned = json.load(open(data / "build" / "counts" / "split.json"))["requests by group, split and source"]
@@ -1069,6 +1128,627 @@ ds = load_dataset("{user}/skycmd-route", "tools_train")
 """
 
 
+# skycmd-route7 (docs/s6-route7-prereg.md, on v6's, v5's and v4's): what s6-route v7 was trained,
+# validated and tested on. The data folder is the same (`--route-data`), only read: `build7/` (v6's
+# build by hash, v7's rebuilt When2Call records), `toucan5/` (the fresh test T5), and the teacher's
+# rewrites of `build4/teacher/`. Every file is checked against the sha256 that the repository's run
+# files record before a row is read, or, for the files no run file hashes, row by row against a
+# file that is.
+ROUTE7_RUNS = ROOT / "runs" / "s6-route7"
+# request source -> (upstream, licence, pinned commit, role in v7); the first three are skycmd-route's
+ROUTE7_SOURCES = {s: (*ROUTE_SOURCES[s][:3], role) for s, role in (
+    ("glaive", "train / val (the tools group): the first user turn answered by a call"),
+    ("hermes", "same; a request whose normalised text is a glaive request's is dropped"),
+    ("toolace", "same"),
+    ("seal-tools", "same; its training file only"),
+    ("api-bank", "same; `ToolSearcher` calls dropped"),
+    ("when2call", "train / val (the When2Call group): a call to the called tool, no call to *none*"),
+    ("massive", "train / val (the intents group): 14 of 18 scenarios, en and fr; each intent a tool described by the teacher"),
+    ("banking77", "train / val (the intents group); each intent a tool described by the teacher"),
+)}
+ROUTE7_SOURCES["bfcl-multiple"] = (
+    *ROUTE_SOURCES["bfcl-multiple"][:3],
+    "no request: the same tool texts are in some When2Call options (60 training and 6 validation rows of `when2call_*`)",
+)
+ROUTE7_SOURCES["toucan"] = (
+    "Agent-Ark/Toucan-1.5M (config `SFT`, `SFT/train-0000{0,1,2}-of-00003.parquet`)",
+    "apache-2.0 (dataset card: \"This dataset is released under Apache 2.0\"); its requests were written by "
+    "Mistral-Small, DevStral-Small, GPT-OSS, Kimi-K2 and Qwen3-32B upstream, its tool descriptions are the MCP "
+    "servers' own metadata",
+    "0df3cf37",
+    "test only (T5-tools and its copies), never trained",
+)
+# request source -> the first cell of its row in DATA_LICENSES.md; a source without its row is refused
+ROUTE7_LICENCE_ROWS = {
+    "glaive": "glaiveai/glaive-function-calling-v2", "hermes": "NousResearch/hermes-function-calling-v1",
+    "toolace": "Team-ACE/ToolACE", "seal-tools": "Seal-Tools", "api-bank": "liminghao1630/API-Bank",
+    "when2call": "nvidia/When2Call", "massive": "MASSIVE", "banking77": "PolyAI/banking77",
+    "bfcl-multiple": "gorilla-llm/Berkeley-Function-Calling-Leaderboard", "toucan": "Agent-Ark/Toucan-1.5M",
+}
+B7V, T5F = "build7/val/", "toucan5/fresh/"
+# config -> (file in the data folder, split, what it is, how it is checked): "recorded" (its sha256
+# in runs/s6-route7/inputs6.json or test-files.json and FRESH-OPEN), ("blind", parent) (the parent
+# with the request replaced by the placeholder), ("blind-model", blind file) (that copy with each
+# tool option's BM25 line, all scores 0.00, ranks in order)
+ROUTE7_FILES = {
+    "tools_train": ("build7/records/tools/train.jsonl", "train", "training records of the tool sources: natural, hard, removed, renamed (v5's surface cell, D1's rewrites); read by `sky-train s2-decide`, weight 0.60", "recorded"),
+    "intents_train": ("build7/records/intents/train.jsonl", "train", "training records of MASSIVE and Banking77, the same four kinds; weight 0.25", "recorded"),
+    "when2call_train": ("build7/records/when2call/train.jsonl", "train", "training records of When2Call (natural, hard, renamed), its no-call slates rebuilt by v6 and v7; weight 0.15", "recorded"),
+    "tools_val": ("build7/records/tools/val.jsonl", "val", "the four kinds on the validation side; the trainer's validation", "recorded"),
+    "intents_val": ("build7/records/intents/val.jsonl", "val", "same", "recorded"),
+    "when2call_val": ("build7/records/when2call/val.jsonl", "val", "same", "recorded"),
+    "v5_tools": ("build7/val/v5_tools.jsonl", "val", "1,144 validation slates by v5's test rule (915 tool-right, 229 *none*-right): the pair's fit of beta and tau_ask7, the export's tau_ask, the pair's validation readings", "recorded"),
+    "v5_tools_model": ("build7/val/v5_tools.model.jsonl", "val", "the model's copy of `v5_tools` (each tool's BM25 score and rank in its option): the calibration and every checkpoint's reading", "recorded"),
+    "v5_tools_masked": ("build7/val/v5_tools_masked.jsonl", "val", "`v5_tools` with every tool renamed `tool_<k>`", "recorded"),
+    "v5_tools_masked_model": ("build7/val/v5_tools_masked.model.jsonl", "val", "its model copy", "recorded"),
+    "v5_tools_rw": ("build7/val/v5_tools_rw.jsonl", "val", "`v5_tools` with one random distractor's description replaced by its rewrite (`follow`): the pilot's rule 2", "recorded"),
+    "v5_tools_rw_model": ("build7/val/v5_tools_rw.model.jsonl", "val", "its model copy", "recorded"),
+    "v5_tools_masked_rw": ("build7/val/v5_tools_masked_rw.jsonl", "val", "the masked copy with one distractor rewritten", "recorded"),
+    "v5_tools_masked_rw_model": ("build7/val/v5_tools_masked_rw.model.jsonl", "val", "its model copy", "recorded"),
+    "v5_tools_blind": ("build7/val/v5_tools.blind.jsonl", "val", "B0 and B1 of `v5_tools`: the request replaced by `?` (the pair in B0; the model part in B1 reads the same bytes, `v5_tools.blind-bare.model.jsonl`)", ("blind", "build7/val/v5_tools.jsonl")),
+    "v5_tools_blind_model": ("build7/val/v5_tools.blind.model.jsonl", "val", "B0 of `v5_tools` for the model part: every BM25 score 0.00 (the pilot's rules 3 and 4)", ("blind-model", "build7/val/v5_tools.blind.jsonl")),
+    "v5_tools_masked_blind": ("build7/val/v5_tools_masked.blind.jsonl", "val", "B0 and B1 of `v5_tools_masked`", ("blind", "build7/val/v5_tools_masked.jsonl")),
+    "v5_tools_masked_blind_model": ("build7/val/v5_tools_masked.blind.model.jsonl", "val", "B0 of `v5_tools_masked` for the model part", ("blind-model", "build7/val/v5_tools_masked.blind.jsonl")),
+    "v4_tools_model": ("build7/val/v4_tools.model.jsonl", "val", "the model copy of v4's validation slates (the same 1,144 requests by v2's test rule): a reported reading at every checkpoint", "recorded"),
+    "v4_tools_masked_model": ("build7/val/v4_tools_masked.model.jsonl", "val", "its masked copy", "recorded"),
+    "v_tools_model": ("build7/val/v_tools.model.jsonl", "val", "the model copy of v2's `v_tools` (skycmd-route): a reported reading at every checkpoint", "recorded"),
+    "v_tools_masked_model": ("build7/val/v_tools_masked.model.jsonl", "val", "its masked copy", "recorded"),
+    "r_tools_natural_model": ("build7/val/r_tools_natural.model.jsonl", "val", "the natural validation records of the tools group, one per request: a reported reading", "recorded"),
+    "r_tools_renamed_model": ("build7/val/r_tools_renamed.model.jsonl", "val", "the renamed ones: a reported reading", "recorded"),
+    "t5_tools": ("toucan5/fresh/t5_tools.jsonl", "fresh", "T5-tools: 2,000 fresh slates about the tools of 262 MCP servers (1,600 tool-right, 400 *none*-right), the gated test of s6-route7-nano", "recorded"),
+    "t5_tools_masked": ("toucan5/fresh/t5_tools_masked.jsonl", "fresh", "T5-tools with every tool renamed (G2 (b), (c))", "recorded"),
+    "t5_tools_rw": ("toucan5/fresh/t5_tools_rw.jsonl", "fresh", "probe copy: the 1,600 tool-right slates with one distractor's description rewritten by the teacher (`follow`; G2 (a))", "recorded"),
+    "t5_tools_masked_rw": ("toucan5/fresh/t5_tools_masked_rw.jsonl", "fresh", "probe copy of the masked file", "recorded"),
+    "t5_tools_blind": ("toucan5/fresh/t5_tools.blind.jsonl", "fresh", "B0 and B1 of T5-tools, the request replaced by `?` (G6; B1 reads the same bytes, `t5_tools.blind-bare.model.jsonl`)", ("blind", "toucan5/fresh/t5_tools.jsonl")),
+    "t5_tools_blind_model": ("toucan5/fresh/t5_tools.blind.model.jsonl", "fresh", "B0 of T5-tools for the model part (G6 (a))", ("blind-model", "toucan5/fresh/t5_tools.blind.jsonl")),
+    "t5_tools_masked_blind": ("toucan5/fresh/t5_tools_masked.blind.jsonl", "fresh", "B0 and B1 of the masked file", ("blind", "toucan5/fresh/t5_tools_masked.jsonl")),
+    "t5_tools_masked_blind_model": ("toucan5/fresh/t5_tools_masked.blind.model.jsonl", "fresh", "B0 of the masked file for the model part", ("blind-model", "toucan5/fresh/t5_tools_masked.blind.jsonl")),
+}
+# the MCP server and cluster of each T5 slate (the server bootstrap of the gate)
+ROUTE7_SERVERS = ("t5_tools_servers", "toucan5/fresh/t5_tools.servers.jsonl", "the MCP server and the tool cluster of each T5-tools slate, by `uid` (the servers bootstrap of G1 and G6)")
+# files read by v7 that are another published file byte for byte (checked by sha256, not repeated)
+ROUTE7_SAME = {
+    "build7/val/v5_tools.blind-bare.model.jsonl": "build7/val/v5_tools.blind.jsonl",
+    "build7/val/v5_tools_masked.blind-bare.model.jsonl": "build7/val/v5_tools_masked.blind.jsonl",
+    "toucan5/fresh/t5_tools.blind-bare.model.jsonl": "toucan5/fresh/t5_tools.blind.jsonl",
+    "toucan5/fresh/t5_tools_masked.blind-bare.model.jsonl": "toucan5/fresh/t5_tools_masked.blind.jsonl",
+    "build7/fix/val/v5_tools.jsonl": "build7/val/v5_tools.jsonl",
+    "build7/fix/val/v5_tools_masked.jsonl": "build7/val/v5_tools_masked.jsonl",
+    "build7/fix7/val/v5_tools.jsonl": "build7/val/v5_tools.jsonl",
+    "build7/fix7/val/v5_tools_masked.jsonl": "build7/val/v5_tools_masked.jsonl",
+}
+# the blind copies' hashes as `sky-data route blind` logged them in the data folder (checked too)
+ROUTE7_BLIND_LOGS = {"build7/val/v5_tools": "build7/logs7/blind-v5_tools.json",
+                     "build7/val/v5_tools_masked": "build7/logs7/blind-v5_tools_masked.json"}
+# config -> (file, what it is): the teacher's outputs that no earlier set holds. No run file hashes
+# them; each is checked against the records it went into (route7_rewrites).
+ROUTE7_TEACHER_FILES = {
+    "teacher_rewrite_description_v4": ("build4/teacher/rewrite-description.jsonl", "v4's 13,687 rewrites: one per tool of the training and validation pools and of the intents that had none (`docs/s6-route4-prereg.md` §4.2), shown in place of a description with probability 0.5 (D1)"),
+    "teacher_rewrite_description_t5": ("toucan5/teacher/rewrite-description.jsonl", "one rewrite of each of the 1,448 Toucan tools that a T5 slate shows, from its name and description only: the probe copies `t5_tools_rw` and `t5_tools_masked_rw`, nothing else"),
+}
+# read by v7 and already published in skycmd-route: checked against the data folder's build record
+# (BUILD.json, FRESH.json), not repeated
+ROUTE7_BY_REFERENCE = {
+    "build/teacher/describe-intent.jsonl": ("build/BUILD.json", "teacher_describe_intent", "the intent descriptions of the intents group"),
+    "build/teacher/rewrite-description.jsonl": ("build/BUILD.json", "teacher_rewrite_description", "v2's rewrites of the gold tools, reused by D1"),
+    "build/fresh/f_tools.jsonl": ("build/fresh/FRESH.json", "f_tools", "T2-tools, read for G5"),
+}
+# copied as they are: the run files that hold the hashes and T5's counts, and the build's own
+# records. Left out because they hold absolute paths of the owner's machine (refused below):
+# runs/s6-route7/test-files.json (FRESH-OPEN holds the same hashes; both are compared),
+# placeholder.json (its value is in the card), toucan5/fresh/FRESH5.json (the same hashes and
+# counts as test-files.json and counts.json) and the blind logs (their hashes are in MANIFEST.json).
+ROUTE7_EXTRA = ["runs/s6-route7/inputs6.json", "runs/s6-route7/FRESH-OPEN", "runs/s6-route7/t5-counts.json",
+                "MANIFEST4.json", "build7/counts/v5-plan.json", "build7/counts/v5-slates.json"]
+# the folders whose every .jsonl file is published, the same as one, or left out with a reason
+ROUTE7_SCANNED = ["build7/records", "build7/val", "build7/teacher", "build7/stage", "build7/fix", "build7/fix7",
+                  "toucan5/fresh", "toucan5/teacher", "toucan5/stage", "build4/teacher"]
+ROUTE7_EXCLUDED = {
+    "build7/teacher/false-negatives.items.jsonl": "the items of v5's false-negative filter (the training and validation hard slates before filtering); `sky-data route v5-plan` rebuilds them",
+    "build7/teacher/false-negatives.jsonl": "the teacher's 58,984 answers of v5's false-negative filter (option indices into the items above); their effect is in the hard slates of the records",
+    "build7/teacher/false-negatives.refused.jsonl": "items refused by the endpoint's moderation",
+    "build7/fix/teacher/false-negatives.items.jsonl": "the items of v6's fix (the rebuilt hard no-call slates of When2Call); `sky-data route v5-fix-items` rebuilds them",
+    "build7/fix/teacher/false-negatives.jsonl": "the teacher's 694 answers of v6's fix; their effect is in the hard slates",
+    "build7/fix/teacher/false-negatives.refused.jsonl": "items refused by the endpoint's moderation (empty)",
+    "build7/fix7/teacher/false-negatives.items.jsonl": "the items of v7's fix (the rebuilt hard no-call slates without an anchor); `sky-data route v5-fix-items` rebuilds them",
+    "build7/fix7/teacher/false-negatives.jsonl": "the teacher's 296 answers of v7's fix; their effect is in the hard slates",
+    "build7/fix7/teacher/false-negatives.refused.jsonl": "items refused by the endpoint's moderation (empty)",
+    "build7/stage/plan5.jsonl": "v5's plan of every slate (tool identifiers and cell levels); `sky-data route v5-plan` rebuilds it",
+    "build7/fix/stage/plan5.jsonl": "v6's plan; `sky-data route v5-plan` rebuilds it",
+    "build7/fix7/stage/plan5.jsonl": "v7's plan (`--when2call-anchor nearest`); `sky-data route v5-plan` rebuilds it",
+    "build7/fix/stage/false-negatives5.items.jsonl": "the false-negative items of v6's plan before the fix's job; `sky-data route v5-plan` rebuilds them",
+    "build7/fix7/stage/false-negatives5.items.jsonl": "the same for v7's plan",
+    "toucan5/stage/rows.jsonl": "the 26,134 Toucan rows that qualify (request, server, tools as Toucan gives them), the stage of T5's build; `sky-data route toucan` rebuilds it from the pinned SFT files (`files/MANIFEST4.json`); the 2,000 requests T5 uses are in `t5_tools`",
+    "toucan5/stage/tools.jsonl": "the stage's catalogue of the 1,770 Toucan tools (name, description, servers); the 1,448 that T5 shows are in `teacher_rewrite_description_t5` with their name and description",
+    "toucan5/stage/texts.jsonl": "the text of each Toucan tool that the embedding reads (its name and description); rebuilt by `sky-data route toucan`",
+    "toucan5/teacher/rewrite-description.items.jsonl": "the items sent to the teacher (the Toucan tools' names and descriptions, given in `original`)",
+    "toucan5/teacher/rewrite-description.refused.jsonl": "items refused by the endpoint's moderation (empty)",
+    "build4/teacher/rewrite-description.items.jsonl": "the items sent to the teacher (the tools' own descriptions, given in `original`)",
+    "build4/teacher/rewrite-description.refused.jsonl": "items refused by the endpoint's moderation (empty)",
+}
+ROUTE7_SCORE = re.compile(r"^score -?[0-9]+\.[0-9]+ rank [0-9]+; ")
+
+
+def route7_licences(text: str) -> None:
+    """Every source of ROUTE7_SOURCES has its row in DATA_LICENSES.md (`text`), or the set is refused."""
+    rows = {ln.split("|")[1].strip() for ln in text.splitlines() if ln.startswith("| ")}
+    missing = sorted(s for s in ROUTE7_SOURCES if not any(r.startswith(ROUTE7_LICENCE_ROWS.get(s, "\0")) for r in rows))
+    if missing:
+        raise SystemExit(f"route7: no licence row in DATA_LICENSES.md for {missing}: refused")
+
+
+def route7_recorded(runs: Path) -> dict:
+    """File in the data folder -> (sha256, the run file that records it)."""
+    rec = {f"build7/{k}": (v["sha256"], "runs/s6-route7/inputs6.json")
+           for k, v in read_json(runs / "inputs6.json")["files"].items()}
+    t5 = read_json(runs / "test-files.json")["files"]
+    if t5 != read_json(runs / "FRESH-OPEN")["T5"]:
+        raise SystemExit("route7: runs/s6-route7/test-files.json and FRESH-OPEN record different hashes of T5: refused")
+    rec.update({f"toucan5/fresh/{k}": (h, "runs/s6-route7/test-files.json and FRESH-OPEN") for k, h in t5.items()})
+    return rec
+
+
+def route7_extra_path(x: str, data: Path, runs: Path) -> Path:
+    """Where a file of ROUTE7_EXTRA is: v7's run folder, the repository, or the data folder."""
+    if x.startswith("runs/s6-route7/"):
+        return runs / x.removeprefix("runs/s6-route7/")
+    return ROOT / x if x.startswith(("runs/", "scripts/")) else data / x
+
+
+def route7_check_hash(data: Path, rel: str, want: str, where: str) -> str:
+    """The file's sha256, or a refusal when it differs from the one `where` records."""
+    got = sha256(data / rel)
+    if got != want:
+        raise SystemExit(f"route7: {rel} has sha256 {got[:16]}, {where} records {want[:16]}: refused")
+    return got
+
+
+def route7_hashes(data: Path, runs: Path) -> dict:
+    """Every hash check of skycmd-route7, before a row is read: the files listed (published, the
+    same as one, by reference, copied), each against its record. File -> (sha256, how it was checked)."""
+    present = {str(f.relative_to(data)) for d in ROUTE7_SCANNED for f in (data / d).rglob("*.jsonl")}
+    listed = ({v[0] for v in ROUTE7_FILES.values()} | {v[0] for v in ROUTE7_TEACHER_FILES.values()}
+              | {ROUTE7_SERVERS[1]} | set(ROUTE7_SAME))
+    unknown = sorted(present - listed - set(ROUTE7_EXCLUDED))
+    if unknown:
+        raise SystemExit(f"route7: no licence entry for {unknown}: add them to ROUTE7_FILES or ROUTE7_EXCLUDED")
+    rec = route7_recorded(runs)
+    out = {}
+    for rel, *_rest, check in ROUTE7_FILES.values():
+        if check == "recorded":
+            if rel not in rec:
+                raise SystemExit(f"route7: {rel} has no sha256 in runs/s6-route7: refused")
+            out[rel] = (route7_check_hash(data, rel, *rec[rel]), f"sha256 recorded in {rec[rel][1]}")
+        else:
+            out[rel] = (sha256(data / rel), f"derived from `{check[1]}`, checked row by row")
+    rel = ROUTE7_SERVERS[1]
+    out[rel] = (route7_check_hash(data, rel, *rec[rel]), f"sha256 recorded in {rec[rel][1]}")
+    for parent, log in ROUTE7_BLIND_LOGS.items():
+        for name, h in read_json(data / log)["files"].items():
+            f = str(Path(parent).parent / name)
+            route7_check_hash(data, f, h, f"`{log}` (the data folder's log of `sky-data route blind`)")
+            if f in out:
+                out[f] = (h, out[f][1] + f", and its sha256 in `{log}`")
+    for same, other in ROUTE7_SAME.items():
+        want = out[other][0]
+        route7_check_hash(data, same, want, f"`{other}` (the same bytes)")
+    for rel, _ in ROUTE7_TEACHER_FILES.values():
+        out[rel] = (sha256(data / rel), "no run file hashes it: checked against the records it went into")
+    # skycmd-route's files read again, and v2's stage files that give each tool its name and sources
+    for rel, record in [(k, v[0]) for k, v in ROUTE7_BY_REFERENCE.items()] + [
+            ("build/stage/requests.jsonl", "build/BUILD.json"), ("build/stage/tools.jsonl", "build/BUILD.json")]:
+        r = read_json(data / record)
+        if record.endswith("BUILD.json"):
+            want = r["outputs"][rel.removeprefix("build/")]["sha256"]
+        else:
+            want = r["files"][Path(rel).name]
+        h = route7_check_hash(data, rel, want, f"`{record}`")
+        if rel in ROUTE7_BY_REFERENCE:
+            out[rel] = (h, f"sha256 recorded in the data folder's `{record}`")
+    for x in ROUTE7_EXTRA:
+        f = route7_extra_path(x, data, runs)
+        h = sha256(f)
+        if x in rec:
+            route7_check_hash(data, x, *rec[x])
+        out[x] = (h, f"sha256 recorded in {rec[x][1]}" if x in rec else "copied")
+    return out
+
+
+def route7_desc(opt: str, name: str):
+    """The description of a tool option as a slate shows it: the BM25 line and `<name>: ` removed
+    (a name may hold `: `; a renamed option is `tool_<k>: `)."""
+    o = ROUTE7_SCORE.sub("", opt)
+    if o.startswith(name + ": "):
+        return o[len(name) + 2:]
+    return o.split(": ", 1)[1] if ": " in o else None
+
+
+def route7_cut_of(shown, full) -> bool:
+    """`shown` is `full` cut by `cut_description` (its first sentence, at most 30 words): a prefix
+    of it, a final period aside."""
+    return shown is not None and full is not None and full.startswith(shown.rstrip().rstrip(".").rstrip())
+
+
+def route7_blind(parent: list, rows: list, placeholder: str, model: bool) -> list:
+    """The rows of a blind copy that do not follow from the parent: B0/B1 (`model` False) is the
+    parent with `state` = `User: <placeholder>`; its model copy (`model` True) adds to each tool
+    option `score 0.00 rank <position>; `."""
+    bad = []
+    if len(parent) != len(rows):
+        return [f"{len(rows)} rows for {len(parent)} in the parent"]
+    for i, (p, r) in enumerate(zip(parent, rows)):
+        if model:
+            want = {**p, "opts": [f"score 0.00 rank {j + 1}; {o}" if j < len(p["tools"]) else o
+                                  for j, o in enumerate(p["opts"])]}
+        else:
+            want = {**p, "state": f"User: {placeholder}"}
+        if r != want:
+            bad.append(f"row {i}")
+    return bad
+
+
+def route7_assemble(data: Path, out: Path, write, runs: Path = None, licences: str = None) -> dict:
+    """Check and assemble skycmd-route7 under `out`: `write(rows, path, slates)` writes one parquet
+    file (`slates` True for the slate schema). Returns what the card needs; refuses (SystemExit)
+    on a hash that differs, a file without a licence entry or a reason, a source without its row
+    in DATA_LICENSES.md, a row whose sources have none, a key-like string, or a derived file or a
+    teacher file that does not match what it derives from or went into."""
+    runs = runs or ROUTE7_RUNS
+    route7_licences(licences if licences is not None else (ROOT / "DATA_LICENSES.md").read_text())
+    hashes = route7_hashes(data, runs)
+    placeholder = read_json(runs / "placeholder.json")["placeholder"]
+    owners = route_owners(data / "build" / "stage" / "requests.jsonl")
+    tools = {t["id"]: t for t in iter_jsonl(data / "build" / "stage" / "tools.jsonl")}
+    toucan = {t["id"]: t for t in iter_jsonl(data / "toucan5" / "stage" / "tools.jsonl")}
+    for t in toucan:
+        owners.setdefault(t, set()).add("toucan")
+    rewrites = {}  # tool id -> the rewrite that a slate may show, from v2's and v4's jobs
+    for rel in ("build/teacher/rewrite-description.jsonl", ROUTE7_TEACHER_FILES["teacher_rewrite_description_v4"][0]):
+        for r in iter_jsonl(data / rel):
+            rewrites[r["id"]] = r["description"]
+    t5_rewrites = {r["id"]: r["description"]
+                   for r in iter_jsonl(data / ROUTE7_TEACHER_FILES["teacher_rewrite_description_t5"][0])}
+    used = {"v4": set(), "t5": set()}
+    v4_ids = {r["id"] for r in iter_jsonl(data / ROUTE7_TEACHER_FILES["teacher_rewrite_description_v4"][0])}
+
+    shutil.rmtree(out, ignore_errors=True)
+    (out / "data").mkdir(parents=True)
+    fields = ROUTE_FIELDS + ROUTE7_FIELDS
+    rows, nolicence, found, reviewed, mismatch = {}, [], [], Counter(), []
+    by_source, requests, lang = Counter(), {}, Counter()
+    kept = {}  # parent file -> its rows, for the blind checks
+    parents = {c[1] for *_, c in ROUTE7_FILES.values() if c != "recorded"}
+    for cfg, (rel, split, _, check) in ROUTE7_FILES.items():
+        counted = cfg.endswith(("_train", "_val")) or cfg == "t5_tools"
+        recs = slate_rows(data, rel, split, fields, owners, ROUTE7_SOURCES, cfg, nolicence,
+                          (by_source, requests, lang) if counted else None, "route7")
+        if check != "recorded":
+            strip = [{k: v for k, v in r.items() if k not in ("source", "option_sources")} for r in recs]
+            mismatch += [f"{cfg}: {x}" for x in route7_blind(kept[check[1]], strip, placeholder, check[0] == "blind-model")]
+        if rel in parents:
+            kept[rel] = [{k: v for k, v in r.items() if k not in ("source", "option_sources")} for r in recs]
+        # the teacher's texts in the rows: each rewritten option is a cut of its tool's rewrite
+        for i, r in enumerate(recs):
+            shown = [(j, f"{cfg} row {i} option {j}") for j, w in enumerate(r.get("rewritten", [])) if w]
+            if "follow" in r and cfg.endswith(("_rw", "_rw_model")):
+                shown.append((r["follow"], f"{cfg} row {i} option {r['follow']} (follow)"))
+            for j, where in shown:
+                t = r["tools"][j]
+                name = (tools.get(t) or toucan.get(t) or {}).get("name", "")
+                full = t5_rewrites.get(t) if cfg.startswith("t5_") else rewrites.get(t)
+                if not route7_cut_of(route7_desc(r["opts"][j], name), full):
+                    mismatch.append(f"{where}: not a cut of its tool's rewrite")
+                used["t5" if cfg.startswith("t5_") else "v4"].add(t)
+        key_scan(cfg, recs, found, reviewed)
+        write(recs, out / "data" / f"{cfg}.parquet", True)
+        rows[cfg] = len(recs)
+    t5_uids = {r["uid"] for r in kept.get("toucan5/fresh/t5_tools.jsonl", [])}
+    cfg, rel, _ = ROUTE7_SERVERS
+    recs = [{**r, "source": "toucan"} for r in iter_jsonl(data / rel)]
+    mismatch += [f"{cfg} row {i}: uid not in t5_tools" for i, r in enumerate(recs) if r["uid"] not in t5_uids]
+    key_scan(cfg, recs, found, reviewed)
+    write(recs, out / "data" / f"{cfg}.parquet", False)
+    rows[cfg] = len(recs)
+    for cfg, (rel, _) in ROUTE7_TEACHER_FILES.items():
+        recs = []
+        for i, r in enumerate(iter_jsonl(data / rel)):
+            if cfg.endswith("_t5"):
+                t = toucan.get(r["id"], {})
+                r = {"id": r["id"], "name": t.get("name"), "original": t.get("desc"), "rewrite": r["description"],
+                     "servers": t.get("servers", []), "sources": ["toucan"]}
+                ok = bool(t)
+            else:
+                t = tools.get(r["id"], {})
+                r = {"id": r["id"], "name": t.get("name"), "original": t.get("desc"), "rewrite": r["description"],
+                     "sources": sorted(owners.get(r["id"], {"?"}))}
+                ok = bool(t) and set(r["sources"]) <= set(ROUTE7_SOURCES)
+            if not ok:
+                nolicence.append((cfg, i))
+            recs.append(r)
+        key_scan(cfg, recs, found, reviewed)
+        write(recs, out / "data" / f"{cfg}.parquet", False)
+        rows[cfg] = len(recs)
+    # (a rewrite that a slate shows and the files lack failed the cut check above); T5's job wrote
+    # only Toucan's tools
+    if not used["t5"] <= set(toucan):
+        mismatch.append("a T5 probe copy shows a rewrite of a tool that is not Toucan's")
+    (out / "files").mkdir()
+    for x in ROUTE7_EXTRA:
+        f = route7_extra_path(x, data, runs)
+        if str(Path.home()) in f.read_text():
+            mismatch.append(f"{x}: holds an absolute path of this machine ({Path.home()})")
+        recs = list(iter_jsonl(f)) if f.suffix == ".jsonl" else [read_json(f)]
+        key_scan(f.name, recs, found, reviewed)
+        shutil.copy(f, out / "files" / f.name)
+    print(f"route7: key-like strings: {len(found)} left; {sum(reviewed.values())} matches of the {len(ROUTE_NOT_KEYS)} "
+          f"reviewed tokens (ROUTE_NOT_KEYS), by config and field: {dict(sorted(reviewed.items()))}")
+    route_refuse("route7", out, found, nolicence, mismatch)
+    manifest = {rel: {"sha256": h, "check": how} for rel, (h, how) in hashes.items()}
+    for cfg, (rel, *_) in {**ROUTE7_FILES, **ROUTE7_TEACHER_FILES, ROUTE7_SERVERS[0]: (ROUTE7_SERVERS[1],)}.items():
+        manifest[rel]["rows"] = rows[cfg]
+    for same, other in ROUTE7_SAME.items():
+        manifest[same] = {"sha256": hashes[other][0], "check": f"the same bytes as `{other}` (sha256)"}
+    return {"rows": rows, "manifest": manifest, "by_source": by_source, "requests": requests, "lang": lang,
+            "reviewed": reviewed, "v4_used": len(used["v4"] & v4_ids), "t5_used": len(used["t5"]),
+            "placeholder": placeholder}
+
+
+def publish_route7(a, api, user: str, sha: str) -> None:
+    """skycmd-route7: the training, validation and test data of s6-route v7 (s6-route7-nano)."""
+    data = Path(a.route_data)
+    if not (data / "build7").is_dir() or not (data / "toucan5").is_dir():
+        print(f"route7: no build7 or toucan5 folder under {data}, skipped")
+        return
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    schema = route_schema(v7=True)
+
+    def write(recs, path, slates):
+        t = pa.Table.from_pylist(recs, schema) if slates else pa.Table.from_pylist(recs)
+        pq.write_table(t, path, compression="zstd")
+
+    out = OUT / "skycmd-route7"
+    r = route7_assemble(data, out, write)
+    (out / "MANIFEST.json").write_text(json.dumps(
+        {"commit": sha, "data": "s6-route", "source_files": r["manifest"]}, indent=2) + "\n")
+    (out / "README.md").write_text(route7_card(user, sha, r, out))
+    size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
+    print(f"route7: {user}/skycmd-route7, {len(r['rows'])} configs, {sum(r['rows'].values()):,} rows, {size / 1e6:.1f} MB")
+    if a.dry_run:
+        return
+    repo_id = f"{user}/skycmd-route7"
+    api.create_repo(repo_id, repo_type="dataset", private=a.private, exist_ok=True)
+    api.upload_folder(repo_id=repo_id, repo_type="dataset", folder_path=str(out),
+                      commit_message=f"skycmd {sha[:8]}: the data of s6-route v7 (s6-route7-nano, gate failed)")
+    print(f"  uploaded: https://huggingface.co/datasets/{repo_id}")
+
+
+def route7_card(user: str, sha: str, r: dict, out: Path) -> str:
+    rows, by_source, requests, lang = r["rows"], r["by_source"], r["requests"], r["lang"]
+    cfgs = "\n".join(
+        f"- config_name: {c}\n  data_files: data/{c}.parquet" + ("\n  default: true" if c == "tools_train" else "")
+        for c in rows
+    )
+
+    def what(c):
+        if c in ROUTE7_FILES:
+            return ROUTE7_FILES[c][1], ROUTE7_FILES[c][2]
+        if c == ROUTE7_SERVERS[0]:
+            return "fresh", ROUTE7_SERVERS[2]
+        return "teacher", ROUTE7_TEACHER_FILES[c][1]
+
+    files = "\n".join(
+        f"| `data/{c}.parquet` | {what(c)[0]} | {what(c)[1]} | {k:,} | {(out / 'data' / f'{c}.parquet').stat().st_size:,} |"
+        for c, k in rows.items()
+    )
+    files += "".join(f"\n| `files/{Path(x).name}` | — | the {'repository' if x.startswith(('runs/', 'scripts/')) else 'data folder'}'s "
+                     f"`{x}`, copied | — | {(out / 'files' / Path(x).name).stat().st_size:,} |" for x in ROUTE7_EXTRA)
+    lic = "\n".join(f"| `{s}` | {u} | {l} | {c if c.startswith('not') else f'`{c}`'} | {ro} |"
+                    for s, (u, l, c, ro) in ROUTE7_SOURCES.items())
+    splits = ("train", "val", "fresh")
+
+    def n(s, sp):
+        return f"{by_source[(s, sp)]:,}" if by_source[(s, sp)] else "—"
+
+    def q(s, sp):
+        return f"{len(requests[(s, sp)]):,}" if requests.get((s, sp)) else "—"
+
+    per = "\n".join(f"| `{s}` | " + " | ".join(n(s, sp) for sp in splits) + " | "
+                    + " / ".join(q(s, sp) for sp in splits) + " |" for s in ROUTE7_SOURCES)
+    tot = " | ".join(f"**{sum(v for (s, sp), v in by_source.items() if sp == x):,}**" for x in splits)
+    same = "\n".join(f"- `{k}`: the same bytes as `{v}` (checked by sha256)." for k, v in ROUTE7_SAME.items())
+    ref = "\n".join(f"- `{k}` ({w}): skycmd-route's config `{c}`, the same file (its sha256 checked against the "
+                    f"data folder's `{rec}`)." for k, (rec, c, w) in ROUTE7_BY_REFERENCE.items())
+    excl = "\n".join(f"- `{k}`: {v}." for k, v in ROUTE7_EXCLUDED.items())
+    rev = r["reviewed"]
+    n_rev = sum(rev.values())
+    return f"""---
+license: other
+license_name: per-source
+license_link: {REPO_URL}/blob/main/DATA_LICENSES.md
+language:
+- en
+- fr
+pretty_name: skycmd tool-routing data of s6-route v7 (s6-route7-nano, gate failed)
+task_categories:
+- text-classification
+tags:
+- skycmd
+- tool-routing
+- function-calling
+- ai-generated
+- negative-result
+configs:
+{cfgs}
+---
+
+# skycmd tool-routing data of s6-route v7 (s6-route7-nano, gate failed)
+
+The training, validation and test data of **s6-route v7**, the seventh and last version of the
+skycmd tool router: a user request, a list of up to 7 tools (each a name and one sentence) plus the
+option *none of these tools fits the request*, and the right option. Every slate file here is a
+file that v7's training, pilot, fit or gate read, converted to parquet row for row, each row with
+its sources; the teacher's rewrites that those slates show are here too.
+
+The model trained on it is [s6-route7-nano](https://huggingface.co/{user}/s6-route7-nano), and **its
+pre-registered gate FAILED** (`docs/s6-route7-prereg.md`, result block of 19/11/2026: G1 fails, G2
+fails, G3 fails, G4 holds, G5 holds, G6 fails). On T5-tools the pair (the model part fused with a
+4-bit potion-base-2M embedding) reads 0.5610 against BM25's 0.5675; with the request hidden, its
+model part is at chance (0.1406, chance 0.1429) and the pair is not (0.1969, bar 0.1929). The route
+line is closed with this result; the published router stays
+[s6-route](https://huggingface.co/{user}/s6-route), whose data is
+[skycmd-route](https://huggingface.co/datasets/{user}/skycmd-route).
+
+**The fresh test T5 is in this repository.** It was opened once, on 19/11/2026
+(`files/FRESH-OPEN`, which holds the hashes of the model, the embedding file and the fit read on
+it), read by v7's gate, and nothing will be gated on it again: the route line has no v8. Publishing
+it harms no future reading. Anyone who reports a new system on it should say that it is no longer
+fresh.
+
+Part of [skycmd]({REPO_URL}). Built by `scripts/build-route4-data.sh` (v4: the teacher's rewrites
+and the Toucan fetch), `scripts/build-route5-data.sh` (v5: the surface cell, the records and T5's
+rule), `scripts/build-route6-data.sh` (v6: the When2Call fix, the blind copies, T5) and
+`scripts/build-route7-data.sh` (v7: the anchor of the no-call slates, `docs/s6-route7-prereg.md`
+§4.8), with `scripts/route-teacher.sh` for the teacher's jobs; trained by `scripts/train-route7.sh`
+and gated by `scripts/route7-gate.sh`. The pre-registrations: `docs/s6-route4-prereg.md`,
+`docs/s6-route5-prereg.md`, `docs/s6-route6-prereg.md`, `docs/s6-route7-prereg.md`. Assembled by
+`scripts/hf-publish-data.py --only route7` at commit [`{sha[:8]}`]({REPO_URL}/commit/{sha}).
+Licences of every set: [DATA_LICENSES.md]({REPO_URL}/blob/main/DATA_LICENSES.md).
+
+> **Machine-generated text.** The teacher, {ROUTE_TEACHER}, called through a hosted endpoint,
+> wrote: the description of every intent option (the intents group, written from the intent name
+> alone; its file is skycmd-route's `teacher_describe_intent`); the rewrite that replaces a tool's
+> description with probability 0.5 in every kind of training and validation slate (D1; the options
+> flagged in `rewritten`; v2's rewrites, skycmd-route's `teacher_rewrite_description`, and v4's,
+> `teacher_rewrite_description_v4`); the rewritten distractor of the probe copies (`*_rw`;
+> `teacher_rewrite_description_t5` for T5's). It also chose which hard distractors were replaced
+> (the false-negative filter of v5, v6 and v7). It wrote no request, no label and no target, and it
+> never saw a test request or a test slate: for T5 it saw the tools' names and descriptions only.
+> **Upstream, requests were written by language models too:** Toucan's by Mistral-Small,
+> DevStral-Small, GPT-OSS, Kimi-K2 and Qwen3-32B (its card), and several tool-calling sets were
+> generated with language models (see their cards).
+
+## Configs and splits
+
+One config per file. `split` says what a file is for: `train` (the records the model was trained
+on), `val` (the trainer's validation, the pilot's rule, the calibration, the fit of beta and the
+ask threshold, the reported readings), `fresh` (T5, the gated test, read once). In the records, a
+row is one slate; a request is in up to four (natural, hard, removed, renamed). The `*_model`
+configs are the copies the model part read: each tool option starts with its BM25 score and rank
+(`score <s> rank <r>; <name>: <description>`, the render `scores-in-options`); the slate configs
+without `_model` are what the pair and the baselines read. `{r['placeholder']}` is the placeholder
+of the blind copies, in place of the request (B0: the model part reads every BM25 score at 0.00;
+B1: the bare slates).
+
+| file | split | what it is | rows | bytes |
+|---|---|---|---:|---:|
+{files}
+
+Read by v7 and not repeated here:
+{same}
+{ref}
+
+## Record schema
+
+The slate configs share skycmd-route's schema (`src`, `t`, `ins`, `opts`, `state`, `target`,
+`split`, `uid`, `kind`, `lang`, `request`, `tools`, `follow`, `source`, `option_sources`; see its
+card) and add the fields of v5's builder:
+
+| field | type | meaning |
+|---|---|---|
+| `rewritten` | list of bools | records only: for each tool option, whether its description is the teacher's rewrite (D1) |
+| `cell_level` | int | the level of v5's surface cell (L0 to L6) that the slate's options were drawn in (`docs/s6-route5-prereg.md` §4.3) |
+| `roles` | list of strings | for each tool option, how it came into the slate: `right` (the right tool), `exempt` (one of the request's own tools, kept outside the cell rule, v5 §4.3) or `drawn` (drawn within the cell) |
+| `from` | string | removed slates only: the kind of slate the right tool was taken out of (`natural` or `hard`) |
+
+In T5, `lang` is `und`: Toucan gives no language. `t5_tools_servers`: `uid`, `server` (the MCP
+server that Toucan gives for the request), `cluster` (the tool cluster of v2's rule), `source`. The
+teacher configs:
+`id` (the tool identifier), `name` and `original` (the tool's name and description as the source
+gives them), `rewrite` (the teacher's; a slate shows it cut to its first sentence and 30 words),
+`sources` (the sources that hold the tool), and for T5 `servers`.
+
+## Sources and licences
+
+Each row keeps **the licence of its sources**: the request text is `source`'s, the option texts are
+`option_sources`'; the teacher's texts are the outputs of an open-weight model under the MIT
+licence. Attribution goes to the upstream authors; the conversion is ours. Every source has its
+row in DATA_LICENSES.md, and the script refuses a row whose sources have none.
+
+| source | upstream | licence | commit | role in v7 |
+|---|---|---|---|---|
+{lic}
+
+Rows and requests per split, counted on the training and validation records (`*_train`, `*_val`)
+and on `t5_tools` (the other files hold the same requests again):
+
+| source | rows train | rows val | rows fresh (T5) | requests train / val / fresh |
+|---|---:|---:|---:|---:|
+{per}
+| all | {tot} | |
+
+The rows of each file are those the build wrote; how many requests each filter dropped is in the
+pre-registrations' amendments and in `files/v5-slates.json`, `files/v5-plan.json` and
+`files/t5-counts.json` (T5's counts; the full table is the repository's
+`runs/s6-route7/counts.json`). Of the teacher's rewrites, the slates show {r['v4_used']:,} of v4's
+and {r['t5_used']:,} of T5's.
+
+## How each file was checked
+
+Before a row was read, every file was hashed and compared with the sha256 that the repository's
+run files record: `runs/s6-route7/inputs6.json` (the training and validation inputs of v7,
+amendment 1; `files/inputs6.json`) and `runs/s6-route7/test-files.json` with `FRESH-OPEN` (T5's
+five files, hashed before any system read them; `files/FRESH-OPEN`). The script refuses on any
+difference. Four kinds of file have no such record, and were checked otherwise (each file's check
+is in `MANIFEST.json`):
+
+- **the blind copies** (`*_blind`, `*_blind_model`): row by row, each is its parent with the
+  request replaced by the placeholder, and the model copy is that file with each tool option's
+  `score 0.00 rank <position>; ` (the copies of `v5_tools` also against the hashes that
+  `sky-data route blind` logged in the data folder, `build7/logs7/blind-*.json`);
+- **the files read twice under two names** (`*.blind-bare.model.jsonl`, the fix folders' copies of
+  `v5_tools`): by sha256 against the published file;
+- **the teacher's rewrites** (`teacher_rewrite_description_v4`, `_t5`): every option that a
+  record flags as rewritten, and every rewritten distractor of the probe copies, is a cut of its
+  tool's rewrite in these files (or in v2's, skycmd-route's);
+- **the files of skycmd-route** read again: against the data folder's `BUILD.json` and `FRESH.json`.
+
+Not in this repository:
+{excl}
+- the embeddings (`emb/`), markers and logs of the build, the models and environment, the dumps and
+  evaluation outputs (`eval/`), the model copies of T5 that the gate rendered (`sky-data route
+  render` rebuilds them), and the raw upstream files (`src/`): `scripts/build-route4-data.sh
+  fetch` downloads Toucan at the commit of `files/MANIFEST4.json` and checks every file's hash.
+
+## Limits
+
+- **A failed model's data.** These files trained a router that failed its gate. They are published
+  so that the result can be checked, not as a recommended training set.
+- **Known cues remain.** v4 to v7 rebuilt the data against the cues that let a rule pick the right
+  tool without reading the request; outside the slates v6 and v7 rebuilt, the records hold the
+  cues that v5's data table names (`docs/s6-route5-prereg.md`, result block), and the anchor of v7's
+  no-call slates is chosen with the request's own text (`docs/s6-route7-prereg.md` §10).
+- **English mostly**: {lang['fr']:,} of the {sum(lang.values()):,} counted rows are French, all from
+  MASSIVE (requests in French, intent names and descriptions in English).
+- **Synthetic upstream data**: Toucan's requests and several tool-calling sets were written by
+  language models upstream; the build filters and deduplicates, it does not check them by hand.
+- **Personal data**: no row holds text that its upstream set does not publish, apart from the
+  teacher's rewrites of tool descriptions.
+- **Keys**: the builder masks key-like strings in requests and descriptions as `<KEY>`
+  (`sky_data::route::mask_keys`). Every string of `data/` and `files/` was scanned with the same
+  rule at assembly, and none is left: {n_rev:,} matches are tool names (of ToolACE and Toucan)
+  that were read by hand and are not keys, listed by hash in `scripts/hf-publish-data.py`
+  (`ROUTE_NOT_KEYS`). The run files copied in `files/` hold no absolute path of the build machine
+  (the script refuses one).
+
+```python
+from datasets import load_dataset
+ds = load_dataset("{user}/skycmd-route7", "tools_train")
+```
+"""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--data", default=str(ROOT / "data"))
@@ -1079,7 +1759,8 @@ def main() -> None:
     ap.add_argument("--glm", default="", help="dir of `sky-data teacher mix-labels --alpha 0`: publish skycmd-glm-labels")
     ap.add_argument("--glm-date", default="", help="date of the release, shown in the card")
     ap.add_argument("--glm-final", action="store_true", help="the labelling is finished: a complete release")
-    ap.add_argument("--route-data", default=str(ROUTE_DATA), help="the s6-route data folder (skycmd-route, `--only route`)")
+    ap.add_argument("--route-data", default=str(ROUTE_DATA),
+                    help="the s6-route data folder (skycmd-route, `--only route`; skycmd-route7, `--only route7`)")
     a = ap.parse_args()
 
     data = Path(a.data)
@@ -1097,6 +1778,8 @@ def main() -> None:
         publish_glm(a, api, user, commit)
     if "route" in only or not (only or a.glm):
         publish_route(a, api, user, commit)
+    if "route7" in only or not (only or a.glm):
+        publish_route7(a, api, user, commit)
     for name, s in SETS.items():
         if (only or a.glm) and name not in only:
             continue
