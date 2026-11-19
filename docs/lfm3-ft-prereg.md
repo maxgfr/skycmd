@@ -2,7 +2,7 @@
 
 **Statut : figé le 05/11/2026, avant tout job.** Aucun job Hugging Face n'a tourné, aucun essai de fumée, aucun poids n'a été entraîné. Ce fichier fixe le modèle, les données d'entraînement, l'entraînement, l'évaluation, les portes et l'ordre des jobs. Les résultats seront lus à travers ce texte.
 
-**Closed on 19/11/2026** (§10, amendment 8): nothing was trained, and there are no weights.
+**Closed on 19/11/2026** (§10, amendment 8): nothing was trained, and there are no weights. Its code (`scripts/lfm3-ft.sh`, `experiments/lfm3-ft/`) was removed the same day and is in the git history at commit 5011585, the last commit that holds it: [`scripts/lfm3-ft.sh`](https://github.com/maxgfr/skycmd/blob/5011585/scripts/lfm3-ft.sh), [`experiments/lfm3-ft/`](https://github.com/maxgfr/skycmd/tree/5011585/experiments/lfm3-ft). The commands named below refer to that commit.
 
 **Modifications de ce fichier :**
 

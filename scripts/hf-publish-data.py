@@ -22,8 +22,9 @@ Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) befor
     --alpha 0 --out MIXDIR`) as `skycmd-glm-labels`, marked as AI-generated: the outputs of an
     open-weight MIT model, published by the owner's decision (DATA_LICENSES.md, TODO.md §1.2);
   * every set a model reads is published: decisions, games, numeric, secrets, commands, zero-shot,
-    the s6-cast series, the MLM text with its tokenizers, the LFM3 questions and the s6-ear
-    questions with their clip index and Mimi codes;
+    the s6-cast series, the MLM text with its tokenizers and the s6-ear questions with their clip
+    index and Mimi codes; `skycmd-lfm3-math` (the LFM3-1.7B router's questions) is published, and
+    its entry was removed with the LFM3 code on 19/11/2026 (in the git history at commit 5011585);
   * the audio itself (31 GB of log-mel features and test WAVs) is not: `sky-data fetch-audio`
     rebuilds it from the upstream sets; nor GIFT-Eval, which is an evaluation set never
     redistributed;
@@ -128,10 +129,6 @@ TEXT = {
     "txt360_stackexchange": ("IFM/TxT360 `data/stackexchange`", "odc-by (TxT360); Stack Exchange posts CC-BY-SA", "one shard, 15 MB"),
     "txt360_europarl_fr": ("IFM/TxT360 `data/europarl` (French rows)", "odc-by (TxT360); European Parliament proceedings, reuse authorised with acknowledgement", "up to 8 pieces per session, 15 MB"),
 }
-LFM3 = {
-    "calib": ("openai/gsm8k (`main`, train, `740312ad`) and DigitalLearningGmbH/MATH-lighteval (train, `0530c786`)", "mit", "300 + 300 calibration questions, seed 1234"),
-    "test": ("openai/gsm8k (`main`, test) and HuggingFaceH4/MATH-500 (`6e4ed1a2`)", "mit", "500 + 500 test questions, seed 1234"),
-}
 EAR = {
     "turn_end": ("pipecat-ai/smart-turn-data-v3-train (train, val) and pipecat-ai/smart-turn-data-v3.2-test (test)", "cc-by-4.0", "`turn_end` noul questions"),
     "keyword": ("Speech Commands v0.02 (Warden 2018), official splits and test archive", "cc-by-4.0", "`keyword` choice, the 12-class benchmark"),
@@ -215,9 +212,6 @@ series (`sky-train cast-synth`) are drawn from these at training time.
 TEXT_SCHEMA = """Each row is one document: `src` (the source) and `text`. All of it is deduplicated exactly and with
 MinHash/LSH (word 5-grams, Jaccard >= 0.8). The tokenizers trained on it are in `tokenizers/`
 (`sky-data train-tokenizer --vocab N --num`).
-"""
-LFM3_SCHEMA = """Each row is one question: `id`, `task` (`gsm8k` or `math`), `question` and `answer` (the final
-answer, compared after normalization).
 """
 EAR_SCHEMA = """- the question configs (`turn_end`, `keyword`, `keyword_zs`) have the typed-decision schema of
   skycmd-decisions (`src`, `t`, `ins`, `opts`, `state`, `target`, `split`) plus `lang` and `clip`;
@@ -401,18 +395,6 @@ SETS = {
         "schema": TEXT_SCHEMA,
         "task": "fill-mask",
         "note": "TinyStories, TinyStories-fr and SimpleStories are synthetic stories written by language models upstream (see their cards); skycmd generated none of this text.",
-    },
-    "lfm3": {
-        "repo": "skycmd-lfm3-math",
-        "files": "lfm3/*.jsonl",
-        "pretty": "skycmd LFM3 System 1 / System 2 questions",
-        "summary": "The calibration and test questions of the LFM3-1.7B System 1 / System 2 router (`docs/lfm3-s1s2-prereg.md`): GSM8K and MATH, drawn with a fixed seed at pinned revisions.",
-        "command": "scripts/lfm3-s1s2.sh data",
-        "languages": ["en"],
-        "license": "mit",
-        "sources": LFM3,
-        "schema": LFM3_SCHEMA,
-        "task": "question-answering",
     },
     "cast-synth": {
         "repo": "skycmd-cast-synth",

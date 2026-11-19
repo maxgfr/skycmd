@@ -71,9 +71,10 @@ either side.
 - **Precedence.** A valid line replaces `SKY_DUTY` and `SKY_COOL`. A missing, unreadable or invalid
   file (empty, not a number, a duty of 0 or above 1, a part of 0 seconds, a third word) changes
   nothing: the last setting holds, and before any valid line that is `SKY_DUTY` (default 1) and
-  `SKY_COOL` (default none). (`experiments/lfm3-s1s2/s1s2.py`, a third reader written for one
-  pre-registered experiment and left as it ran, differs: it reads the file at every rest and goes
-  back to `SKY_DUTY` and `SKY_COOL` while the file is invalid.)
+  `SKY_COOL` (default none). (A third reader, `experiments/lfm3-s1s2/s1s2.py`, written for one
+  pre-registered experiment and left as it ran, differed: it read the file at every rest and went
+  back to `SKY_DUTY` and `SKY_COOL` while the file was invalid. It was removed with the LFM3 code on
+  19/11/2026 and is in the git history at commit 5011585: [`experiments/lfm3-s1s2/s1s2.py`](https://github.com/maxgfr/skycmd/blob/5011585/experiments/lfm3-s1s2/s1s2.py).)
 
 Without the daemon, one line of shell is a valid writer:
 
@@ -269,10 +270,11 @@ an invalid setting, 3 already running, 4 not macOS.
 - **The on-battery probe has a theoretical race.** Under `set -o pipefail`, `pmset -g batt | head -n
   1 | grep -q` could read "not on battery" if `pmset` were cut off by a closed pipe; its output is
   two short lines, so this has not been seen.
-- **`experiments/lfm3-s1s2/s1s2.py` keeps its own reader.** It belongs to a finished
-  pre-registered experiment and was left as it ran: besides the differences above (no 5-second
-  throttle, back to the environment on an invalid file), it accepts `nan` as a cycle part, which
-  then makes its `time.sleep` fail. `scripts/brake.py` and the Rust brake refuse it.
+- **`experiments/lfm3-s1s2/s1s2.py` kept its own reader** until the LFM3 code was removed on
+  19/11/2026 (it is in the git history at commit 5011585, [`experiments/lfm3-s1s2/s1s2.py`](https://github.com/maxgfr/skycmd/blob/5011585/experiments/lfm3-s1s2/s1s2.py)). It belonged to a
+  finished pre-registered experiment and was left as it ran: besides the differences above (no
+  5-second throttle, back to the environment on an invalid file), it accepted `nan` as a cycle
+  part, which then made its `time.sleep` fail. `scripts/brake.py` and the Rust brake refuse it.
 
 ## What we learned
 

@@ -2,6 +2,8 @@
 
 **Statut : figé le 03/11/2026, avant tout run.** Seul un essai de fumée a tourné : 3 questions de calibration par mode, dans `runs/lfm3-s1s2-smoke`, jamais mélangées au run. Ce fichier fixe les données, les modes, le routeur, les métriques et les critères de succès. Les résultats seront lus à travers ce texte.
 
+**The code was removed on 19/11/2026** (the LFM3 lines are closed: `docs/lfm3-ft-prereg.md`, amendment 8). The commands and files this pre-registration names (`scripts/lfm3-s1s2.sh`, `experiments/lfm3-s1s2/s1s2.py`, and `experiments/lfm3-ft/` in its amendment 1) are in the git history at commit 5011585, the last commit that holds them: [`scripts/lfm3-s1s2.sh`](https://github.com/maxgfr/skycmd/blob/5011585/scripts/lfm3-s1s2.sh), [`experiments/lfm3-s1s2/`](https://github.com/maxgfr/skycmd/tree/5011585/experiments/lfm3-s1s2), [`experiments/lfm3-ft/`](https://github.com/maxgfr/skycmd/tree/5011585/experiments/lfm3-ft). The commands named below refer to that commit. The result files `runs/lfm3-s1s2/`, the data set `maxgfr/skycmd-lfm3-math` and the result stay as they were.
+
 **Modifications de ce fichier :**
 
 - tout amendement est commité, daté et motivé en section 8 ;

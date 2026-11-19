@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sets the thermal brake of a running training from what the Mac is doing, with no restart:
-# sky-train reads SKY_BRAKE_FILE again every few seconds (crates/sky-train/src/brake.rs), and so do
-# scripts/brake.py and experiments/lfm3-s1s2/s1s2.py. The full guide is docs/idle-training.md; the
+# sky-train reads SKY_BRAKE_FILE again every few seconds (crates/sky-train/src/brake.rs), and so
+# does scripts/brake.py. The full guide is docs/idle-training.md; the
 # usual way to start it is scripts/train-when-idle.sh, which starts and stops it around a command.
 #
 #   scripts/auto-brake.sh [runs/brake]        # runs until killed; start it next to the training

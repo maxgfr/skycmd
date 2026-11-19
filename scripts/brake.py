@@ -36,7 +36,7 @@ rests in proportion to the steps after the switch only.
 
 The one difference that remains: `rest()` measures the work since the previous call, as the Rust one
 does, but it also takes the seconds of work as an argument (`rest(work_seconds)`), for a loop that
-knows them better (experiments/lfm3-s1s2/s1s2.py passes the generation time).
+knows them better (a generation loop, for instance, can pass its generation time).
 """
 import math
 import os

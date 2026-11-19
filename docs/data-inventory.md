@@ -195,7 +195,7 @@ The data folder is `skycmd-data/s6-route/` (`ROUTE_DATA`). Sources are pinned in
 
 | work | status | data | on Hugging Face | local | removable | rebuild |
 |---|---|---|---|---|---|---|
-| S1/S2 router | failed (inference only) | calibration and test questions `data/lfm3/` | skycmd-lfm3-math (2 configs, identical) | `data/lfm3` < 0.01 GiB; generations `runs/lfm3-s1s2` 12 MB | yes under the rule since 19/11 (the fine-tune, their only reader, is closed); not deleted on 19/11 | `scripts/lfm3-s1s2.sh data` |
+| S1/S2 router | failed (inference only) | calibration and test questions `data/lfm3/` | skycmd-lfm3-math (2 configs, identical) | `data/lfm3` < 0.01 GiB; generations `runs/lfm3-s1s2` 12 MB | yes under the rule since 19/11 (the fine-tune, their only reader, is closed); not deleted on 19/11 | `scripts/lfm3-s1s2.sh data` at commit 5011585 (the LFM3 code was removed on 19/11/2026; [`scripts/lfm3-s1s2.sh`](https://github.com/maxgfr/skycmd/blob/5011585/scripts/lfm3-s1s2.sh)) |
 | fine-tune | closed on 19/11, nothing trained (`docs/lfm3-ft-prereg.md`, amendment 8) | GSM8K and MATH train solutions, downloaded from the Hub at the pinned revisions of `DATA_LICENSES.md` | — | — | — | — |
 
 ## 4. The gap: data on disk that is not on Hugging Face under `maxgfr`
