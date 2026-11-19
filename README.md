@@ -168,9 +168,30 @@ A fourth game is a Doom-like first-person shooter on a grid, drawn with [Freedoo
 | `sky-web` | WASM bindings used by the site (games + model) |
 | `sky-serve` | the `skycmd` CLI: `serve`, `decide`, `info`, `bench` |
 | `sky-py` | Python bindings (PyO3), the `skycmd` wheel |
+| `sky-metrics` | evaluation metrics: proper scores, calibration (ECE), selective prediction, paired bootstrap, non-inferiority, the Holm correction |
 | `packages/skycmd-js` | the `skycmd` npm package (WASM) |
 
-Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](docs/SPEC-S2.md), runtime compatibility in [`docs/compat.md`](docs/compat.md), and the research notes in [`docs/research.md`](docs/research.md), plus the night research on recursion, early exit, numbers and ternary in [`docs/research-night.md`](docs/research-night.md), the s3 spec in [`docs/SPEC-S3.md`](docs/SPEC-S3.md) and the attempts to go below s3-pico in [`docs/night-experiments.md`](docs/night-experiments.md).
+Shared formats are in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/SPEC-S2.md`](docs/SPEC-S2.md), runtime compatibility in [`docs/compat.md`](docs/compat.md), and the research notes in [`docs/research.md`](docs/research.md), plus the night research on recursion, early exit, numbers and ternary in [`docs/research-night.md`](docs/research-night.md), the s3 spec in [`docs/SPEC-S3.md`](docs/SPEC-S3.md) and the attempts to go below s3-pico in [`docs/night-experiments.md`](docs/night-experiments.md). Every document of `docs/`, line by line with its status, pre-registration and result folder, is indexed in [`docs/README.md`](docs/README.md).
+
+### Reproduce a result
+
+Each s6 model was trained by one script, under its pre-registration; the small result files it read are under `runs/`, and its card opens with its verdict. The scripts read their data from `../skycmd-data/`, a folder next to the repository (or the environment variable each script names), and from `data/`; where every data set lives and how it is rebuilt is in [`docs/data-inventory.md`](docs/data-inventory.md).
+
+| model | pre-registration | script | result files | card |
+|---|---|---|---|---|
+| s6-nano | [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md) | `scripts/train-all.sh nano` (`scripts/train-s6.sh`) | [`runs/s6-nano/eval/`](runs/s6-nano/eval/results.md) | [`hf/cards/s6-nano.md`](hf/cards/s6-nano.md) |
+| s6-micro-v1 | [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md) | `scripts/train-all.sh micro` (`scripts/train-s6.sh`) | [`runs/s6-micro/eval/`](runs/s6-micro/eval/results.md) | [`hf/cards/s6-micro-v1.md`](hf/cards/s6-micro-v1.md) |
+| s6-micro (v2) | [`docs/s6-gen-prereg.md`](docs/s6-gen-prereg.md), amendments 12, 16, 17 | `SIZE=micro scripts/train-s6.sh`, environment in `runs/s6-micro2/env.sh` | [`runs/s6-micro2/`](runs/s6-micro2/runs/s6-micro/eval/results.md) | [`hf/cards/s6-micro.md`](hf/cards/s6-micro.md) |
+| s6-secrets-pico | [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md) | `scripts/train-all.sh secrets` (`scripts/train-secrets.sh`) | [`runs/s6-secrets-pico/`](runs/s6-secrets-pico/report.md) | [`hf/cards/s6-secrets-pico.md`](hf/cards/s6-secrets-pico.md) |
+| s6-secrets-verify-pico | [`docs/s6-secrets2-prereg.md`](docs/s6-secrets2-prereg.md) | `scripts/train-secrets2.sh` | [`runs/s6-secrets2/`](runs/s6-secrets2/), v3: [`runs/s6-secrets3/`](runs/s6-secrets3/) | [`hf/cards/s6-secrets-verify-pico.md`](hf/cards/s6-secrets-verify-pico.md) |
+| s6-ear-nano | [`docs/s6-ear-prereg.md`](docs/s6-ear-prereg.md) | `scripts/train-all.sh ear` (`scripts/train-ear.sh`) | [`runs/s6-ear-nano/eval/`](runs/s6-ear-nano/eval/gate.json) | [`hf/cards/s6-ear-nano.md`](hf/cards/s6-ear-nano.md) |
+| s6-ear2-nano | [`docs/s6-ear2-prereg.md`](docs/s6-ear2-prereg.md) | `scripts/train-turn.sh` | [`runs/s6-ear2-nano/`](runs/s6-ear2-nano/) | [`hf/cards/s6-ear2-nano.md`](hf/cards/s6-ear2-nano.md) |
+| s6-cast-pico | [`docs/s6-cast-prereg.md`](docs/s6-cast-prereg.md) | `scripts/train-all.sh cast` (`scripts/train-cast.sh`) | [`runs/s6-cast-pico/`](runs/s6-cast-pico/gift-eval/summary.json) | [`hf/cards/s6-cast-pico.md`](hf/cards/s6-cast-pico.md) |
+| s6-cast2-pico | [`docs/s6-cast2-prereg.md`](docs/s6-cast2-prereg.md) | `scripts/train-cast2.sh` | [`runs/s6-cast2-pico/`](runs/s6-cast2-pico/GATE.md) | [`hf/cards/s6-cast2-pico.md`](hf/cards/s6-cast2-pico.md) |
+| s6-route-nano | [`docs/s6-nano2-prereg.md`](docs/s6-nano2-prereg.md) | `scripts/build-route-data.sh`, `scripts/train-route.sh`, `scripts/route-eval.sh` | [`runs/s6-nano2/`](runs/s6-nano2/) | [`hf/cards/s6-route-nano.md`](hf/cards/s6-route-nano.md) |
+| s6-route | [`docs/s6-nano3-prereg.md`](docs/s6-nano3-prereg.md) | `scripts/route3-read.sh` (no training) | [`runs/s6-nano3/`](runs/s6-nano3/) | [`hf/cards/s6-route.md`](hf/cards/s6-route.md) |
+| s6-route7-nano | [`docs/s6-route7-prereg.md`](docs/s6-route7-prereg.md) | `scripts/build-route7-data.sh`, `scripts/train-route7.sh`, `scripts/route7-gate.sh` | [`runs/s6-route7/`](runs/s6-route7/) | [`hf/cards/s6-route7-nano.md`](hf/cards/s6-route7-nano.md) |
+| s6-sleep3-nano | [`docs/s6-sleep3-prereg.md`](docs/s6-sleep3-prereg.md) | `scripts/train-sleep3.sh` | [`runs/s6-sleep3/`](runs/s6-sleep3/gate.json) | [`hf/cards/s6-sleep3-nano.md`](hf/cards/s6-sleep3-nano.md) |
 
 ## Quick start (macOS, Apple Silicon)
 ```sh

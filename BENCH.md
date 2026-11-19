@@ -1,4 +1,10 @@
-# skycmd-s1 training throughput
+# skycmd: benchmarks and results
+
+Every measured number of the project, one section per model or line, from the first training
+throughput to the last pre-registered gate; the index of the documents behind them is
+[`docs/README.md`](docs/README.md).
+
+## skycmd-s1 training throughput
 
 Measured by `sky-train bench` (mlx-rs 0.32 / MLX 0.32.2, Metal, compiled loss + gradient) on random tokens. Warmup steps are excluded; timing covers forward + backward + optimizer update (Muon on the encoder hidden matrices, AdamW elsewhere). `bf16` runs matmuls and activations in bfloat16 with f32 master weights and f32 losses. `tok/s` counts input tokens (batch x seq); `params` counts the trained model (encoder + MLM head for `mlm`, encoder + decision head for `decision`).
 

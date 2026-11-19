@@ -1,5 +1,7 @@
 # s6-sleep-nano: pre-registration (TODO §10)
 
+*Status on 19/11/2026: v1 stopped at its pico pilot (§5: the memory was not shown), so no nano run took place; see `docs/s6-sleep-diagnosis.md` and the Results page, section s6-sleep.*
+
 *Note added 19/11/2026: "TODO §10" (in the title, in section 2 and in section 4) refers to the project's former to-do file, `TODO.md`, removed on 19/11/2026; its last version is at commit `0e45b7b`. The text below is unchanged.*
 
 **Status: frozen on 12/11/2026, before any code, any training and any measure of this experiment.** No memory layer exists in `sky-train` or `sky-infer` at this date, the two probe games are not written, and s6-nano, the base model, is still training (tranche 2 of the big run).

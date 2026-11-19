@@ -1,5 +1,7 @@
 # s6-route: why the model part falls below chance when tool names are masked
 
+*Status on 19/11/2026: the fourth version it prepared stopped at its data checks on 18/11/2026, before any training, and the route line was closed after v7 failed on 19/11/2026; see `docs/s6-route4-prereg.md` and `docs/s6-route7-prereg.md`.*
+
 Written on 17/11/2026 to prepare a fourth version of the router. This file is a diagnosis, not a
 pre-registration: a fourth version needs its own.
 

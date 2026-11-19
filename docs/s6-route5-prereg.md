@@ -1,5 +1,7 @@
 # s6-route v5 (v4 with every drawn distractor in the right tool's surface cell, the hard ones anchored on the request): pre-registration
 
+*Status on 19/11/2026: v5 stopped at its data checks on 18/11/2026, before any training, and the route line was closed after v7; see the result block at the end of this file and `runs/s6-route5/checks.md`.*
+
 **Frozen on 18/11/2026 by the lead, before any computation of v5 and before its code is written; every later change is a dated amendment that precedes the computation it concerns.**
 
 - **Nothing of v5 exists yet:** no data built, no teacher call, no model trained, no fresh file.

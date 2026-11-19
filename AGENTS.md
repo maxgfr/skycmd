@@ -106,8 +106,10 @@ hours of CPU. Every command passes, or its failure is fixed and committed.
 - `cargo fmt --all --check`; clippy as CI runs it:
   `cargo clippy --workspace --exclude sky-train --all-targets -- -D warnings`, then
   `cargo clippy -p sky-train --all-targets -- -D warnings`.
-- `cargo test --release` on sky-infer, sky-data, sky-web, sky-gguf and xtask;
-  `cargo test --release -p sky-train` with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
+- `cargo test --workspace --exclude sky-train --release`, as CI's `test` job runs it (sky-infer,
+  sky-data, sky-web, sky-gguf, sky-games, sky-serve, sky-arena, sky-schema, sky-metrics, sky-py
+  and xtask); `cargo test --release -p sky-train` with
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
 - `cargo test -p sky-web --test parity`; `wasm-pack test --node --release crates/sky-web --test parity`
   (with SIMD128, and also `--test iso --test forecast --test verify`, as CI does);
   `wasm-pack test --node crates/sky-web --test memory`; `node crates/sky-web/bench/verify-node.mjs --glue`.

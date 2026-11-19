@@ -1,5 +1,7 @@
 # s6-route v4 (the router retrained without its shortcut): pre-registration
 
+*Status on 19/11/2026: v4 stopped at its data checks on 18/11/2026, before any training, and the route line was closed after v7; see the result block at the end of this file and `runs/s6-route4/checks.md`.*
+
 **Frozen on 17/11/2026 by the lead, before any computation of v4 and before its code is written; every later change is a dated amendment that precedes the computation it concerns.**
 
 - No data of v4 is built, no teacher call is made, no model is trained and no fresh file exists.
