@@ -3,7 +3,7 @@
 # docs/s6-sleep4-prereg.md (v4 = docs/s6-sleep3-prereg.md, v3, trained to the end of its learning
 # curve, with checks at the nano size first).
 #
-#   scripts/train-sleep4.sh [k3] [nano] [dev] [export] [eval] [gate]
+#   scripts/train-sleep4.sh [k3] [k1] [nano] [dev] [export] [eval] [gate]
 #                                                  # no step: k3 only (nothing else is automatic)
 #
 #   k3      §3.2, on the GPU: v3's nano phase A (§3.1: the base runs/s6-nano-g3/decide/last, v3's
@@ -14,6 +14,15 @@
 #           rules of §3.6 and, on the frozen route, the cap of §4.2). K3_SEED=0 or K3_SEED=1 runs
 #           that seed alone (seed 1 waits for seed 0); the reading waits for both. No rerun once
 #           read (§10)
+#   k1      §3.3, amendment 2 (§14), on the GPU: refused unless stage1.json records K3's failure
+#           (the frozen route closed) and is committed, and K1 has not been read. v3's recipe
+#           unchanged, everything trained (K3's command without --freeze-base), phase A alone,
+#           --steps 1310 and --memory-off-eval 4, no stop before the end of the budget (K1's bar
+#           reads the last 100 recall steps of the run), seed 0 then seed 1, one run at a time;
+#           read by scripts/s6-sleep4-report.py k1 -> <root>/stage1/k1.json, k1.md and K1's part
+#           of <root>/stage1.json. K1_SEED=0 or K1_SEED=1 runs that seed alone (seed 1 waits for
+#           seed 0); the reading waits for both. Then the script stops, whatever K1 reads: a
+#           failure stops v4 at K1, a pass waits for the next amendment
 #   nano    refused unless stage1.json takes the frozen route and is committed. §4: the memory
 #           arm, seeds 0, 1, 2, with the base frozen: phase A ended by the rule of §4.2
 #           (--stop-recall-acc 0.98 --stop-recall-window 100) or at the cap (--steps from
@@ -35,9 +44,10 @@
 #   gate    §6: the s6-nano gate on the exported seed-0 file, H0 to H3, Z (the parity checks),
 #           sky-infer's parity on the golden memory sequences natively and in WASM -> gate.json
 #
-# K1, K2, the confirmation, K5 and the preserved route (§3.3 to §3.5, §4 when K3 fails) are not in
-# this script: they need the code of §11 items 2 (as K2 (ii) reads it), 3 and 6, which is written
-# only if K3 fails. If K3 fails, this script stops after its reading.
+# K3 failed (§15). By amendment 2 (§14), v4 goes on to K1 and to K1 only: K2, the confirmation, K5
+# and the preserved route (§3.4, §3.5, §4 when K3 fails) are not in this script, they need the code
+# of §11 items 3 and 6, and nothing runs after K1 until a later amendment. If K1 fails on either
+# seed, v4 stops at K1 (no K2, no confirmation, no K5, no stage 2) and that reading is its result.
 #
 # Every reading and verdict is a file under <root>; the script commits nothing (the lead does,
 # before the next stage: §3.6). A run that ended is skipped, so the script can be started again
@@ -55,8 +65,8 @@
 #   V3_CONFIG      v3's nano config (default runs/s6-sleep3/nano/sleep3.json); when it is missing,
 #                  the config is built from the base as scripts/train-sleep3.sh built it
 #   V3_CMD         v3's nano phase A command (default runs/s6-sleep3/nano/sleep-s0/a/cmd.txt): when
-#                  it exists, each K3 command is checked against it (the same recipe but for the
-#                  flags §3.1 and §3.2 change)
+#                  it exists, each K3 and K1 command is checked against it (the same recipe but for
+#                  the flags §3.1 and §3.2 change)
 #   SEQ            the training sequences (default runs/s6-sleep/seq, v1's)
 #   DATA           the folder of the stateless records (default data)
 #   SKY_DUTY SKY_COOL SKY_BRAKE_FILE   the thermal brake (scripts/auto-brake.sh); SKY_BRAKE_FILE
@@ -91,7 +101,7 @@ smoke_arg=()
 [ "$smoke" = 1 ] && smoke_arg=(smoke)
 
 # Budgets, sizes and seeds (§3.1, §4.2, §4.3, §5).
-k3_steps=1310
+k3_steps=1310 k1_steps=1310
 phase_b_steps=2000
 stop_acc=0.98 stop_window=100
 batch=128 sleep_batch=16
@@ -109,7 +119,7 @@ small=()
 if [ "$smoke" = 1 ]; then
   data=${out}data seq=${out}seq nano_base=${out}base/decide/last
   nano_records=$data/numeric nano_weights=numeric=1 typed=$data/numeric/numeric.jsonl
-  k3_steps=4 phase_b_steps=3 batch=16 sleep_batch=4
+  k3_steps=4 k1_steps=4 phase_b_steps=3 batch=16 sleep_batch=4
   # The rule of §4.2 at a bar the smoke reaches (its plumbing, not its bar), and a cap of its own:
   # a smoke's K3 has no S95.
   stop_acc=0.01 stop_window=2 smoke_cap=6
@@ -356,10 +366,86 @@ k3() {
     if [ "$smoke" = 1 ]; then
       echo "== SMOKE: K3 does not pass at these sizes, as expected; going on to check the code"
     else
-      echo "== K3 FAILED: the frozen route is closed for v4 (§3.6, rule 2). K1, K2, the confirmation and K5 need code that is not written yet (§11 items 2, 3, 6); this script stops here" >&2
+      echo "== K3 FAILED: the frozen route is closed for v4 (§3.6, rule 2). By amendment 2 (§14), K1 alone runs next (scripts/train-sleep4.sh k1, once stage1.json is committed); this script stops here" >&2
       exit 1
     fi
   fi
+}
+
+# ----------------------------------------------------------------------------- K1 (amendment 2)
+
+# k1_stop <pass: true or false>: the rule of amendment 2 after K1's reading. The script stops here
+# either way; a smoke records it and goes on to check the code.
+k1_stop() {
+  local msg
+  if [ "$1" = true ]; then
+    msg="K1 PASSED on both seeds. Amendment 2 (§14): nothing further runs until the lead writes the next amendment (K2, the confirmation and K5 need code that is not written); this script stops here"
+  else
+    msg="K1 FAILED (a pass on one seed only is a failure). Amendment 2 (§14): v4 stops at K1, with no K2, no confirmation, no K5 and no stage 2, and this reading is its result; this script stops here"
+  fi
+  if [ "$smoke" = 1 ]; then
+    echo "== SMOKE: $msg (recorded, not obeyed; going on to check the code)"
+    return
+  fi
+  if [ "$1" = true ]; then
+    echo "== $msg"
+    exit 0
+  fi
+  echo "== $msg" >&2
+  exit 1
+}
+
+# §3.3 as amendment 2 runs it: only after K3's failure, v3's recipe unchanged with everything
+# trained, phase A alone, --steps 1310, seed 0 then seed 1. No --stop-after and no
+# --stop-recall-acc: K1's bar reads the last 100 recall steps of the whole 1,310-step run (§3.1).
+k1() {
+  local st=$root/stage1 seed seeds
+  if [ "$dry" != 1 ] && [ -f "$st/k1.json" ]; then
+    echo "== K1 read (no rerun, §10): $st/k1.json"
+    k1_stop "$(json_get "$st/k1.json" pass)"
+    return
+  fi
+  gpu_run_allowed
+  # K3's failure, recorded and committed (§3.6: each verdict committed before the next check).
+  committed "$root/stage1.json"
+  rep k1-ready "$root" ${smoke_arg[@]+"${smoke_arg[@]}"}
+  smoke_inputs
+  config
+  x mkdir -p "$st"
+  seeds=${K1_SEED:-0 1}
+  case "$seeds" in
+    "0 1" | 0) ;;
+    1)
+      if [ "$dry" != 1 ] && [ -z "$(steps_of "$st/k1-s0")" ]; then
+        echo "K1 runs seed 0 first: $st/k1-s0 has not ended" >&2
+        exit 1
+      fi
+      ;;
+    *) echo "K1_SEED is 0 or 1, not $seeds" >&2; exit 2 ;;
+  esac
+  # One seed after the other, never in parallel (§3.7); K3's command without --freeze-base.
+  check_v3=1
+  for seed in $seeds; do
+    decide "$st/k1-s$seed" "$nano_base" "$seed" "$k1_steps" "${phase_a[@]}" "${t12[@]}" --memory-off-eval 4
+  done
+  check_v3=0
+  if [ "$dry" != 1 ] && { [ -z "$(steps_of "$st/k1-s0")" ] || [ -z "$(steps_of "$st/k1-s1")" ]; }; then
+    echo "== K1: the reading waits for both seeds"
+    return
+  fi
+  local rc=0
+  rep k1 "$root" ${smoke_arg[@]+"${smoke_arg[@]}"} || rc=$?
+  if [ "$dry" = 1 ]; then
+    echo "== DRY_RUN: after the reading, the script stops (amendment 2): v4 stops at K1 if it fails, and waits for the next amendment if it passes"
+    return
+  fi
+  # The verdict is the file the reading wrote; without it the reading itself failed (a command
+  # that is not K1's, a run that did not end), which is no verdict.
+  if [ ! -f "$st/k1.json" ]; then
+    echo "K1's reading failed (status $rc) and wrote no verdict" >&2
+    exit "$((rc == 0 ? 1 : rc))"
+  fi
+  k1_stop "$(json_get "$st/k1.json" pass)"
 }
 
 # ----------------------------------------------------------------------------- stage 2, the frozen route
@@ -547,6 +633,7 @@ steps=("$@")
 for s in "${steps[@]}"; do
   case "$s" in
     k3) k3 ;;
+    k1) k1 ;;
     nano) nano ;;
     dev) dev ;;
     export) export_ ;;
@@ -555,6 +642,6 @@ for s in "${steps[@]}"; do
       [ "$dry" = 1 ] || nice -n 19 cargo build -q --release -p sky-infer -p sky-arena
       gate
       ;;
-    *) echo "unknown step $s (k3, nano, dev, export, eval, gate)" >&2; exit 2 ;;
+    *) echo "unknown step $s (k3, k1, nano, dev, export, eval, gate)" >&2; exit 2 ;;
   esac
 done

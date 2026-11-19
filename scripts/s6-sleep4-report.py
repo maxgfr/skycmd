@@ -8,6 +8,15 @@ scripts/train-sleep4.sh: the check K3 (a frozen base) and the frozen route that 
         S95 and K1's bar on both seeds (section 3.1) -> <root>/stage1/k3.json; then the rules of
         section 3.6 and, on the frozen route, the cap of section 4.2 -> <root>/stage1.json.
         Exit 1 when K3 fails (the frozen route is closed)
+  s6-sleep4-report.py k1-ready <root> [smoke]
+        exit 1 unless stage1.json records K3's failure (the frozen route closed) and K1 has not
+        been read (amendment 2: K1 runs only after K3 failed, once)
+  s6-sleep4-report.py k1 <root> [smoke]
+        K1 (section 3.3, amendment 2) on <root>/stage1/k1-s0 and k1-s1: the windows of 50 recall
+        steps, S90, S95 and K1's bar per seed and on both seeds (section 3.1) ->
+        <root>/stage1/k1.json, <root>/stage1/k1.md, and K1's part of <root>/stage1.json. Exit 1
+        when K1 fails (v4 stops at K1); when it passes, nothing further runs until the next
+        amendment
   s6-sleep4-report.py recipe <v3 cmd.txt> <v4 cmd.txt>
         the command of a check against v3's nano phase A (section 3.1): exit 1 unless they differ
         by the flags section 3.1 and 3.2 change only
@@ -27,9 +36,11 @@ scripts/train-sleep4.sh: the check K3 (a frozen base) and the frozen route that 
   s6-sleep4-report.py gate <root>
         the gate of section 6 -> <root>/gate.json; exit 1 when it does not hold
 
-Every threshold below is the pre-registration's; nothing here is tuned on a result. Only the
-frozen route is read here: the other route (K1, K2, the confirmation, K5, the preserved route)
-needs code that section 11 writes only if K3 fails. `smoke` is scripts/train-sleep4.sh SMOKE=1:
+Every threshold below is the pre-registration's; nothing here is tuned on a result. K3 failed
+(section 15), so the frozen route below is never taken; of the other route only K1 is read here,
+as amendment 2 (section 14) decides: K2, the confirmation, K5 and the preserved route need code
+that is not written, and nothing runs after K1 until a later amendment. `smoke` is
+scripts/train-sleep4.sh SMOKE=1:
 its own seeds and sizes, the rules recorded and not obeyed, never under runs/s6-sleep4.
 """
 import importlib.util
@@ -65,6 +76,16 @@ EXCESS_FLOOR = 0.02  # the excess ratio is not defined while 1-4 is within this 
 K3_SEEDS = (0, 1)
 K3_STEPS = 1310
 K3_OFF_EVAL = 4
+# Section 3.3 and amendment 2: K1 is v3's recipe unchanged, everything trained, the budget of every
+# check, seeds 0 then 1, the reading without the memory one step in four (section 3.1).
+K1_SEEDS = (0, 1)
+K1_STEPS = 1310
+K1_OFF_EVAL = 4
+# Flags a K1 run never carries: the frozen base (K3's; the frozen route is closed), a minute
+# budget, and any stop before the end of the 1,310 steps (K2's --stop-after, stage 2's rule of
+# section 4.2), which would move the last 100 recall steps that K1's bar reads.
+K1_REFUSED = ("--freeze-base", "--minutes", "--stop-after", "--stop-recall-acc")
+AMENDMENT_2 = "amendment 2 of docs/s6-sleep4-prereg.md (section 14)"
 # Section 4.2, the cap of phase A: 1.5 x S95max recall steps, at 0.765 recall steps per step.
 CAP_FACTOR = 1.5
 RECALL_PER_STEP = 0.765  # 0.9 x 0.85
@@ -373,8 +394,15 @@ def cmd_k3(root, smoke=False):
     dump({"k3": {k: {"S90": x["S90"], "S95": x["S95"], "last_100_ask_acc": x["last_100_ask_acc"],
                      "bar": x["bar"], "recall_steps": x["recall_steps"]} for k, x in seeds.items()},
           **v}, os.path.join(root, "stage1.json"))
+    print_seeds("K3", seeds)
+    print(f"K3: {'PASS' if v['k3_pass'] else 'FAIL'}; route: {v['route']}" + (f"; cap {v['cap']}" if "cap" in v else ""))
+    return v["k3_pass"]
+
+
+def print_seeds(check, seeds):
+    """The readings of section 3.1 of a check, seed by seed, on the console."""
     for name, x in seeds.items():
-        print(f"K3 {name}: {x['steps']} steps, {x['recall_steps']} recall steps | last 100: "
+        print(f"{check} {name}: {x['steps']} steps, {x['recall_steps']} recall steps | last 100: "
               f"{x['last_100_ask_acc']:.4f} [{'ok' if x['bar'] else 'FAIL'}] | S90 {x['S90']} | S95 {x['S95']}")
         print("  recall steps | ask_acc | ask_ce | aux_acc (per layer) | 1-4 | 17-32 | excess | off acc | grad_norm")
         for w in x["windows"]:
@@ -383,8 +411,136 @@ def cmd_k3(root, smoke=False):
             print(f"  {w['recall_steps'][0]:>4}-{w['recall_steps'][1]:<4} | {w['ask_acc']:.4f} | {w['ask_ce']:.4f} | "
                   f"{w['aux_acc']:.4f} ({layers}) | {w['by_delay']['1-4']:.3f} | {w['by_delay']['17-32']:.3f} | {ex} | "
                   f"{w['off_ask_acc']:.3f} | {w['grad_norm_median']:.2f}")
-    print(f"K3: {'PASS' if v['k3_pass'] else 'FAIL'}; route: {v['route']}" + (f"; cap {v['cap']}" if "cap" in v else ""))
-    return v["k3_pass"]
+
+
+# ----------------------------------------------------------------------------- K1 (amendment 2)
+
+
+def k1_ready(root):
+    """Amendment 2: K1 runs only once K3's failure is recorded (stage1.json: K3 failed, the frozen
+    route closed), and only once. The reasons it may not run (empty when it may)."""
+    path = os.path.join(root, "stage1.json")
+    if not os.path.exists(path):
+        return [f"no {path}: K3 has not been read"]
+    s = load(path)
+    why = []
+    if s.get("k3_pass") is not False or s.get("route") != "closed":
+        why.append(f"{path} does not record K3's failure (k3_pass {s.get('k3_pass')!r}, route {s.get('route')!r}): "
+                   "K1 runs only if K3 failed (section 3.6; section 10)")
+    if "k1" in s or os.path.exists(os.path.join(root, "stage1", "k1.json")):
+        why.append("K1 was read: no rerun (section 10)")
+    return why
+
+
+def cmd_k1_ready(root, smoke=False):
+    why = k1_ready(root)
+    if why:
+        if smoke:
+            print("SMOKE: K1 would be refused here: " + "; ".join(why))
+            return
+        sys.exit("K1 may not run: " + "; ".join(why))
+    print("K3 failed and K1 has not run: K1 may run (seed 0, then seed 1)")
+
+
+def check_k1_command(run, seed, smoke=False):
+    """The run is K1's (section 3.3, amendment 2): everything trained (no --freeze-base), the
+    reading without the memory one step in four, its seed and, but in a smoke, 1,310 steps, with
+    no stop before the end of the budget."""
+    path = os.path.join(run, "cmd.txt")
+    if not os.path.exists(path):
+        sys.exit(f"{path}: no command next to the run")
+    _, f = cmd_args(path)
+    want = {"--memory-off-eval": str(K1_OFF_EVAL), "--seed": str(seed)}
+    if not smoke:
+        want["--steps"] = str(K1_STEPS)
+    bad = {k: (f.get(k), v) for k, v in want.items() if f.get(k) != v}
+    for k in K1_REFUSED:
+        if k in f:
+            bad[k] = (f[k], None)
+    if bad:
+        sys.exit(f"{path}: not K1's command: {bad}")
+
+
+def batch_draws(run):
+    """The draws of a run's sequence steps: (step, game, N) for each line with seq_game."""
+    return [(r["step"], r["seq_game"], r.get("passes")) for r in log_lines(run) if "seq_game" in r]
+
+
+def same_batches(run, other):
+    """Section 3.1: two checks with the same seed train on the same batches. True or False when
+    `other` (K3's run of the same seed) has its log here, None otherwise; reported, deciding
+    nothing for K1."""
+    if not os.path.exists(os.path.join(other, "log.jsonl")):
+        return None
+    return batch_draws(run) == batch_draws(other)
+
+
+def k1_verdict(seeds):
+    """K1's bar on both seeds (a pass on one seed only is a failure), and what amendment 2 makes
+    of it: a failure stops v4 at K1; a pass pauses v4 until the next amendment."""
+    ok = all(s["bar"] for s in seeds.values())
+    if ok:
+        nxt = (f"K1 passed on both seeds. Under {AMENDMENT_2}, nothing further runs until the lead writes "
+               "the next amendment: K2, the confirmation and K5 need code that is not written")
+    else:
+        nxt = (f"K1 failed (a pass on one seed only is a failure). Under {AMENDMENT_2}, v4 stops at K1: no K2, "
+               "no confirmation, no K5, no stage 2; this reading is v4's result")
+    return {"k1_pass": ok, "next": nxt}
+
+
+def k1_markdown(seeds, v):
+    """K1's reading as Markdown: one line per seed, then the verdict."""
+    cell = lambda x: "never" if x is None else str(x)
+    lines = ["| check | seed | steps | `recall` steps | `ask_acc`, last 100 `recall` steps | bar | S90 | S95 | same batches as K3 |",
+             "|---|---|---:|---:|---:|---|---|---|---|"]
+    for name, x in seeds.items():
+        same = {True: "yes", False: "NO", None: "not read"}[x["same_batches_as_k3"]]
+        lines.append(f"| K1 | {name[len('seed'):]} | {x['steps']} | {x['recall_steps']} | {x['last_100_ask_acc']:.4f} | "
+                     f"{'met' if x['bar'] else 'missed'} ({K1_BAR}) | {cell(x['S90'])} | {cell(x['S95'])} | {same} |")
+    lines += ["", f"**Verdict:** {v['next']}."]
+    return "\n".join(lines) + "\n"
+
+
+def cmd_k1(root, smoke=False):
+    refuse_smoke_root(root, smoke)
+    path = os.path.join(root, "stage1.json")
+    if not os.path.exists(path):
+        sys.exit(f"no {path}: K3 has not been read")
+    stage1 = load(path)
+    if stage1.get("k3_pass") is not False or stage1.get("route") != "closed":
+        msg = f"{path} does not record K3's failure: K1 is not read (section 3.6)"
+        if not smoke:
+            sys.exit(msg)
+        print("SMOKE: " + msg)
+    st = os.path.join(root, "stage1")
+    seeds = {}
+    for s in K1_SEEDS:
+        run = os.path.join(st, f"k1-s{s}")
+        check_k1_command(run, s, smoke)
+        r = stage1_reading(run)
+        r["same_batches_as_k3"] = same_batches(run, os.path.join(st, f"k3-s{s}"))
+        seeds[f"seed{s}"] = r
+    v = k1_verdict(seeds)
+    res = {
+        "check": "K1, more steps (docs/s6-sleep4-prereg.md section 3.3; run under amendment 2)",
+        "bar": f"ask_acc pooled over the last {K1_LAST} recall steps >= {K1_BAR}, on both seeds",
+        "reading": "each step's own training batch, before its update; windows of 50 recall steps pooled over their asks",
+        "seeds": seeds,
+        "pass": v["k1_pass"],
+        "next": v["next"],
+    }
+    dump(res, os.path.join(st, "k1.json"))
+    with open(os.path.join(st, "k1.md"), "w") as f:
+        f.write(k1_markdown(seeds, v))
+    # K1's part of stage1.json; K3's part is kept as it was read.
+    stage1["k1"] = {k: {"S90": x["S90"], "S95": x["S95"], "last_100_ask_acc": x["last_100_ask_acc"],
+                        "bar": x["bar"], "recall_steps": x["recall_steps"]} for k, x in seeds.items()}
+    stage1["k1_pass"] = v["k1_pass"]
+    stage1["next_after_k1"] = v["next"]
+    dump(stage1, path)
+    print_seeds("K1", seeds)
+    print(f"K1: {'PASS' if v['k1_pass'] else 'FAIL'}. {v['next']}")
+    return v["k1_pass"]
 
 
 # ----------------------------------------------------------------------------- stage 2
@@ -796,7 +952,11 @@ if __name__ == "__main__":
         a = a[:-1]
     if len(a) == 2 and a[0] == "k3":
         sys.exit(0 if cmd_k3(a[1], smoke) else 1)
-    if len(a) == 3 and a[0] == "recipe":
+    if len(a) == 2 and a[0] == "k1":
+        sys.exit(0 if cmd_k1(a[1], smoke) else 1)
+    if len(a) == 2 and a[0] == "k1-ready":
+        cmd_k1_ready(a[1], smoke)
+    elif len(a) == 3 and a[0] == "recipe":
         cmd_recipe(a[1], a[2])
     elif len(a) == 2 and a[0] == "nano-ready":
         cmd_nano_ready(a[1], smoke)

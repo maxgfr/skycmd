@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests of scripts/s6-sleep4-report.py on synthetic logs and readings: K3 (a pass on both seeds,
-a pass on one seed only, which fails, S90, S95, the windows, the excess ratio, the cap), the
+a pass on one seed only, which fails, S90, S95, the windows, the excess ratio, the cap), K1 under
+amendment 2 (a pass on both seeds, a pass on one seed only, which fails, a run that never reaches
+0.90, only after K3's failure, once, its command without a frozen base or an early stop), the
 command of a check against v3's, the stop of phase A, the seeds of v4 and the refusal of v3's,
 the parity checks of the frozen route (a difference raises), H0 to H3 against the base, and the
 gate.
@@ -26,6 +28,11 @@ def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(obj, f)
+
+
+def text(path):
+    with open(path) as f:
+        return f.read()
 
 
 def quiet(f, *a):
@@ -220,6 +227,167 @@ class Stage1(unittest.TestCase):
             with open(v4, "w") as f:
                 f.write(" ".join(shlex.quote(w) for w in shlex.split(k3_cmd(1))))
             self.assertEqual(report.recipe_diff(v3, v4), [])
+
+
+# ----------------------------------------------------------------------------- K1 (amendment 2)
+
+
+def k1_cmd(seed, extra=""):
+    """K1's command: K3's without --freeze-base (section 3.3, amendment 2)."""
+    return k3_cmd(seed).replace("--freeze-base ", "").replace(f"k3-s{seed}", f"k1-s{seed}") + extra
+
+
+K3_FAILED = {"k3": {"seed0": {"bar": False}, "seed1": {"bar": False}}, "k3_pass": False, "route": "closed",
+             "next": "the frozen route is closed for v4: K1 (seed 0, then seed 1), then K2"}
+
+
+def k1_root(tmp, acc0, acc1, n=1000, stage1=K3_FAILED, k3_logs=True):
+    """K3's failure recorded in stage1.json (and K3's logs on the same batches), then K1's two runs."""
+    write(os.path.join(tmp, "stage1.json"), stage1)
+    for s, accs in ((0, acc0), (1, acc1)):
+        if k3_logs:
+            write_log(os.path.join(tmp, "stage1", f"k3-s{s}"), curve(n, lambda k: 0.25))
+        run = os.path.join(tmp, "stage1", f"k1-s{s}")
+        write_log(run, curve(n, accs))
+        with open(os.path.join(run, "cmd.txt"), "w") as f:
+            f.write(k1_cmd(s))
+    return tmp
+
+
+class K1(unittest.TestCase):
+    def test_k1_passes_on_both_seeds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(report.k1_ready(k1_root(tmp, rising, rising)), [])
+            self.assertTrue(quiet(report.cmd_k1, tmp))
+            res = report.load(os.path.join(tmp, "stage1", "k1.json"))
+            self.assertTrue(res["pass"])
+            for name in ("seed0", "seed1"):
+                x = res["seeds"][name]
+                self.assertTrue(x["bar"])
+                self.assertEqual(x["recall_steps"], 1000)
+                self.assertEqual(len(x["windows"]), 20)
+                self.assertIsNotNone(x["S90"])
+                self.assertIsNotNone(x["S95"])  # a run that meets the bar has an S95 (section 3.1)
+                self.assertLess(x["S90"], x["S95"])
+                self.assertTrue(x["same_batches_as_k3"])
+            # S90 and S95 from the curve itself, by brute force.
+            rows = report.recall_rows(report.log_lines(os.path.join(tmp, "stage1", "k1-s0")))
+            pooled = lambda lo, hi: sum(report.right(r) for r in rows[lo:hi]) / sum(r["asks"] for r in rows[lo:hi])
+            s90 = next(n for n in range(50, 1001) if pooled(n - 50, n) >= 0.90)
+            s95 = next(n for n in range(100, 1001) if pooled(n - 100, n) >= 0.95)
+            self.assertEqual((res["seeds"]["seed0"]["S90"], res["seeds"]["seed0"]["S95"]), (s90, s95))
+            # stage1.json keeps K3's part and gains K1's, with the rule of amendment 2.
+            s1 = report.load(os.path.join(tmp, "stage1.json"))
+            self.assertEqual((s1["route"], s1["k3_pass"], s1["next"]), ("closed", False, K3_FAILED["next"]))
+            self.assertTrue(s1["k1_pass"])
+            self.assertTrue(s1["k1"]["seed0"]["bar"] and s1["k1"]["seed1"]["bar"])
+            self.assertIn("nothing further runs until the lead writes the next amendment", s1["next_after_k1"])
+            md = text(os.path.join(tmp, "stage1", "k1.md"))
+            self.assertIn("**Verdict:** K1 passed on both seeds.", md)
+            self.assertEqual(sum(l.startswith("| K1 |") for l in md.splitlines()), 2)
+            # Read once: K1 may not run again.
+            self.assertTrue(any("no rerun" in w for w in report.k1_ready(tmp)))
+
+    def test_a_pass_on_one_seed_only_is_a_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(quiet(report.cmd_k1, k1_root(tmp, rising, slow)))
+            res = report.load(os.path.join(tmp, "stage1", "k1.json"))
+            self.assertFalse(res["pass"])
+            self.assertTrue(res["seeds"]["seed0"]["bar"])
+            self.assertFalse(res["seeds"]["seed1"]["bar"])
+            s1 = report.load(os.path.join(tmp, "stage1.json"))
+            self.assertFalse(s1["k1_pass"])
+            self.assertIn("v4 stops at K1", s1["next_after_k1"])
+            self.assertIn("no K2", s1["next_after_k1"])
+            self.assertIn("**Verdict:** K1 failed", text(os.path.join(tmp, "stage1", "k1.md")))
+        # The other seed passing alone fails too.
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(quiet(report.cmd_k1, k1_root(tmp, slow, rising)))
+
+    def test_a_run_that_never_reaches_0_90_has_no_s90_and_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(quiet(report.cmd_k1, k1_root(tmp, slow, slow)))
+            res = report.load(os.path.join(tmp, "stage1", "k1.json"))
+            for name in ("seed0", "seed1"):
+                x = res["seeds"][name]
+                self.assertFalse(x["bar"])
+                self.assertIsNone(x["S90"])
+                self.assertIsNone(x["S95"])
+                self.assertAlmostEqual(x["last_100_ask_acc"], sum(0.25 + k / 2000 for k in range(901, 1001)) / 100, places=2)
+            md = text(os.path.join(tmp, "stage1", "k1.md"))
+            self.assertIn("| never | never |", md)
+
+    def test_the_bar_is_read_on_the_last_100_recall_steps(self):
+        # Above 0.95 early, under it at the end: the last 100 decide, an S95 alone does not pass.
+        late = lambda k: 0.97 if k <= 900 else 0.90
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(quiet(report.cmd_k1, k1_root(tmp, late, late)))
+            x = report.load(os.path.join(tmp, "stage1", "k1.json"))["seeds"]["seed0"]
+            self.assertIsNotNone(x["S95"])
+            self.assertFalse(x["bar"])
+
+    def test_k1_runs_only_after_k3_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertTrue(report.k1_ready(tmp))  # no stage1.json: K3 not read
+            with self.assertRaises(SystemExit):
+                quiet(report.cmd_k1_ready, tmp)
+        passed = {"k3": {}, "k3_pass": True, "route": "frozen", "cap": {"steps": 1373}}
+        with tempfile.TemporaryDirectory() as tmp:
+            k1_root(tmp, rising, rising, stage1=passed)
+            self.assertTrue(any("K3's failure" in w for w in report.k1_ready(tmp)))
+            with self.assertRaises(SystemExit):
+                quiet(report.cmd_k1_ready, tmp)
+            with self.assertRaises(SystemExit):
+                quiet(report.cmd_k1, tmp)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "stage1", "k1.json")))
+            quiet(report.cmd_k1_ready, tmp, True)  # a smoke records it and goes on
+
+    def test_k1_wants_its_own_command_and_ended_runs(self):
+        bad = (
+            k3_cmd(0),  # the base frozen: K3's command, not K1's
+            k1_cmd(0, "--stop-after 654 "),  # K2's shorter run
+            k1_cmd(0, "--stop-recall-acc 0.95 --stop-recall-window 100 "),  # an early stop moves the last 100
+            k1_cmd(0).replace("--steps 1310", "--steps 1000"),
+            k1_cmd(0).replace("--memory-off-eval 4 ", ""),
+            k1_cmd(1),  # another seed's command
+        )
+        for cmd in bad:
+            with tempfile.TemporaryDirectory() as tmp:
+                k1_root(tmp, rising, rising)
+                with open(os.path.join(tmp, "stage1", "k1-s0", "cmd.txt"), "w") as f:
+                    f.write(cmd)
+                with self.assertRaises(SystemExit, msg=cmd):
+                    quiet(report.cmd_k1, tmp)
+                self.assertFalse(os.path.exists(os.path.join(tmp, "stage1", "k1.json")))
+        with tempfile.TemporaryDirectory() as tmp:
+            k1_root(tmp, rising, rising)
+            write_log(os.path.join(tmp, "stage1", "k1-s1"), curve(1000, rising, final=False))
+            with self.assertRaises(SystemExit):
+                quiet(report.cmd_k1, tmp)
+            self.assertNotIn("k1", report.load(os.path.join(tmp, "stage1.json")))
+        # K1's command is v3's recipe but for the flags of section 3.1.
+        with tempfile.TemporaryDirectory() as tmp:
+            v3, v4 = os.path.join(tmp, "v3.txt"), os.path.join(tmp, "v4.txt")
+            with open(v3, "w") as f:
+                f.write(V3_CMD)
+            with open(v4, "w") as f:
+                f.write(k1_cmd(0))
+            self.assertEqual(report.recipe_diff(v3, v4), [])
+
+    def test_the_batches_against_k3_are_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            k1_root(tmp, rising, rising, k3_logs=False)
+            quiet(report.cmd_k1, tmp)
+            self.assertIsNone(report.load(os.path.join(tmp, "stage1", "k1.json"))["seeds"]["seed0"]["same_batches_as_k3"])
+        with tempfile.TemporaryDirectory() as tmp:
+            k1_root(tmp, rising, rising)
+            rows = curve(1000, lambda k: 0.25)
+            next(r for r in rows if r.get("seq_game") == "recall")["seq_game"] = "rule110"
+            write_log(os.path.join(tmp, "stage1", "k3-s1"), rows)
+            self.assertTrue(quiet(report.cmd_k1, tmp))  # reported, deciding nothing
+            res = report.load(os.path.join(tmp, "stage1", "k1.json"))
+            self.assertTrue(res["seeds"]["seed0"]["same_batches_as_k3"])
+            self.assertFalse(res["seeds"]["seed1"]["same_batches_as_k3"])
 
 
 # ----------------------------------------------------------------------------- stage 2
