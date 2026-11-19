@@ -15,7 +15,8 @@
 #   CAST_OPT="..."  optimizer flags adopted by the pico ablation, without a rate (--no-muon,
 #                   --wd-mode soda, --ns-polish 0, --qat-grad-a 0.21; scripts/s6-adopt.py env
 #                   s6-cast-pico), for the pilots and the run (docs/s6-cast-prereg.md, amendment 3)
-#   TIME_SCALE=1    multiplies MINUTES (scripts/speed-probe.sh)
+#   TIME_SCALE=1    multiplies MINUTES (scripts/speed-probe.sh scale computes it from
+#                   configs/speed-m5.json, the M5's reference, not committed yet: 1 on the M5)
 #   PILOT_STEPS=3000  steps of each pilot (only SMOKE=1 of scripts/train-all.sh lowers it)
 #   SKY_OUT         a prefix for everything this script writes (scripts/train-all.sh SMOKE=1)
 #   DRY_RUN=1       print the commands instead of running them (nothing is built or read)

@@ -134,7 +134,9 @@ if c.get("option") != "i":
 # The recipe, with no hand choice (scripts/s6-adopt.py env), as v2.
 OPT='' LR_SCALE=1 DECIDE=''
 if [ -f "$recipe_json" ]; then
-  eval "$(python3 -I scripts/s6-adopt.py env s6-micro | grep -v '^CONFIG=')"
+  # on its own line, so that a failure of s6-adopt.py stops the script (set -e, pipefail)
+  env_sh=$(python3 -I scripts/s6-adopt.py env s6-micro | grep -v '^CONFIG=')
+  eval "$env_sh"
 elif [ "$dry" = 1 ]; then
   echo "# no $recipe_json: the commands below show the default options"
   OPT=--no-muon LR_SCALE=2.0

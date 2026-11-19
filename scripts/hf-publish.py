@@ -6,11 +6,16 @@ the model repo only.
     pip install -U huggingface_hub && hf auth login        # a token with write access
     scripts/build-wasm.sh && (cd site && npm run space:build)
     python3 scripts/hf-publish.py [--dry-run] [--only s5-lite,s3-pico] [--user NAME] [--space-only]
+                                  [--allow-pinned-engine]
 
 `--space-only` assembles and uploads the Space of each selected entry and nothing else: the model
 repo (card, GGUF and, for an entry with `"engine": true`, its engine/ folder) is neither assembled
 nor uploaded. s6-secrets-verify-pico's Space is published that way, because the engine/ folder of
-its model repo must never be re-uploaded: another project pins its files by sha256.
+its model repo must never be re-uploaded: another project (secretgate) pins its files by sha256.
+So a run that would assemble the model repo of an entry with `"engine": true` (a run without
+`--only`, or `--only s6-secrets-verify-pico` without `--space-only`) stops before anything is
+assembled or uploaded, `--dry-run` included, unless `--allow-pinned-engine` is given; that flag is
+for a deliberate new release of the engine files, once the pinning project is ready for it.
 
 Inputs: hf/cards/<model>.md (model cards, `{{USER}}` replaced by the namespace), hf/spaces.json
 (one entry per model), site/public/models/ (GGUF files and manifest), site/public/pkg/ (the wasm
@@ -360,6 +365,29 @@ def check_hub_size(space_dir: Path, spaces: list, manifest: list) -> None:
                          f"model's own Space ships ({mb(single)}): stopped before changing how files are stored")
 
 
+def pinned_refusal(spaces: list, only: set, space_only: bool, allow: bool) -> str | None:
+    """Why a run must not touch a model repo whose engine/ folder another project pins by sha256,
+    or None when it may go on: every such entry is left out, published with --space-only, or the
+    run passes --allow-pinned-engine."""
+    if space_only or allow:
+        return None
+    pinned = [s["model"] for s in spaces if s.get("engine") and (not only or key(s) in only)]
+    if not pinned:
+        return None
+    names = ", ".join(pinned)
+    return (f"refusing to assemble or upload the model repo of {names}: another project (secretgate) pins "
+            f"the files of its engine/ folder by sha256, and a new upload could change them under it. "
+            f"Publish its Space with `--only {pinned[0]} --space-only`, leave it out with --only, or pass "
+            f"--allow-pinned-engine for a deliberate new release of the engine files. Nothing was assembled "
+            f"or uploaded.")
+
+
+def check_pinned(spaces: list, only: set, space_only: bool, allow: bool) -> None:
+    why = pinned_refusal(spaces, only, space_only, allow)
+    if why:
+        raise SystemExit(why)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="assemble under target/hf, upload nothing")
@@ -367,8 +395,15 @@ def main() -> None:
     ap.add_argument("--user", default="", help="namespace (default: the logged-in user)")
     ap.add_argument("--space-only", action="store_true",
                     help="assemble and upload the Space only: the model repo (and its engine/ folder) is left untouched")
+    ap.add_argument("--allow-pinned-engine", action="store_true",
+                    help="allow assembling and uploading the model repo of an entry with \"engine\": true, "
+                         "whose engine/ files another project pins by sha256")
     a = ap.parse_args()
 
+    spaces = json.loads((ROOT / "hf" / "spaces.json").read_text())
+    only = {x for x in a.only.split(",") if x}
+    # first, before any build output is needed: a dry run shows the refusal too
+    check_pinned(spaces, only, a.space_only, a.allow_pinned_engine)
     for need in [APP / "index.html", PUBLIC / "pkg" / "sky_web_bg.wasm", PUBLIC / "pkg" / "sky_web_relaxed_bg.wasm"]:
         if not need.exists():
             raise SystemExit(f"missing {need}: run scripts/build-wasm.sh and (cd site && npm run space:build)")
@@ -382,8 +417,6 @@ def main() -> None:
     user = user or "USER"
 
     manifest = json.loads((PUBLIC / "models" / "manifest.json").read_text())
-    spaces = json.loads((ROOT / "hf" / "spaces.json").read_text())
-    only = {x for x in a.only.split(",") if x}
     for s in spaces:
         if only and key(s) not in only:
             continue

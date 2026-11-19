@@ -3,8 +3,11 @@
 # (docs/s6-prereg.md, amendment 4): 300 steps of s2-decide on the s6-nano config (decision
 # training with QAT, as in the final runs), from scratch, on data/decisions.
 # Usage: scripts/speed-probe.sh [probe]    writes runs/speed/<host>.json {steps_per_sec, ...}
-#        scripts/speed-probe.sh scale      prints TIME_SCALE = the M5's steps/s (configs/speed-m5.json,
-#                                          measured once on the M5) / this host's
+#        scripts/speed-probe.sh scale      prints TIME_SCALE = the M5's steps/s (configs/speed-m5.json)
+#                                          / this host's
+# configs/speed-m5.json, the reference, has never been committed: every budget so far ran on the
+# M5 itself, with TIME_SCALE=1. To create it, run `scripts/speed-probe.sh probe` on the M5, then
+# copy runs/speed/<its host>.json to configs/speed-m5.json and commit it.
 #   HOST=$(hostname -s)  STEPS=300
 set -euo pipefail
 export DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}
@@ -34,7 +37,12 @@ EOF
 }
 
 scale() {
-  [ -f configs/speed-m5.json ] || { echo "no configs/speed-m5.json (the reference, measured on the M5)" >&2; exit 1; }
+  [ -f configs/speed-m5.json ] || {
+    echo "no configs/speed-m5.json: the M5's reference was never committed. On the M5, run" >&2
+    echo "  scripts/speed-probe.sh probe && cp runs/speed/<its host>.json configs/speed-m5.json" >&2
+    echo "and commit it; until then TIME_SCALE is 1 on the M5 and cannot be computed elsewhere" >&2
+    exit 1
+  }
   [ -f "$out" ] || probe >&2
   python3 -I -c '
 import json, sys

@@ -290,7 +290,7 @@ obfuscated or replaced forms could be, and they are not ours to redistribute.
 | Secret-Leak-Detection-Issue-Report (Zenodo 10.5281/zenodo.19622962) | CC BY 4.0 | the paper's splits; each real secret of train and val replaced by a word-preserving shape before training; the test values stay as published and are only scored |
 | synthetic candidates (`sky-data secret-cand`) | ours (Apache-2.0, `crates/sky-data/src/secrets.rs`) | provider formats with random bodies, at most 25% of the training items; never in a test |
 
-## LFM3-1.7B System 1 / System 2 and its fine-tune (`data/lfm3/`, `scripts/lfm3-s1s2.sh`, `scripts/lfm3-ft.sh`, `docs/lfm3-s1s2-prereg.md`, `docs/lfm3-ft-prereg.md`)
+## LFM3-1.7B System 1 / System 2 and its fine-tune (`data/lfm3/`, `scripts/lfm3-s1s2.sh` and `scripts/lfm3-ft.sh` (removed 19/11/2026), `docs/lfm3-s1s2-prereg.md`, `docs/lfm3-ft-prereg.md`)
 
 The router (`docs/lfm3-s1s2-prereg.md`) is inference only. Since its amendment 1 (05/11/2026) it runs remotely on Hugging Face Jobs, in bf16, on the base model and on the fine-tuned one.
 

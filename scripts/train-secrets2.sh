@@ -95,7 +95,9 @@ fi
 # The recipe, with no hand choice: CONFIG, OPT, LR_SCALE, PRETRAIN, DECIDE.
 CONFIG=configs/$recipe_model.json OPT='' LR_SCALE=1 PRETRAIN='' DECIDE=''
 if [ -f "$recipe_json" ]; then
-  eval "$(python3 -I scripts/s6-adopt.py env "$recipe_model")"
+  # on its own line, so that a failure of s6-adopt.py stops the script (set -e)
+  env_sh=$(python3 -I scripts/s6-adopt.py env "$recipe_model")
+  eval "$env_sh"
 elif [ "$dry" = 1 ]; then
   echo "# no $recipe_json: the commands below show the default options"
 else

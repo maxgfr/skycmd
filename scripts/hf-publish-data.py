@@ -40,6 +40,13 @@ Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) befor
     `runs/s6-route7/inputs6.json`, `test-files.json` or `FRESH-OPEN` records, when a file without
     such a record does not match, row by row, the recorded file it derives from or went into, or
     when a source has no row in DATA_LICENSES.md.
+
+Every card names the commit it was written at, so the commit must describe the code: the script
+stops when `git rev-parse HEAD` fails, and refuses to upload when a tracked file of the working
+tree has uncommitted changes (`--dry-run` only warns). An upload adds and replaces files and never
+deletes one on the Hub: a config published earlier and absent from the local build stays there.
+For the sets of `SETS`, the script lists such leftover parquet files after the upload; removing
+them is a manual step.
 """
 import argparse
 import hashlib
@@ -1731,6 +1738,41 @@ ds = load_dataset("{user}/skycmd-route7", "tools_train")
 """
 
 
+def head_commit(dry_run: bool) -> str:
+    """The commit every card names: HEAD, refused when git fails or (for an upload) when a tracked
+    file has uncommitted changes, since the card would then name a commit that is not the code."""
+    r = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True)
+    commit = r.stdout.strip()
+    if r.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise SystemExit(f"git rev-parse HEAD failed ({r.stderr.strip() or commit!r}): the cards could not name a commit")
+    st = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=no"],
+                        capture_output=True, text=True)
+    if st.returncode != 0:
+        raise SystemExit(f"git status failed: {st.stderr.strip()}")
+    dirty = [line[3:] for line in st.stdout.splitlines() if line.strip()]
+    if dirty:
+        shown = ", ".join(dirty[:5]) + (f" and {len(dirty) - 5} more" if len(dirty) > 5 else "")
+        msg = f"uncommitted changes to tracked files ({shown}): the cards would name {commit[:8]}, which is not this code"
+        if not dry_run:
+            raise SystemExit(f"refusing to upload: {msg}. Commit or set them aside first.")
+        print(f"warning: {msg}")
+    return commit
+
+
+def warn_remote_leftovers(api, repo_id: str, out: Path) -> None:
+    """Lists the parquet files of a dataset repo that the local build no longer has. The upload
+    never deletes them (removing a published config is a manual step), so they are only named."""
+    try:
+        remote = api.list_repo_files(repo_id, repo_type="dataset")
+    except Exception as e:  # a listing failure must not hide that the upload itself succeeded
+        print(f"  could not list the files of {repo_id}: {e}")
+        return
+    local = {p.relative_to(out).as_posix() for p in out.rglob("*.parquet")}
+    left = sorted(f for f in remote if f.endswith(".parquet") and f not in local)
+    if left:
+        print(f"  warning: {len(left)} parquet file(s) on the Hub are not in this build and were kept: " + ", ".join(left))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--data", default=str(ROOT / "data"))
@@ -1747,7 +1789,7 @@ def main() -> None:
 
     data = Path(a.data)
     only = [x for x in a.only.split(",") if x]
-    commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    commit = head_commit(a.dry_run)
     user = a.user
     api = None
     if not a.dry_run:
@@ -1810,6 +1852,7 @@ def main() -> None:
             commit_message=f"skycmd {commit[:8]}: {s['pretty']}",
         )
         print(f"  uploaded: https://huggingface.co/datasets/{repo_id}")
+        warn_remote_leftovers(api, repo_id, out)
 
 
 if __name__ == "__main__":

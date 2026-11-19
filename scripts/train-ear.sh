@@ -18,7 +18,8 @@
 #   CONFIG=configs/s6-ear-nano.json  OPT="..." (no rate)  PRETRAIN="..."  DECIDE="..." (with --ema
 #   the EMA weights are calibrated and exported)  LR_SCALE (unset: the default rates; set: the
 #   pico pilot's scale moved to d = 144 by muP, LR_SCALE x sqrt(96/144) x the phase's default, as
-#   scripts/train-s6.sh)  TIME_SCALE=1 (multiplies every budget in minutes, scripts/speed-probe.sh)
+#   scripts/train-s6.sh)  TIME_SCALE=1 (multiplies every budget in minutes; scripts/speed-probe.sh
+#   scale computes it from configs/speed-m5.json, the M5's reference, not committed yet: 1 on the M5)
 #   RESUME=1 (continue from the checkpoints of an interrupted run; unset: start over)
 # Not to be run while another training job uses the GPU.
 set -euo pipefail
