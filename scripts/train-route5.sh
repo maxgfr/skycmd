@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Line closed on 18/11/2026: v5 stopped at its data checks, before any training, so this script
+# never ran its training steps; kept because docs/s6-route5-prereg.md (section 5) cites it.
 # Train s6-route v5's model part (docs/s6-route5-prereg.md, section 5): as v4 (scripts/train-route4.sh,
 # docs/s6-route4-prereg.md 5) with v5's names: s6-micro's graph from its pretraining init, on the
 # data of scripts/build-route5-data.sh, rendered by D4 (option (i), kept from v4's latency check,
@@ -31,7 +33,7 @@
 #   export   s2-calibrate on v5_tools, ternary export, tau_ask by v2's rule on v5_tools,
 #            gguf-set: exit thresholds 1, skycmd-s2.route.tau_ask and
 #            skycmd-s2.route.render = scores-in-options. The fit of beta and tau_ask5
-#            (scripts/s6-route5-fit.py) is not written yet.
+#            (scripts/s6-route5-fit.py) was never written: v5 stopped before training.
 #
 # Refuses to start when the data checks have not passed ($B5/markers/checks.passed), when v4's
 # latency check did not take option (i) (runs/s6-route4/latency-check.json), when SKY_BRAKE_FILE
@@ -152,7 +154,9 @@ if c.get("option") != "i":
 # The recipe, with no hand choice (scripts/s6-adopt.py env), as v2.
 OPT='' LR_SCALE=1 DECIDE=''
 if [ -f "$recipe_json" ]; then
-  eval "$(python3 -I scripts/s6-adopt.py env s6-micro | grep -v '^CONFIG=')"
+  # on its own line, so that a failure of s6-adopt.py stops the script (set -e, pipefail)
+  env_sh=$(python3 -I scripts/s6-adopt.py env s6-micro | grep -v '^CONFIG=')
+  eval "$env_sh"
 elif [ "$dry" = 1 ]; then
   echo "# no $recipe_json: the commands below show the default options"
   OPT=--no-muon LR_SCALE=2.0
@@ -348,7 +352,7 @@ export_() {
   fi
   x "$B/gguf-set" "$model" "$model" skycmd-s2.exit_threshold.choice=1 skycmd-s2.exit_threshold.score=1 \
     skycmd-s2.exit_threshold.noul=1 "skycmd-s2.route.tau_ask=$tau" skycmd-s2.route.render=str:scores-in-options
-  echo "== $model: tau_ask $tau; the fit of beta and tau_ask5 (scripts/s6-route5-fit.py) is still to be written"
+  echo "== $model: tau_ask $tau; the fit of beta and tau_ask5 (scripts/s6-route5-fit.py) was never written: v5 stopped before training"
 }
 
 steps=("$@")

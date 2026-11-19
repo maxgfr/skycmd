@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Tests of the verdict notice of scripts/hf-publish.py (the lead of the Space README and the check
-of a failed model's card) and of the global Space (the entry of kind `hub`), on the repository's
-manifest, cards and hf/spaces.json: python3 -I scripts/test_hf_publish.py"""
+of a failed model's card), of the refusal to touch a model repo whose engine/ folder another project
+pins, and of the global Space (the entry of kind `hub`), on the repository's manifest, cards and
+hf/spaces.json: python3 -I scripts/test_hf_publish.py"""
 
 import importlib.util
 import json
@@ -74,6 +75,30 @@ class GateLead(unittest.TestCase):
                 self.assertEqual(first, s["tagline"], s["model"])
         s4 = next(x for x in MANIFEST if x["name"] == "s4-micro")
         self.assertEqual(hp.gate_lead(s4), FIXED_FAILED)
+
+
+class PinnedEngine(unittest.TestCase):
+    """The model repo of an entry with "engine": true (s6-secrets-verify-pico) is never touched
+    without --allow-pinned-engine: another project pins its engine/ files by sha256."""
+
+    def test_the_repository_has_a_pinned_entry(self):
+        self.assertIn("s6-secrets-verify-pico", [s["model"] for s in SPACES if s.get("engine")])
+
+    def test_refused_without_the_flag(self):
+        for only in (set(), {"s6-secrets-verify-pico"}, {"s5-lite", "s6-secrets-verify-pico"}):
+            why = hp.pinned_refusal(SPACES, only, False, False)
+            self.assertIsNotNone(why, only)
+            self.assertIn("--space-only", why)
+            self.assertIn("--allow-pinned-engine", why)
+            with self.assertRaises(SystemExit):
+                hp.check_pinned(SPACES, only, False, False)
+
+    def test_allowed_when_left_out_space_only_or_flagged(self):
+        self.assertIsNone(hp.pinned_refusal(SPACES, {"s5-lite"}, False, False))
+        self.assertIsNone(hp.pinned_refusal(SPACES, {"skycmd"}, False, False))
+        self.assertIsNone(hp.pinned_refusal(SPACES, {"s6-secrets-verify-pico"}, True, False))
+        self.assertIsNone(hp.pinned_refusal(SPACES, set(), True, False))
+        self.assertIsNone(hp.pinned_refusal(SPACES, set(), False, True))
 
 
 HUB = next(s for s in SPACES if s["kind"] == "hub")

@@ -52,7 +52,11 @@ with_recipe() {
   local model=$1
   shift
   if [ -f "$recipe_json" ]; then
-    eval "$(python3 -I scripts/s6-adopt.py env "$model")"
+    # on its own line, so that a failure of s6-adopt.py stops the step (set -e); inside eval "$(…)"
+    # it would be hidden
+    local env_sh
+    env_sh=$(python3 -I scripts/s6-adopt.py env "$model")
+    eval "$env_sh"
     export CONFIG OPT LR_SCALE PRETRAIN DECIDE CAST_OPT
   elif [ "$dry" = 1 ]; then
     echo "# no $recipe_json yet: the commands below show the default options"

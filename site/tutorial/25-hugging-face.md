@@ -56,10 +56,15 @@ cd site && npm run space:build        # the demo app, into target/hf-space-app
 
 ```sh
 pip install -U huggingface_hub && hf auth login   # in your own terminal: a token with write access
-python3 scripts/hf-publish.py --dry-run          # assembles target/hf/<model>/{model,space}
-python3 scripts/hf-publish.py                    # creates or updates the repos and Spaces
-python3 scripts/hf-publish.py --only s5-lite     # one model
+python3 scripts/hf-publish.py --dry-run --only s5-lite   # assembles target/hf/s5-lite/{model,space}
+python3 scripts/hf-publish.py --only s5-lite             # creates or updates its repo and Space
+python3 scripts/hf-publish.py --only s6-secrets-verify-pico --space-only   # its Space only
 ```
+
+A run without `--only` or `--space-only` stops before assembling anything, `--dry-run` included: it would rebuild the
+model repository of s6-secrets-verify-pico, whose `engine/` folder another project (secretgate)
+pins by sha256. That repository is touched only with `--allow-pinned-engine`, for a deliberate new
+release of the engine files; its Space is published with `--space-only`.
 
 The script assembles everything under `target/hf/` first, so you can inspect it. For each entry of `hf/spaces.json`:
 

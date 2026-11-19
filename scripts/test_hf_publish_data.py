@@ -7,8 +7,10 @@ data folder without an entry or a reason), the row-by-row checks of the files no
 invented fixture of the data folder's layout. No pyarrow: the parquet writer is replaced by a
 recorder. python3 -I scripts/test_hf_publish_data.py"""
 
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import tempfile
@@ -295,6 +297,25 @@ class Helpers(unittest.TestCase):
         names = hpd.ROUTE_FIELDS[:-2] + hpd.ROUTE7_FIELDS + hpd.ROUTE_FIELDS[-2:]
         self.assertEqual(names[:len(hpd.ROUTE_FIELDS) - 2], hpd.ROUTE_FIELDS[:-2])
         self.assertEqual(names[-2:], ["source", "option_sources"])
+
+    def test_head_commit_names_a_full_sha(self):
+        # a dry run only warns about uncommitted changes, so this holds in any working tree
+        self.assertRegex(hpd.head_commit(True), r"^[0-9a-f]{40}$")
+
+    def test_leftovers_are_listed_not_deleted(self):
+        class Api:
+            def list_repo_files(self, repo_id, repo_type):
+                return ["README.md", "data/kept.parquet", "data/old.parquet"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            (out / "data").mkdir()
+            (out / "data" / "kept.parquet").write_bytes(b"")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                hpd.warn_remote_leftovers(Api(), "u/set", out)
+        self.assertIn("data/old.parquet", buf.getvalue())
+        self.assertNotIn("data/kept.parquet", buf.getvalue())
 
 
 if __name__ == "__main__":

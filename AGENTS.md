@@ -15,7 +15,9 @@
 - **Every published model has a Space**, failed gates included (owner's decision of 17/11/2026):
   an entry in `hf/spaces.json`, uploaded by `scripts/hf-publish.py`. When another project pins
   files of a model repository by sha256 (the `engine/` folder of `s6-secrets-verify-pico`), publish
-  its Space with `--space-only`, which never touches the model repository. The global Space
+  its Space with `--space-only`, which never touches the model repository: any other run that
+  would assemble that model repository, a run without `--only` included, stops before uploading
+  anything unless `--allow-pinned-engine` is given. The global Space
   `maxgfr/skycmd` (the entry of kind `hub`) gathers every demo and is republished with
   `--only skycmd` after each new model.
 
