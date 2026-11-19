@@ -128,12 +128,13 @@ export const CATALOGUE: CatalogueEntry[] = [
     manifest: ['s6-route'],
     brings:
       'The right option on 0.8868 of 945 fresh requests about tools never seen in training, against 0.8169 for BM25 and 0.9048 for all-MiniLM-L6-v2 (91.6 MB), in 30.9 ms per request in WASM.',
-    caveat: 'It needs distinctive tool names: with every tool renamed it falls to 0.2497.',
+    caveat:
+      'It needs distinctive tool names: with every tool renamed it falls to 0.2497. On fresh requests about MCP tools, a family unlike its training data, it read 0.5530 where BM25 read 0.5675 (reported with s6-route v7).',
     home: '0.8868 on tools it never saw; BM25 0.8169',
     try: { link: '/router/', label: 'the Router page' },
     get: HF + 's6-route',
     read: { link: '/articles/a-3-7-mb-tool-router', label: 'the article on the tool router' },
-    source: ['site/results/index.md#s6-route-passed', 'site/public/models/manifest.json'],
+    source: ['site/results/index.md#s6-route-passed', 'site/results/index.md#s6-route7-nano-failed', 'site/public/models/manifest.json'],
   },
   {
     id: 's6-micro',
@@ -243,6 +244,28 @@ export const CATALOGUE: CatalogueEntry[] = [
     get: HF + 's6-route-nano',
     read: { link: '/articles/a-3-7-mb-tool-router', label: 'the article on the tool router' },
     source: ['site/results/index.md#s6-route-nano-failed', 'site/public/models/manifest.json'],
+  },
+  {
+    id: 's6-route7-nano',
+    name: 's6-route7-nano',
+    group: 'results',
+    status: 'failed',
+    statusNote:
+      'It missed G1 (BM25), G2 (none under masked names), G3 (calibration) and G6 (b) (the pair with the request hidden); G4, G5 and G6 (a) hold.',
+    purpose:
+      'The tool router of s6-route with its model part retrained on data rebuilt against the cues that give the answer without the request, read on tools of a new family.',
+    size: '3.7 MB',
+    manifest: ['s6-route7-nano'],
+    brings:
+      'On 2,000 fresh requests about the tools of MCP servers that no training slate holds, it reads 0.5610 where BM25 reads 0.5675 and its own validation read 0.8802. With the request hidden its trained part picks the right tool at chance (0.1406, chance 0.1429), and masking the names costs it 0.0170, where it costs s6-route 0.2720 on the same requests.',
+    caveat:
+      'A result, not a router to use: it does not beat BM25 on new tools, its ECE there is 0.1845, and the pair with the request hidden picks the right tool on 0.1969, above its bar of 0.1929. The line is closed; s6-route stays the router.',
+    lesson:
+      'retrained without the shortcut, its model part was at chance with the request hidden, and the router still did not beat BM25 on tools of a new family (0.5610 against 0.5675).',
+    try: { link: 'https://huggingface.co/spaces/maxgfr/s6-route7-nano', label: 'its Space on Hugging Face' },
+    get: HF + 's6-route7-nano',
+    read: { link: '/results/#s6-route7-nano-failed', label: 'its section of Results' },
+    source: ['site/results/index.md#s6-route7-nano-failed', 'hf/cards/s6-route7-nano.md', 'site/public/models/manifest.json'],
   },
   {
     id: 's6-sleep3-nano',
@@ -393,7 +416,7 @@ export const CATALOGUE: CatalogueEntry[] = [
     source: ['hf/cards/s1-pico.md', 'site/public/models/manifest.json'],
   },
 
-  // In progress: no numbers before a result (none at the moment; s6-cast v2 was read on 18/11/2026)
+  // In progress: no numbers before a result (none at the moment; s6-route v7 was read on 19/11/2026)
 ]
 
 export function entriesOf(group: GroupId): CatalogueEntry[] {

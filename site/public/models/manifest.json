@@ -194,6 +194,36 @@
     ]
   },
   {
+    "name": "s6-route7-nano",
+    "task": "router",
+    "full_depth": true,
+    "gate": "failed",
+    "gate_note": "It failed G1, G2, G3 and G6: on 2,000 fresh requests about the tools of MCP servers, a family that no training slate holds, the pair reads 0.5610 against BM25 0.5675 (−0.0065 [−0.0235, +0.0120], a lower bound above 0 asked); under masked names it answers none on 0.3345 of the slates (0.10 to 0.30 asked); its ECE is 0.1845 (at most 0.05 asked); with the request hidden its model part is at chance (0.1406) and the pair is not (0.1969, at most 0.1929 asked). G4 (13.9 ms per request in WASM, 3,692,288 bytes) and G5 (0.8815 on T2-tools) hold. The route line is closed and the published router stays s6-route",
+    "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-route7-nano-s6-route-v7-the-router-retrained-without-its-shortcut-pre-registered-gate-failed",
+    "bytes": 3692288,
+    "files": [
+      {
+        "role": "model",
+        "file": "s6-route7-nano.gguf",
+        "arch": "skycmd-s2",
+        "weight_format": "ternary",
+        "params": 5587201,
+        "bytes": 2418976,
+        "sha256": "5fbe51b451023730c0517254eed43ce5c96c9a2384563bca6d8ddac3b77c7a9d"
+      },
+      {
+        "role": "embedding",
+        "file": "s6-route7-embed.gguf",
+        "arch": "skycmd-embed",
+        "weight_format": "4-bit",
+        "bytes": 1273312,
+        "sha256": "717dc3d89f096d063de9af52636fdafca834c53d484ecde533d2043047e7dafd",
+        "license": "MIT",
+        "source": "minishlab/potion-base-2M@389b9f64"
+      }
+    ]
+  },
+  {
     "name": "s6-sleep3-nano",
     "task": "memory",
     "gate": "failed",

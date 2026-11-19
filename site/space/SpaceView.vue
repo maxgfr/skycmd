@@ -181,6 +181,33 @@ onMounted(async () => {
       </p>
     </section>
   </template>
+  <template v-else-if="cfg.kind === 'router-v7'">
+    <section>
+      <h2>The router retrained without its shortcut, which failed its gate</h2>
+      <p>
+        s6-route7-nano failed its pre-registered gate. On 2,000 fresh requests about the tools of MCP servers, a
+        family that no training slate holds, it picks the right option on 0.5610, where BM25, which needs no file,
+        reads 0.5675; its probabilities are badly calibrated there (ECE 0.1845), and with the request hidden the
+        pair still picks the right tool above chance (0.1969, bar 0.1929), although its trained model part is at
+        chance (0.1406). The router to use is <a href="https://huggingface.co/spaces/maxgfr/s6-route">s6-route</a>,
+        and on tools unlike its training families BM25 or a larger sentence encoder.
+      </p>
+      <p>
+        Up to 7 tools, one per line as <code>name: description</code>, and a request. Two parts score every option:
+        the s6-route7-nano model file, which reads each tool's BM25 score inside that tool's option, and
+        potion-base-2M packed to 4 bits (Minish Lab, MIT). The router multiplies their probabilities option by
+        option, raises the product to 0.7 and renormalises, adds <em>none of these tools fits the request</em>, and
+        asks the user when the top probability is below τ_ask7 = 0.762097. The presets were written for the Router
+        page, not taken from any dataset, and are kept whatever this router answers.
+      </p>
+      <RouterDemo :prefer="cfg.model" />
+      <p class="space-note">
+        “Mask names” renames every tool <code>tool_&lt;k&gt;</code>: on the fresh test this router kept 0.5440 there
+        (s6-route fell to 0.2810 on the same requests), but it answered <em>none</em> on 0.3345 of them, where
+        <em>none</em> was right on 0.20.
+      </p>
+    </section>
+  </template>
   <template v-else-if="cfg.kind === 'memory'">
     <section>
       <h2>Does the model remember a colour it saw once?</h2>
@@ -237,7 +264,7 @@ onMounted(async () => {
 
   <footer>
     Everything runs in your browser: a Rust inference engine compiled to WebAssembly (SIMD128) reads the GGUF
-    {{ cfg.kind === 'router' || cfg.kind === 'router-v2' || cfg.kind === 'memory' ? 'files' : 'file' }} of this Space{{
+    {{ cfg.kind === 'router' || cfg.kind === 'router-v2' || cfg.kind === 'router-v7' || cfg.kind === 'memory' ? 'files' : 'file' }} of this Space{{
       cfg.kind === 'secrets-verify' ? ', with its word list' : ''
     }}. Nothing is sent to a server.
   </footer>

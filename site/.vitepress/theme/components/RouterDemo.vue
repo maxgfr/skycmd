@@ -13,6 +13,10 @@
 // The engine's router still loads both files, because `ToolRouter` needs both. The model file
 // stores its own ask threshold (`skycmd-s2.route.tau_ask`), which the engine does not expose, so
 // the model part gets no ask decision.
+//
+// With `prefer="s6-route7-nano"` (its Space, s6-route v7, which failed its gate) the pair shown is
+// v7's two files: the engine reads the rendering of the scores from the model file and β and the
+// ask threshold from the embedding file, and only the names-masked banner names v7's own reading.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   clockStepMicros,
@@ -311,6 +315,12 @@ function pct(p: number) {
       <strong>Names masked.</strong> Every tool is renamed <code>tool_&lt;k&gt;</code> and keeps its description, as in
       the names-masked reading of the pre-registration: there s6-route-nano was at chance (0.1050), below the
       name-prior (0.1180), where BM25 kept 0.8445 on the same slates.
+    </p>
+    <p v-else-if="masked && entry?.name === 's6-route7-nano'" class="router-banner router-failed">
+      <strong>Names masked.</strong> Every tool is renamed <code>tool_&lt;k&gt;</code> and keeps its description, as in
+      the names-masked reading of its pre-registration: on the fresh test s6-route7-nano kept 0.5440 there, where BM25
+      read 0.5580 and the embedding part alone 0.4750, and it answered <em>none</em> on 0.3345 of the requests, where
+      <em>none</em> was right on 0.20.
     </p>
     <p v-else-if="masked" class="router-banner router-failed">
       <strong>Names masked.</strong> Every tool is renamed <code>tool_&lt;k&gt;</code> and keeps its description, as in

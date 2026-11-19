@@ -195,6 +195,13 @@ test('a passed and a failed model: the verdict first, then the tagline, the link
   assert.doesNotMatch(await renderSpace(of('s3-pico').config), /gate-notice/)
 })
 
+test('the Space of s6-route7-nano opens with its failure and runs the router demo on its own two files', async () => {
+  const s = of('s6-route7-nano')
+  assert.equal(gateNotice(s.config)!.tone, 'failed')
+  assert.deepEqual(s.models, ['s6-route7-nano'])
+  assert.match(await renderSpace(s.config), /data-stub="RouterDemo" data-props="\{&quot;prefer&quot;:&quot;s6-route7-nano&quot;\}"/)
+})
+
 test('the scope restricts the manifest readers to one Space, never a reference forecaster', () => {
   assert.equal(scopeFilter(), null)
   const universe = hubModels(spaces)

@@ -165,6 +165,21 @@
     ]
   },
   {
+    "model": "s6-route7-nano",
+    "kind": "router-v7",
+    "emoji": "🧪",
+    "color_from": "gray",
+    "color_to": "green",
+    "tagline": "Failed its pre-registered gate, published as a result: the 3.7 MB tool router with its model part retrained on data rebuilt against the cues that give the answer without the request (s6-route v7, the last version of the line). On 2,000 fresh requests about MCP tools of a new family it reads 0.5610, where BM25 reads 0.5675; its trained part is at chance with the request hidden, the pair is not. This Space runs the pair.",
+    "short_description": "Failed its gate: 3.7 MB tool router v7, a result",
+    "notes": [
+      "The gate (docs/s6-route7-prereg.md, with v6's §8): G1 asked the pair to beat BM25 on T5-tools, 2,000 fresh requests about the tools of 262 MCP servers (Toucan) that no training slate holds: 0.5610 against 0.5675, −0.0065 [−0.0235, +0.0120], so G1 fails. G2 fails on its part (c): with the names masked it answers none on 0.3345 of the requests, where none is right on 0.20. G3 fails: ECE 0.1845 against 0.05. G4 holds (13.9 ms per request in WASM, 3,692,288 bytes) and so does G5 (0.8815 on T2-tools against 0.8668).",
+      "G6, the request hidden (replaced by ?): the trained model part picks the right tool on 0.1406 of the tool-right requests, at chance (1/7 = 0.1429), so G6 (a) holds; the pair picks it on 0.1969, above the bar of 0.1929 (server upper bound 0.2350 against 0.2229), so G6 (b) fails. The static embedding part alone, which no version of the line trained, already reads 0.1931 there.",
+      "What it shows: the pair rarely follows a rewritten description (0.0494), and masking the names costs it 0.0170, where it costs the published s6-route 0.2720 on the same requests. What it does not: it falls from 0.8802 on validation to 0.5610 on the new tools, and why is not measured. On these requests all-MiniLM-L6-v2 (91.6 MB) reads 0.6630.",
+      "The route line is closed with this result, and the router to use is s6-route. Disclosure: v7 was designed after v4's, v5's and v6's data tables were read, its training slates without a tool to anchor them are drawn around the tool nearest to the request, and the teacher rewrote the test tools' descriptions for the probe copies, never seeing a test request. The presets are those of the Router page, written for it."
+    ]
+  },
+  {
     "model": "s6-sleep3-nano",
     "kind": "memory",
     "emoji": "🧠",

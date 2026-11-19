@@ -17,8 +17,21 @@ export interface SpaceConfig {
    * Space also carries s6-route's two files, which `ToolRouter` needs). `secrets-verify`: the
    * Secrets verifier demo (s6-secrets-verify-pico through `SecretVerifier`, with its word list).
    * `memory`: the Memory demo (s6-sleep3-nano and its control, two files of one manifest entry
-   * `task: memory`, through `RecallProbe`; it failed its gate). */
-  kind: 'decision' | 'game' | 'secrets' | 'secrets-verify' | 'ear' | 'forecast' | 'router' | 'router-v2' | 'turn' | 'memory'
+   * `task: memory`, through `RecallProbe`; it failed its gate). `router-v7`: the router demo with the
+   * two files of s6-route7-nano (s6-route v7, manifest `task: router`, the model part retrained and
+   * read with the scores in its options; it failed its gate). */
+  kind:
+    | 'decision'
+    | 'game'
+    | 'secrets'
+    | 'secrets-verify'
+    | 'ear'
+    | 'forecast'
+    | 'router'
+    | 'router-v2'
+    | 'router-v7'
+    | 'turn'
+    | 'memory'
   proofs?: boolean
   model_repo: string
   notes?: string[]
