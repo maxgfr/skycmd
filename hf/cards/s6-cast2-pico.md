@@ -48,11 +48,8 @@ working minutes of training instead of 480.
   [Forecast page](https://maxgfr.github.io/skycmd/forecast/) of the project site (next to v1,
   TinyCast, Timestral-5M and the seasonal naive); it starts unticked
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-cast2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast2-prereg.md)
-  (amendments 1 to 3, all before training, and the result block of 18/11/2026), with its design
-  study [docs/s6-cast2-study.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast2-study.md)
 - **Spec:** [docs/SPEC-S6-CAST.md](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/#s6-cast2-pico-failed)
+{{LINKS}}
 
 **Disclosure** (§10 of the pre-registration). v2 was designed after reading v1's GIFT-Eval results
 on the same 97 configurations, window by window: where it lost, by band, term, domain,
@@ -239,7 +236,9 @@ synthetic, 25,092,584 real, 6,420,364 synthetic stand-ins for bands with no real
   forecasts better on GIFT-Eval in every term, band and domain on MASE, and on Chronos-ZS.
 - **GIFT-Eval is partly in-sample for its design** (the disclosure above); the gate it failed was
   read on that benchmark.
-- One run, one seed.
+- One run, one seed. The evaluation chain stopped twice on a full disk: v2's GIFT-Eval forecasts
+  were started again from their beginning, and the Chronos-ZS step and the gate were run again;
+  v2's GIFT-Eval scoring ran once, to its end, and no number changed.
 - The horizon of one pass is 64 points; longer horizons roll out, and the long term is where it
   is closest to the seasonal naive (MASE ratio 0.988).
 - Its latency was measured on one series and one machine.

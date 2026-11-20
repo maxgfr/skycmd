@@ -6,7 +6,21 @@ the model repo only.
     pip install -U huggingface_hub && hf auth login        # a token with write access
     scripts/build-wasm.sh && (cd site && npm run space:build)
     python3 scripts/hf-publish.py [--dry-run] [--only s5-lite,s3-pico] [--user NAME] [--space-only]
-                                  [--allow-pinned-engine]
+                                  [--card-only] [--allow-pinned-engine]
+
+Every model card follows the same conventions, which the script checks before anything is
+assembled (model_card): Apache-2.0, `library_name: gguf`, a pipeline tag, the tags gguf, rust,
+wasm and skycmd, exactly the verdict tags of its gate (`passed-gate`; `failed-gate` and
+`negative-result`; `no-gate`), a first line after the title that quotes its verdict lead
+(verdict_lead), a link to its Space, and a `## Files` section that gives each model file with the
+bytes and the sha256 of the manifest. The script adds to the front matter the `<user>` data sets
+the model was trained on (hf/spaces.json `datasets.train`) and replaces the card's `{{LINKS}}`
+line with the links every card gives in the same words (links_block): its results, the technical
+report (site/paper/), its pre-registration, its data and the hub Space.
+
+`--card-only` assembles and uploads the README.md of each selected model repo alone, for a card
+whose text changed: no GGUF, no engine/ folder and no Space is assembled or uploaded, so it is
+allowed for s6-secrets-verify-pico too.
 
 `--space-only` assembles and uploads the Space of each selected entry and nothing else: the model
 repo (card, GGUF and, for an entry with `"engine": true`, its engine/ folder) is neither assembled
@@ -84,12 +98,188 @@ def gate_lead(entry: dict) -> str | None:
     return None
 
 
+SITE = "https://maxgfr.github.io/skycmd"
+REPO = "https://github.com/maxgfr/skycmd"
+# the technical report of the project (site/paper/)
+REPORT = f"{SITE}/paper/"
+# the lead of the verdict line of a model published without a gate (the catalogue's "No gate")
+UNGATED_LEAD = "Published without a gate."
+# the verdict tags of a card's front matter, by manifest `gate`: each card has exactly its own
+VERDICT_TAGS = {"passed": ["passed-gate"], "failed": ["failed-gate", "negative-result"], None: ["no-gate"]}
+# tags every model card carries
+COMMON_TAGS = ["gguf", "rust", "wasm", "skycmd"]
+# the marker of a card's link list that the publish script fills (links_block)
+LINKS = "{{LINKS}}"
+
+
+def verdict_lead(entry: dict) -> str:
+    """The bold lead that opens a model's card: its gate's notice, or UNGATED_LEAD."""
+    return gate_lead(entry) or UNGATED_LEAD
+
+
 def check_card(m: str, card: str, entry: dict) -> None:
-    """A failed model's card opens, in the first lines after its title, with the bold lead of its
-    failure notice, the one that matches its `gate_kind`, and no other."""
-    if entry.get("gate") == "failed" and f"**{gate_lead(entry)}**" not in card.split(f"\n# {m}\n", 1)[-1][:300]:
-        raise SystemExit(f"hf/cards/{m}.md: a failed model's card must open with its failure notice "
-                         f"(**{gate_lead(entry)}**)")
+    """Every card opens, on the first line after its title, with a quote whose bold lead is its
+    verdict (verdict_lead: the one that matches its gate and its `gate_kind`, or the lead of a
+    model published without a gate), and no other."""
+    body = card.split(f"\n# {m}\n", 1)
+    first = next((ln for ln in body[-1].split("\n") if ln.strip()), "") if len(body) == 2 else ""
+    if not first.startswith(f"> **{verdict_lead(entry)}**"):
+        raise SystemExit(f"hf/cards/{m}.md: the card must open, after its title, with its verdict "
+                         f"(> **{verdict_lead(entry)}**)")
+
+
+def parse_front_matter(text: str) -> tuple[dict, str]:
+    """(front matter, body) of a card: the subset of YAML the cards use, `key: value` and
+    `key:` followed by `  - item` lines, in order. Anything else is refused."""
+    if not text.startswith("---\n") or "\n---\n" not in text[3:]:
+        raise SystemExit("a card must start with a front matter between two --- lines")
+    head, body = text[4:].split("\n---\n", 1)
+    fm, key = {}, None
+    for ln in head.split("\n"):
+        if ln.startswith("  - ") and key is not None and isinstance(fm[key], list):
+            fm[key].append(ln[4:].strip())
+        elif ln and not ln.startswith(" ") and ":" in ln:
+            key, value = (x.strip() for x in ln.split(":", 1))
+            if key in fm:
+                raise SystemExit(f"front matter: {key} twice")
+            fm[key] = value if value else []
+        else:
+            raise SystemExit(f"front matter: unexpected line {ln!r}")
+    return fm, body
+
+
+def render_front_matter(fm: dict) -> str:
+    out = []
+    for k, v in fm.items():
+        out.append(f"{k}:" + ("".join(f"\n  - {x}" for x in v) if isinstance(v, list) else f" {v}"))
+    return "---\n" + "\n".join(out) + "\n---\n"
+
+
+def dataset_url(user: str, d: str) -> str:
+    return f"https://huggingface.co/datasets/{user}/{d}"
+
+
+def card_datasets(user: str, s: dict, fm: dict) -> list[str]:
+    """The `datasets:` of a model card: the upstream sets its card names (front matter), then the
+    sets of `<user>` it was trained on (hf/spaces.json `datasets.train`)."""
+    return list(fm.get("datasets", [])) + [f"{user}/{d}" for d in s.get("datasets", {}).get("train", [])]
+
+
+def check_front_matter(m: str, fm: dict, s: dict, entry: dict) -> None:
+    """The conventions every model card follows: Apache-2.0, a language (unless it reads time
+    series), `library_name: gguf`, a pipeline tag, the common tags and exactly the verdict tags of
+    its gate; a `<user>` data set comes from hf/spaces.json, never typed in the card."""
+    where = f"hf/cards/{m}.md"
+    for k, want in (("license", "apache-2.0"), ("library_name", "gguf")):
+        if fm.get(k) != want:
+            raise SystemExit(f"{where}: {k} must be {want}")
+    if not fm.get("pipeline_tag"):
+        raise SystemExit(f"{where}: no pipeline_tag")
+    if not fm.get("language") and fm["pipeline_tag"] != "time-series-forecasting":
+        raise SystemExit(f"{where}: no language")
+    tags = fm.get("tags", [])
+    missing = [t for t in COMMON_TAGS if t not in tags]
+    if missing:
+        raise SystemExit(f"{where}: missing tags {missing}")
+    verdict = {t for ts in VERDICT_TAGS.values() for t in ts} & set(tags)
+    if verdict != set(VERDICT_TAGS[entry.get("gate")]):
+        raise SystemExit(f"{where}: verdict tags {sorted(verdict)}, its gate asks for {VERDICT_TAGS[entry.get('gate')]}")
+    typed = [d for d in fm.get("datasets", []) if d.split("/")[-1].startswith("skycmd-")]
+    if typed:
+        raise SystemExit(f"{where}: {typed} must come from hf/spaces.json (datasets.train), not the card")
+
+
+def check_files(m: str, body: str, entry: dict) -> None:
+    """The `## Files` section of a card names each model file with the bytes and the sha256 of
+    the manifest."""
+    files = body.split("\n## Files\n", 1)
+    if len(files) != 2:
+        raise SystemExit(f"hf/cards/{m}.md: no ## Files section")
+    section = files[1].split("\n## ", 1)[0]
+    rows = [(f["file"], f["bytes"], f.get("sha256")) for f in entry["files"]] if entry.get("files") \
+        else [(entry["file"], entry["bytes"], entry.get("sha256"))]
+    text = " ".join(section.split())
+    for name, size, sha in rows:
+        if not sha:
+            raise SystemExit(f"site/public/models/manifest.json: {name} has no sha256")
+        for want in (f"`{name}`", f"{size:,} bytes", f"`{sha}`"):
+            if want not in text:
+                raise SystemExit(f"hf/cards/{m}.md: the Files section must give {want} (manifest)")
+
+
+def prereg_link(p) -> str:
+    """A pre-registration of hf/spaces.json: a repository path, {path, note} or {url, label, note}."""
+    if isinstance(p, str):
+        p = {"path": p}
+    link = f"[{p['path']}]({REPO}/blob/main/{p['path']})" if p.get("path") else f"[{p['label']}]({p['url']})"
+    return link + (f" ({p['note']})" if p.get("note") else "")
+
+
+def links_block(user: str, s: dict) -> str:
+    """The links every model card gives in the same words, where its card writes {{LINKS}}: its
+    results, the technical report, its pre-registration, its data and the hub Space."""
+    res = s["results_url"]
+    results = (f"[results page]({res})" if res.startswith(SITE) else
+               f"[results page]({SITE}/results/); this model's numbers: [BENCH.md]({res})")
+    prereg = ", ".join(prereg_link(p) for p in s.get("prereg", [])) or "none: this file was published without a gate"
+    ds = s.get("datasets", {})
+    parts = []
+    for role in ("train", "test"):
+        names = ds.get(role, [])
+        if names:
+            parts.append(("trained on " if role == "train" else "tested on ")
+                         + ", ".join(f"[{d}]({dataset_url(user, d)})" for d in names))
+    if s.get("data_note"):
+        parts.append(s["data_note"].replace("{user}", user))
+    lines = [
+        f"- **All results, failures included:** {results}",
+        f"- **Technical report:** [maxgfr.github.io/skycmd/paper]({REPORT})",
+        f"- **Pre-registration:** {prereg}",
+        f"- **Data:** {'; '.join(parts)}" if parts else None,
+        f"- **Every demo, with its verdict:** [the skycmd Space](https://huggingface.co/spaces/{user}/skycmd)",
+    ]
+    return "\n".join(x for x in lines if x)
+
+
+def model_card(user: str, s: dict, entry: dict, raw: str) -> str:
+    """The README.md of a model repo: hf/cards/<model>.md with `{{USER}}` replaced, checked
+    (front matter, verdict line, link to its Space, files), its `datasets:` completed from
+    hf/spaces.json and its {{LINKS}} line filled."""
+    m = s["model"]
+    fm, body = parse_front_matter(raw.replace("{{USER}}", user))
+    check_front_matter(m, fm, s, entry)
+    check_card(m, body, entry)
+    check_files(m, body, entry)
+    if s.get("space", True) and f"https://huggingface.co/spaces/{user}/{m})" not in body:
+        raise SystemExit(f"hf/cards/{m}.md: the card must link its Space (https://huggingface.co/spaces/{user}/{m})")
+    if body.count(f"\n{LINKS}\n") != 1:
+        raise SystemExit(f"hf/cards/{m}.md: the card must hold one {LINKS} line in its list of links")
+    datasets = card_datasets(user, s, fm)
+    fm = {k: v for k, v in fm.items() if k != "datasets"}
+    if datasets:
+        fm["datasets"] = datasets
+    return render_front_matter(fm) + body.replace(f"\n{LINKS}\n", f"\n{links_block(user, s)}\n")
+
+
+# the Hub's limit on a Space's short_description
+SHORT_DESCRIPTION_MAX = 60
+SPACE_TAGS = ["skycmd", "gguf", "wasm", "rust"]
+
+
+def space_front_matter(user: str, s: dict, title: str, models: list[str], datasets: list[str], tags: list[str]) -> str:
+    """The front matter every Space README shares (the 20 model Spaces and the hub)."""
+    if len(s["short_description"]) > SHORT_DESCRIPTION_MAX:
+        raise SystemExit(f"{key(s)}: short_description is longer than the Hub's {SHORT_DESCRIPTION_MAX} characters")
+    fm = {
+        "title": title, "emoji": s["emoji"], "colorFrom": s["color_from"], "colorTo": s["color_to"],
+        "sdk": "static", "app_file": "index.html", "pinned": "false", "license": "apache-2.0",
+        "short_description": json.dumps(s["short_description"], ensure_ascii=False),
+        "models": [f"{user}/{x}" for x in models],
+    }
+    if datasets:
+        fm["datasets"] = [f"{user}/{d}" for d in datasets]
+    fm["tags"] = tags
+    return render_front_matter(fm)
 
 
 def space_readme(user: str, s: dict, entry: dict) -> str:
@@ -98,20 +288,9 @@ def space_readme(user: str, s: dict, entry: dict) -> str:
     lead = gate_lead(entry)
     if lead and (entry.get("gate") == "failed" or not failed):
         failed = f"**{lead}** {entry.get('gate_note', '')}. [The result]({entry.get('gate_url', '')}).\n\n"
-    return f"""---
-title: {m}
-emoji: {s["emoji"]}
-colorFrom: {s["color_from"]}
-colorTo: {s["color_to"]}
-sdk: static
-app_file: index.html
-pinned: false
-license: apache-2.0
-short_description: {json.dumps(s["short_description"], ensure_ascii=False)}
-models:
-  - {user}/{m}
----
-
+    front = space_front_matter(user, s, m, [m] + s.get("extra_models", []), s.get("space_datasets", []),
+                               SPACE_TAGS + VERDICT_TAGS[entry.get("gate")])
+    return f"""{front}
 # {m}
 
 {failed}{s["tagline"]}
@@ -121,7 +300,10 @@ where the browser supports it, else SIMD128) reads the GGUF {"files" if len(mode
 is sent to a server.
 
 - Model card: [{user}/{m}](https://huggingface.co/{user}/{m})
-- Code: [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd)
+- Every demo, with its verdict: [the skycmd Space](https://huggingface.co/spaces/{user}/skycmd)
+- All results, failures included: [results page]({s["results_url"] if s["results_url"].startswith(SITE) else SITE + "/results/"})
+- Technical report: [maxgfr.github.io/skycmd/paper]({REPORT})
+- Code: [github.com/maxgfr/skycmd]({REPO})
 """
 
 
@@ -138,9 +320,8 @@ def assemble(user: str, s: dict, manifest: list, space_only: bool = False) -> tu
     if base.exists():
         shutil.rmtree(base)
     model_dir, space_dir = base / "model", base / "space"
-    card = (ROOT / "hf" / "cards" / f"{m}.md").read_text().replace("{{USER}}", user)
     entry = next(e for e in manifest if e["name"] == m)
-    check_card(m, card, entry)
+    card = model_card(user, s, entry, (ROOT / "hf" / "cards" / f"{m}.md").read_text())
     if space_only:
         if not s.get("space", True):
             return None, None
@@ -270,7 +451,8 @@ VERDICTS = [
 def hub_readme(user: str, hub: dict, spaces: list, manifest: list) -> str:
     shown = model_spaces(spaces)
     by_name = {e["name"]: e for e in manifest}
-    models = "".join(f"  - {user}/{s['model']}\n" for s in shown)
+    datasets = sorted({d for s in shown for d in s.get("space_datasets", [])})
+    front = space_front_matter(user, hub, hub["title"], [s["model"] for s in shown], datasets, SPACE_TAGS)
     notes = "".join(f"- {n}\n" for n in hub_notes(hub, manifest))
     groups = ""
     for gate, title in VERDICTS:
@@ -280,19 +462,7 @@ def hub_readme(user: str, hub: dict, spaces: list, manifest: list) -> str:
         groups += f"\n## {title} ({len(rows)})\n\n" + "".join(
             f"- [{s['model']}](https://huggingface.co/spaces/{user}/{s['model']}): {s['short_description']}\n" for s in rows
         )
-    return f"""---
-title: {hub["title"]}
-emoji: {hub["emoji"]}
-colorFrom: {hub["color_from"]}
-colorTo: {hub["color_to"]}
-sdk: static
-app_file: index.html
-pinned: false
-license: apache-2.0
-short_description: {json.dumps(hub["short_description"], ensure_ascii=False)}
-models:
-{models}---
-
+    return f"""{front}
 # {hub["title"]}
 
 {hub["tagline"]}
@@ -302,8 +472,10 @@ Everything runs in your browser: a Rust inference engine compiled to WebAssembly
 where the browser supports it, else SIMD128) reads the GGUF files shipped with this Space. A
 model's files are downloaded only when its demo is opened. Nothing is sent to a server.
 
-- Project site: [maxgfr.github.io/skycmd](https://maxgfr.github.io/skycmd)
-- Code: [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd)
+- Project site: [maxgfr.github.io/skycmd]({SITE})
+- All results, failures included: [results page]({SITE}/results/)
+- Technical report: [maxgfr.github.io/skycmd/paper]({REPORT})
+- Code: [github.com/maxgfr/skycmd]({REPO})
 """
 
 
@@ -388,6 +560,35 @@ def check_pinned(spaces: list, only: set, space_only: bool, allow: bool) -> None
         raise SystemExit(why)
 
 
+def assemble_card(user: str, s: dict, manifest: list) -> Path:
+    """target/hf/<model>/card/README.md: the model card alone, checked as `assemble` checks it."""
+    m = s["model"]
+    entry = next(e for e in manifest if e["name"] == m)
+    card = model_card(user, s, entry, (ROOT / "hf" / "cards" / f"{m}.md").read_text())
+    out = OUT / m / "card"
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    (out / "README.md").write_text(card)
+    return out / "README.md"
+
+
+def publish_cards(api, user: str, spaces: list, manifest: list, only: set) -> None:
+    """--card-only: the README.md of each selected model repo, uploaded alone (`api` None: a dry
+    run). The GGUF files, the engine/ folder and the Spaces are not touched."""
+    for s in spaces:
+        if not s.get("model") or (only and key(s) not in only):
+            continue
+        readme = assemble_card(user, s, manifest)
+        print(f"assembled the card of {s['model']}: {readme}")
+        if api is None:
+            continue
+        repo = f"{user}/{s['model']}"
+        api.upload_file(path_or_fileobj=str(readme), path_in_repo="README.md", repo_id=repo, repo_type="model",
+                        commit_message=f"Card of {s['model']}")
+        print(f"published the card of https://huggingface.co/{repo} (README.md only)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="assemble under target/hf, upload nothing")
@@ -398,13 +599,20 @@ def main() -> None:
     ap.add_argument("--allow-pinned-engine", action="store_true",
                     help="allow assembling and uploading the model repo of an entry with \"engine\": true, "
                          "whose engine/ files another project pins by sha256")
+    ap.add_argument("--card-only", action="store_true",
+                    help="assemble and upload the README.md of each selected model repo alone: no GGUF, no "
+                         "engine/ folder, no Space")
     a = ap.parse_args()
+    if a.card_only and a.space_only:
+        raise SystemExit("--card-only and --space-only exclude each other")
 
     spaces = json.loads((ROOT / "hf" / "spaces.json").read_text())
     only = {x for x in a.only.split(",") if x}
-    # first, before any build output is needed: a dry run shows the refusal too
-    check_pinned(spaces, only, a.space_only, a.allow_pinned_engine)
-    for need in [APP / "index.html", PUBLIC / "pkg" / "sky_web_bg.wasm", PUBLIC / "pkg" / "sky_web_relaxed_bg.wasm"]:
+    # first, before any build output is needed: a dry run shows the refusal too (a card alone
+    # never touches the engine/ folder)
+    check_pinned(spaces, only, a.space_only or a.card_only, a.allow_pinned_engine)
+    for need in [] if a.card_only else [APP / "index.html", PUBLIC / "pkg" / "sky_web_bg.wasm",
+                                        PUBLIC / "pkg" / "sky_web_relaxed_bg.wasm"]:
         if not need.exists():
             raise SystemExit(f"missing {need}: run scripts/build-wasm.sh and (cd site && npm run space:build)")
     api = None
@@ -417,6 +625,9 @@ def main() -> None:
     user = user or "USER"
 
     manifest = json.loads((PUBLIC / "models" / "manifest.json").read_text())
+    if a.card_only:
+        publish_cards(api, user, spaces, manifest, only)
+        return
     for s in spaces:
         if only and key(s) not in only:
             continue

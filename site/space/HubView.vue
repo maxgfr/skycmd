@@ -89,6 +89,7 @@ onBeforeUnmount(() => {
         <a :href="SITE">Project site</a> ·
         <a :href="`${SITE}/models/`">Models</a> ·
         <a :href="`${SITE}/results/`">Results</a> ·
+        <a :href="`${SITE}/paper/`">Technical report</a> ·
         <a href="https://github.com/maxgfr/skycmd">Source (Rust)</a>
       </p>
       <ul v-if="cfg.notes?.length" class="notes">

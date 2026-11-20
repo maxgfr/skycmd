@@ -38,8 +38,10 @@ onMounted(async () => {
     <p class="tagline">{{ cfg.tagline }}</p>
     <p class="links">
       <a :href="cfg.model_repo">Model card</a> ·
+      <a href="https://huggingface.co/spaces/maxgfr/skycmd">Every demo</a> ·
       <a :href="SITE">Project site</a> ·
       <a :href="`${SITE}/results/`">Results</a> ·
+      <a :href="`${SITE}/paper/`">Technical report</a> ·
       <a href="https://github.com/maxgfr/skycmd">Source (Rust)</a>
     </p>
     <ul v-if="cfg.notes?.length" class="notes">

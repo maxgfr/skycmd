@@ -38,10 +38,9 @@ longer horizons by rolling out, with an exit after each loop.
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-cast-pico](https://huggingface.co/spaces/{{USER}}/s6-cast-pico)
   (next to TinyCast and the seasonal naive, in your browser)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-cast-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast-prereg.md)
 - **Spec:** [docs/SPEC-S6-CAST.md](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)
 - **Report of the run:** [docs/big-run-report.md](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md) §5
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## Results
 
@@ -64,7 +63,8 @@ forecast by the seasonal naive, in both passes.
 
 - **Against the seasonal naive:** better on nGMASE (0.9471) and on nWQL (0.6646 against 0.8876).
   Per configuration its MASE is below the seasonal naive's in 52 of 97 and its WQL in 84 of 97;
-  our TinyCast port has a lower MASE in 86 configurations and a lower WQL in 87.
+  against s6-cast-pico, our TinyCast port has a lower MASE in 86 configurations and a lower WQL
+  in 87.
 - **By term** (MASE): 0.860 short, 1.046 medium, 1.105 long, against 0.756, 0.806 and 0.848 for our
   TinyCast port. Medium and long horizons are worse than the seasonal naive.
 - **By domain** (MASE / WQL): Econ/Fin 1.018 / 0.901, Energy 1.080 / 0.800, Healthcare
@@ -121,4 +121,4 @@ only evaluated on. Licenses:
 ## Files
 
 - `s6-cast-pico.gguf`: ternary weights (the EMA weights) and the exit tolerance of the calibration.
-  142,912 bytes.
+  142,912 bytes, sha256 `ff4618604e0c0076180a2846413970393dfe5d68c8ee4add342d33fdd36403f1`.

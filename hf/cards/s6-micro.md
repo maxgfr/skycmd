@@ -14,11 +14,12 @@ tags:
   - rust
   - wasm
   - skycmd
+  - passed-gate
 ---
 
 # s6-micro
 
-> **It passed its gate on a second look.** This is the second version of s6-micro. The first
+> **Passed its pre-registered gate.** On a second look: this is the second version of s6-micro. The first
 > version ([s6-micro-v1](https://huggingface.co/{{USER}}/s6-micro-v1)) failed the ECE guard of the
 > same gate at 0.0821 against 0.08. This version was designed after that reading (twice the
 > decision-training minutes, everything else the same) and its gate was read on the same test
@@ -27,8 +28,9 @@ tags:
 > on `typed_decisions_bench` (gate 0.45), an ECE of **0.0588** over the test sources (guard 0.08)
 > and s3-pico's score in every game. On 11 of the bench's 20 tasks it gives one answer to at least
 > 95% of the items; answering each question with its most common training answer scores 0.4815.
-> Its decision training was restarted once from its checkpoint after a technical failure, and its
-> last minutes, its DAgger rounds and its evaluation ran on a loaded machine.
+> Its decision training was restarted once from its checkpoint after a technical failure, its
+> last minutes, its DAgger rounds and its evaluation ran on a loaded machine, and its trainer
+> binary is not v1's.
 
 **One 2.4 MB ternary model for four games and for typed questions in free text: the larger
 sibling of [s6-nano](https://huggingface.co/{{USER}}/s6-nano).** 5,587,201 parameters. It reads a
@@ -39,9 +41,7 @@ level, and passed a publication gate fixed before training, on its second versio
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-micro](https://huggingface.co/spaces/{{USER}}/s6-micro)
   (the games, and typed questions you can edit)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-gen-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)
-  (gates in §6, this version in amendments 12, 16 and 17)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## Results
 

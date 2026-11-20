@@ -14,22 +14,29 @@ tags:
   - rust
   - wasm
   - skycmd
+  - no-gate
 datasets:
   - LocalLLaMA/typed-decisions
 ---
 
 # s5-lite
 
+> **Published without a gate.** This checkpoint is a longer run (8,000 steps) added for the demo
+> outside the three pre-registered s5 bets, which all failed; the s5-lite gates were read on the
+> model those rules named (A′, seed 0) and failed too. Read against the same gates, this file
+> reaches 0.696 on the bench (bar 0.65) but answers 21 of the 30 English demo cases (bar 90 %) and
+> stays below the majority class on four test sets: its numbers below are reported, not claimed.
+
 **A 17M-parameter decision model whose options cannot see each other.** You give it a state, a
 question and options (each with a one-line definition); one forward pass returns calibrated
 probabilities over the options. It ships as a single 20.7 MB GGUF file (q8_0) and runs in the
-browser through WebAssembly, in about 15–20 ms per decision.
+browser through WebAssembly, in about 20 ms per decision.
 
 - **Demo:** [huggingface.co/spaces/{{USER}}/s5-lite](https://huggingface.co/spaces/{{USER}}/s5-lite)
   (everything runs in your browser)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd), 100 % Rust (training with
   mlx-rs, inference engine compiled to wasm32)
-- **Pre-registered results, failures included:** [maxgfr.github.io/skycmd/results](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## What is different: the "iso" architecture
 
@@ -72,17 +79,21 @@ Robustness and coherence (test sets held out of training):
 - paraphrased definitions: 26 % of answers flip (accuracy 0.696 → 0.602), so robustness to wording
   is learned, not guaranteed;
 - distractors (JevOut-lite): 6.8 % flips under the worst distractor;
-- 8-bit quantization: ECE moves by less than 0.003 against f32.
+- 8-bit quantization (this file against its f32 weights): the ECE moves by −0.0045 to +0.0173
+  across the test sets, +0.0037 on the typed-decisions test (0.0883 → 0.0920).
 
 ## Limitations
 
 - **Imbalanced yes/no tasks.** On four test sets it does worse than always answering the majority
   class (biasframes intent and sex, wikitoxic insult and threat): it over-predicts the rare
   positive class. Do not use it as a guardrail without per-task thresholds.
-- **Calibration** is underconfident on typed decisions; temperatures were fitted on a validation
-  set dominated by other sources.
-- **No controlled escalation yet:** with the available calibration data, Learn-then-Test certified
-  no acceptance threshold at α ≤ 10 %.
+- **Calibration:** the 2,000-step finalists of the same configuration were underconfident on
+  typed decisions (mean confidence 0.59 for an accuracy of 0.71 on validation); the temperatures
+  were fitted on a validation set dominated by other sources. Not measured on this checkpoint.
+- **No controlled escalation:** with the pre-registered calibration data, Learn-then-Test certified
+  no acceptance threshold at α ≤ 10 %. With every English calibration question, which are not
+  exchangeable with the bench, it would accept 11.5 % of the bench at α = 5 %, and the error of
+  those answers is 7.0 %: the guarantee does not survive the shift.
 - English only (there is no French version).
 - It is a demo and research artifact, not a production classifier.
 
@@ -135,4 +146,5 @@ then `skycmd.Model("s5-lite.gguf").decide({...})`. In the browser, see the
 ## Files
 
 - `s5-lite.gguf`: q8_0 encoder, f32 readout, calibrated temperatures, tokenizer
-  (`general.architecture = skycmd-iso`).
+  (`general.architecture = skycmd-iso`). 20,684,640 bytes, sha256
+  `545070d1aa7873440d34ba42b9081f72aae6b8eb42f2fa0a5a63300c717c6c0e`.

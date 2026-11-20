@@ -3,6 +3,7 @@ license: apache-2.0
 language:
   - en
 library_name: gguf
+pipeline_tag: text-classification
 tags:
   - gguf
   - decision-model
@@ -13,9 +14,13 @@ tags:
   - rust
   - wasm
   - skycmd
+  - no-gate
 ---
 
 # s3-pico
+
+> **Published without a gate.** Its numbers below are measured and published, but no gate was
+> fixed for this file before it was tested.
 
 **A 251 KB decision model that plays four games in your browser.** 445,345 ternary parameters: one
 weight-shared state block applied up to 4 times, with an exit after each pass. It reads the game
@@ -26,6 +31,7 @@ coded safety reflex keeps a veto.
   (watch it play, or take the controls)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 - **Story:** [chapter 21](https://maxgfr.github.io/skycmd/tutorial/21-s3-recursive-tiny)
+{{LINKS}}
 
 ## Results (closed loop, `sky-arena`, 30 episodes per game, seed 7)
 
@@ -36,8 +42,10 @@ coded safety reflex keeps a veto.
 | Obstacle Dodge | 87 % (= oracle), 14 reflex vetoes |
 | Doom-like | 100 % of levels, kills = oracle |
 
-It uses 1.05 to 1.73 of its 4 loops on average (exit threshold calibrated by playing). Latency per
-decision: 27.5 µs native, 49.6 µs in WASM (Apple M5).
+Over five seeds (7, 11, 13, 17, 19; 30 episodes each) it uses 1.05 to 1.73 of its 4 loops on
+average (exit threshold calibrated by playing), and its Doom score is 3.29 against the oracle's
+3.34. Latency (Apple M5): 27.5 µs per question natively (`sky-bench`), 49.6 µs per Flappy frame in
+WASM (two questions and the physics step).
 
 ## Architecture
 
@@ -70,4 +78,5 @@ generated with GLM-5.3-Flash (open weights, MIT). Licenses: [DATA_LICENSES.md](h
 
 ## Files
 
-- `s3-pico.gguf`: ternary weights, tokenizer, temperatures and exit thresholds.
+- `s3-pico.gguf`: ternary weights, tokenizer, temperatures and exit thresholds. 251,104 bytes,
+  sha256 `60bf4d612be0a48adef8fcedbfb03dd97d36759981268d671ca47418acfa9ccc`.

@@ -58,10 +58,18 @@ class GateLead(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 hp.check_card("m", card, entry)
 
-    def test_every_failed_card_of_the_repository(self):
+    def test_every_card_of_the_repository_opens_with_its_verdict(self):
         for e in MANIFEST:
-            if e.get("gate") == "failed":
-                hp.check_card(e["name"], card_of(e["name"]), e)
+            hp.check_card(e["name"], card_of(e["name"]), e)
+            first = card_of(e["name"]).split(f"\n# {e['name']}\n", 1)[1].lstrip("\n").split("\n", 1)[0]
+            self.assertTrue(first.startswith(f"> **{hp.verdict_lead(e)}**"), e["name"])
+
+    def test_a_card_without_a_gate_opens_with_the_ungated_lead(self):
+        none = {"name": "m"}
+        hp.check_card("m", f"---\n---\n\n# m\n\n> **{hp.UNGATED_LEAD}** x\n", none)
+        for card in ("---\n---\n\n# m\n\n**A model.**\n", f"---\n---\n\n# m\n\n> **{PRE_FAILED}** x\n"):
+            with self.assertRaises(SystemExit):
+                hp.check_card("m", card, none)
 
     def test_readme_opens_with_the_lead(self):
         for s in hp.model_spaces(SPACES):
@@ -136,11 +144,12 @@ class Hub(unittest.TestCase):
 
     def test_readme(self):
         readme = hp.hub_readme("maxgfr", HUB, SPACES, MANIFEST)
-        single = next(s for s in SPACES if s.get("model") == "s3-pico")
-        self.assertEqual(front_matter(readme), front_matter(hp.space_readme("maxgfr", single, next(e for e in MANIFEST if e["name"] == "s3-pico"))))
+        single = next(s for s in SPACES if s.get("model") == "s5-lite")
+        self.assertEqual(front_matter(readme), front_matter(hp.space_readme("maxgfr", single, next(e for e in MANIFEST if e["name"] == "s5-lite"))))
         self.assertTrue(readme.startswith("---\ntitle: skycmd\n"))
         self.assertIn("\nsdk: static\napp_file: index.html\n", readme)
-        self.assertIn("models:\n" + "".join(f"  - maxgfr/{s['model']}\n" for s in hp.model_spaces(SPACES)) + "---\n", readme)
+        self.assertIn("models:\n" + "".join(f"  - maxgfr/{s['model']}\n" for s in hp.model_spaces(SPACES)) + "datasets:\n", readme)
+        self.assertIn(f"Technical report: [maxgfr.github.io/skycmd/paper]({hp.REPORT})", readme)
         body = readme.split("\n---\n", 1)[1]
         self.assertEqual(body.split("\n\n")[0], "\n# skycmd")
         self.assertEqual(body.split("\n\n")[1], HUB["tagline"])
@@ -208,6 +217,137 @@ class Hub(unittest.TestCase):
               "space_url": f"https://huggingface.co/spaces/maxgfr/{s['model']}"} for s in hp.model_spaces(SPACES)],
         )
         shutil.rmtree(tmp)
+
+
+BY_NAME = {e["name"]: e for e in MANIFEST}
+
+
+def raw_card(m: str) -> str:
+    with open(os.path.join(ROOT, "hf", "cards", f"{m}.md")) as f:
+        return f.read()
+
+
+class ModelCards(unittest.TestCase):
+    """The conventions of the 20 model cards, checked and completed by model_card."""
+
+    def test_every_card_assembles(self):
+        for s in hp.model_spaces(SPACES):
+            m = s["model"]
+            card = hp.model_card("maxgfr", s, BY_NAME[m], raw_card(m))
+            fm, body = hp.parse_front_matter(card)
+            self.assertNotIn("{{", card, m)
+            for t in hp.COMMON_TAGS + hp.VERDICT_TAGS[BY_NAME[m].get("gate")]:
+                self.assertIn(t, fm["tags"], m)
+            want = hp.parse_front_matter(raw_card(m))[0].get("datasets", []) + [f"maxgfr/{d}" for d in s["datasets"]["train"]]
+            self.assertEqual(fm.get("datasets", []), want, m)
+            # the links every card gives, in the same words
+            for line in ("- **All results, failures included:** [results page](",
+                         f"- **Technical report:** [maxgfr.github.io/skycmd/paper]({hp.REPORT})",
+                         "- **Pre-registration:** ",
+                         "- **Every demo, with its verdict:** [the skycmd Space](https://huggingface.co/spaces/maxgfr/skycmd)"):
+                self.assertEqual(body.count(line), 1, (m, line))
+            self.assertIn(s["results_url"], body, m)
+            self.assertIn(f"https://huggingface.co/spaces/maxgfr/{m})", body, m)
+
+    def test_every_model_has_its_results_and_data(self):
+        for s in hp.model_spaces(SPACES):
+            m = s["model"]
+            self.assertTrue(s["results_url"].startswith((hp.SITE + "/results/#", hp.REPO + "/blob/main/BENCH.md#")), m)
+            self.assertEqual(set(s["datasets"]), {"train", "test"}, m)
+            gated = BY_NAME[m].get("gate") is not None
+            self.assertEqual(bool(s.get("prereg")), gated or m == "s5-lite", m)
+            if not s["datasets"]["train"]:
+                self.assertTrue(s.get("data_note"), f"{m}: no published training set and no data_note")
+
+    def test_links_of_three_kinds_of_entry(self):
+        by = {s["model"]: s for s in hp.model_spaces(SPACES)}
+        s3 = hp.links_block("maxgfr", by["s3-pico"])
+        self.assertIn("- **Pre-registration:** none: this file was published without a gate", s3)
+        self.assertIn(f"[results page]({hp.SITE}/results/); this model's numbers: [BENCH.md]({hp.REPO}/blob/main/BENCH.md#", s3)
+        s4 = hp.links_block("maxgfr", by["s4-micro"])
+        self.assertIn("[issue #1](https://github.com/maxgfr/skycmd/issues/1) (the gate, written down before training", s4)
+        r7 = hp.links_block("maxgfr", by["s6-route7-nano"])
+        prereg = r7.split("- **Pre-registration:** ", 1)[1].split("\n", 1)[0]
+        self.assertEqual(prereg.count(f"]({hp.REPO}/blob/main/docs/"), 4)
+        self.assertIn("trained on [skycmd-route7](https://huggingface.co/datasets/maxgfr/skycmd-route7); tested on "
+                      "[skycmd-route7](https://huggingface.co/datasets/maxgfr/skycmd-route7), [skycmd-route](", r7)
+
+    def test_front_matter_refusals(self):
+        s = next(x for x in SPACES if x.get("model") == "s3-pico")
+        e = BY_NAME["s3-pico"]
+        good = raw_card("s3-pico")
+        hp.model_card("maxgfr", s, e, good)
+        for bad in (good.replace("  - wasm\n", ""),                      # a common tag missing
+                    good.replace("  - no-gate\n", "  - passed-gate\n"),  # the verdict tag of another gate
+                    good.replace("library_name: gguf\n", "library_name: gguf\ndatasets:\n  - maxgfr/skycmd-games\n"),
+                    good.replace("pipeline_tag: text-classification\n", ""),
+                    good.replace("{{LINKS}}\n", ""),
+                    good.replace("60bf4d612be0a48a", "60bf4d612be0a48b"),  # a sha256 that is not the manifest's
+                    good.replace("251,104 bytes", "251,105 bytes")):
+            self.assertNotEqual(bad, good)
+            with self.assertRaises(SystemExit):
+                hp.model_card("maxgfr", s, e, bad)
+
+    def test_front_matter_round_trip(self):
+        for s in hp.model_spaces(SPACES):
+            fm, body = hp.parse_front_matter(raw_card(s["model"]))
+            self.assertEqual(hp.render_front_matter(fm) + body, raw_card(s["model"]), s["model"])
+        with self.assertRaises(SystemExit):
+            hp.parse_front_matter("---\nlicense: x\n  nested: y\n---\nbody")
+
+
+class CardOnly(unittest.TestCase):
+    """--card-only uploads README.md alone, for every model, the pinned one included."""
+
+    def test_uploads_the_card_alone(self):
+        calls = []
+
+        class Api:
+            def upload_file(self, **kw):
+                calls.append(kw)
+
+            def __getattr__(self, name):
+                raise AssertionError(f"--card-only called {name}")
+
+        tmp = tempfile.mkdtemp()
+        saved = hp.OUT
+        try:
+            hp.OUT = Path(tmp)
+            hp.publish_cards(Api(), "maxgfr", SPACES, MANIFEST, {"s6-secrets-verify-pico", "s3-pico", "skycmd"})
+        finally:
+            hp.OUT = saved
+        self.assertEqual(sorted(c["repo_id"] for c in calls), ["maxgfr/s3-pico", "maxgfr/s6-secrets-verify-pico"])
+        for c in calls:
+            self.assertEqual((c["path_in_repo"], c["repo_type"]), ("README.md", "model"))
+            with open(c["path_or_fileobj"]) as f:
+                self.assertTrue(f.read().startswith("---\nlicense: apache-2.0\n"))
+        self.assertEqual(sorted(str(p.relative_to(tmp)) for p in Path(tmp).rglob("*") if p.is_file()),
+                         ["s3-pico/card/README.md", "s6-secrets-verify-pico/card/README.md"])
+        shutil.rmtree(tmp)
+
+    def test_the_pinned_model_is_not_refused(self):
+        self.assertIsNone(hp.pinned_refusal(SPACES, {"s6-secrets-verify-pico"}, True, False))
+
+
+class SpaceReadmes(unittest.TestCase):
+    def test_front_matter_of_every_space(self):
+        for s in hp.model_spaces(SPACES):
+            e = BY_NAME[s["model"]]
+            fm, body = hp.parse_front_matter(hp.space_readme("maxgfr", s, e))
+            self.assertLessEqual(len(s["short_description"]), hp.SHORT_DESCRIPTION_MAX, s["model"])
+            self.assertEqual(fm["models"], [f"maxgfr/{x}" for x in [s["model"]] + s.get("extra_models", [])])
+            self.assertEqual(fm.get("datasets", []), [f"maxgfr/{d}" for d in s.get("space_datasets", [])])
+            self.assertEqual(fm["tags"], hp.SPACE_TAGS + hp.VERDICT_TAGS[e.get("gate")])
+            self.assertEqual(fm["sdk"], "static")
+            if e.get("gate") == "failed":
+                self.assertTrue(s["short_description"].startswith("Failed its gate"), s["model"])
+            self.assertIn("(https://huggingface.co/spaces/maxgfr/skycmd)", body)
+            self.assertIn(f"]({hp.REPORT})", body)
+
+    def test_a_long_short_description_is_refused(self):
+        s = {**next(x for x in SPACES if x.get("model") == "s3-pico"), "short_description": "x" * 61}
+        with self.assertRaises(SystemExit):
+            hp.space_readme("maxgfr", s, BY_NAME["s3-pico"])
 
 
 if __name__ == "__main__":

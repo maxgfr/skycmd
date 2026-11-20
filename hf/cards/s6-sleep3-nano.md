@@ -3,6 +3,7 @@ license: apache-2.0
 language:
   - en
   - fr
+base_model: {{USER}}/s6-nano
 library_name: gguf
 pipeline_tag: text-classification
 tags:
@@ -13,6 +14,7 @@ tags:
   - memory
   - fast-weights
   - rust
+  - wasm
   - skycmd
   - failed-gate
   - negative-result
@@ -50,13 +52,7 @@ reach a test reading.
   and put 200 episodes next to the test reading. The pre-registration's demo was conditioned on
   H0 only (v2 §8); every published model gets a Space (owner's decision of 17/11/2026).
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-sleep3-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep3-prereg.md)
-  (v3: two changes to v2 and one more check, amendments 1 to 3, the result block), on top of
-  [docs/s6-sleep2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep2-prereg.md)
-  (the memory, the pilot, the nano runs, the gate) and
-  [docs/s6-sleep-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep-prereg.md)
-  (the probes, the hypotheses H0 to H3, the publication gate)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/#s6-sleep3-nano-failed)
+{{LINKS}}
 
 ## The gate, as read
 
@@ -191,7 +187,8 @@ memory's weights at 10 times the base rate.
   asked colour from what the last memory layer retrieves at each `recall` question. The head is
   not in the file and plays no role at inference.
 
-**Data.** The sequences (`runs/s6-sleep/seq/`: 8,950 `recall` training episodes of 64 frames,
+**Data.** The sequences (`runs/s6-sleep/seq/`, a local folder deleted on 19/11/2026 that
+`sky-train s2-seqgen` rebuilds with the seeds of `scripts/train-sleep.sh`: 8,950 `recall` training episodes of 64 frames,
 17,959 `rule110` episodes of 8 frames, 4,513 to 4,581 sequences of 24 frames per game) are generated
 procedurally by the project's game cores (`sky-games`, Apache-2.0), each frame labelled by the
 game's exact oracle; the episodes whose seeds fall in the validation and test splits are not

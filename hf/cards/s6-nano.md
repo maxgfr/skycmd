@@ -14,12 +14,13 @@ tags:
   - rust
   - wasm
   - skycmd
+  - passed-gate
 ---
 
 # s6-nano
 
-> **It passed its gate, and the gate did not measure whether it reads the questions (study of
-> 15/11/2026, [docs/s6-nano2-study.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano2-study.md)).**
+> **Passed its pre-registered gate.** The gate did not measure whether it reads the questions
+> (study of 15/11/2026, [docs/s6-nano2-study.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano2-study.md)).
 > The gate asked for more than the majority class of `typed_decisions_bench` (0.398), and a
 > constant answer per task passes it: answering each question with its most common training
 > answer scores 0.4815, and s6-nano scores 0.4805. On 17 of the bench's 20 tasks it gives one
@@ -44,8 +45,7 @@ first above the majority class. It passed a publication gate fixed before traini
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-nano](https://huggingface.co/spaces/{{USER}}/s6-nano)
   (the games, and typed questions you can edit)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-gen-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## Results
 
@@ -104,9 +104,9 @@ adopted none of them, so this model uses softmax attention and AdamW.
 - The English MASSIVE score is not strictly zero-shot: 206 of the 2,000 test utterances also
   appear in the training split, 201 of them in a source derived from MASSIVE. None of the 1,000
   French ones does.
-- One run, one seed. Its larger sibling s6-micro (5.6M) reached 0.547 on the bench but failed the
-  ECE guard (0.0821): it failed its gate; its file is published as a result (owner's decision of
-  15/11/2026), as [s6-micro-v1](https://huggingface.co/{{USER}}/s6-micro-v1). A second version,
+- One run, one seed. The first version of its larger sibling (5.6M) reached 0.547 on the bench but
+  failed the ECE guard (0.0821): it failed its gate, and its file is published as a result (owner's
+  decision of 15/11/2026) as [s6-micro-v1](https://huggingface.co/{{USER}}/s6-micro-v1). A second version,
   designed after that reading and trained twice as long on decisions, passed the same gate on the
   same test records (0.553, ECE 0.0588; a second look): [s6-micro](https://huggingface.co/{{USER}}/s6-micro).
 - The games are civil drone scenarios and a Doom-like shooter drawn with Freedoom art; the model
@@ -140,4 +140,4 @@ the gold answer; no test question was sent. Licenses:
 ## Files
 
 - `s6-nano.gguf`: ternary weights, tokenizer, temperatures, and exit thresholds set to 1 (full
-  depth).
+  depth). 715,136 bytes, sha256 `b31514b536ae50ebd475f7bf99811148cf3b4d6f9a9b241fc588614b30a9fdf5`.

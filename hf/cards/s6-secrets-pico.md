@@ -13,11 +13,13 @@ tags:
   - rust
   - wasm
   - skycmd
+  - passed-gate
 ---
 
 # s6-secrets-pico
 
-> **Not a scanner. Do not use it on real files.** Measured after publication on 719 real source,
+> **Passed its pre-registered gate.** On its synthetic bench only. **Not a scanner. Do not use it
+> on real files.** Measured after publication on 719 real source,
 > configuration and documentation files that hold no secret, the model flags 59.8% of the files at
 > p ≥ 0.9 and 49.4% at p ≥ 0.999. Its bench scores below stand, but they come from our own
 > generator and do not carry over to real text. Measurement:
@@ -34,8 +36,7 @@ that pre-registration, not as a tool.
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-secrets-pico](https://huggingface.co/spaces/{{USER}}/s6-secrets-pico)
   (presets from the generator's bench; everything runs in your browser, nothing is sent anywhere)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-secrets-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets-prereg.md)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## Results
 
@@ -80,10 +81,11 @@ secret question was asked on each chunk. Every flag is a false positive:
   P(secret) is 0.00009 and the 90th percentile 0.93.
 - The gate, on `secret_bench`, stays passed: nothing in it is changed. But the model cannot be used
   to scan real files.
-- Recall on real secrets was not measured.
-- A second version, if one is made, would be a different task (a rule finds the candidate, the
-  model judges it in its context), with its own pre-registration. Nothing is promised.
-- That second version, s6-secrets-verify-pico, was pre-registered and trained once (15/11/2026).
+- Recall on real secrets was not measured (no real secret is in that corpus), and the 719 files
+  come from two projects and one dependency tree.
+- A second version was made as a different task (a rule finds the candidate, the model judges it
+  in its context), with its own pre-registration: s6-secrets-verify-pico, pre-registered and
+  trained once on the evening of 14/11/2026, its gate read on 15/11/2026.
   On 221 real CredData test repositories its line F1 is 0.8561, against 0.7332 for the best rule
   scanner, where its gate asked for +0.15: it failed its gate; its file is published as a result
   (owner's decision of 15/11/2026):
@@ -131,7 +133,7 @@ The model only knows the questions of its training data. Ask them with exactly t
   there shows that the model reads formats and context (the variable name, a test or publishable
   key, a placeholder) in file types it never saw. On real files it fails (see
   [On real text](#on-real-text-measured-after-publication)): do not use it as a secret scanner.
-- **The line answer does not work yet.** 0.6859 overall, and confident when wrong (ECE 0.3051). On
+- **The line answer does not work.** 0.6859 overall, and confident when wrong (ECE 0.3051). On
   the 1,010 bench texts that expose a secret it names the right line 383 times; the texts without
   one, where `none` is right, carry the score.
 - **Service misses concentrate on Go code:** 34 of its 41, where it names `database` for keys of
@@ -167,4 +169,4 @@ locally by `sky-data secret-jev`; no real key is used. Licenses:
 ## Files
 
 - `s6-secrets-pico.gguf`: ternary weights, tokenizer, temperatures, and exit thresholds set to 1
-  (full depth).
+  (full depth). 250,272 bytes, sha256 `1fa48c1530607d6a81ee64ad858aebfe4a49f9e5e88b1ac89eb63f2cc73a097a`.

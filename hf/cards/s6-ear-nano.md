@@ -33,7 +33,7 @@ tags:
 > [BENCH.md, section s6-ear-nano](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear-nano-first-run-gates-failed).
 >
 > **The follow-up:** a dedicated end-of-turn student of Smart Turn,
-> [s6-ear2-nano](https://huggingface.co/maxgfr/s6-ear2-nano), trained on this one task without the
+> [s6-ear2-nano](https://huggingface.co/{{USER}}/s6-ear2-nano), trained on this one task without the
 > pretraining, passed its own gate on 17/11/2026 (0.8993 on the same 31,527 test clips, against
 > 0.5681 here); this model's verdict does not change.
 
@@ -47,9 +47,8 @@ be one.
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-ear-nano](https://huggingface.co/spaces/{{USER}}/s6-ear-nano)
   (the microphone or sample clips; the audio never leaves your browser)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-ear-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear-prereg.md)
 - **How it works:** [tutorial chapter 26](https://maxgfr.github.io/skycmd/tutorial/26-s6-ear)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## Results
 
@@ -142,4 +141,5 @@ redistributed with the model. Licenses:
 ## Files
 
 - `s6-ear-nano.gguf`: ternary weights, the audio projection, tokenizer, temperatures and the exit
-  thresholds of its training run. 899,200 bytes.
+  thresholds of its training run. 899,200 bytes, sha256
+  `b8fb087fe1b2d8ee8e02a1439eea4de06b2bbe7c744e87f5e08344413d9fcaa6`.

@@ -184,7 +184,7 @@ test('a passed and a failed model: the verdict first, then the tagline, the link
       assert.ok(i >= 0, `${m}: ${x.slice(0, 60)}`)
       return i
     }
-    const order = [notice.lead, s.config.tagline, 'Model card · Project site · Results · Source (Rust)', ...(s.config.notes ?? []), 'Everything runs in your browser']
+    const order = [notice.lead, s.config.tagline, 'Model card · Every demo · Project site · Results · Technical report · Source (Rust)', ...(s.config.notes ?? []), 'Everything runs in your browser']
     const where = order.map(at)
     assert.deepEqual([...where].sort((a, b) => a - b), where, `${m}: order`)
     assert.ok(html.includes(`href="https://huggingface.co/maxgfr/${m}">Model card</a>`))
