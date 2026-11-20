@@ -62,7 +62,7 @@ Not used, despite open models: the Lucie Training Dataset (CC-BY-NC-SA-4.0, non-
 - **GLM-5.3-Flash** (open weights, MIT): 3,000 civil drone orders and about 2,000 paraphrases of question instructions (used by s1–s3 only; [`DATA_LICENSES.md`](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md)).
 
 ### Evaluation only (never trained on)
-- [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (Apache-2.0)
+- [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (Apache-2.0), its test split (`typed_decisions_bench`)
 - [AirsideLabs/notam-typed-decisions](https://huggingface.co/datasets/AirsideLabs/notam-typed-decisions) (CC-BY-4.0)
 
 ### s4: teacher, real cases and zero-shot held-out sets
@@ -81,7 +81,7 @@ A teacher gave soft labels on every training question of the Hugging Face decisi
 
 | Dataset | Licence | Used as |
 |---|---|---|
-| [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (test split) | Apache-2.0 | the gated benchmark, `typed_decisions_bench` |
+| [LocalLLaMA/typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) (test split) | Apache-2.0 | the benchmark the gates are read on, `typed_decisions_bench`; its train split (`typed_decisions_train`) is trained on |
 | [mteb/amazon_massive_intent](https://huggingface.co/datasets/mteb/amazon_massive_intent) (MASSIVE, en + fr) | CC-BY-4.0 | **held out**: zero-shot evaluation; 206 of the 2,000 English test utterances also appear in the training split, 201 of them in a source derived from MASSIVE (found after the evaluation, [results](/results/#s6-november-2026)) |
 | [AirsideLabs/notam-typed-decisions](https://huggingface.co/datasets/AirsideLabs/notam-typed-decisions) | CC-BY-4.0 | **held out**: test only |
 | [nvidia/When2Call](https://huggingface.co/datasets/nvidia/When2Call) (test split) | CC-BY-4.0 | test split of a trained source |
@@ -120,8 +120,10 @@ No output of a hosted LLM is used by s5.
 
 Every set a skycmd model reads is published, one parquet config per source with its licence
 (`scripts/hf-publish-data.py`): [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-series), [skycmd-text](https://huggingface.co/datasets/maxgfr/skycmd-text), [skycmd-ear](https://huggingface.co/datasets/maxgfr/skycmd-ear), [skycmd-math](https://huggingface.co/datasets/maxgfr/skycmd-math), [skycmd-route](https://huggingface.co/datasets/maxgfr/skycmd-route), [skycmd-route7](https://huggingface.co/datasets/maxgfr/skycmd-route7), [skycmd-cast-synth](https://huggingface.co/datasets/maxgfr/skycmd-cast-synth), [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals), [skycmd-trajectories](https://huggingface.co/datasets/maxgfr/skycmd-trajectories), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels). The GLM-5.3-flash labels are AI-generated and
-marked as such. Not republished: the gated `LocalLLaMA/typed-decisions`, the s6-ear audio
-(31 GB of log-mel features, rebuilt by `sky-data fetch-audio`) and GIFT-Eval (evaluation only).
+marked as such. skycmd-decisions holds both splits of `LocalLLaMA/typed-decisions` (Apache-2.0)
+since 20 November 2026: `typed_decisions_train`, and `typed_decisions_bench`, the benchmark's test
+split, for evaluation only. Not republished: the s6-ear audio (31 GB of log-mel features, rebuilt
+by `sky-data fetch-audio`) and GIFT-Eval (evaluation only).
 
 ## Libraries and technologies
 

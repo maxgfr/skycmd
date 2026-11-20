@@ -4,8 +4,11 @@ refusal (a file whose sha256 differs from the one runs/s6-route7 records), the l
 row whose source has no licence entry, a source without its row in DATA_LICENSES.md, a file of the
 data folder without an entry or a reason), the row-by-row checks of the files no run file hashes
 (the blind copies, the teacher's rewrites) and the absolute-path guard of the copied files, on an
-invented fixture of the data folder's layout. No pyarrow: the parquet writer is replaced by a
-recorder. python3 -I scripts/test_hf_publish_data.py"""
+invented fixture of the data folder's layout; the merge of a published manifest
+(`--merge-published`) and the refusal of an upload that would drop published configs; the
+agreement of skycmd-glm-labels recomputed from its two files and the refused count it requires.
+No pyarrow and no network: the parquet writer is replaced by a recorder, and the published
+manifests are invented. python3 -I scripts/test_hf_publish_data.py"""
 
 import contextlib
 import hashlib
@@ -316,6 +319,151 @@ class Helpers(unittest.TestCase):
                 hpd.warn_remote_leftovers(Api(), "u/set", out)
         self.assertIn("data/old.parquet", buf.getvalue())
         self.assertNotIn("data/kept.parquet", buf.getvalue())
+
+
+OLD, NEW, REV = "a" * 40, "b" * 40, "c" * 40
+
+
+def published(**entries):
+    """A published MANIFEST.json written at commit OLD."""
+    return {"commit": OLD, "source_files": entries}
+
+
+class MergePublished(unittest.TestCase):
+    """--merge-published and the guard against an upload that drops published configs."""
+
+    def test_carries_what_the_local_build_lacks(self):
+        rows = {"typed_decisions_train": 6, "typed_decisions_bench": 2}
+        manifest = {"typed_decisions_train.jsonl": {"sha256": "t", "rows": 6},
+                    "typed_decisions_bench.jsonl": {"sha256": "b", "rows": 2}}
+        pub = published(**{"boolq.jsonl": {"sha256": "q", "rows": 12}, "arc.jsonl": {"sha256": "r", "rows": 7}})
+        carried, extras, rebuilt = hpd.merge_published("decisions", hpd.DECISIONS, rows, manifest, pub, REV)
+        self.assertEqual(sorted(carried), ["arc", "boolq"])
+        self.assertEqual(rebuilt, ["typed_decisions_bench", "typed_decisions_train"])
+        self.assertEqual(extras, [])
+        self.assertEqual(rows["boolq"], 12)
+        self.assertEqual(manifest["boolq.jsonl"], {"sha256": "q", "rows": 12, "carried_from": {"commit": OLD, "revision": REV}})
+        self.assertNotIn("carried_from", manifest["typed_decisions_train.jsonl"])
+
+    def test_local_files_win(self):
+        rows, manifest = {"boolq": 13}, {"boolq.jsonl": {"sha256": "new", "rows": 13}}
+        pub = published(**{"boolq.jsonl": {"sha256": "old", "rows": 12}})
+        carried, _, rebuilt = hpd.merge_published("decisions", hpd.DECISIONS, rows, manifest, pub, REV)
+        self.assertEqual(carried, {})
+        self.assertEqual(rebuilt, ["boolq"])
+        self.assertEqual(manifest["boolq.jsonl"], {"sha256": "new", "rows": 13})
+        self.assertEqual(rows, {"boolq": 13})
+
+    def test_an_entry_carried_twice_keeps_its_first_origin(self):
+        first = {"commit": "d" * 40, "revision": "e" * 40}
+        pub = published(**{"arc.jsonl": {"sha256": "r", "rows": 7, "carried_from": first}})
+        rows, manifest = {"boolq": 1}, {"boolq.jsonl": {"sha256": "q", "rows": 1}}
+        carried, _, _ = hpd.merge_published("decisions", hpd.DECISIONS, rows, manifest, pub, REV)
+        self.assertEqual(carried["arc"], first)
+        self.assertEqual(manifest["arc.jsonl"]["carried_from"], first)
+
+    def test_extra_files_are_carried_without_rows(self):
+        known = {"en": None}
+        pub = published(**{"en.jsonl": {"sha256": "x", "rows": 3}, "tok.json": {"sha256": "y"}})
+        rows, manifest = {}, {}
+        carried, extras, _ = hpd.merge_published("text", known, rows, manifest, pub, REV)
+        self.assertEqual(list(carried), ["en"])
+        self.assertEqual(extras, ["tok.json"])
+        self.assertNotIn("tok", rows)
+
+    def test_refuses_a_carried_config_without_a_licence_entry(self):
+        pub = published(**{"gone.jsonl": {"sha256": "x", "rows": 3}})
+        with self.assertRaises(SystemExit) as e:
+            hpd.merge_published("decisions", hpd.DECISIONS, {"boolq": 1}, {"boolq.jsonl": {}}, pub, REV)
+        self.assertIn("['gone']", str(e.exception))
+
+    def test_upload_refused_when_the_build_lacks_published_configs(self):
+        pub = published(**{"boolq.jsonl": {"sha256": "q", "rows": 12}, "arc.jsonl": {"sha256": "r", "rows": 7},
+                           "tok.json": {"sha256": "y"}})
+        with self.assertRaises(SystemExit) as e:
+            hpd.check_not_dropping("decisions", ["typed_decisions_train", "typed_decisions_bench"], pub)
+        msg = str(e.exception)
+        self.assertIn("missing ['arc', 'boolq']", msg)
+        self.assertIn("--merge-published", msg)
+        self.assertNotIn("tok", msg)
+
+    def test_upload_allowed_when_every_published_config_is_rebuilt(self):
+        pub = published(**{"boolq.jsonl": {"sha256": "q", "rows": 12}})
+        hpd.check_not_dropping("decisions", ["boolq", "arc"], pub)
+
+    def test_card_names_rebuilt_and_carried_configs_and_their_commits(self):
+        rows = {"typed_decisions_train": 6, "typed_decisions_bench": 2, "boolq": 12, "arc": 7}
+        carried = {c: {"commit": OLD, "revision": REV} for c in ("boolq", "arc")}
+        text = hpd.card("decisions", hpd.SETS["decisions"], rows, NEW, "u", [], carried)
+        self.assertIn("`typed_decisions_bench` and `typed_decisions_train` are written at commit [`bbbbbbbb`]", text)
+        self.assertIn("2 configs are carried unchanged from the release written at commit [`aaaaaaaa`]", text)
+        carried["arc"] = {"commit": "d" * 40, "revision": REV}
+        text = hpd.card("decisions", hpd.SETS["decisions"], rows, NEW, "u", [], carried)
+        self.assertIn("from earlier releases (1 at commit [`aaaaaaaa`]", text)
+        self.assertIn("1 at commit [`dddddddd`]", text)
+        for c in rows:
+            self.assertIn(f"- config_name: {c}\n", text)
+            self.assertIn(f"| `data/{c}.parquet` |", text)
+        self.assertIn("test split of the public benchmark", text)
+        self.assertIn("never train on it", text)
+        self.assertNotIn("gated", text)
+        self.assertNotIn("Not republished", text)
+
+    def test_card_without_carried_configs_names_one_commit(self):
+        text = hpd.card("decisions", hpd.SETS["decisions"], {"boolq": 12}, NEW, "u")
+        self.assertIn("at commit [`bbbbbbbb`]", text)
+        self.assertNotIn("carried", text)
+        self.assertNotIn("test split of the public benchmark", text)
+
+
+class GlmLabels(unittest.TestCase):
+    """skycmd-glm-labels without agreement.json and glm_labels.refused.jsonl."""
+
+    LABELS = [{"src": "boolq"}, {"src": "boolq"}, {"src": "boolq"}, {"src": "typed_decisions_train"},
+              {"src": "typed_decisions_train"}, {"src": "tasksource:x/y"}]
+    AGREE = [{"src": "glm:boolq"}, {"src": "glm:boolq"}, {"src": "glm:typed_decisions_train"}]
+
+    def test_agreement_is_recomputed_per_source(self):
+        a = hpd.compute_agreement(self.LABELS, self.AGREE)
+        self.assertEqual(list(a), ["boolq", "tasksource:x/y", "typed_decisions_train"])
+        self.assertEqual(a["boolq"], {"labelled": 3, "agree": 2, "rate": 2 / 3})
+        self.assertEqual(a["tasksource:x/y"], {"labelled": 1, "agree": 0, "rate": 0.0})
+        self.assertEqual(a["typed_decisions_train"]["rate"], 0.5)
+        # the published file's layout: keys in order, two-space indent, floats as Python writes them
+        self.assertEqual(json.dumps({"boolq": a["boolq"]}, indent=2),
+                         '{\n  "boolq": {\n    "labelled": 3,\n    "agree": 2,\n    "rate": 0.6666666666666666\n  }\n}')
+
+    def test_agreement_refuses_a_kept_record_without_a_label(self):
+        with self.assertRaises(SystemExit) as e:
+            hpd.compute_agreement(self.LABELS, self.AGREE + [{"src": "glm:arc"}])
+        self.assertIn("['arc']", str(e.exception))
+
+    def test_refused_count_is_required_when_the_file_is_gone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "glm_labels.refused.jsonl"
+            with self.assertRaises(SystemExit) as e:
+                hpd.refused_count(p, None)
+            self.assertIn("--glm-refused", str(e.exception))
+            self.assertEqual(hpd.refused_count(p, 121), 121)
+            write_jsonl(p, [{}, {}])
+            self.assertEqual(hpd.refused_count(p, None), 2)
+            self.assertEqual(hpd.refused_count(p, 2), 2)
+            with self.assertRaises(SystemExit):
+                hpd.refused_count(p, 121)
+
+    def test_every_labelled_source_has_a_licence(self):
+        self.assertEqual(hpd.glm_source("typed_decisions_train")[1], "apache-2.0")
+        up, lic = hpd.glm_source("calibrated:mteb/banking77")
+        self.assertIn("m-lagnajit/calibrated-typed-decisions", up)
+        self.assertEqual(lic, "cc-by-4.0")
+        self.assertEqual(hpd.glm_source("tasksource:x/y")[1], "per row, see `tasksource_jev`")
+        for k in ("unknown", "nowhere:x", "tasksource:"):
+            with self.assertRaises(SystemExit):
+                hpd.glm_source(k)
+
+    def test_no_decision_source_is_left_out(self):
+        self.assertFalse(hasattr(hpd, "EXCLUDED"))
+        self.assertIn("evaluation only", hpd.DECISIONS["typed_decisions_bench"][2])
 
 
 if __name__ == "__main__":

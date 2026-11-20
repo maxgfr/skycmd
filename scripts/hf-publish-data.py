@@ -11,16 +11,22 @@ commit (DATA_LICENSES.md, "Published on Hugging Face").
 
     hf auth login                       # a token with write access
     uv run scripts/hf-publish-data.py [--dry-run] [--only decisions,games] [--user NAME]
-                                      [--data data] [--private] [--glm MIXDIR]
+                                      [--data data] [--private] [--merge-published]
+                                      [--glm MIXDIR [--glm-date D] [--glm-final] [--glm-refused N]]
                                       [--route-data ../skycmd-data/s6-route]
 
 Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) before upload; with
 --dry-run nothing is uploaded. Publication rules:
   * every row keeps the licence of its source (the card has one row per source);
-  * gated upstream sets are not republished (LocalLLaMA/typed-decisions, train and bench);
+  * `LocalLLaMA/typed-decisions` (Apache-2.0, ungated) is in skycmd-decisions since 20/11/2026:
+    `typed_decisions_train` and `typed_decisions_bench`, the benchmark's test split, which the card
+    marks as evaluation only;
   * the GLM-5.3-flash labels are published only with --glm MIXDIR (`sky-data teacher mix-labels
     --alpha 0 --out MIXDIR`) as `skycmd-glm-labels`, marked as AI-generated: the outputs of an
-    open-weight MIT model, published by the owner's decision (DATA_LICENSES.md, s6-nano / s6-micro);
+    open-weight MIT model, published by the owner's decision (DATA_LICENSES.md, s6-nano / s6-micro).
+    Without MIXDIR/agreement.json the agreement per source is computed from MIXDIR/glm.jsonl and
+    <data>/teacher/glm_labels.jsonl (and checked against the file when it is there); without
+    <data>/teacher/glm_labels.refused.jsonl, --glm-refused N gives the number of refused texts;
   * every set a model reads is published: decisions, games, numeric, secrets, commands, zero-shot,
     the s6-cast series, the MLM text with its tokenizers and the s6-ear questions with their clip
     index and Mimi codes; the LFM3-1.7B router's questions are published as `skycmd-math`
@@ -46,8 +52,17 @@ Every card names the commit it was written at, so the commit must describe the c
 stops when `git rev-parse HEAD` fails, and refuses to upload when a tracked file of the working
 tree has uncommitted changes (`--dry-run` only warns). An upload adds and replaces files and never
 deletes one on the Hub: a config published earlier and absent from the local build stays there.
-For the sets of `SETS`, the script lists such leftover parquet files after the upload; removing
-them is a manual step.
+For the sets of `SETS`:
+  * an upload reads the repository's published MANIFEST.json first, and is refused when the build
+    lacks one of the configs it lists (the card and the manifest would no longer name them);
+  * --merge-published (dry runs too, read-only) builds the card and the manifest from the union of
+    the local build and the published manifest: each published config the local data does not
+    have is carried forward with its rows and sha256 and, in the manifest, `carried_from` (the
+    commit it was written at and the Hub revision its manifest was read at). Local files win over
+    published ones of the same name; only the rebuilt parquet files, README.md and MANIFEST.json
+    are uploaded. A carried config needs its licence entry still;
+  * the script lists leftover parquet files after the upload (carried configs aside); removing
+    them is a manual step.
 """
 import argparse
 import hashlib
@@ -93,12 +108,24 @@ DECISIONS = {
     "neuro_laya": ("Aditharavind/laya-neuro-decisions (from STEW, Lim et al. 2018)", "cc-by-4.0", "EEG workload noul"),
     "trading_laya": ("Anay2010/laya-trading-decisions", "apache-2.0", "synthetic trading states"),
     "tetris_laya": ("aaung/laya-tetris-decisions", "apache-2.0", "placement choice"),
+    "typed_decisions_train": ("LocalLLaMA/typed-decisions (config `all`, split `train`)", "apache-2.0", "the benchmark's train split, 95/5 train / val by state"),
+    "typed_decisions_bench": ("LocalLLaMA/typed-decisions (config `all`, split `test`)", "apache-2.0", "evaluation only: the benchmark's test split, never trained on"),
 }
-# gated upstream: never republished
-EXCLUDED = {
-    "typed_decisions_train": "LocalLLaMA/typed-decisions is gated on the Hub",
-    "typed_decisions_bench": "LocalLLaMA/typed-decisions is gated on the Hub (the benchmark test split)",
+# what the card says about a config, when the config is in the release
+DECISIONS_NOTES = {
+    "typed_decisions_bench": "**`typed_decisions_bench` is the test split of the public benchmark\n"
+    "`LocalLLaMA/typed-decisions`, for evaluation only: never train on it.** skycmd reads its gates on it,\n"
+    "and a model trained on these rows has no valid score on that benchmark. `typed_decisions_train` is\n"
+    "the same benchmark's train split.",
+    "notam": "`notam` is evaluation only too: test rows (`split = test`), never trained on.",
 }
+# sub-sources of the GLM labels: the `src` prefix of a config's rows -> the config
+SRC_PREFIXES = {"tasksource": "tasksource_jev", "procedural": "procedural_typed", "open_jev": "open_jev",
+                "calibrated": "calibrated_typed"}
+# the training decisions selected for the teacher (DATA_LICENSES.md, s6-nano / s6-micro): labelled + refused
+GLM_SELECTED = 747_198
+# the first complete release of skycmd-glm-labels: the labels were written by then
+GLM_WRITTEN = ("5 November 2026", "8cc8e276adabbe1cc37998fb70fdd5c947ffda81")
 
 SCHEMA = """Each row is one typed decision question (docs/SPEC.md):
 
@@ -521,7 +548,34 @@ def to_parquet(src: Path, dst: Path, schema=None) -> int:
     return t.num_rows
 
 
-def card(name: str, s: dict, rows: dict, commit: str, user: str, extra_files: list = ()) -> str:
+def provenance(s: dict, rows: dict, commit: str, carried: dict = None) -> str:
+    """The card's sentence on which code wrote the files: every config at `commit`, or, when
+    configs are carried from the published release (`carried`: config -> {"commit", "revision"}),
+    the configs rebuilt at `commit` and the others with the commit they were written at."""
+    at = f"[`{commit[:8]}`]({REPO_URL}/commit/{commit})"
+    if not carried:
+        return f"Written by `{s['command']}` at commit {at}."
+    rebuilt = sorted(c for c in rows if c not in carried)
+    by_commit = {}
+    for c in sorted(carried):
+        by_commit.setdefault(carried[c]["commit"], []).append(c)
+    def link(c):
+        return f"[`{c[:8]}`]({REPO_URL}/commit/{c})"
+
+    if len(by_commit) == 1:
+        olds = f"the release written at commit {link(next(iter(by_commit)))}"
+    else:
+        olds = "earlier releases (" + ", ".join(
+            f"{len(cs)} at commit {link(c)}" for c, cs in sorted(by_commit.items(), key=lambda x: (-len(x[1]), x[0]))) + ")"
+    new = " and ".join(", ".join(f"`{c}`" for c in rebuilt).rsplit(", ", 1))
+    verb = "is" if len(rebuilt) == 1 else "are"
+    return (f"Written by `{s['command']}`.\n{new} {verb} written at commit {at}; the other\n"
+            f"{len(carried)} configs are carried unchanged from {olds}.\n"
+            f"`MANIFEST.json` gives each source file's sha256 and rows and, for a carried one, the commit and\n"
+            f"the Hub revision it comes from.")
+
+
+def card(name: str, s: dict, rows: dict, commit: str, user: str, extra_files: list = (), carried: dict = None) -> str:
     cfgs = "\n".join(
         f"- config_name: {stem}\n  data_files: data/{stem}.parquet" for stem in sorted(rows)
     )
@@ -535,8 +589,8 @@ def card(name: str, s: dict, rows: dict, commit: str, user: str, extra_files: li
             f"| `{stem}` | {src[stem][0]} | {src[stem][1]} | {src[stem][2]} | {rows[stem]:,} |"
             for stem in sorted(rows)
         )
-        excl = "\n".join(f"- `{k}`: {v}." for k, v in EXCLUDED.items())
-        excl = f"\nNot republished:\n{excl}\n" if s.get("per_source") else ""
+        notes = "\n\n".join(v for k, v in DECISIONS_NOTES.items() if k in rows) if s.get("per_source") else ""
+        notes = f"\n{notes}\n" if notes else ""
         extra = f"""## Sources and licences
 
 Each config is one source and keeps **its source's licence** (share-alike sources stay share-alike).
@@ -545,7 +599,7 @@ Attribution goes to the upstream authors; the conversion is ours.
 | config | upstream | licence | how it is used | rows |
 |---|---|---|---|---:|
 {table}
-{excl}"""
+{notes}"""
     elif s.get("upstream"):
         extra = f"## Source and licence\n\n{s['upstream']}. The conversion is ours.\n"
     else:
@@ -587,7 +641,7 @@ configs:
 {s['summary']}
 
 Part of [skycmd]({REPO_URL}), tiny decision models trained from scratch in Rust that run in the
-browser. Written by `{s['command']}` at commit [`{commit[:8]}`]({REPO_URL}/commit/{commit}).
+browser. {provenance(s, rows, commit, carried)}
 Licences of every set: [DATA_LICENSES.md]({REPO_URL}/blob/main/DATA_LICENSES.md).
 
 {schema}
@@ -608,6 +662,46 @@ sets carry their own teacher soft labels, see their cards), the games' oracles o
 {note}"""
 
 
+def compute_agreement(labels, agree) -> dict:
+    """`agreement.json` as `sky-data teacher mix-labels` writes it, from the raw labels and the
+    records kept by the agreement filter: per source (the `src` without its `glm:` prefix), in key
+    order, `labelled` (label rows), `agree` (kept records) and `rate` = agree / labelled."""
+    labelled = Counter(r["src"].removeprefix("glm:") for r in labels)
+    kept = Counter(r["src"].removeprefix("glm:") for r in agree)
+    orphans = sorted(set(kept) - set(labelled))
+    if orphans:
+        raise SystemExit(f"glm: agreeing records without a label for the sources {orphans[:10]}: refused")
+    return {k: {"labelled": labelled[k], "agree": kept[k], "rate": kept[k] / labelled[k]} for k in sorted(labelled)}
+
+
+def refused_count(path: Path, given) -> int:
+    """The number of texts the moderation refused: the lines of `glm_labels.refused.jsonl`, or
+    `--glm-refused N` when that file is gone (both, when they disagree, refuse)."""
+    if path.exists():
+        n = sum(1 for _ in open(path))
+        if given is not None and given != n:
+            raise SystemExit(f"glm: --glm-refused {given}, but {path} has {n} lines: refused")
+        return n
+    if given is None:
+        raise SystemExit(f"glm: {path} is missing: give the number of refused texts with --glm-refused N")
+    return given
+
+
+def glm_source(k: str) -> tuple:
+    """(upstream, licence of the texts) of a labelled source: a config of DECISIONS, or a sub-source
+    of one (`tasksource:<task>` of `tasksource_jev`, ...). A source with neither is refused."""
+    if k in DECISIONS:
+        return DECISIONS[k][:2]
+    prefix, _, rest = k.partition(":")
+    cfg = SRC_PREFIXES.get(prefix)
+    if not rest or cfg not in DECISIONS:
+        raise SystemExit(f"glm: no licence entry for the source {k!r}: add it to DECISIONS or SRC_PREFIXES")
+    up, lic = DECISIONS[cfg][:2]
+    if lic.startswith("other (per row"):
+        lic = f"per row, see `{cfg}`"
+    return f"`{cfg}`: {up}, `{rest}`", lic
+
+
 def publish_glm(a, api, user: str, sha: str) -> None:
     """skycmd-glm-labels: the GLM-5.3-flash teacher labels of the decision records."""
     import pyarrow as pa
@@ -615,40 +709,41 @@ def publish_glm(a, api, user: str, sha: str) -> None:
 
     mix = Path(a.glm)
     labels_path = Path(a.data) / "teacher" / "glm_labels.jsonl"
-
-    def keep(src):
-        return src.removeprefix("glm:") not in EXCLUDED
-
-    agree = [r for r in map(json.loads, open(mix / "glm.jsonl")) if keep(r["src"])]
-    labels = [r for r in map(json.loads, open(labels_path)) if keep(r["src"])]
-    agreement = {k: v for k, v in json.load(open(mix / "agreement.json")).items() if keep(k)}
-    refused = Path(a.data) / "teacher" / "glm_labels.refused.jsonl"
-    n_ref = sum(1 for _ in open(refused)) if refused.exists() else 0
+    agree = list(iter_jsonl(mix / "glm.jsonl"))
+    labels = list(iter_jsonl(labels_path))
+    agreement = compute_agreement(labels, agree)
+    if (mix / "agreement.json").exists():
+        if read_json(mix / "agreement.json") != agreement:
+            raise SystemExit(f"glm: {mix / 'agreement.json'} differs from the agreement computed from the two files: refused")
+        print(f"glm: {mix / 'agreement.json'} equals the agreement computed from the two files")
+    else:
+        print(f"glm: no agreement.json in {mix}: recomputed from glm.jsonl and glm_labels.jsonl ({len(agreement)} sources)")
+    n_ref = refused_count(Path(a.data) / "teacher" / "glm_labels.refused.jsonl", a.glm_refused)
+    sources = {k: glm_source(k) for k in agreement}
+    n_lab = sum(v["labelled"] for v in agreement.values())
+    n_ok = sum(v["agree"] for v in agreement.values())
+    if a.glm_final and n_lab + n_ref != GLM_SELECTED:
+        raise SystemExit(f"glm: {n_lab:,} labelled + {n_ref:,} refused is not the {GLM_SELECTED:,} selected decisions: refused")
     out = OUT / "skycmd-glm-labels"
     shutil.rmtree(out, ignore_errors=True)
     (out / "data").mkdir(parents=True)
     pq.write_table(pa.Table.from_pylist(agree), out / "data" / "agree.parquet", compression="zstd")
     pq.write_table(pa.Table.from_pylist(labels), out / "data" / "labels.parquet", compression="zstd")
     (out / "agreement.json").write_text(json.dumps(agreement, indent=2) + "\n")
-    n_lab = sum(v["labelled"] for v in agreement.values())
-    n_ok = sum(v["agree"] for v in agreement.values())
 
+    decisions = f"[skycmd-decisions](https://huggingface.co/datasets/{user}/skycmd-decisions)"
     status = (
-        f"**Complete release** ({a.glm_date}): the labelling is finished. All 747,198 training decisions\n"
-        f"of skycmd ([skycmd-decisions](https://huggingface.co/datasets/{user}/skycmd-decisions) and the\n"
-        f"gated `LocalLLaMA/typed-decisions`) were sent to the teacher; the {n_lab:,} labels of the\n"
-        f"published sources are here."
+        f"**Complete release** ({a.glm_date}): the labelling is finished. All {GLM_SELECTED:,} training\n"
+        f"decisions of skycmd ({decisions})\n"
+        f"were sent to the teacher, and all {n_lab:,} labels are here: every decision but the {n_ref:,}\n"
+        f"texts the moderation refused."
         if a.glm_final
-        else f"**Partial release** ({a.glm_date}): {n_lab:,} of the 747,198 training decisions of\n"
-        f"[skycmd-decisions](https://huggingface.co/datasets/{user}/skycmd-decisions) are labelled so far. This\n"
-        f"repository is updated as the labelling goes on."
+        else f"**Partial release** ({a.glm_date}): {n_lab:,} of the {GLM_SELECTED:,} training decisions of\n"
+        f"{decisions} are labelled so far. This repository is updated as the labelling goes on."
     )
-
-    def up(k):
-        return DECISIONS[k][:2] if k in DECISIONS else (k, "see the source")
-
+    written, first = GLM_WRITTEN
     table = "\n".join(
-        f"| `{k}` | {up(k)[0]} | {up(k)[1]} | {agreement[k]['labelled']:,} | "
+        f"| `{k}` | {sources[k][0]} | {sources[k][1]} | {agreement[k]['labelled']:,} | "
         f"{agreement[k]['agree']:,} ({agreement[k]['rate']:.3f}) |"
         for k in sorted(agreement)
     )
@@ -688,7 +783,10 @@ configs:
 The teacher of the skycmd s6-nano and s6-micro models (`docs/s6-gen-prereg.md`, amendment 1): for
 each typed decision question (choice / score / noul), GLM-5.3-flash gives one probability per option,
 20 to 50 questions per call, temperature 0.2. Written by `sky-data teacher label-decisions` and
-`sky-data teacher mix-labels --alpha 0` at commit [`{sha[:8]}`]({REPO_URL}/commit/{sha}).
+`sky-data teacher mix-labels --alpha 0`, finished on {written} (the first complete release, at
+commit [`{first[:8]}`]({REPO_URL}/commit/{first})). The labels of `typed_decisions_train`, written
+then and left out of that release, are here since 20 November 2026. This release is assembled by
+`scripts/hf-publish-data.py --glm` at commit [`{sha[:8]}`]({REPO_URL}/commit/{sha}).
 
 ## Configs
 
@@ -700,8 +798,9 @@ each typed decision question (choice / score / noul), GLM-5.3-flash gives one pr
   `<source>-<hash>` of the record (`distill::record_id` in the skycmd code), so a label joins back to
   its record in skycmd-decisions.
 
-Not included: the {n_ref:,} texts the z.ai moderation refused (code 1301), and the records of
-`LocalLLaMA/typed-decisions`, a gated set.
+Not included: the {n_ref:,} texts the z.ai moderation refused (code 1301). Never sent to the
+teacher: the evaluation sets (`typed_decisions_bench`, `notam`), the config `banking77`, the records
+GLM had generated, and every validation and test split.
 
 ## Agreement with the gold answer, per source
 
@@ -1760,15 +1859,78 @@ def head_commit(dry_run: bool) -> str:
     return commit
 
 
-def warn_remote_leftovers(api, repo_id: str, out: Path) -> None:
-    """Lists the parquet files of a dataset repo that the local build no longer has. The upload
-    never deletes them (removing a published config is a manual step), so they are only named."""
+def fetch_published_manifest(repo_id: str):
+    """(MANIFEST.json, Hub revision) of a published dataset repository, read-only and without a
+    token for a public one; (None, None) when the repository or its manifest does not exist."""
+    from huggingface_hub import HfApi, hf_hub_download
+    from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError
+
+    try:
+        revision = HfApi().dataset_info(repo_id).sha
+        return read_json(hf_hub_download(repo_id, "MANIFEST.json", repo_type="dataset", revision=revision)), revision
+    except (EntryNotFoundError, RepositoryNotFoundError):
+        return None, None
+
+
+def config_of(key: str) -> str:
+    """The config of a manifest key: the source file's name without `.jsonl`."""
+    return key.removesuffix(".jsonl")
+
+
+def published_configs(published) -> set:
+    """The configs a published manifest lists (its entries with rows; the others are extra files)."""
+    return {config_of(k) for k, v in (published or {}).get("source_files", {}).items() if "rows" in v}
+
+
+def check_not_dropping(name: str, local: set, published) -> None:
+    """Without --merge-published, an upload must rebuild every published config: the card and the
+    manifest would otherwise list fewer configs than the repository holds."""
+    missing = sorted(published_configs(published) - set(local))
+    if missing:
+        raise SystemExit(
+            f"{name}: refusing to upload: the build has {len(set(local))} configs and the published manifest "
+            f"{len(published_configs(published))}; missing {missing}. Rebuild them, or pass --merge-published "
+            f"to carry them forward."
+        )
+
+
+def merge_published(name: str, known: dict, rows: dict, manifest: dict, published: dict, revision: str):
+    """Carry forward into `rows` and `manifest` (changed in place) every published config that the
+    local build does not have; the local files win over published ones of the same name. Each
+    carried entry keeps its sha256 and rows and records where it comes from (`carried_from`: the
+    commit it was written at, the Hub revision its manifest was read at); an entry already carried
+    keeps its first origin. A carried config without a licence entry (`known`) is refused.
+    Returns (carried: config -> carried_from, carried extra files, rebuilt configs)."""
+    src = published.get("source_files", {})
+    carried, extras = {}, []
+    unknown = sorted(config_of(k) for k, v in src.items() if "rows" in v and config_of(k) not in rows
+                     and config_of(k) not in known)
+    if unknown:
+        raise SystemExit(f"{name}: published configs without a licence entry {unknown}: refused (add them to its sources)")
+    for key, entry in sorted(src.items()):
+        if key in manifest:
+            continue
+        origin = entry.get("carried_from") or {"commit": published["commit"], "revision": revision}
+        manifest[key] = {**entry, "carried_from": origin}
+        if "rows" in entry:
+            rows[config_of(key)] = entry["rows"]
+            carried[config_of(key)] = origin
+        else:
+            extras.append(key)
+    rebuilt = sorted(c for c in rows if c not in carried)
+    return carried, extras, rebuilt
+
+
+def warn_remote_leftovers(api, repo_id: str, out: Path, carried=()) -> None:
+    """Lists the parquet files of a dataset repo that the local build no longer has (the configs
+    carried by --merge-published aside). The upload never deletes them (removing a published
+    config is a manual step), so they are only named."""
     try:
         remote = api.list_repo_files(repo_id, repo_type="dataset")
     except Exception as e:  # a listing failure must not hide that the upload itself succeeded
         print(f"  could not list the files of {repo_id}: {e}")
         return
-    local = {p.relative_to(out).as_posix() for p in out.rglob("*.parquet")}
+    local = {p.relative_to(out).as_posix() for p in out.rglob("*.parquet")} | {f"data/{c}.parquet" for c in carried}
     left = sorted(f for f in remote if f.endswith(".parquet") and f not in local)
     if left:
         print(f"  warning: {len(left)} parquet file(s) on the Hub are not in this build and were kept: " + ", ".join(left))
@@ -1784,6 +1946,10 @@ def main() -> None:
     ap.add_argument("--glm", default="", help="dir of `sky-data teacher mix-labels --alpha 0`: publish skycmd-glm-labels")
     ap.add_argument("--glm-date", default="", help="date of the release, shown in the card")
     ap.add_argument("--glm-final", action="store_true", help="the labelling is finished: a complete release")
+    ap.add_argument("--glm-refused", type=int, default=None,
+                    help="texts refused by the moderation, required when data/teacher/glm_labels.refused.jsonl is gone")
+    ap.add_argument("--merge-published", action="store_true",
+                    help="sets of SETS: carry forward the published configs that the local build does not have")
     ap.add_argument("--route-data", default=str(ROUTE_DATA),
                     help="the s6-route data folder (skycmd-route, `--only route`; skycmd-route7, `--only route7`)")
     a = ap.parse_args()
@@ -1812,13 +1978,25 @@ def main() -> None:
         files = set_files(base, s)
         known = DECISIONS if s.get("per_source") else s.get("sources")
         if known is not None:
-            unknown = [c for c, _, _ in files if c not in known and c not in EXCLUDED]
+            unknown = [c for c, _, _ in files if c not in known]
             if unknown:
-                raise SystemExit(f"{name}: no licence entry for {unknown}: add them to its sources or EXCLUDED")
-            files = [x for x in files if x[0] in known]
+                raise SystemExit(f"{name}: no licence entry for {unknown}: add them to its sources")
         if not files:
             print(f"{name}: no file under {data} for {s['files']}, skipped")
             continue
+        repo_id = f"{user}/{s['repo']}"
+        # the published manifest: always with --merge-published (dry runs too), and before any
+        # upload, so that a build without some published configs is refused
+        published, revision = None, None
+        if a.merge_published or not a.dry_run:
+            try:
+                published, revision = fetch_published_manifest(repo_id)
+            except Exception as e:
+                raise SystemExit(f"{name}: could not read the published MANIFEST.json of {repo_id} ({e}): refused")
+            if a.merge_published and published is None:
+                print(f"{name}: {repo_id} has no published MANIFEST.json: nothing to carry forward")
+        if not a.merge_published and published is not None:
+            check_not_dropping(name, [c for c, _, _ in files], published)
         out = OUT / s["repo"]
         shutil.rmtree(out, ignore_errors=True)
         (out / "data").mkdir(parents=True)
@@ -1828,32 +2006,39 @@ def main() -> None:
             rows[cfg] = to_parquet(f, out / "data" / f"{cfg}.parquet", schema)
             manifest[key] = {"sha256": sha256(f), "rows": rows[cfg]}
         extra_files = []
+        sub = s.get("extra_dir", "tokenizers")
         if s.get("extra"):
-            sub = s.get("extra_dir", "tokenizers")
             dst = out / sub
             dst.mkdir()
             for f in sorted(base.glob(s["extra"])):
                 shutil.copy(f, dst / f.name)
                 manifest[f.name] = {"sha256": sha256(f)}
                 extra_files.append(f"{sub}/{f.name}")
+        carried = {}
+        if a.merge_published and published is not None:
+            carried, extras, rebuilt = merge_published(name, known or {}, rows, manifest, published, revision)
+            extra_files += [f"{sub}/{x}" for x in extras]
+            print(f"{name}: rebuilt {len(rebuilt)} configs from {data}: {', '.join(rebuilt)}")
+            print(f"{name}: carried {len(carried)} configs from the published manifest (commit {published['commit'][:8]}, "
+                  f"Hub revision {revision[:8]}): {', '.join(sorted(carried))}" + (f"; and {len(extras)} files" if extras else ""))
         (out / "MANIFEST.json").write_text(json.dumps({"commit": commit, "source_files": manifest}, indent=2) + "\n")
         if s.get("results"):
             s = {**s, "results_rows": json.load(open(base / s["results"]))}
-        (out / "README.md").write_text(card(name, s, rows, commit, user, extra_files))
+        (out / "README.md").write_text(card(name, s, rows, commit, user, extra_files, carried))
         size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
-        print(f"{name}: {user}/{s['repo']}, {len(rows)} files, {sum(rows.values()):,} rows, {size / 1e6:.1f} MB")
+        print(f"{name}: {repo_id}, {len(rows)} configs ({len(rows) - len(carried)} built here), "
+              f"{sum(rows.values()):,} rows, {size / 1e6:.1f} MB to upload")
         if a.dry_run:
             continue
-        repo_id = f"{user}/{s['repo']}"
         api.create_repo(repo_id, repo_type="dataset", private=a.private, exist_ok=True)
         api.upload_folder(
             repo_id=repo_id,
             repo_type="dataset",
             folder_path=str(out),
-            commit_message=f"skycmd {commit[:8]}: {s['pretty']}",
+            commit_message=f"skycmd {commit[:8]}: {s['pretty']}" + (f" ({len(rows) - len(carried)} configs rebuilt)" if carried else ""),
         )
         print(f"  uploaded: https://huggingface.co/datasets/{repo_id}")
-        warn_remote_leftovers(api, repo_id, out)
+        warn_remote_leftovers(api, repo_id, out, carried)
 
 
 if __name__ == "__main__":

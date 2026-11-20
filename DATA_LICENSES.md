@@ -1,7 +1,8 @@
 # Data licenses
 
-Every dataset used by `sky-data` is public and ungated on the Hugging Face Hub. The produced
-files live under `data/` (gitignored) and are not redistributed by this repository. Row counts
+Every dataset used by `sky-data` is public on the Hugging Face Hub, and ungated unless its row says
+otherwise. The produced files live under `data/` (gitignored) and are not redistributed by this
+repository; the sets that skycmd publishes on the Hub are listed at the end. Row counts
 are the records written by `sky-data fetch-decisions` / `fetch-commands` / `fetch-text` /
 `augment-paraphrases` with the default caps (seed 1234). Unless noted, every decision source is
 split 95/5 into train/val by state, so all questions about one state land in the same split.
@@ -31,7 +32,7 @@ split 95/5 into train/val by state, so all questions about one state land in the
 | m-lagnajit/calibrated-typed-decisions | CC-BY-4.0 | https://huggingface.co/datasets/m-lagnajit/calibrated-typed-decisions | train + validation; only rows whose per-row `source_license` is permissive (all of them: Apache-2.0 2,600, CC-BY-3.0 1,300, CC-BY-4.0 2,598); calibrated `teacher_probs` as soft targets; `src = calibrated:<source>` | 6,498 |
 | stanfordnlp/snli | CC-BY-SA-4.0 | https://huggingface.co/datasets/stanfordnlp/snli | train; choice {entailment, neutral, contradiction} as for MNLI; cap 40k | 40,000 |
 | Rowan/hellaswag | MIT | https://huggingface.co/datasets/Rowan/hellaswag | train + validation (test has no labels); choice A..D over the endings, state = activity + context; cap 30k | 30,000 |
-| LocalLLaMA/typed-decisions (config `all`) | Apache-2.0 | https://huggingface.co/datasets/LocalLLaMA/typed-decisions | **test split only**, kept as an external benchmark (`split = "test"`), never trained on | 2,000 |
+| LocalLLaMA/typed-decisions (config `all`) | Apache-2.0 | https://huggingface.co/datasets/LocalLLaMA/typed-decisions | **test split** kept as an external benchmark (`typed_decisions_bench`, `split = "test"`), never trained on; train split as `typed_decisions_train` (95/5 by state: 5,640 train, 360 val). Downloaded on 25/10/2026 by `sky-data fetch-decisions`, which pins no revision (on 20/11/2026 the Hub's commit is `822f44b3`, last modified on 19/11/2026; s5 pinned `c806f6c6`, below) | 2,000 + 6,000 |
 | AirsideLabs/notam-typed-decisions (configs `notam_multi` + `deel_subject`) | CC-BY-4.0 | https://huggingface.co/datasets/AirsideLabs/notam-typed-decisions | **evaluation only** (`split = "test"`); rows without a label (3,118) are skipped; `src = notam:<config>` | 9,051 |
 | allenai/qasc | CC-BY-4.0 | https://huggingface.co/datasets/allenai/qasc | train + validation (the test split has no answer key); choice A..H, state = the two supporting facts then the question | 9,060 |
 | agentlans/refusal-classifier-data (config `english_only`) | CC-BY-4.0 | https://huggingface.co/datasets/agentlans/refusal-classifier-data | train; noul "Does the assistant refuse or decline the user's request?", state = the last user turn and the assistant reply (600 characters each); cap 30k | 30,000 |
@@ -92,10 +93,11 @@ outputs for "training, labeling, fine-tuning … related to external models", an
 that generated content be marked as AI-generated. The MIT licence covers the weights, not the
 API. The owner decided to publish the labels despite §1(f)(xii) ("it is open source, you can
 publish"): first in part while the labelling ran (republished at 72% on 4 November 2026), then in
-full on 5 November 2026. The data set is marked as AI-generated, as §III.5(d) asks. It has two configs: `agree` (the records whose teacher argmax
-is the gold answer, with the teacher's probabilities as the target) and `labels` (every raw
-label). It holds neither the texts refused by the moderation nor `typed_decisions_train`, which is
-gated upstream. The GLM labels are never used for the LFM3-1.7B fine-tune (`docs/lfm3-ft-prereg.md`).
+full on 5 November 2026, without the labels of `typed_decisions_train`; those were added on
+20 November 2026, with the rows of `LocalLLaMA/typed-decisions` in `maxgfr/skycmd-decisions`. The data set is marked as AI-generated, as §III.5(d) asks. It has two configs: `agree` (the records whose teacher argmax
+is the gold answer, with the teacher's probabilities as the target; 560,238 rows) and `labels`
+(every raw label; 747,077 rows, 470 sources). It holds every label of the 747,198 selected
+decisions except the 121 texts refused by the moderation. The GLM labels are never used for the LFM3-1.7B fine-tune (`docs/lfm3-ft-prereg.md`).
 
 s6-nano and s6-micro train on `data/decisions`, `data/distill`, `data/games` and `data/numeric`
 (train splits only) and pretrain on `data/text-open` then `data/text`. The GLM files of
@@ -114,7 +116,7 @@ s4 teacher corpus.
 
 | dataset | license | URL | how it is used | rows used |
 |---|---|---|---|---|
-| LocalLLaMA/typed-decisions | Apache-2.0 | see above | test split (`typed_decisions_bench`), the gated benchmark | 2,000 |
+| LocalLLaMA/typed-decisions | Apache-2.0 | see above | test split (`typed_decisions_bench`), the benchmark the s6 gates are read on | 2,000 |
 | MASSIVE (`en`, `fr`) | CC-BY-4.0 | see above | **zero-shot**: `zs_massive_en` / `zs_massive_fr` as for s4; MASSIVE is not in `data/decisions` | 2,000 + 1,000 |
 | AirsideLabs/notam-typed-decisions | CC-BY-4.0 | see above | test only, never trained on | 2,000 per config |
 | nvidia/When2Call | CC-BY-4.0 | see above | the `test/mcq` split; its train and val splits are trained on (same distribution) | 2,000 |
@@ -395,9 +397,12 @@ this machine, and none of them is committed or published.
 ## Published on Hugging Face (`scripts/hf-publish-data.py`)
 
 One dataset repository per set, one parquet config per source, each config under its source's
-licence (share-alike stays share-alike). Not republished: `LocalLLaMA/typed-decisions` (gated), the
-audio of s6-ear (31 GB of log-mel features, rebuilt by `sky-data fetch-audio`) and GIFT-Eval (an
-evaluation set). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-series) (s6-cast),
+licence (share-alike stays share-alike). Not republished: the audio of s6-ear (31 GB of log-mel
+features, rebuilt by `sky-data fetch-audio`) and GIFT-Eval (an evaluation set). Since 20/11/2026
+`skycmd-decisions` also holds both splits of `LocalLLaMA/typed-decisions` (Apache-2.0):
+`typed_decisions_train` and `typed_decisions_bench`, the benchmark's test split, marked as
+evaluation only; its other 27 configs are those of the release of 03/11/2026, carried unchanged
+(`scripts/hf-publish-data.py --merge-published`). [skycmd-series](https://huggingface.co/datasets/maxgfr/skycmd-series) (s6-cast),
 [skycmd-text](https://huggingface.co/datasets/maxgfr/skycmd-text) (MLM text and tokenizers),
 [skycmd-ear](https://huggingface.co/datasets/maxgfr/skycmd-ear) (s6-ear questions, clip index, Mimi
 codes), [skycmd-math](https://huggingface.co/datasets/maxgfr/skycmd-math) (LFM3 router

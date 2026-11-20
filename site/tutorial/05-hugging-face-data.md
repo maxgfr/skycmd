@@ -260,7 +260,7 @@ s6 pretrains on `--text data/text-open,data/text`. The open set comes first, so 
 | kgrozdanovski/assistant-decisions | Apache-2.0 | 15,455 |
 | pngwn/typed-decisions | CC-BY-SA-4.0 | 51,019 |
 | nyu-mll/glue (mnli) | see the MultiNLI / GLUE card | 60,000 |
-| LocalLLaMA/typed-decisions | Apache-2.0 | 2,000 (test only) |
+| LocalLLaMA/typed-decisions | Apache-2.0 | 2,000 test (`typed_decisions_bench`) + 6,000 train (`typed_decisions_train`) |
 
 Generated files live under `data/`, which is gitignored, and the repository does not redistribute them. `Salesforce/xlam-function-calling-60k` was skipped because it is gated, and Hub drone-command datasets without a declared license were not used.
 
