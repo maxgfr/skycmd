@@ -459,7 +459,7 @@ function caseLabel(c: DemoCase) {
     <div v-if="isSecrets && secretAnswers.length && !status" class="live-out">
       <div class="live-cards">
         <section v-for="sa in secretAnswers" :key="sa.q.id" class="live-card">
-          <h4>{{ QUESTION_LABEL[sa.q.id] }}</h4>
+          <h3>{{ QUESTION_LABEL[sa.q.id] }}</h3>
           <template v-for="v in [secretRows(sa, sa.q.id === 'secret' ? 2 : 3)]" :key="sa.q.id">
             <p class="live-answer">
               <strong>{{ sa.q.id === 'secret' ? (v.best.i === 1 ? 'yes' : 'no') : v.best.key }}</strong>
@@ -483,7 +483,7 @@ function caseLabel(c: DemoCase) {
           </template>
         </section>
         <section v-if="secretLines < 2" class="live-card">
-          <h4>{{ QUESTION_LABEL.line }}</h4>
+          <h3>{{ QUESTION_LABEL.line }}</h3>
           <p class="live-meta">Not asked: a one-line text, as in the generator.</p>
         </section>
       </div>
@@ -735,9 +735,11 @@ function caseLabel(c: DemoCase) {
   padding: 10px 12px;
   background: var(--vp-c-bg);
 }
-.live-card h4 {
+.live-card h3 {
   margin: 0 0 6px;
   font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: normal;
 }
 .live-card .live-meta {
   margin-top: 8px;

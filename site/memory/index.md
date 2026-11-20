@@ -1,5 +1,6 @@
 ---
 title: 'Memory: s6-sleep3-nano (failed gate)'
+description: "s6-sleep3-nano, s6-nano with a fast-weight memory, plays the recall probe in your browser. Its memory is used, sleep passes did not help, and it failed its pre-registered gate: a result, not a model to use."
 outline: [2, 2]
 ---
 
@@ -21,7 +22,9 @@ outline: [2, 2]
 | N = 4 (sleep) | 0.6290 | 0.5910 | 0.4620 | 0.2867 |
 | control, no memory | 0.2420 | 0.2398 | 0.2518 | 0.2423 |
 
-The memory is real and it fades with the delay. At the smaller pico size, the pilot of this version had answered 1.0000 at every delay on its development episodes (against 0.2542 for its control); at the nano size the same recipe reaches about 0.49. Why is not known yet.
+The memory is real and it fades with the delay. At the smaller pico size, the pilot of this version had answered 1.0000 at every delay on its development episodes (against 0.2542 for its control); at the nano size the same recipe reaches about 0.49. Why was not measured; a diagnosis from the training logs found that the nano runs ended halfway up their learning curve ([Results](/results/#s6-sleep3-nano-failed)).
+
+## Play the recall probe
 
 <ClientOnly>
   <MemoryDemo />

@@ -1,4 +1,45 @@
-import { defineConfig } from 'vitepress'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineConfig, type HeadConfig } from 'vitepress'
+
+const SITE_URL = 'https://maxgfr.github.io/skycmd/'
+const SITE_DESCRIPTION =
+  'Tiny decision models trained on one laptop and run in your browser through WebAssembly, with pre-registered gates and every result published, failures included.'
+
+/** The page's URL on the deployed site (cleanUrls is off: chapters end in .html). */
+function pageUrl(relativePath: string): string {
+  return SITE_URL + relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '.html')
+}
+
+/** VitePress writes the description into `<meta name="description">` without escaping quotes. */
+function safeQuotes(text: string): string {
+  return text.replace(/"([^"]*)"/g, '\u201c$1\u201d').replace(/"/g, '\u201d')
+}
+
+/** A page without a `description` in its front matter gets its first paragraph, as plain text. */
+function firstParagraph(source: string): string {
+  const body = source
+    .replace(/^---\n[\s\S]*?\n---\n/, '')
+    .replace(/<script[\s\S]*?<\/script>/g, '')
+    .replace(/<style[\s\S]*?<\/style>/g, '')
+    .replace(/```[\s\S]*?```/g, '')
+  for (const block of body.split(/\n\s*\n/)) {
+    const b = block.trim()
+    if (!b || /^(#|<|:::|\||!\[|- |\d+\. |>)/.test(b)) continue
+    const text = b
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/[`*_]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (text.length < 40 || text.endsWith(':')) continue
+    if (text.length <= 200) return text
+    const cut = text.slice(0, 200)
+    return cut.slice(0, cut.lastIndexOf(' ')).replace(/[,;:]$/, '') + '…'
+  }
+  return SITE_DESCRIPTION
+}
 
 const chapters: [string, string][] = [
   ['01-why-tiny-decision-models', '01 Why tiny decision models'],
@@ -56,22 +97,49 @@ export default defineConfig({
     html.replace(/localStorage\.getItem\((['"])vitepress-theme-appearance\1\)/, readAppearance),
   lang: 'en-US',
   title: 'skycmd',
-  description:
-    'Tiny System One decision models, trained from scratch in Rust and playing games live in your browser through WASM.',
+  description: SITE_DESCRIPTION,
   cleanUrls: false,
   lastUpdated: false,
+  sitemap: { hostname: SITE_URL },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/skycmd/favicon.svg' }],
     ['meta', { name: 'theme-color', content: '#0ea5e9' }],
-    ['meta', { property: 'og:title', content: 'skycmd: tiny decision models in the browser' }],
-    [
-      'meta',
-      {
-        property: 'og:description',
-        content: 'A bidirectional encoder with a typed decision head, scoring options in one forward pass.',
-      },
-    ],
   ],
+  transformPageData(pageData, { siteConfig }) {
+    if (pageData.isNotFound) return
+    if (pageData.frontmatter.description) {
+      pageData.description = safeQuotes(pageData.frontmatter.description)
+      return
+    }
+    try {
+      pageData.description = safeQuotes(firstParagraph(readFileSync(join(siteConfig.srcDir, pageData.relativePath), 'utf8')))
+    } catch {
+      /* a page with no source file keeps the site's description */
+    }
+  },
+  // Canonical URL, Open Graph and Twitter card tags, per page.
+  transformHead({ pageData, title, description }) {
+    if (pageData.isNotFound) return []
+    const url = pageUrl(pageData.relativePath)
+    const image = SITE_URL + 'og-image.png'
+    const head: HeadConfig[] = [
+      ['link', { rel: 'canonical', href: url }],
+      ['meta', { property: 'og:type', content: pageData.relativePath === 'index.md' ? 'website' : 'article' }],
+      ['meta', { property: 'og:site_name', content: 'skycmd' }],
+      ['meta', { property: 'og:url', content: url }],
+      ['meta', { property: 'og:title', content: title }],
+      ['meta', { property: 'og:description', content: description }],
+      ['meta', { property: 'og:image', content: image }],
+      ['meta', { property: 'og:image:width', content: '1200' }],
+      ['meta', { property: 'og:image:height', content: '630' }],
+      ['meta', { property: 'og:image:alt', content: 'skycmd: tiny decision models, trained on one laptop, run in your browser through WebAssembly.' }],
+      ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+      ['meta', { name: 'twitter:title', content: title }],
+      ['meta', { name: 'twitter:description', content: description }],
+      ['meta', { name: 'twitter:image', content: image }],
+    ]
+    return head
+  },
   themeConfig: {
     logo: { src: '/favicon.svg', alt: '' },
     // Five entries: the catalogue, the demos, the evidence, the reading and the install guide.

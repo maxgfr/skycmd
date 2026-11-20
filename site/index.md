@@ -25,6 +25,8 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <div class="home-section">
 
+<LiveStats />
+
 <section class="home-block" aria-labelledby="project-state">
 
 <h2 id="project-state">The state of the project</h2>
@@ -32,8 +34,6 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 <p class="home-lead">The experiments are finished, as of 20 November 2026. Every line is closed or published: 20 model files (5 passed their gate, 10 failed it and are published as results, 5 had no gate), 16 data sets on Hugging Face and 24 pre-registrations. The repository stays as the record: the models, the data sets, the pre-registrations and the <a href="./paper/">technical report</a>.</p>
 
 </section>
-
-<LiveStats />
 
 <section class="home-block" aria-labelledby="works-today">
 

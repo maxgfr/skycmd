@@ -632,8 +632,8 @@ function pct(p: number) {
   color: var(--vp-c-text-2);
 }
 .seg button.on {
-  color: #fff;
-  background: var(--vp-c-brand-1);
+  color: var(--vp-button-brand-text);
+  background: var(--vp-button-brand-bg);
 }
 .field {
   display: inline-flex;
@@ -771,8 +771,8 @@ function pct(p: number) {
   border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
-  background: var(--vp-c-brand-1);
+  color: var(--vp-button-brand-text);
+  background: var(--vp-button-brand-bg);
   pointer-events: none;
 }
 .overlay {
@@ -876,7 +876,7 @@ function pct(p: number) {
 }
 .tag.ok {
   color: #fff;
-  background: #16a34a;
+  background: #15803d;
 }
 .throttle {
   margin: 0 0 10px !important;

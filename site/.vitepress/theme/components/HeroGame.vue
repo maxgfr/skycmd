@@ -165,11 +165,11 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 600;
   color: #fff;
-  background: rgba(14, 165, 233, 0.9);
+  background: rgba(3, 105, 161, 0.94);
   text-decoration: none;
 }
 .hero-play:hover {
-  background: #0284c7;
+  background: #075985;
 }
 .hero-error {
   position: absolute;

@@ -1,5 +1,6 @@
 ---
 title: Secrets verifier
+description: "s6-secrets-verify-pico, a 250 KB model that judges whether a value found by a secret-scanning rule is a real credential. It failed its pre-registered gate (G1) and is published as a result, not for use."
 outline: [2, 2]
 ---
 

@@ -287,8 +287,8 @@ function kbLabel(e: number) {
   padding: 8px 16px;
   border-radius: 10px;
   font-weight: 700;
-  color: #fff;
-  background: var(--vp-c-brand-1);
+  color: var(--vp-button-brand-text);
+  background: var(--vp-button-brand-bg);
 }
 .run:disabled {
   opacity: 0.6;
