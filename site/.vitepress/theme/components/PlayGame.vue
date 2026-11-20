@@ -4,7 +4,6 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { GameRunner, newHud, type GameKind, type Hud, type Mode } from '../lib/runner'
 import { actionForKey, actionForSwipe, FirstPress } from '../lib/controls'
 import {
-  clockStepMicros,
   engineLabel,
   FAMILY_LABEL,
   familyOf,
@@ -16,6 +15,7 @@ import {
   loadManifest,
   loadWasm,
   playsGame,
+  useClockStep,
   type Family,
   type ModelEntry,
   type Question,
@@ -135,8 +135,9 @@ const tau = ref('auto')
 const status = ref('Loading the wasm module…')
 const error = ref('')
 const hud = ref<Hud>(newHud())
-/** The browser clock's step in µs, measured on the client at mount (0 until then). */
-const clockStep = ref(0)
+/** The browser clock's step in µs, measured on the client at mount (0 until then), and again
+ * with each HUD update while it is still unknown. */
+const clockStep = useClockStep(() => hud.value)
 const latency = computed(() =>
   decisionLatency({ medianUs: hud.value.medianUs, meanUs: hud.value.meanUs, n: hud.value.timedN }, clockStep.value),
 )
@@ -341,7 +342,6 @@ function onPointerUp(e: PointerEvent) {
 }
 
 onMounted(async () => {
-  clockStep.value = clockStepMicros()
   const q = new URLSearchParams(window.location.search).get('game')
   if (q === 'flappy' || q === 'rescue' || q === 'dodge' || q === 'doom') kind.value = q
   window.addEventListener('keydown', onKey)

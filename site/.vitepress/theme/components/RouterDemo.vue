@@ -20,12 +20,12 @@
 // own reading, and the threshold is named τ_ask7 (the engine stores it under the key `tau_ask3`).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  clockStepMicros,
   engineLabel,
   formatInt,
   formatMicros,
   loadRouter,
   loadRouters,
+  useClockStep,
   type RouterEntry,
   type WasmToolRouter,
 } from '../lib/wasm'
@@ -78,7 +78,7 @@ const tau = ref<number | null>(null)
 const status = ref('Loading the router…')
 const error = ref('')
 const answer = ref<Routed | null>(null)
-const clockStep = ref(0)
+const clockStep = useClockStep(() => answer.value)
 
 /** The last request that met its tool list for the first time (both parts encode it). */
 const encodedUs = ref<number | null>(null)
@@ -180,7 +180,6 @@ const modelFile = computed(() => entry.value?.files.find((f) => f.role === 'mode
 const modelSize = computed(() => (modelFile.value ? formatSize(modelFile.value.bytes) : ''))
 
 onMounted(async () => {
-  clockStep.value = clockStepMicros()
   const list = await loadRouters()
   entry.value = list.find((m) => m.name === props.prefer) ?? list[0] ?? null
   if (!entry.value) {

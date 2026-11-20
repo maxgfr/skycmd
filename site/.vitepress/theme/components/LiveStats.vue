@@ -1,17 +1,15 @@
 <script setup lang="ts">
 // Live counters fed by the hero game.
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { live } from '../lib/store'
-import { clockStepMicros, formatInt } from '../lib/wasm'
+import { formatInt, useClockStep } from '../lib/wasm'
 import { decisionLatency } from '../lib/latency'
 import { sizeParts } from '../lib/size'
 
 const hasModel = computed(() => live.status === 'model')
-/** The browser clock's step in µs, measured on the client at mount (0 until then). */
-const clockStep = ref(0)
-onMounted(() => {
-  clockStep.value = clockStepMicros()
-})
+/** The browser clock's step in µs, measured on the client at mount (0 until then), and again
+ * with each new decision while it is still unknown. */
+const clockStep = useClockStep(() => [live.timedN, live.meanUs, live.decisionsPerS])
 const latency = computed(() =>
   decisionLatency({ medianUs: live.medianUs, meanUs: live.meanUs, n: live.timedN }, clockStep.value),
 )

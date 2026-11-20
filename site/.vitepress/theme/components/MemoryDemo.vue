@@ -8,12 +8,12 @@
 // before it shows anything. Pure logic in lib/memory.ts; everything runs in the page.
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import {
-  clockStepMicros,
   engineLabel,
   formatInt,
   formatMicros,
   loadMemoryEntry,
   loadRecallProbe,
+  useClockStep,
   type MemoryEntry,
   type WasmRecallProbe,
 } from '../lib/wasm'
@@ -55,7 +55,6 @@ const control = shallowRef<WasmRecallProbe | null>(null)
 const status = ref('Loading…')
 const missing = ref(false)
 const error = ref('')
-const clockStep = ref(0)
 
 // The episode viewer.
 const arm = ref<Arm>('on')
@@ -75,6 +74,7 @@ let cancel = false
 
 const seed = computed(() => validationSeeds(episodeIdx.value + 1)[episodeIdx.value])
 const current = computed<Played | null>(() => played.value[played.value.length - 1] ?? null)
+const clockStep = useClockStep(() => played.value.length)
 const finished = computed(() => played.value.length > 0 && played.value[played.value.length - 1].done)
 const episodeAsks = computed(() => played.value.filter((p) => p.kind === 'ask'))
 const episodeRight = computed(() => episodeAsks.value.filter((p) => p.correct).length)
@@ -82,7 +82,6 @@ const plannedAsks = computed(() => frames.value.filter((f) => f.kind === 'ask').
 const probeOf = (a: Arm) => (a === 'control' ? control.value : model.value)
 
 onMounted(async () => {
-  clockStep.value = clockStepMicros()
   try {
     const e = await loadMemoryEntry()
     if (!e) {

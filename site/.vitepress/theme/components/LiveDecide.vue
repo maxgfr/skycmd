@@ -13,7 +13,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
 import {
-  clockStepMicros,
   DecisionTimes,
   defaultModel,
   engineLabel,
@@ -23,6 +22,7 @@ import {
   loadEngine,
   loadManifest,
   questionModels,
+  useClockStep,
   type ModelEntry,
   type WasmEngine,
 } from '../lib/wasm'
@@ -114,8 +114,9 @@ const status = ref('Loading the model…')
 const answer = ref<Answer | null>(null)
 const error = ref('')
 const times = reactive(new DecisionTimes())
-/** The browser clock's step in µs, shown when it is coarse (measured on the client, at mount). */
-const clockStep = ref(0)
+/** The browser clock's step in µs, shown when it is coarse (measured on the client at mount, and
+ * again with each new decision while it is still unknown). */
+const clockStep = useClockStep(() => times.last)
 
 const isIso = computed(() => model.value?.arch === 'skycmd-iso')
 /** Early exit can be switched on: an s2 file published with its exit thresholds. */
@@ -179,7 +180,6 @@ const abstains = computed(() => {
 const violation = computed(() => (props.mode === 'guard' && answer.value ? answer.value.probs[1] : null))
 
 onMounted(async () => {
-  clockStep.value = clockStepMicros()
   const all = await loadManifest()
   models.value = isSecrets ? all.filter((m) => m.task === 'secrets') : questionModels(all)
   model.value =

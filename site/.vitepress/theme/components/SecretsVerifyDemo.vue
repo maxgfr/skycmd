@@ -7,12 +7,12 @@
 // Everything runs in the page: nothing typed is sent anywhere.
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
-  clockStepMicros,
   engineLabel,
   formatInt,
   formatMicros,
   loadSecretVerifier,
   loadVerifierEntry,
+  useClockStep,
   type WasmSecretVerifier,
 } from '../lib/wasm'
 import { formatSize } from '../lib/size'
@@ -48,7 +48,7 @@ const status = ref('Loading the verifier…')
 const missing = ref(false)
 const error = ref('')
 const results = ref<Judged[]>([])
-const clockStep = ref(0)
+const clockStep = useClockStep(() => results.value.length)
 
 const preset = computed(() => {
   const p = SECRETS_PRESETS[presetIdx.value]
@@ -63,7 +63,6 @@ const medianUs = computed(() => {
 })
 
 onMounted(async () => {
-  clockStep.value = clockStepMicros()
   try {
     const entry = await loadVerifierEntry()
     if (!entry) {

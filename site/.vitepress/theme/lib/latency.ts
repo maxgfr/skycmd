@@ -74,6 +74,8 @@ export function decisionLatency(t: DecisionTiming, stepUs: number): LatencyReado
       detail: `median under one clock step: ${clock}`,
     }
   }
-  // a median of 0 with a clock whose step is unknown: no true statement to make
+  // a median of 0 with a clock whose step is unknown: no true statement to make. The step is
+  // unknown only while the clock has not been seen to tick (a clock rounded to 100 ms, say, under
+  // which every decision measures 0); the callers measure it again with each new decision.
   return { kind: 'none', us: '—', capacity: '—', detail: '' }
 }

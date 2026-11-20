@@ -1,7 +1,9 @@
 // Runtime loading of the sky-web wasm module (built into public/pkg by scripts/build-wasm.sh),
 // the model manifest and the GGUF models. Everything is fetched lazily on the client.
+import { onMounted, ref, watch, type Ref, type WatchSource } from 'vue'
 import { withBase } from 'vitepress'
 import { scopeFilter } from './scope'
+import { clockStepOf } from './clock'
 
 export interface WasmEngine {
   info(): string
@@ -615,23 +617,31 @@ export function formatInt(n: number): string {
   return Math.round(n).toLocaleString('en-US')
 }
 
-let clockStep: number | null = null
+let sessionClockStep: (() => number) | null = null
 
-/** The step of the browser clock in µs (`performance.now`). Browsers coarsen it: Chrome counts in
- * 100 µs steps on a page that is not cross-origin isolated, such as a GitHub Pages site, so a
- * single decision faster than that reads as 0 or 100 µs. */
+/** The step of the browser clock in µs (`performance.now`), 0 while unknown. Browsers coarsen it:
+ * Chrome counts in 100 µs steps on a page that is not cross-origin isolated, such as a GitHub
+ * Pages site, Firefox and Safari in 1,000 µs steps, so a single decision faster than that reads as
+ * 0 or one step. Measured on the first call (see `clockStepOf` in clock.ts: the smallest
+ * difference between distinct readings over the first few ticks, within a few milliseconds), and
+ * kept for the session once the clock has been seen to tick; a call that saw no tick returns 0 and
+ * a later call measures again. */
 export function clockStepMicros(): number {
-  if (clockStep === null) {
-    let step = Infinity
-    let prev = performance.now()
-    for (let i = 0; i < 20000 && step > 1; i++) {
-      const t = performance.now()
-      if (t > prev) step = Math.min(step, t - prev)
-      prev = t
-    }
-    clockStep = Number.isFinite(step) ? Math.round(step * 1000) : 0
+  sessionClockStep ??= clockStepOf(() => performance.now())
+  return sessionClockStep()
+}
+
+/** The step of the browser clock in µs for a component: measured on the client at mount (0 until
+ * then), and measured again at each change of `trigger` (a new decision, say) while it is still
+ * unknown, so that a first measurement that saw no tick does not leave it unknown for the session. */
+export function useClockStep(trigger: WatchSource<unknown>): Ref<number> {
+  const step = ref(0)
+  const refresh = () => {
+    if (step.value === 0) step.value = clockStepMicros()
   }
-  return clockStep
+  onMounted(refresh)
+  watch(trigger, refresh)
+  return step
 }
 
 /** A duration given in µs, readable: `412 µs`, `1.42 ms`, `22.1 ms`. A duration under the step of
