@@ -431,10 +431,11 @@ are outputs on these sets, each under its own licence:
 |---|---|---|
 | `s6-ear3-gate.tar.gz` | pipecat-ai/smart-turn-data-v3.2-test and smart-turn-data-v3.2-train (test and validation clips), livekit/eot-bench-data (spans) | CC-BY-4.0 |
 | `s6-route-gate.tar.gz` | the slates of skycmd-route and skycmd-route7 (the sources of the s6-route-nano section below: glaive, hermes, ToolACE, Seal-Tools, BFCL, Toucan-1.5M under Apache-2.0; API-Bank, MetaTool under MIT; When2Call, MASSIVE, Banking77 under CC-BY-4.0; CLINC150 under CC-BY-3.0), with GLM-5.3-Flash's descriptions (MIT); the fitted static-ft baseline derives from minishlab/potion-base-2M (MIT) | per source |
+| `run-logs.tar.gz` | the LFM3 router's generations (`runs/lfm3-s1s2/`, `runs/lfm3-s1s2-smoke/`): the text of LiquidAI/LFM3-1.7B-MLX-4bit (revision `deb2986b`, above) on skycmd-math's questions (openai/gsm8k, DigitalLearningGmbH/MATH-lighteval, HuggingFaceH4/MATH-500, MIT); s6-secrets-verify-pico's probabilities on CredData's validation questions (labels, probabilities and gold answers only, no candidate text) | LFM Open License v1.0 for the generations, MIT for the questions; Apache-2.0 for the rest |
 
-Nothing derived from otoSpeech, no per-candidate file of the real-credential sets, and no page
-text of the research dossiers is in it; the text of tool-routing-data's test slates is left out,
-as in skycmd-route.
+Nothing derived from otoSpeech, no candidate text of the real-credential sets, and no page text
+of the research dossiers is in it; the text of tool-routing-data's test slates is left out, as
+in skycmd-route.
 
 ## Game trajectories (`data/trajectories/`, `scripts/gen-trajectories.sh`)
 

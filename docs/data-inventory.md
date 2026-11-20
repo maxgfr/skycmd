@@ -781,26 +781,30 @@ archive with its size and sha256, and `SHA256SUMS` the assets'. Sizes in bytes.
 
 | asset | files | bytes | sha256 | what it is |
 |---|---:|---:|---|---|
-| `s6-route-gate.tar.gz` | 591 | 73,814,112 | `79de67337c5e6b4c1d7345ae5c0a89f5ddece12a9afb897df1ea7c320a0e6186` | `skycmd-data/s6-route/`: the manifests `MANIFEST.json`, `MANIFEST4.json` and `eval/`, the outputs of s6-route-nano, s6-route, v6's diagnostic and v7 (T5, read once) with every baseline; the only raw trace of v7's gate |
+| `s6-route-gate.tar.gz` | 595 | 73,862,439 | `eadae04d9eacf58bffb07f15dd904bedf8bc9994780451caec92f3cfe84eba6c` | `skycmd-data/s6-route/`: the manifests `MANIFEST.json`, `MANIFEST4.json` and `eval/`, the outputs of s6-route-nano, s6-route, v6's diagnostic and v7 (T5, read once) with every baseline; the only raw trace of v7's gate |
 | `s6-ear3-gate.tar.gz` | 21 | 12,899,258 | `ac95ed41a7bd74cbb500e45522fc84b0784205c6ab3b96730680c8bb7e8aa517` | the part of `skycmd-data/s6-ear3-gate/` that does not derive from otoSpeech: v3's and v2's outputs on Smart Turn's test and validation clips and on eot-bench, the harness and parity files, the training log, the pilot logs |
 | `model-variants.tar.gz` | 30 | 15,586,458 | `aca02de5537dfd858d64969f3478266ce8c3962a12ba6e606db7a219e0273126` | the main checkout's `models/`: 16 GGUF files (14 not published anywhere else: s6-nano's and s6-micro v1's DAgger rounds, their CRC copies, s6-cast-pico's export before calibration, s6-ear-nano's control and CRC copy, the s6-secrets exports) and 13 JSON files |
-| `run-logs.tar.gz` | 1,267 | 8,781,915 | `c9cec2394abc123cef8f14d3dc026c62b51028ba65ee582733fb090903ee25f7` | `skycmd-data/run-logs/` (the consoles of 9 to 19/11 and the brake's log) and the ignored small files of the main checkout's `runs/` (logs, `log.jsonl`, `state.json`, `config.json`, tokenizers, markers), at their paths |
+| `run-logs.tar.gz` | 1,294 | 10,687,201 | `6f4c24a8221657ef4c026d6ed7165776f45f534f43b6a2c863ae9ef0447df287` | `skycmd-data/run-logs/` (the consoles of 9 to 19/11, among them s6-ear v3's GPU run, and the brake's log) and the ignored small files of the main checkout's `runs/` (logs, `log.jsonl`, `state.json`, `config.json`, tokenizers, markers, the LFM3 router's generations), at their paths |
 | `research.tar.gz` | 15 | 40,020 | `0a46ec757f39aad214065141cef51339a2f1790d9c4caf2c9a9cb73ada8b8238` | the two web research dossiers (`flexible-weights`, `s6-sleep4`): reports, summaries, bibliographies, manifests and source lists |
 | `patches.tar.gz` | 2 | 48,071 | `354803428c19c1e9a25cc56cfd8845f085f6e22dadad6db9bcf9c7b1ef8837ef` | `s6-sleep4-partB-other-route.patch`: s6-sleep v4's code after K3's failure as written on 18/11/2026, never merged |
-| `MANIFEST.json` | — | 372,643 | `0fb29d316a49910db6207d19d6b91ab92685403c58d142d4615642b27c4d8b60` | every file of every archive, with its size and sha256 |
+| `MANIFEST.json` | — | 378,240 | `57ee6ff2d64445310138bb1eccd011141ea19578dfcaacdee2e16549608371cd` | every file of every archive, with its size and sha256 |
 | `SHA256SUMS` | — | 586 | — | the sha256 of the seven files above |
 
-The per-record files that are in it are outputs on public sets, each under its own licence:
-Smart Turn (`pipecat-ai/smart-turn-data-v3.2-test` and `-train`) and eot-bench
-(`livekit/eot-bench-data`), CC-BY-4.0; the route slates, under the licences of skycmd-route and
-skycmd-route7 (`DATA_LICENSES.md`, s6-route-nano). The project's own files are Apache-2.0.
+The per-record files in it are outputs on public sets, each under its own licence: Smart Turn
+(`pipecat-ai/smart-turn-data-v3.2-test` and `-train`) and eot-bench (`livekit/eot-bench-data`),
+CC-BY-4.0; the route slates, under the licences of skycmd-route and skycmd-route7
+(`DATA_LICENSES.md`, s6-route-nano). The LFM3 router's generations are the text of
+`LiquidAI/LFM3-1.7B-MLX-4bit` under the LFM Open License v1.0, on skycmd-math's questions (MIT).
+The project's own files are Apache-2.0.
 
 ### What was transformed
 
-- **Local paths.** In text files only, the absolute prefix of the build machine up to the parent
-  folder of `skycmd` / `skycmd-data` was removed, so that paths start at `skycmd/` or
-  `skycmd-data/` (846 occurrences in 219 files), and the home directory prefix elsewhere was
-  replaced by `~` (65 occurrences in 3 files): 220 files changed, nothing else in them. The model
+- **Local paths.** In text files only, on bytes: the absolute prefix of the build machine up to
+  the parent folder of `skycmd` / `skycmd-data` was removed, so that paths start at `skycmd/` or
+  `skycmd-data/` (1,227 occurrences in 243 files); paths of local working copies were made
+  repository-relative (`skycmd/<working copy>/x` becomes `skycmd/x`, a working copy being a copy
+  of the repository: 294 occurrences in 24 files); and the home directory prefix elsewhere was
+  replaced by `~` (199 occurrences in 6 files). 244 files changed, nothing else in them. The model
   files and the other binary files are byte for byte; none holds the local prefix or the user
   name.
 - **Source lists of the dossiers.** `sources.json`, `websearch.json` and one `round2.json` held
@@ -809,7 +813,11 @@ skycmd-route7 (`DATA_LICENSES.md`, s6-route-nano). The project's own files are A
 Two secret scanners (gitleaks 8.30.1 and secretgate 1.9.0) found 8 and 54 strings in the archived
 files; each was checked by hand and none is a credential (a sha256 hash in a field whose name
 holds "keys", a placeholder key in one public validation request, and digit runs inside clip
-ids, tool ids and floats).
+ids, tool ids and floats). **No file was excluded for credentials:** none of the local files holds
+candidate text. The one per-candidate file, s6-secrets-verify-pico's outputs on CredData's
+validation questions (`runs/s6-secrets-verify-pico/eval/val-creddata-probs.jsonl`), holds per row
+a source label, a task name, two probabilities, two targets and the gold answer, and no id; it
+is archived.
 
 ### What is not published, and exists only on the owner's disk until it is deleted
 
@@ -817,12 +825,10 @@ Sizes in bytes.
 
 | left out | files | bytes | why |
 |---|---:|---:|---|
-| s6-ear v3's outputs on the conversation records: `runs/s6-ear3-nano/conv-test.jsonl`, `v2/conv-test.jsonl`, `conv-val.jsonl`, `parity/native-conv.jsonl`, `runs/s6-ear3-pilot/v2-conv-val.jsonl` of `skycmd-data/s6-ear3-gate/` | 5 | 33,772,047 | **derived from otoSpeech**, whose access conditions the owner accepted with no derived record published (`DATA_LICENSES.md`, s6-ear v3; `docs/s6-ear3-prereg.md` §13): one row per record, with its session id |
-| `runs/s6-secrets-verify-pico/eval/val-creddata-probs.jsonl` | 1 | 418,117 | the model's output on each real credential candidate of CredData's validation set; the real-credential sets are never published (`DATA_LICENSES.md`, s6-secrets v2) |
-| the fetched page extracts of the two dossiers (`sources/S*.md`, `DOSSIER.md`, `index.md`, `index.html`) | 134 | 1,029,303 | other sites' text |
-| consoles and logs whose paths or sentences name the development tooling of the runs, which the path rule may not rewrite: 15 consoles and 3 launch scripts of `skycmd-data/run-logs/` (among them `queue-70-ear3-gpu.log`, s6-ear v3's GPU run, `ear2-train.log`, `cast2-gate.log`, `sleep3-gate.log`), 10 files of `runs/` (`s6-recipe.log`, `all/incidents.txt`, `all/mem.tsv`, the 7 logs of `s5-logs/`), and 4 files of `skycmd-data/s6-route/eval/fresh/` (`gate/gate.json`, `model/model.json` and their rehearsal copies, whose gate files the repository holds under `runs/s6-nano3/`) | 32 | 3,554,106 | see the left column |
-| `runs/all/build-wasm-final.log` | 1 | 4,158 | an `ls -l` listing names the local user |
-| the generations of LFM3-1.7B in `runs/lfm3-s1s2/` and `runs/lfm3-s1s2-smoke/` | 6 | 6,474,597 | the outputs of a model under the LFM Open License v1.0; held back until the owner decides (the reports and `summary.json` are archived) |
+| s6-ear v3's outputs on the conversation records: `runs/s6-ear3-nano/conv-test.jsonl` (14,265,146), `v2/conv-test.jsonl` (14,204,953), `conv-val.jsonl` (2,658,141), `parity/native-conv.jsonl` (4,762), `runs/s6-ear3-pilot/v2-conv-val.jsonl` (2,639,045) of `skycmd-data/s6-ear3-gate/` | 5 | 33,772,047 | **derived from otoSpeech**, whose access conditions the owner accepted with no derived record published (`DATA_LICENSES.md`, s6-ear v3; `docs/s6-ear3-prereg.md` §13): one row per record, with its session id |
+| the fetched page extracts of the two dossiers: `sources/S*.md` (128 files), `DOSSIER.md`, `index.md` and `index.html` of each | 134 | 1,029,303 | other sites' text |
+| `runs/s6-recipe.log` (2,187,394), `runs/all/mem.tsv` (320,242), `runs/all/incidents.txt` (5,276) | 3 | 2,512,912 | they name the development tooling, its sessions or its folder in their text, not only in a path |
+| six build logs: `runs/all/build-wasm-final.log` (4,158) and, in `skycmd-data/run-logs/`, `build-wasm.log` (4,600), `build-wasm-2.log` (4,506), `build-wasm-3.log` (1,854), `build-wasm-sleep3.log` (1,854), `queue-05-route4-latency-build-checks.log` (2,619) | 6 | 19,591 | an `ls -l` listing in each names the local user |
 | `eval/test/render/t_toolrouting.jsonl` of `skycmd-data/s6-route/` | 1 | 180,199 | the text of tool-routing-data's 100 test slates, left out of skycmd-route because that set's card asks users to review the generating model's terms; the outputs on them are archived |
 | two empty probe files of `skycmd-data/s6-route/eval/` and `models/.DS_Store` | 3 | 8,196 | not part of the trace |
 
@@ -836,13 +842,9 @@ Also not archived, as before: `models-src/` (39 MB, s5's model sources, download
   aggregates are in §17 of the pre-registration and in `runs/s6-ear3-nano/`. They come back only by
   building v3's stores again from otoSpeech under its access conditions (section 10) and reading
   the published file `s6-ear3-nano.gguf` on them; no test is gated on them again.
-- **The per-candidate readings of s6-secrets-verify-pico** on CredData's validation set; they come
-  back by scoring the published file on CredData's candidates again (3.3), if CredData's source
-  repositories still exist.
-- **The consoles left out above**, among them the console of s6-ear v3's GPU run: the results they
-  led to are in the repository's result files, and the lines themselves are lost.
-- **The LFM3 generations**, unless the owner archives them before the deletion; they come back
-  only by running the router again (`scripts/lfm3-s1s2.sh` at commit `5011585`).
+- **The nine logs left out above.** `runs/s6-recipe.log` (the console of the s6 recipe runs),
+  the incident list and the memory log of the runs, and six build logs: the results they led to
+  are in the repository, and the lines themselves are lost.
 - **The page extracts of the dossiers**: the source lists keep every URL and title, so the pages
   can be fetched again where they still exist.
 - Nothing else: every other file of section 12's table is in the release, and G1 to G16 are as
