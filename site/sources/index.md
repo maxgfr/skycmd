@@ -18,7 +18,7 @@ skycmd stands on open data, open libraries and open research. This page lists wh
 | [n4ze3m/typed-decisions-synth](https://huggingface.co/datasets/n4ze3m/typed-decisions-synth) | MIT | training |
 | [kgrozdanovski/assistant-decisions](https://huggingface.co/datasets/kgrozdanovski/assistant-decisions) | Apache-2.0 | training |
 | [helmo/synthetic-typed-decisions](https://huggingface.co/datasets/helmo/synthetic-typed-decisions) | MIT | training |
-| [m-lagnajit/calibrated-typed-decisions](https://huggingface.co/datasets/m-lagnajit/calibrated-typed-decisions) | CC-BY-4.0 | training |
+| [m-lagnajit/calibrated-typed-decisions](https://huggingface.co/datasets/m-lagnajit/calibrated-typed-decisions) | CC-BY-4.0 for the set; each row's text keeps its source's licence, given per row: Apache-2.0, CC-BY-3.0 or CC-BY-4.0 | training |
 | [ZefanCai/Open-Jev](https://huggingface.co/datasets/ZefanCai/Open-Jev) (drone expansion split) | CC0 | training |
 | [Aditharavind/swarm-laya-decisions](https://huggingface.co/datasets/Aditharavind/swarm-laya-decisions) | Apache-2.0 | training |
 

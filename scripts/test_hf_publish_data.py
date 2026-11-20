@@ -455,7 +455,8 @@ class GlmLabels(unittest.TestCase):
         self.assertEqual(hpd.glm_source("typed_decisions_train")[1], "apache-2.0")
         up, lic = hpd.glm_source("calibrated:mteb/banking77")
         self.assertIn("m-lagnajit/calibrated-typed-decisions", up)
-        self.assertEqual(lic, "cc-by-4.0")
+        self.assertEqual(lic, "cc-by-4.0 for the set; the texts per row, see `calibrated_typed`")
+        self.assertIn("source_license", hpd.glm_source("calibrated_typed")[1])
         self.assertEqual(hpd.glm_source("tasksource:x/y")[1], "per row, see `tasksource_jev`")
         for k in ("unknown", "nowhere:x", "tasksource:"):
             with self.assertRaises(SystemExit):
