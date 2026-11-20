@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 502" width="480" height="502" role="img" aria-labelledby="paper-fig1-title paper-fig1-desc" fill="currentColor" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" style="display:block;width:100%;max-width:520px;height:auto;margin:0 auto">
+<title id="paper-fig1-title">Readings of the same file on its own distribution and on other data</title>
+<desc id="paper-fig1-desc">Dot plot, one row per line, on an axis from 0.4 to 1. s6-route7-nano, accuracy: validation 0.8802; fresh tools of a new family 0.5610; BM25 on the other data 0.5675. s6-route, accuracy: held-out tools 0.8868; a new tool family (reported) 0.5530; BM25 on the other data 0.5675. s6-ear2-nano, AUC: Smart Turn's test clips 0.9600; eot-bench, real speech 0.7299; Smart Turn on the other data 0.7838. s6-secrets-verify-pico, line F1: validation repositories 0.8603; test repositories 0.8561; best rule scanner on the other data 0.7332. On other data the reading falls far below the line's own for the two routers and the end-of-turn detector, and stays level with it for the secrets verifier.</desc>
+<g font-size="13">
+<circle cx="8" cy="12" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/><text x="20" y="17">its own distribution</text>
+<path class="paper-fig1-b" fill="#c2410c" d="M171,5L178,12L171,19L164,12Z"/><text x="184" y="17">other data</text>
+<path d="M271,4V20" stroke="currentColor" stroke-width="2"/><text x="279" y="17">reference, on the other data</text>
+</g>
+<text x="0" y="44" font-size="12" fill-opacity=".75">Each row has its own metric; higher is better on all four. The axis starts at 0.4.</text>
+<g>
+<text x="0" y="86" font-weight="650">s6-route7-nano<tspan font-weight="400" fill-opacity=".75"> · accuracy</tspan></text>
+<text x="0" y="104" font-size="12" fill-opacity=".8">validation 0.8802 → fresh tools of a new family 0.5610</text>
+<text x="0" y="119" font-size="12" fill-opacity=".8">BM25 on the other data: 0.5675</text>
+<path d="M12,132H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M133.3,132H373.8" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
+<g><title>BM25, fresh tools of a new family: 0.5675</title><path d="M138.2,122V142" stroke="currentColor" stroke-width="2"/></g>
+<g><title>s6-route7-nano, fresh tools of a new family: 0.5610</title><path class="paper-fig1-b" fill="#c2410c" d="M133.3,125L140.3,132L133.3,139L126.3,132Z"/></g>
+<g><title>s6-route7-nano, validation: 0.8802</title><circle cx="373.8" cy="132" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
+</g>
+<g>
+<text x="0" y="182" font-weight="650">s6-route<tspan font-weight="400" fill-opacity=".75"> · accuracy</tspan></text>
+<text x="0" y="200" font-size="12" fill-opacity=".8">held-out tools 0.8868 → a new tool family (reported) 0.5530</text>
+<text x="0" y="215" font-size="12" fill-opacity=".8">BM25 on the other data: 0.5675</text>
+<path d="M12,228H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M127.3,228H378.7" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
+<g><title>BM25, a new tool family (reported): 0.5675</title><path d="M138.2,218V238" stroke="currentColor" stroke-width="2"/></g>
+<g><title>s6-route, a new tool family (reported): 0.5530</title><path class="paper-fig1-b" fill="#c2410c" d="M127.3,221L134.3,228L127.3,235L120.3,228Z"/></g>
+<g><title>s6-route, held-out tools: 0.8868</title><circle cx="378.7" cy="228" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
+</g>
+<g>
+<text x="0" y="278" font-weight="650">s6-ear2-nano<tspan font-weight="400" fill-opacity=".75"> · AUC</tspan></text>
+<text x="0" y="296" font-size="12" fill-opacity=".8">Smart Turn's test clips 0.9600 → eot-bench, real speech 0.7299</text>
+<text x="0" y="311" font-size="12" fill-opacity=".8">Smart Turn on the other data: 0.7838</text>
+<path d="M12,324H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M260.5,324H433.9" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
+<g><title>Smart Turn, eot-bench, real speech: 0.7838</title><path d="M301.1,314V334" stroke="currentColor" stroke-width="2"/></g>
+<g><title>s6-ear2-nano, eot-bench, real speech: 0.7299</title><path class="paper-fig1-b" fill="#c2410c" d="M260.5,317L267.5,324L260.5,331L253.5,324Z"/></g>
+<g><title>s6-ear2-nano, Smart Turn's test clips: 0.9600</title><circle cx="433.9" cy="324" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
+</g>
+<g>
+<text x="0" y="374" font-weight="650">s6-secrets-verify-pico<tspan font-weight="400" fill-opacity=".75"> · line F1</tspan></text>
+<text x="0" y="392" font-size="12" fill-opacity=".8">validation repositories 0.8603 → test repositories 0.8561</text>
+<text x="0" y="407" font-size="12" fill-opacity=".8">best rule scanner on the other data: 0.7332</text>
+<path d="M12,420H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M355.6,420H358.8" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
+<g><title>best rule scanner, test repositories: 0.7332</title><path d="M263,410V430" stroke="currentColor" stroke-width="2"/></g>
+<g><title>s6-secrets-verify-pico, test repositories: 0.8561</title><path class="paper-fig1-b" fill="#c2410c" d="M355.6,413L362.6,420L355.6,427L348.6,420Z"/></g>
+<g><title>s6-secrets-verify-pico, validation repositories: 0.8603</title><circle cx="358.8" cy="420" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
+</g>
+<g stroke="currentColor" stroke-opacity=".5"><path d="M12,464H464"/>
+<path d="M12,464V469"/>
+<path d="M87.3,464V469"/>
+<path d="M162.7,464V469"/>
+<path d="M238,464V469"/>
+<path d="M313.3,464V469"/>
+<path d="M388.7,464V469"/>
+<path d="M464,464V469"/>
+</g>
+<g font-size="12" fill-opacity=".8" text-anchor="middle">
+<text x="12" y="484">0.4</text>
+<text x="87.3" y="484">0.5</text>
+<text x="162.7" y="484">0.6</text>
+<text x="238" y="484">0.7</text>
+<text x="313.3" y="484">0.8</text>
+<text x="388.7" y="484">0.9</text>
+<text x="464" y="484">1</text>
+</g>
+</svg>
