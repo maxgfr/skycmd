@@ -251,8 +251,8 @@ Recommendation: v2 at 838 µs and 148512 bytes against the port's 21531 µs and 
 | line | times |
 |---|---|
 | cooling down for N s (SKY_COOL) | 20 |
-| brake: duty 0.95, 55 min of work, 5 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) | 3 |
-| brake: duty 0.5, 45 min of work, 15 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) | 3 |
+| brake: duty 0.95, 55 min of work, 5 of rest (runs/brake) | 3 |
+| brake: duty 0.5, 45 min of work, 15 of rest (runs/brake) | 3 |
 
 *Disclosure (docs/s6-cast2-prereg.md §10).* v2 was designed after reading v1's GIFT-Eval results on the same 97 configurations, window by window: where it lost, by band, term, domain, seasonality, context length and horizon. GIFT-Eval is therefore partly in-sample for v2's design choices, though not for its weights: no GIFT-Eval series is trained on. TinyCast's authors make the same disclosure about their own design and treat Chronos-ZS as the cleaner test. G3 exists for this reason. Every report of v2 states this paragraph.
 

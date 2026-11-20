@@ -4,6 +4,6 @@
 set -euo pipefail
 git fetch -q origin
 git checkout -q --detach c6794ac
-export SKY_BRAKE_FILE=/Users/maxime/Documents/Code/skycmd/runs/brake
+export SKY_BRAKE_FILE=runs/brake
 export CARGO_BUILD_JOBS=4
 exec caffeinate -i bash scripts/train-sleep4.sh k3

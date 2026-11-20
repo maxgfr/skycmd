@@ -1,9 +1,9 @@
-== s6-micro: pretrain 180m, decide 360m (/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-micro.json, rate x2.0 x0.5)
+== s6-micro: pretrain 180m, decide 360m (runs/recipe/configs/s6-micro.json, rate x2.0 x0.5)
 numeric MLM: 89997 records, 2900947 tokens, 11422 rows, weight 0.10
 corpus: 112671 records, 85615058 tokens (1036012 numbers) -> 336044 train / 1024 val rows of 256 (0.7s)
 resumed from runs/s6-micro2/runs/s6-micro/pretrain/last at step 31714
 s6-micro: 2829569 parameters (pretraining stack), batch 64x256, budget 180.0 min
-brake: duty 0.95, 55 min of work, 5 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.95, 55 min of work, 5 of rest (runs/brake)
 done: 31714 steps, final val_loss 0.9721 (token CE 0.9692, number MSE 0.0585); decision init (31 tensors from the stack) in runs/s6-micro2/runs/s6-micro/pretrain/init
 source decisions: 776101 train items, weight 0.250
 source distill: 560238 train items, weight 0.300
@@ -12,7 +12,7 @@ source numeric: 89997 train items, weight 0.100
 val 59164 / test 33534 items, 537348 distinct questions, 0 records skipped (100.7s)
 initialized 70 tensors from runs/s6-micro2/runs/s6-micro/pretrain/init/model.safetensors
 s6-micro: 5587201 parameters, batch 64, budget 360.0 min, QAT over the last 90%, loop dropout 0.25
-brake: duty 0.95, 55 min of work, 5 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.95, 55 min of work, 5 of rest (runs/brake)
 step     20 loss 1.2156 lr x0.014 27588 tok/s 202 q/s (0.1/360.0 min)
 step     40 loss 1.3121 lr x0.026 30625 tok/s 223 q/s (0.2/360.0 min)
 step     60 loss 1.2623 lr x0.038 31045 tok/s 221 q/s (0.3/360.0 min)
@@ -1376,7 +1376,7 @@ step  25000 loss 0.8335 lr x1.000 qat 30920 tok/s 223 q/s (116.9/360.0 min)
   val[ternary] exit 2 (L6): acc all 0.613 | decisions 0.538 | games 0.899 | numeric 0.471  nll 0.9166
   val[ternary] effective rank per exit: 143.1 128.0 117.1 (of 256)
 step  25020 loss 0.8400 lr x1.000 qat 10068 tok/s 73 q/s (117.2/360.0 min)
-brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.85, 50 min of work, 10 of rest (runs/brake)
 step  25040 loss 0.8176 lr x1.000 qat 25968 tok/s 185 q/s (117.3/360.0 min)
 step  25060 loss 0.8223 lr x1.000 qat 25483 tok/s 185 q/s (117.4/360.0 min)
 step  25080 loss 0.8145 lr x1.000 qat 30574 tok/s 224 q/s (117.5/360.0 min)
@@ -1616,9 +1616,9 @@ step  29420 loss 0.8044 lr x1.000 qat 26557 tok/s 180 q/s (137.8/360.0 min)
 step  29440 loss 0.8160 lr x1.000 qat 26829 tok/s 202 q/s (137.8/360.0 min)
 step  29460 loss 0.8379 lr x1.000 qat 26054 tok/s 201 q/s (137.9/360.0 min)
 cooling down for 600 s (SKY_COOL)
-brake: duty 0.5, 45 min of work, 15 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
-brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
-brake: duty 0.5, 45 min of work, 15 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.5, 45 min of work, 15 of rest (runs/brake)
+brake: duty 0.85, 50 min of work, 10 of rest (runs/brake)
+brake: duty 0.5, 45 min of work, 15 of rest (runs/brake)
 step  29480 loss 0.8145 lr x1.000 qat 344 tok/s 2 q/s (138.1/360.0 min)
 step  29500 loss 0.7698 lr x1.000 qat 17159 tok/s 145 q/s (138.1/360.0 min)
 step  29520 loss 0.8269 lr x1.000 qat 15715 tok/s 108 q/s (138.2/360.0 min)
@@ -2114,7 +2114,7 @@ step  38540 loss 0.8342 lr x1.000 qat 12068 tok/s 110 q/s (190.7/360.0 min)
 step  38560 loss 0.8042 lr x1.000 qat 14067 tok/s 97 q/s (190.8/360.0 min)
 step  38580 loss 0.8095 lr x1.000 qat 13834 tok/s 97 q/s (190.9/360.0 min)
 step  38600 loss 0.8618 lr x1.000 qat 14432 tok/s 89 q/s (191.0/360.0 min)
-brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.85, 50 min of work, 10 of rest (runs/brake)
 step  38620 loss 0.8170 lr x1.000 qat 15535 tok/s 155 q/s (191.1/360.0 min)
 step  38640 loss 0.8098 lr x1.000 qat 25390 tok/s 164 q/s (191.2/360.0 min)
 step  38660 loss 0.8339 lr x1.000 qat 24968 tok/s 157 q/s (191.3/360.0 min)
@@ -3411,7 +3411,7 @@ step  62480 loss 0.7473 lr x0.405 qat 27246 tok/s 217 q/s (335.6/360.0 min)
 step  62500 loss 0.7997 lr x0.404 qat 25966 tok/s 193 q/s (335.7/360.0 min)
 step  62520 loss 0.7328 lr x0.403 qat 28430 tok/s 234 q/s (335.7/360.0 min)
 Error: Operation not permitted (os error 1)
-== s6-micro: pretrain 180m, decide 360m (/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-micro.json, rate x2.0 x0.5)
+== s6-micro: pretrain 180m, decide 360m (runs/recipe/configs/s6-micro.json, rate x2.0 x0.5)
 numeric MLM: 89997 records, 2900947 tokens, 11422 rows, weight 0.10
 corpus: 112671 records, 85615058 tokens (1036012 numbers) -> 336044 train / 1024 val rows of 256 (0.6s)
 resumed from runs/s6-micro2/runs/s6-micro/pretrain/last at step 31714
@@ -3477,7 +3477,7 @@ step  62000 loss 0.7582 lr x0.423 qat 11339 tok/s 91 q/s (334.2/360.0 min)
   val[ternary] exit 1 (L4): acc all 0.626 | decisions 0.560 | games 0.899 | numeric 0.455  nll 0.8690
   val[ternary] exit 2 (L6): acc all 0.628 | decisions 0.561 | games 0.902 | numeric 0.455  nll 0.8696
   val[ternary] effective rank per exit: 129.1 113.6 102.8 (of 256)
-brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.85, 50 min of work, 10 of rest (runs/brake)
 step  62020 loss 0.8088 lr x0.417 qat 4352 tok/s 28 q/s (334.6/360.0 min)
 step  62040 loss 0.7863 lr x0.415 qat 16103 tok/s 115 q/s (334.8/360.0 min)
 step  62060 loss 0.7793 lr x0.414 qat 17937 tok/s 130 q/s (334.9/360.0 min)
