@@ -33,6 +33,8 @@ onMounted(async () => {
       autoResetMs: 700,
       onHud: (h) => {
         live.medianUs = h.medianUs
+        live.meanUs = h.meanUs
+        live.timedN = h.timedN
         live.decisionsPerS = h.decisionsPerS
         live.best = h.best
       },

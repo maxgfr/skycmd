@@ -1,13 +1,20 @@
 <script setup lang="ts">
 // Live counters fed by the hero game.
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { live } from '../lib/store'
-import { formatInt } from '../lib/wasm'
+import { clockStepMicros, formatInt } from '../lib/wasm'
+import { decisionLatency } from '../lib/latency'
 import { sizeParts } from '../lib/size'
 
 const hasModel = computed(() => live.status === 'model')
-const us = computed(() => (live.medianUs > 0 ? formatInt(live.medianUs) : '—'))
-const capacity = computed(() => (live.medianUs > 0 ? formatInt(1e6 / live.medianUs) : '—'))
+/** The browser clock's step in µs, measured on the client at mount (0 until then). */
+const clockStep = ref(0)
+onMounted(() => {
+  clockStep.value = clockStepMicros()
+})
+const latency = computed(() =>
+  decisionLatency({ medianUs: live.medianUs, meanUs: live.meanUs, n: live.timedN }, clockStep.value),
+)
 const size = computed(() => (hasModel.value ? sizeParts(live.bytes) : { value: '—', unit: 'KB' }))
 const params = computed(() => (hasModel.value ? formatInt(live.params) : '—'))
 </script>
@@ -15,11 +22,14 @@ const params = computed(() => (hasModel.value ? formatInt(live.params) : '—'))
 <template>
   <div class="live-stats" aria-live="polite">
     <div class="stat">
-      <div class="value">{{ us }}<span class="unit">µs</span></div>
-      <div class="label">per decision in WASM</div>
+      <div class="value">{{ latency.us }}<span class="unit">µs</span></div>
+      <div class="label">
+        per decision in WASM
+        <span v-if="latency.detail" class="muted">({{ latency.detail }})</span>
+      </div>
     </div>
     <div class="stat">
-      <div class="value">{{ capacity }}</div>
+      <div class="value">{{ latency.capacity }}</div>
       <div class="label">decisions/s capacity <span class="muted">({{ formatInt(live.decisionsPerS) }} taken)</span></div>
     </div>
     <div class="stat">
