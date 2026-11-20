@@ -143,6 +143,104 @@
   color: var(--vp-c-text-2);
 }
 
+/* The technical report (site/paper/): its byline, its references and its printed form. */
+.vp-doc .paper-meta {
+  margin: 8px 0 0;
+  color: var(--vp-c-text-2);
+}
+.vp-doc .paper-refs {
+  padding-left: 2.2em;
+}
+.vp-doc .paper-refs li {
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.vp-doc .paper table {
+  font-size: 14px;
+}
+.vp-doc .paper td,
+.vp-doc .paper th {
+  vertical-align: top;
+}
+/* Figure 1 of the report: the dark-theme step of its orange series (the SVG holds the light one). */
+.dark .vp-doc .paper-fig1-b {
+  fill: #ea580c;
+}
+/* A long table scrolls on its own on a narrow screen; its first column keeps the model name whole. */
+.vp-doc .paper td:first-child {
+  white-space: nowrap;
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm 14mm;
+  }
+  .VPNav,
+  .VPLocalNav,
+  .VPSidebar,
+  .VPDocAside,
+  .VPDocFooter,
+  .VPFooter,
+  .VPSkipLink,
+  .aside {
+    display: none !important;
+  }
+  .VPContent,
+  .VPDoc,
+  .VPDoc .container,
+  .VPDoc .content,
+  .VPDoc .content-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+  .vp-doc .paper p,
+  .vp-doc .paper li {
+    font-size: 10.5pt;
+    line-height: 1.5;
+  }
+  .vp-doc .paper h2 {
+    margin-top: 28px;
+    padding-top: 16px;
+  }
+  .vp-doc .paper table {
+    display: table;
+    width: 100%;
+    overflow: visible;
+    page-break-inside: auto;
+  }
+  .vp-doc .paper th,
+  .vp-doc .paper td {
+    font-size: 8.5pt;
+    line-height: 1.4;
+  }
+  .vp-doc .paper tr {
+    break-inside: avoid;
+  }
+  .vp-doc .paper td:first-child {
+    white-space: normal;
+  }
+  .vp-doc .paper th,
+  .vp-doc .paper td {
+    padding: 3px 5px;
+  }
+  .vp-doc .paper h2,
+  .vp-doc .paper h3 {
+    break-after: avoid;
+  }
+  .vp-doc .paper figure,
+  .vp-doc .paper pre {
+    break-inside: avoid;
+  }
+  .vp-doc .paper .header-anchor {
+    display: none;
+  }
+  .vp-doc .paper a {
+    color: inherit;
+  }
+}
+
 /* Play and Bench pages use the full width for the canvas and the table. */
 .wide-page .VPDoc .container,
 .wide-page .VPDoc .content,
