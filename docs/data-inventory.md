@@ -8,7 +8,9 @@ disk. It changes nothing by itself: nothing was deleted, moved or uploaded to wr
 deletions of 19/11/2026 were the owner's decision and are recorded in section 8; the two later
 passes, on the evening of 19/11/2026 and on 20/11/2026, in sections 9 and 10; section 11 says what
 is left on the disk on 20/11/2026, why, and what is lost. Section 12 records the last publication
-of 20/11/2026 (the G7 files) and the deletion that followed it.
+of 20/11/2026 (the G7 files) and the deletion that followed it. Section 13 records the raw
+archive of 20/11/2026: what of the files left on the disk is attached to the release
+`archive-2026-11-20` of the repository, and what is not published.
 
 **Update of 19/11/2026 (s6-route v7).** s6-route v7 trained, was read once on its fresh test and
 failed its gate; the route line is closed. Its data (section 3.6) is assembled as the data set
@@ -761,3 +763,87 @@ sections 3 and 8 to 10, or lost as section 11 ("What is lost") says.
 **What this pass loses.** Nothing that is not on the Hub. The local raw download of
 `LocalLLaMA/typed-decisions` is gone, and since it was not pinned, the bytes of 25/10/2026 now exist
 only as the published configs derived from them.
+
+## 13. Archived on 20/11/2026: the raw traces, the run logs and the intermediate model files
+
+Before the project's copy on the disk is deleted, what of section 12's table may be published is
+attached to the release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20)
+of the repository. Every source file was classified, file by file, from the code that wrote it
+and its own fields; the rest stays on the owner's disk only, until it is deleted. Nothing on the
+Hub, in the repository's result files or in any published number changed.
+
+### What the release holds
+
+Six archives (`.tar.gz`, built deterministically: sorted names, a fixed date, no owner names),
+each with a `README.md` that says what it is, the pre-registration and result it belongs to, its
+licence, what was changed and what was left out; `MANIFEST.json` lists every file of every
+archive with its size and sha256, and `SHA256SUMS` the assets'. Sizes in bytes.
+
+| asset | files | bytes | sha256 | what it is |
+|---|---:|---:|---|---|
+| `s6-route-gate.tar.gz` | 591 | 73,814,112 | `79de67337c5e6b4c1d7345ae5c0a89f5ddece12a9afb897df1ea7c320a0e6186` | `skycmd-data/s6-route/`: the manifests `MANIFEST.json`, `MANIFEST4.json` and `eval/`, the outputs of s6-route-nano, s6-route, v6's diagnostic and v7 (T5, read once) with every baseline; the only raw trace of v7's gate |
+| `s6-ear3-gate.tar.gz` | 21 | 12,899,258 | `ac95ed41a7bd74cbb500e45522fc84b0784205c6ab3b96730680c8bb7e8aa517` | the part of `skycmd-data/s6-ear3-gate/` that does not derive from otoSpeech: v3's and v2's outputs on Smart Turn's test and validation clips and on eot-bench, the harness and parity files, the training log, the pilot logs |
+| `model-variants.tar.gz` | 30 | 15,586,458 | `aca02de5537dfd858d64969f3478266ce8c3962a12ba6e606db7a219e0273126` | the main checkout's `models/`: 16 GGUF files (14 not published anywhere else: s6-nano's and s6-micro v1's DAgger rounds, their CRC copies, s6-cast-pico's export before calibration, s6-ear-nano's control and CRC copy, the s6-secrets exports) and 13 JSON files |
+| `run-logs.tar.gz` | 1,267 | 8,781,915 | `c9cec2394abc123cef8f14d3dc026c62b51028ba65ee582733fb090903ee25f7` | `skycmd-data/run-logs/` (the consoles of 9 to 19/11 and the brake's log) and the ignored small files of the main checkout's `runs/` (logs, `log.jsonl`, `state.json`, `config.json`, tokenizers, markers), at their paths |
+| `research.tar.gz` | 15 | 40,020 | `0a46ec757f39aad214065141cef51339a2f1790d9c4caf2c9a9cb73ada8b8238` | the two web research dossiers (`flexible-weights`, `s6-sleep4`): reports, summaries, bibliographies, manifests and source lists |
+| `patches.tar.gz` | 2 | 48,071 | `354803428c19c1e9a25cc56cfd8845f085f6e22dadad6db9bcf9c7b1ef8837ef` | `s6-sleep4-partB-other-route.patch`: s6-sleep v4's code after K3's failure as written on 18/11/2026, never merged |
+| `MANIFEST.json` | — | 372,643 | `0fb29d316a49910db6207d19d6b91ab92685403c58d142d4615642b27c4d8b60` | every file of every archive, with its size and sha256 |
+| `SHA256SUMS` | — | 586 | — | the sha256 of the seven files above |
+
+The per-record files that are in it are outputs on public sets, each under its own licence:
+Smart Turn (`pipecat-ai/smart-turn-data-v3.2-test` and `-train`) and eot-bench
+(`livekit/eot-bench-data`), CC-BY-4.0; the route slates, under the licences of skycmd-route and
+skycmd-route7 (`DATA_LICENSES.md`, s6-route-nano). The project's own files are Apache-2.0.
+
+### What was transformed
+
+- **Local paths.** In text files only, the absolute prefix of the build machine up to the parent
+  folder of `skycmd` / `skycmd-data` was removed, so that paths start at `skycmd/` or
+  `skycmd-data/` (846 occurrences in 219 files), and the home directory prefix elsewhere was
+  replaced by `~` (65 occurrences in 3 files): 220 files changed, nothing else in them. The model
+  files and the other binary files are byte for byte; none holds the local prefix or the user
+  name.
+- **Source lists of the dossiers.** `sources.json`, `websearch.json` and one `round2.json` held
+  the text of the pages found; they are reduced to `id`, `url` and `title`.
+
+Two secret scanners (gitleaks 8.30.1 and secretgate 1.9.0) found 8 and 54 strings in the archived
+files; each was checked by hand and none is a credential (a sha256 hash in a field whose name
+holds "keys", a placeholder key in one public validation request, and digit runs inside clip
+ids, tool ids and floats).
+
+### What is not published, and exists only on the owner's disk until it is deleted
+
+Sizes in bytes.
+
+| left out | files | bytes | why |
+|---|---:|---:|---|
+| s6-ear v3's outputs on the conversation records: `runs/s6-ear3-nano/conv-test.jsonl`, `v2/conv-test.jsonl`, `conv-val.jsonl`, `parity/native-conv.jsonl`, `runs/s6-ear3-pilot/v2-conv-val.jsonl` of `skycmd-data/s6-ear3-gate/` | 5 | 33,772,047 | **derived from otoSpeech**, whose access conditions the owner accepted with no derived record published (`DATA_LICENSES.md`, s6-ear v3; `docs/s6-ear3-prereg.md` §13): one row per record, with its session id |
+| `runs/s6-secrets-verify-pico/eval/val-creddata-probs.jsonl` | 1 | 418,117 | the model's output on each real credential candidate of CredData's validation set; the real-credential sets are never published (`DATA_LICENSES.md`, s6-secrets v2) |
+| the fetched page extracts of the two dossiers (`sources/S*.md`, `DOSSIER.md`, `index.md`, `index.html`) | 134 | 1,029,303 | other sites' text |
+| consoles and logs whose paths or sentences name the development tooling of the runs, which the path rule may not rewrite: 15 consoles and 3 launch scripts of `skycmd-data/run-logs/` (among them `queue-70-ear3-gpu.log`, s6-ear v3's GPU run, `ear2-train.log`, `cast2-gate.log`, `sleep3-gate.log`), 10 files of `runs/` (`s6-recipe.log`, `all/incidents.txt`, `all/mem.tsv`, the 7 logs of `s5-logs/`), and 4 files of `skycmd-data/s6-route/eval/fresh/` (`gate/gate.json`, `model/model.json` and their rehearsal copies, whose gate files the repository holds under `runs/s6-nano3/`) | 32 | 3,554,106 | see the left column |
+| `runs/all/build-wasm-final.log` | 1 | 4,158 | an `ls -l` listing names the local user |
+| the generations of LFM3-1.7B in `runs/lfm3-s1s2/` and `runs/lfm3-s1s2-smoke/` | 6 | 6,474,597 | the outputs of a model under the LFM Open License v1.0; held back until the owner decides (the reports and `summary.json` are archived) |
+| `eval/test/render/t_toolrouting.jsonl` of `skycmd-data/s6-route/` | 1 | 180,199 | the text of tool-routing-data's 100 test slates, left out of skycmd-route because that set's card asks users to review the generating model's terms; the outputs on them are archived |
+| two empty probe files of `skycmd-data/s6-route/eval/` and `models/.DS_Store` | 3 | 8,196 | not part of the trace |
+
+Also not archived, as before: `models-src/` (39 MB, s5's model sources, downloaded from upstream,
+3.1).
+
+### What deleting the disk copies loses
+
+- **The conversation readings of s6-ear v3.** Its per-record outputs on the 113 held-out
+  sessions and on the validation records, and the 20 parity records, exist nowhere else; their
+  aggregates are in §17 of the pre-registration and in `runs/s6-ear3-nano/`. They come back only by
+  building v3's stores again from otoSpeech under its access conditions (section 10) and reading
+  the published file `s6-ear3-nano.gguf` on them; no test is gated on them again.
+- **The per-candidate readings of s6-secrets-verify-pico** on CredData's validation set; they come
+  back by scoring the published file on CredData's candidates again (3.3), if CredData's source
+  repositories still exist.
+- **The consoles left out above**, among them the console of s6-ear v3's GPU run: the results they
+  led to are in the repository's result files, and the lines themselves are lost.
+- **The LFM3 generations**, unless the owner archives them before the deletion; they come back
+  only by running the router again (`scripts/lfm3-s1s2.sh` at commit `5011585`).
+- **The page extracts of the dossiers**: the source lists keep every URL and title, so the pages
+  can be fetched again where they still exist.
+- Nothing else: every other file of section 12's table is in the release, and G1 to G16 are as
+  section 11 says.
