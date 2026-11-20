@@ -467,5 +467,209 @@ class GlmLabels(unittest.TestCase):
         self.assertIn("evaluation only", hpd.DECISIONS["typed_decisions_bench"][2])
 
 
+SPACES = [{"model": "a", "datasets": {"train": ["skycmd-x"], "test": ["skycmd-x", "skycmd-y"]}},
+          {"model": "b", "datasets": {"train": [], "test": ["skycmd-x"]}},
+          {"model": "c", "datasets": {"train": ["skycmd-y"], "test": []}},
+          {"space_name": "hub", "kind": "hub"}]
+GATES = [{"name": "a", "gate": "passed"}, {"name": "b", "gate": "failed"}, {"name": "c"}]
+
+
+class Readers(unittest.TestCase):
+    """The section of a data set card that names the models trained or tested on it."""
+
+    def test_models_with_their_roles_and_verdicts_in_order(self):
+        self.assertEqual(hpd.model_readers("skycmd-x", SPACES, GATES),
+                         [("a", "passed", ["train", "test"]), ("b", "failed", ["test"])])
+        text = hpd.readers_section("u", "skycmd-x", spaces=SPACES, manifest=GATES)
+        self.assertIn("- [a](https://huggingface.co/u/a), passed its gate: trained on it and tested on it\n", text)
+        self.assertIn("- [b](https://huggingface.co/u/b), failed its gate, published as a result: tested on it\n", text)
+        c = hpd.readers_section("u", "skycmd-y", spaces=SPACES, manifest=GATES)
+        self.assertIn("- [c](https://huggingface.co/u/c), published without a gate: trained on it\n", c)
+        for x in (text, c):
+            self.assertIn("(https://huggingface.co/spaces/u/skycmd)", x)
+            self.assertIn(f"({hpd.REPORT})", x)
+
+    def test_size_categories(self):
+        for n, want in ((999, "n<1K"), (1_000, "1K<n<10K"), (747_077, "100K<n<1M"), (1_307_315, "1M<n<10M")):
+            self.assertEqual(hpd.size_category(n), want)
+        self.assertIn("size_categories:\n- 1K<n<10K\n", hpd.card("games", hpd.SETS["games"], {"flappy": 5000}, NEW, "u"))
+
+    def test_a_set_no_model_reads_says_so_and_gives_its_note(self):
+        text = hpd.readers_section("u", "skycmd-z", "A note.", SPACES, GATES)
+        self.assertIn("No published model was trained or tested on these rows.\n\nA note.\n", text)
+
+    def test_a_model_missing_from_the_manifest_is_refused(self):
+        with self.assertRaises(SystemExit):
+            hpd.model_readers("skycmd-x", SPACES, GATES[1:])
+
+    def test_the_repository_names_published_sets_only(self):
+        self.assertEqual(len(hpd.PUBLISHED_SETS), 16)
+        self.assertEqual(len(set(hpd.PUBLISHED_SETS)), 16)
+        for s in hpd.read_json(hpd.SPACES_JSON):
+            for role in ("train", "test"):
+                for d in (s.get("datasets") or {}).get(role, []):
+                    self.assertIn(d, hpd.PUBLISHED_SETS, s.get("model"))
+        # every set of SETS that a model reads names it in its card
+        for name, s in hpd.SETS.items():
+            known = hpd.DECISIONS if s.get("per_source") else s.get("sources") or {"x": None}
+            extra = {"results_rows": []} if s.get("results") else {}
+            text = hpd.card(name, {**s, **extra}, {next(iter(known)): 1}, NEW, "u")
+            self.assertIn("## Models trained or tested on it", text)
+            if hpd.model_readers(s["repo"]):
+                self.assertNotIn("No published model", text, name)
+            else:
+                self.assertTrue(s.get("readers_note"), name)
+
+
+class FakeHub:
+    """The read-only Hub calls of --card-only, from dictionaries."""
+
+    def __init__(self, files: dict, parquet_rows: dict = None, revision: str = REV):
+        self.files, self.rows, self.revision = files, parquet_rows or {}, revision
+
+    def info(self, repo_id, files_metadata=False):
+        names = [k.split("::", 1)[1] for k in self.files if k.startswith(repo_id + "::")] + \
+            [k.split("::", 1)[1] for k in self.rows if k.startswith(repo_id + "::")]
+        return type("Info", (), {"sha": self.revision, "siblings": [type("S", (), {"rfilename": n})() for n in names]})()
+
+    def download(self, repo_id, path, revision):
+        assert revision == self.revision
+        return self.files[f"{repo_id}::{path}"]
+
+    def parquet_rows(self, repo_id, path, revision):
+        return self.rows[f"{repo_id}::{path}"]
+
+    def hub(self):
+        return self.info, self.download, self.parquet_rows
+
+
+class CardOnly(unittest.TestCase):
+    """--card-only: a card rebuilt from the published repository, README.md alone."""
+
+    SETS_ENTRY = hpd.SETS["games"]
+    REPO = "u/skycmd-games"
+    PUB = {"commit": OLD, "source_files": {"flappy.jsonl": {"sha256": "f", "rows": 5},
+                                            "doom.jsonl": {"sha256": "d", "rows": 3,
+                                                           "carried_from": {"commit": "d" * 40, "revision": REV}}}}
+
+    def fake(self, live=None, parquet=("data/doom.parquet", "data/flappy.parquet")):
+        rows = {"flappy": 5, "doom": 3}
+        live = live or hpd.card("games", self.SETS_ENTRY, rows, OLD, "u", [], {"doom": {"commit": "d" * 40, "revision": REV}})
+        files = {f"{self.REPO}::MANIFEST.json": json.dumps(self.PUB), f"{self.REPO}::README.md": live}
+        files.update({f"{self.REPO}::{x}": "" for x in parquet})
+        return FakeHub(files).hub(), live
+
+    def test_inputs_from_a_published_manifest(self):
+        pub = {"commit": OLD, "source_files": {"a.jsonl": {"sha256": "x", "rows": 2},
+                                                "b.jsonl": {"sha256": "y", "rows": 1, "carried_from": {"commit": "d" * 40}},
+                                                "tok.json": {"sha256": "z"}}}
+        rows, extras, carried, commit = hpd.card_only_inputs(pub, "tokenizers")
+        self.assertEqual(rows, {"a": 2, "b": 1})
+        self.assertEqual(extras, ["tokenizers/tok.json"])
+        self.assertEqual(carried, {"b": {"commit": "d" * 40}})
+        self.assertEqual(commit, OLD)
+        with self.assertRaises(SystemExit):
+            hpd.card_only_inputs({"commit": "x", "source_files": pub["source_files"]}, "tokenizers")
+
+    def test_rebuilt_card_keeps_configs_rows_and_commits(self):
+        hub, live = self.fake()
+        live2, new = hpd.card_only_set("games", self.SETS_ENTRY, "u", NEW, hub)
+        self.assertEqual(live2, live)
+        self.assertEqual(hpd.front_matter_configs(new), hpd.front_matter_configs(live))
+        self.assertIn("This card was regenerated alone, from the published `MANIFEST.json`, at commit [`bbbbbbbb`]", new)
+        self.assertIn("`flappy` is written at commit [`aaaaaaaa`]", new)
+        self.assertIn("1 configs are carried unchanged from the release written at commit [`dddddddd`]", new)
+        self.assertIn("| `data/flappy.parquet` | 5 |", new)
+        # nothing else differs from a card built with the same inputs
+        self.assertEqual(new, hpd.card("games", self.SETS_ENTRY, {"flappy": 5, "doom": 3}, OLD, "u", [],
+                                       {"doom": {"commit": "d" * 40, "revision": REV}}, regenerated=NEW))
+
+    def test_refuses_a_changed_configs_block(self):
+        hub, live = self.fake()
+        changed = live.replace("- config_name: doom\n", "- config_name: doom2\n")
+        hub, _ = self.fake(live=changed)
+        with self.assertRaises(SystemExit) as e:
+            hpd.card_only_set("games", self.SETS_ENTRY, "u", NEW, hub)
+        self.assertIn("configs differ", str(e.exception))
+
+    def test_refuses_when_the_parquet_files_are_not_the_configs(self):
+        for parquet in (("data/flappy.parquet",), ("data/doom.parquet", "data/flappy.parquet", "data/old.parquet")):
+            hub, _ = self.fake(parquet=parquet)
+            with self.assertRaises(SystemExit) as e:
+                hpd.card_only_set("games", self.SETS_ENTRY, "u", NEW, hub)
+            self.assertIn("parquet files", str(e.exception))
+
+    def test_refuses_without_a_published_manifest(self):
+        hub, live = self.fake()
+        files = {f"{self.REPO}::README.md": live, f"{self.REPO}::data/flappy.parquet": ""}
+        with self.assertRaises(SystemExit):
+            hpd.card_only_set("games", self.SETS_ENTRY, "u", NEW, FakeHub(files).hub())
+
+    def glm(self, live_commit=OLD, labels=6, agree=3):
+        agreement = {"boolq": {"labelled": 4, "agree": 2, "rate": 0.5}, "arc": {"labelled": 2, "agree": 1, "rate": 0.5}}
+        live = hpd.glm_readme("u", live_commit, agreement, 3, 6, 121, "20 November 2026", True)
+        repo = "u/skycmd-glm-labels"
+        files = {f"{repo}::README.md": live, f"{repo}::agreement.json": json.dumps(agreement)}
+        rows = {f"{repo}::data/agree.parquet": agree, f"{repo}::data/labels.parquet": labels}
+        return FakeHub(files, rows).hub(), live
+
+    def args(self, **kw):
+        a = {"glm_refused": 121, "glm_date": "20 November 2026", "glm_final": False}
+        a.update(kw)
+        return type("A", (), a)()
+
+    def test_glm_card_from_the_published_files(self):
+        hub, live = self.glm()
+        live2, new = hpd.card_only_glm(self.args(), "u", NEW, hub)
+        self.assertEqual(live2, live)
+        self.assertEqual(hpd.front_matter_configs(new), hpd.front_matter_configs(live))
+        self.assertIn("`scripts/hf-publish-data.py --glm` at commit [`aaaaaaaa`]", new)
+        self.assertIn("This card was regenerated alone, from the published files, at commit [`bbbbbbbb`]", new)
+        self.assertIn("**`agree`** (default, 3 rows)", new)
+        self.assertIn("**`labels`** (6 rows)", new)
+
+    def test_glm_refuses_counts_that_disagree_or_missing_arguments(self):
+        hub, _ = self.glm(labels=7)
+        with self.assertRaises(SystemExit):
+            hpd.card_only_glm(self.args(), "u", NEW, hub)
+        hub, _ = self.glm()
+        for kw in ({"glm_refused": None}, {"glm_date": ""}, {"glm_final": True}):
+            with self.assertRaises(SystemExit):
+                hpd.card_only_glm(self.args(**kw), "u", NEW, hub)
+
+    def test_glm_refuses_a_live_card_without_its_commit(self):
+        hub, live = self.glm()
+        info, download, rows = hub
+        with self.assertRaises(SystemExit):
+            hpd.card_only_glm(self.args(), "u", NEW,
+                              (info, lambda r, p, v: live.replace("--glm` at commit", "at") if p == "README.md" else download(r, p, v), rows))
+
+    def test_refuses_sets_whose_cards_need_their_data(self):
+        a = self.args(dry_run=True)
+        for only in ([], ["route"], ["route7"], ["games", "nowhere"]):
+            with self.assertRaises(SystemExit):
+                hpd.card_only(a, "u", NEW, only, self.fake()[0])
+        with self.assertRaises(SystemExit):
+            hpd.card_only(a, "USER", NEW, ["games"], self.fake()[0])
+
+    def test_a_dry_run_writes_the_card_and_the_diff_and_uploads_nothing(self):
+        hub, live = self.fake()
+        a = self.args(dry_run=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = hpd.OUT
+            hpd.OUT = Path(tmp)
+            try:
+                with contextlib.redirect_stdout(io.StringIO()) as buf:
+                    hpd.card_only(a, "u", NEW, ["games"], hub)
+            finally:
+                hpd.OUT = saved
+            out = Path(tmp) / "card-only"
+            self.assertEqual(sorted(p.name for p in out.iterdir()),
+                             ["skycmd-games", "skycmd-games.card.diff", "skycmd-games.live.md"])
+            self.assertEqual([p.name for p in (out / "skycmd-games").iterdir()], ["README.md"])
+            self.assertIn("+This card was regenerated alone", (out / "skycmd-games.card.diff").read_text())
+            self.assertIn("diff of the live card", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
