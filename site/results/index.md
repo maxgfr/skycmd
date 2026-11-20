@@ -31,6 +31,8 @@ One row per experiment: its verdict and the gated number against its bar. Each n
 | [LFM3-1.7B System 1 / System 2](#lfm3-s1s2) | failed | H3: 1,032 tokens against at most 0.5 × 958 |
 | [s5 (three bets)](#s5-october-2026) | failed | bet 1: ECE 0.088 against 0.057 + 0.01 |
 
+The table covers the pre-registered lines this page reports, from s5 on. The one earlier model with a gate, s4-micro, is not in it: its gate was fixed before training and is recorded in [`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s4-s4-micro-generic-decisions-distilled-from-qwen35-experimental), with no pre-registration document, and it failed: 0.343 on `typed_decisions_bench` against a gate of 0.55.
+
 **Lines with no verdict in this table** (updated on 19 November 2026). None of them has a gated number.
 
 - **The fine-tuning of LFM3-1.7B: closed, nothing trained.** No LoRA method fitted this 16 GB Mac under the memory bound, and the owner decided on 19/11/2026 not to rent compute; there are no weights ([amendment 8](https://github.com/maxgfr/skycmd/blob/main/docs/lfm3-ft-prereg.md), and [below](#lfm3-s1s2)). The System 1 / System 2 router above stays as published.

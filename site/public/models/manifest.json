@@ -6,7 +6,8 @@
     "task": "generic",
     "params": 17060097,
     "bytes": 20684640,
-    "file": "s5-lite.gguf"
+    "file": "s5-lite.gguf",
+    "sha256": "545070d1aa7873440d34ba42b9081f72aae6b8eb42f2fa0a5a63300c717c6c0e"
   },
   {
     "name": "s3-pico",
@@ -15,6 +16,7 @@
     "params": 445345,
     "bytes": 251104,
     "file": "s3-pico.gguf",
+    "sha256": "60bf4d612be0a48adef8fcedbfb03dd97d36759981268d671ca47418acfa9ccc",
     "games": [
       "flappy",
       "rescue",
@@ -33,7 +35,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s4-s4-micro-generic-decisions-distilled-from-qwen35-experimental",
     "params": 5587201,
     "bytes": 2419456,
-    "file": "s4-micro.gguf"
+    "file": "s4-micro.gguf",
+    "sha256": "49956d1b6d11f772815c9f28bea2a85e5fe7313009ae519012baddc2653848d7"
   },
   {
     "name": "s6-nano",
@@ -46,7 +49,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s6-s6-nano-s6-micro-general-purpose-decisions-and-games-pre-registered",
     "params": 1486225,
     "bytes": 715136,
-    "file": "s6-nano.gguf"
+    "file": "s6-nano.gguf",
+    "sha256": "b31514b536ae50ebd475f7bf99811148cf3b4d6f9a9b241fc588614b30a9fdf5"
   },
   {
     "name": "s6-micro",
@@ -59,7 +63,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s6-s6-nano-s6-micro-general-purpose-decisions-and-games-pre-registered",
     "params": 5587201,
     "bytes": 2420032,
-    "file": "s6-micro.gguf"
+    "file": "s6-micro.gguf",
+    "sha256": "f66d702121e85e678e9b6ea73e9c01433e968b3a3734e8f68ac58f4cee4340ff"
   },
   {
     "name": "s6-secrets-pico",
@@ -72,7 +77,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-secrets-pico-api-key-and-secret-detection-pre-registered",
     "params": 445345,
     "bytes": 250272,
-    "file": "s6-secrets-pico.gguf"
+    "file": "s6-secrets-pico.gguf",
+    "sha256": "1fa48c1530607d6a81ee64ad858aebfe4a49f9e5e88b1ac89eb63f2cc73a097a"
   },
   {
     "name": "s6-micro-v1",
@@ -85,7 +91,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s6-s6-nano-s6-micro-general-purpose-decisions-and-games-pre-registered",
     "params": 5587201,
     "bytes": 2420032,
-    "file": "s6-micro-v1.gguf"
+    "file": "s6-micro-v1.gguf",
+    "sha256": "33b160fc6491d0f9d198e1e0f6eaed2f7a7c2d82d69fdce384ad9b60814913c7"
   },
   {
     "name": "s6-ear-nano",
@@ -97,7 +104,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear-nano-first-run-gates-failed",
     "params": 1532449,
     "bytes": 899200,
-    "file": "s6-ear-nano.gguf"
+    "file": "s6-ear-nano.gguf",
+    "sha256": "b8fb087fe1b2d8ee8e02a1439eea4de06b2bbe7c744e87f5e08344413d9fcaa6"
   },
   {
     "name": "s6-ear2-nano",
@@ -109,7 +117,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-ear2-nano-s6-ear-v2-an-end-of-turn-student-of-smart-turn-pre-registered-gate-passed",
     "params": 1306178,
     "bytes": 631936,
-    "file": "s6-ear2-nano.gguf"
+    "file": "s6-ear2-nano.gguf",
+    "sha256": "204354653fd864708c3206f486f255d3fedff81956fd7b82aae560185a9be783"
   },
   {
     "name": "s6-ear3-nano",
@@ -134,7 +143,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-cast-pico-probabilistic-forecasting-pre-registered-gate-failed",
     "params": 369792,
     "bytes": 142912,
-    "file": "s6-cast-pico.gguf"
+    "file": "s6-cast-pico.gguf",
+    "sha256": "ff4618604e0c0076180a2846413970393dfe5d68c8ee4add342d33fdd36403f1"
   },
   {
     "name": "s6-cast2-pico",
@@ -161,6 +171,7 @@
     "params": 445345,
     "bytes": 249984,
     "file": "s6-secrets-verify-pico.gguf",
+    "sha256": "01e6db3fa71cc2c5563dea222c68e040d3994ee2abbb02b25491a51b8cb54f27",
     "dictionary": "s6-secrets-verify-dictionary.txt"
   },
   {
@@ -174,7 +185,8 @@
     "gate_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-route-nano-s6-nano-v2-a-tool-router-pre-registered-gate-failed",
     "params": 5587201,
     "bytes": 2418912,
-    "file": "s6-route-nano.gguf"
+    "file": "s6-route-nano.gguf",
+    "sha256": "a124dfe86f76e9547db98edc03351f66908617ae2be3f5a4f423a876b7956c82"
   },
   {
     "name": "s6-route",
@@ -271,6 +283,7 @@
     "params": 202305,
     "bytes": 545280,
     "file": "s1-pico.gguf",
+    "sha256": "d8c929dbacad13d28421ccfa655fc877791d1018c21dd395a498e0b5c4d311d3",
     "games": [
       "flappy",
       "rescue",
@@ -284,6 +297,7 @@
     "params": 1532033,
     "bytes": 701568,
     "file": "s2-nano.gguf",
+    "sha256": "9a0e96547f79e62cdadd551ee478e4f51d4438f763b70a898eca30ee454b0b8e",
     "games": [
       "flappy",
       "rescue",
@@ -297,6 +311,7 @@
     "params": 1532033,
     "bytes": 701568,
     "file": "s2-nano-doom.gguf",
+    "sha256": "fb6df8401e78363fc6c84a403c852c56cc3b555ce4128ada19093e13c9a8abb3",
     "games": [
       "flappy",
       "dodge",
