@@ -83,7 +83,7 @@ The file is published as evaluated, with a [card](https://huggingface.co/maxgfr/
 - **No interval on the conversation test.** The held-out conversations were reported, not gated, and their numbers are point estimates. On the 2,061 records whose speaker never appears in training, v3 still ranks better than v2 (AUC 0.6663 against 0.6137), but catches fewer ends of turn at a false cut-off of 0.10 (0.1831 against 0.2254).
 - **A second look at v2's weak spot.** v3 was designed after v2's eot-bench numbers were seen, and that reading chose the headline test, the bar outside English and the expected per-language effects. No eot-bench file was opened for the design and none was used for training or any choice; the 0.2 s cut point comes from the demo's policy and LiveKit's card. Smart Turn's test is still partly in-sample for the design, as v2's disclosure says.
 - **An amended cross-check.** The label check was changed after a measurement on five training sessions, before any validation or test session was read (above).
-- **Nothing of the corpus is published.** The per-record files of the run stay on the machine that ran it, as the corpus's conditions and the pre-registration require; the repository holds counts and statistics only.
+- **Nothing of the corpus is published.** The per-record files of the conversation records stay on the machine that ran it, as the corpus's conditions and the pre-registration require; the repository holds counts and statistics only. The run's outputs on Smart Turn's and eot-bench's clips are in the release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20).
 
 ## Check it
 

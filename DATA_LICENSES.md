@@ -394,7 +394,8 @@ the pre-registration). The file holds the model's weights only, under Apache-2.0
 (CC-BY-4.0) and the other sources are credited on its card. The repository holds only counts and
 statistics of the run (`runs/s6-ear3-nano/`, `runs/s6-ear3-pilot/`): every per-record file of the
 conversation records (the test, validation and pilot readings, the 20 parity records) stays on
-this machine, and none of them is committed or published.
+this machine, and none of them is committed or published. The release `archive-2026-11-20` holds
+the run's other per-record files, on Smart Turn's and eot-bench's clips only (below, "Raw archive").
 
 ## Published on Hugging Face (`scripts/hf-publish-data.py`)
 
@@ -417,6 +418,23 @@ see the s6-route section below), [skycmd-cast-synth](https://huggingface.co/data
 our four synthetic series generators, Apache-2.0), [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals) (our hand-written
 evaluation material: demo cases, s5 zero-shot definitions and paraphrases, Apache-2.0), [skycmd-trajectories](https://huggingface.co/datasets/maxgfr/skycmd-trajectories) (complete game episodes played by
 our models and the oracle, Apache-2.0), [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions), [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games), [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric), [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets), [skycmd-commands](https://huggingface.co/datasets/maxgfr/skycmd-commands), [skycmd-zero-shot](https://huggingface.co/datasets/maxgfr/skycmd-zero-shot), [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels).
+
+## Raw archive (the release `archive-2026-11-20`)
+
+The release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20)
+of the repository holds the raw traces of two gates, the run logs and the intermediate model
+files that were left on the build machine (`docs/data-inventory.md`, section 13). The project's
+files in it (outputs, logs, model files, reports, the patch) are Apache-2.0. Its per-record files
+are outputs on these sets, each under its own licence:
+
+| archive | upstream sets of its per-record files | licence |
+|---|---|---|
+| `s6-ear3-gate.tar.gz` | pipecat-ai/smart-turn-data-v3.2-test and smart-turn-data-v3.2-train (test and validation clips), livekit/eot-bench-data (spans) | CC-BY-4.0 |
+| `s6-route-gate.tar.gz` | the slates of skycmd-route and skycmd-route7 (the sources of the s6-route-nano section below: glaive, hermes, ToolACE, Seal-Tools, BFCL, Toucan-1.5M under Apache-2.0; API-Bank, MetaTool under MIT; When2Call, MASSIVE, Banking77 under CC-BY-4.0; CLINC150 under CC-BY-3.0), with GLM-5.3-Flash's descriptions (MIT); the fitted static-ft baseline derives from minishlab/potion-base-2M (MIT) | per source |
+
+Nothing derived from otoSpeech, no per-candidate file of the real-credential sets, and no page
+text of the research dossiers is in it; the text of tool-routing-data's test slates is left out,
+as in skycmd-route.
 
 ## Game trajectories (`data/trajectories/`, `scripts/gen-trajectories.sh`)
 
