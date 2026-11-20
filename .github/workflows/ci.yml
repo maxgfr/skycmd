@@ -143,7 +143,7 @@ jobs:
             scripts/secrets2/test_candidates.py scripts/secrets2/test_runners.py \
             scripts/secrets2/test_scorer.py scripts/secrets2/test_union.py \
             scripts/test_all_report.py scripts/test_build_route6_data.py \
-            scripts/test_hf_publish.py scripts/test_hf_publish_data.py \
+            scripts/test_hf_collection.py scripts/test_hf_publish.py scripts/test_hf_publish_data.py \
             scripts/test_route7_gate.py scripts/test_route_t5.py scripts/test_s6_adopt.py \
             scripts/test_s6_cast2_gate.py scripts/test_s6_route3_gate.py \
             scripts/test_s6_route4_checks.py scripts/test_s6_route4_pilot.py \
