@@ -12,18 +12,30 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  DODGE_BEHIND_M,
+  DODGE_MIN_VIEW_M,
+  DODGE_TRAIL_FRAMES,
   DRONE_SIDE_EXTENT,
   WIND_DIRS,
+  dodgeAboveBody,
+  dodgeClearances,
+  dodgeClearsAtAltitude,
   dodgeDeckThickness,
   dodgeInGapLane,
   dodgeLayout,
+  dodgeManeuverLabel,
+  dodgeMeters,
+  dodgeNextObstacle,
   dodgeOutcome,
+  dodgeOverlapsX,
   dodgeSupportWidth,
   dodgeTilt,
   dodgeZoomTarget,
   droneSizeForSpan,
+  nextDodgeTrail,
   rescueHeadwind,
   type DodgeLayout,
+  type DodgeTrailPoint,
   type DodgeView,
 } from '../.vitepress/theme/lib/render.ts'
 import { endedInCrash } from '../.vitepress/theme/lib/events.ts'
@@ -140,6 +152,136 @@ test('the Dodge banner names every way an episode ends, timeout included', () =>
   assert.equal(dodgeOutcome({ ...base, finished: true }, true)!.ok, true)
 })
 
+/** A Dodge snapshot for the pure tests: the drone at cruise, 2 m up, one obstacle ahead. */
+function dodgeView(over: Partial<DodgeView> = {}, drone: Partial<DodgeView['drone']> = {}): DodgeView {
+  return {
+    drone: { x: 10, y: 0, z: 2, v: 11, hl: 0.5, hw: 0.5, hh: 0.3, ...drone },
+    obstacles: [{ x0: 30, x1: 34, top: 4, deck: null, gap: null, impassable: false, passed: false }],
+    finish_x: 400,
+    y_max: 5,
+    z_max: 18,
+    frame: 100,
+    passed: 0,
+    action: 'continue',
+    vetoed: false,
+    vetoed_request: null,
+    crashed: false,
+    finished: false,
+    aborted: false,
+    ...over,
+  }
+}
+
+test('the Dodge camera keeps 8 m behind the drone and at least 44 m of course in view', () => {
+  for (const [w, h] of [[800, 500], [358, 224], [1200, 750]]) {
+    for (const zView of [8, 12, 20]) {
+      const v = dodgeView({}, { x: 123.4 })
+      const lay = dodgeLayout(w, h, v, zView)
+      assert.ok(Math.abs(lay.X(v.drone.x) - DODGE_BEHIND_M * lay.k) < 1e-9)
+      assert.ok(w / lay.k >= DODGE_MIN_VIEW_M - 1e-9, `${w}x${h}, ${zView} m: ${w / lay.k} m in view`)
+      assert.ok(w / lay.k - DODGE_BEHIND_M >= 36 - 1e-9, 'at least 36 m ahead')
+    }
+  }
+})
+
+test('the Dodge trail adds one point per frame, forgets after 4 s and restarts with an episode', () => {
+  let trail: DodgeTrailPoint[] = []
+  const at = (frame: number, x: number, action = 'continue') => dodgeView({ frame, action }, { x, z: 2 + frame / 100 })
+  trail = nextDodgeTrail(trail, at(1, 0.2))
+  trail = nextDodgeTrail(trail, at(2, 0.4, 'over'))
+  assert.deepEqual(
+    trail.map((p) => [p.f, p.a]),
+    [
+      [1, 'continue'],
+      [2, 'over'],
+    ],
+  )
+  // Drawing the same frame again (paused) adds nothing and returns the same trail.
+  const again = nextDodgeTrail(trail, at(2, 0.4, 'over'))
+  assert.equal(again, trail)
+  assert.equal(again.length, 2)
+  // The helper never changes the trail it is given.
+  const before = trail.slice()
+  const later = nextDodgeTrail(trail, at(6, 1.2))
+  assert.deepEqual(trail, before)
+  assert.equal(later.length, 3)
+  // Points older than 4 s (240 frames) are dropped.
+  let t2 = later
+  for (let f = 7; f <= 400; f += 3) t2 = nextDodgeTrail(t2, at(f, f * 0.2))
+  const last = t2[t2.length - 1]
+  assert.equal(last.f, 400)
+  assert.ok(t2.every((p) => last.f - p.f <= DODGE_TRAIL_FRAMES))
+  assert.ok(t2[0].f <= last.f - DODGE_TRAIL_FRAMES + 3)
+  // A new episode: the frame goes back, the trail starts again.
+  const fresh = nextDodgeTrail(t2, at(2, 0.4))
+  assert.deepEqual(
+    fresh.map((p) => p.f),
+    [2],
+  )
+  // Same frame number but another position: also a new episode.
+  assert.equal(nextDodgeTrail([{ f: 2, x: 9, y: 0, z: 2, a: 'continue' }], at(2, 0.4)).length, 1)
+})
+
+test('the Dodge chip names the held maneuver, with the side of the gap for around', () => {
+  const gapLeft = { x0: 30, x1: 34, top: 12, deck: null, gap: [2, 5] as [number, number], impassable: false, passed: false }
+  const gapRight = { ...gapLeft, gap: [-5, -2] as [number, number] }
+  const passed = { ...gapRight, x0: 0, x1: 4, passed: true }
+  assert.equal(dodgeManeuverLabel(dodgeView({ action: 'continue' })), 'continue · level')
+  assert.equal(dodgeManeuverLabel(dodgeView({ action: 'over' })), 'over')
+  assert.equal(dodgeManeuverLabel(dodgeView({ action: 'brake' })), 'brake')
+  assert.equal(dodgeManeuverLabel(dodgeView({ action: 'abort' })), 'abort')
+  assert.equal(dodgeManeuverLabel(dodgeView({ action: 'around', obstacles: [passed, gapLeft] })), 'around · left gap')
+  assert.equal(dodgeManeuverLabel(dodgeView({ action: 'around', obstacles: [passed, gapRight] })), 'around · right gap')
+  assert.equal(dodgeManeuverLabel(dodgeView({ action: 'around' })), 'around · no gap ahead')
+  assert.equal(dodgeNextObstacle(dodgeView({ obstacles: [passed, gapLeft] })), gapLeft)
+})
+
+test('an obstacle is out of the way at the drone altitude only above its body and under its deck', () => {
+  const o = { x0: 30, x1: 34, top: 4, deck: null, gap: null, impassable: false, passed: false }
+  const d = dodgeView().drone
+  // The core's body test is z − hh < top: at z − hh = top exactly it does not touch.
+  assert.equal(dodgeAboveBody(o, { ...d, z: 4.3 }), true)
+  assert.equal(dodgeAboveBody(o, { ...d, z: 4.29 }), false)
+  assert.equal(dodgeClearsAtAltitude(o, { ...d, z: 6 }), true)
+  // The core's deck test is z + hh > ceil: above the underside, the deck is in the way.
+  const decked = { ...o, deck: [29, 35, 6] as [number, number, number] }
+  assert.equal(dodgeClearsAtAltitude(decked, { ...d, z: 5.7 }), true)
+  assert.equal(dodgeClearsAtAltitude(decked, { ...d, z: 5.71 }), false)
+  assert.equal(dodgeClearsAtAltitude(decked, { ...d, z: 3 }), false)
+})
+
+test('Dodge clearances: above a body, under a deck, nothing beside a body or out of its span', () => {
+  const block = { x0: 30, x1: 34, top: 4, deck: [29, 35, 7] as [number, number, number], gap: null, impassable: false, passed: false }
+  // Over the body and under the deck: both clearances, from the drone's box.
+  const both = dodgeClearances(dodgeView({ obstacles: [block] }, { x: 32, z: 5.5 }))
+  assert.deepEqual(
+    both.map((c) => [c.kind, Number(c.m.toFixed(6))]),
+    [
+      ['above', 1.2],
+      ['under', 1.2],
+    ],
+  )
+  // On the deck overhang only (x-span past the body's end, inside the deck's): the deck only.
+  const overhang = dodgeClearances(dodgeView({ obstacles: [block] }, { x: 34.6, z: 5.5 }))
+  assert.deepEqual(
+    overhang.map((c) => c.kind),
+    ['under'],
+  )
+  // The x-span uses the core's strict test: touching at x + hl = x0 is not an overlap.
+  assert.equal(dodgeOverlapsX({ ...dodgeView().drone, x: 28.5 }, 29, 35), false)
+  assert.equal(dodgeClearances(dodgeView({ obstacles: [block] }, { x: 28.5, z: 5.5 })).length, 0)
+  // Beside a tall body, through its gap: no vertical clearance.
+  const tower = { x0: 30, x1: 34, top: 12, deck: null, gap: [2, 5] as [number, number], impassable: false, passed: false }
+  assert.equal(dodgeClearances(dodgeView({ obstacles: [tower] }, { x: 32, y: 3.4 })).length, 0)
+  // After a crash nothing is shown.
+  assert.equal(dodgeClearances(dodgeView({ obstacles: [block], crashed: true }, { x: 32, z: 5.5 })).length, 0)
+  // Rounded down, never overstated.
+  assert.equal(dodgeMeters(0.29999), '0.2')
+  assert.equal(dodgeMeters(0.3000000119), '0.3')
+  assert.equal(dodgeMeters(1.25), '1.2')
+  assert.equal(dodgeMeters(0), '0.0')
+})
+
 test('wind arrows point the way the core blows: north up, south down, east right, west left', () => {
   // sky_games::rescue: codes 2..=5 are wind toward N, S, E, W; north is row - 1.
   assert.deepEqual(WIND_DIRS[2], [0, -1])
@@ -211,11 +353,20 @@ interface Tally {
   crashes: number
   crashesShown: number
   beside: number
+  /** Frames the drone overlaps a body along x outside its gap lane, without crashing, and how
+   * many of them show an `above` clearance; the same for deck spans and `under`. */
+  overBody: number
+  aboveShown: number
+  underDeck: number
+  underShown: number
 }
+
+const tally = (): Tally => ({ frames: 0, falseTouches: 0, crashes: 0, crashesShown: 0, beside: 0, overBody: 0, aboveShown: 0, underDeck: 0, underShown: 0 })
 
 /** Plays one Dodge episode the way the runner does and checks every frame's drawing. */
 function playDodge(session: any, next: () => string, size: [number, number], t: Tally) {
   let vetoes = 0
+  let trail: DodgeTrailPoint[] = []
   for (;;) {
     const r = JSON.parse(next())
     vetoes += r.vetoed ? 1 : 0
@@ -226,6 +377,28 @@ function playDodge(session: any, next: () => string, size: [number, number], t: 
     const drawn = solids(v, lay)
     t.frames++
     t.beside += v.obstacles.some((o) => dodgeInGapLane(o, v.drone) && o.x0 < v.drone.x + 0.5 && o.x1 > v.drone.x - 0.5) ? 1 : 0
+    // The trail is fed once per frame, in order, and keeps at most 4 s.
+    const before = trail
+    trail = nextDodgeTrail(trail, v)
+    assert.notEqual(trail, before)
+    assert.ok(trail.length <= DODGE_TRAIL_FRAMES + 1 && trail[trail.length - 1].f === v.frame)
+    assert.equal(nextDodgeTrail(trail, v), trail, 'a paused redraw adds nothing')
+    // Every clearance shown is free space the core agrees with, and one is shown on every frame
+    // the drone flies over a body or under a deck.
+    const shown = dodgeClearances(v)
+    for (const c of shown) assert.ok(c.m >= 0, `${c.kind} ${c.m}`)
+    if (!v.crashed) {
+      for (const o of v.obstacles) {
+        if (dodgeOverlapsX(v.drone, o.x0, o.x1) && !dodgeInGapLane(o, v.drone)) {
+          t.overBody++
+          t.aboveShown += shown.some((c) => c.kind === 'above' && c.o === o) ? 1 : 0
+        }
+        if (o.deck && dodgeOverlapsX(v.drone, o.deck[0], o.deck[1])) {
+          t.underDeck++
+          t.underShown += shown.some((c) => c.kind === 'under' && c.o === o) ? 1 : 0
+        }
+      }
+    }
     // 1 px of tolerance: the tilted sprite reaches 4% past the hitbox (0.02 m).
     if (!v.crashed && drawn.some((b) => overlap(sprite, b, 1))) t.falseTouches++
     if (r.done) {
@@ -250,7 +423,7 @@ const SIZES: [number, number][] = [
 test('Dodge: the canvas never shows a touch the core does not count, and shows every crash', { skip: !hasPkg }, async () => {
   const mod = await wasm()
   for (const size of SIZES) {
-    const t: Tally = { frames: 0, falseTouches: 0, crashes: 0, crashesShown: 0, beside: 0 }
+    const t = tally()
     // The oracle with the reflex, as on the page without a model.
     const s = new mod.GameSession('dodge', 11)
     for (let ep = 0; ep < 30; ep++) {
@@ -282,7 +455,9 @@ test('Dodge: the canvas never shows a touch the core does not count, and shows e
       )
     }
     s.free()
-    assert.ok(t.crashes > 0 && t.beside > 0, JSON.stringify(t))
+    assert.ok(t.crashes > 0 && t.beside > 0 && t.overBody > 0 && t.underDeck > 0, JSON.stringify(t))
+    assert.equal(t.aboveShown, t.overBody, `${size}: ${JSON.stringify(t)}`)
+    assert.equal(t.underShown, t.underDeck, `${size}: ${JSON.stringify(t)}`)
     assert.equal(t.falseTouches, 0, `${size}: ${JSON.stringify(t)}`)
     assert.equal(t.crashesShown, t.crashes, `${size}: ${JSON.stringify(t)}`)
   }
@@ -291,7 +466,7 @@ test('Dodge: the canvas never shows a touch the core does not count, and shows e
 test('Dodge: a model with the reflex plays without a visible touch', { skip: !hasPkg || !existsSync(join(models, 's3-pico.gguf')) }, async () => {
   const mod = await wasm()
   const engine = new mod.Engine(new Uint8Array(readFileSync(join(models, 's3-pico.gguf'))))
-  const t: Tally = { frames: 0, falseTouches: 0, crashes: 0, crashesShown: 0, beside: 0 }
+  const t = tally()
   const s = new mod.GameSession('dodge', 5)
   for (let ep = 0; ep < 6; ep++) {
     if (ep) s.reset()
@@ -301,6 +476,8 @@ test('Dodge: a model with the reflex plays without a visible touch', { skip: !ha
   engine.free()
   assert.equal(t.falseTouches, 0, JSON.stringify(t))
   assert.equal(t.crashesShown, t.crashes)
+  assert.equal(t.aboveShown, t.overBody, JSON.stringify(t))
+  assert.equal(t.underShown, t.underDeck, JSON.stringify(t))
 })
 
 test('Rescue: arrow keys move the drone where they point, the drawn wind sets the cost', { skip: !hasPkg }, async () => {

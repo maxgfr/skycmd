@@ -15,10 +15,12 @@ export interface FxState {
   crashAt: number
   /** Smoothed vertical extent of the dodge side view, in meters (0 = not set). */
   dodgeZ: number
+  /** The dodge drone's recent positions, oldest first (see [`nextDodgeTrail`]). */
+  dodgeTrail: DodgeTrailPoint[]
 }
 
 export function newFx(): FxState {
-  return { t: 0, thrustGlow: 0, tween: 1, crashAt: -10, dodgeZ: 0 }
+  return { t: 0, thrustGlow: 0, tween: 1, crashAt: -10, dodgeZ: 0, dodgeTrail: [] }
 }
 
 export function currentTheme(): Theme {
@@ -738,9 +740,112 @@ export type DodgeObstacle = DodgeView['obstacles'][number]
 /** Seconds before a Dodge episode times out (`dodge::MAX_FRAMES` = 7,200 frames at 60 Hz). */
 export const DODGE_MAX_S = 120
 
+/** Meters of course shown behind the drone (its trail), and the least shown in all. */
+export const DODGE_BEHIND_M = 8
+export const DODGE_MIN_VIEW_M = 44
+
+/** Frames of flight the trail keeps: 4 s at 60 Hz. */
+export const DODGE_TRAIL_FRAMES = 240
+
+/** One sampled position of the dodge drone, with the maneuver it was holding there. */
+export interface DodgeTrailPoint {
+  f: number
+  x: number
+  y: number
+  z: number
+  a: string
+}
+
+/**
+ * The flight trail after the snapshot `v`: its position is added once per frame number, so
+ * drawing the same frame again (paused) adds nothing; points older than `keep` frames are
+ * dropped; a frame number or an x that goes back (a new episode) starts a new trail. Returns
+ * `trail` itself when nothing changes.
+ */
+export function nextDodgeTrail(trail: DodgeTrailPoint[], v: DodgeView, keep = DODGE_TRAIL_FRAMES): DodgeTrailPoint[] {
+  const d = v.drone
+  const last = trail[trail.length - 1]
+  if (last && last.f === v.frame && last.x === d.x) return trail
+  const fresh = !last || v.frame <= last.f || d.x < last.x
+  const kept = fresh ? [] : trail.filter((p) => v.frame - p.f <= keep)
+  kept.push({ f: v.frame, x: d.x, y: d.y, z: d.z, a: v.action })
+  return kept
+}
+
+/** The obstacle the current decision is about: the first one not passed (the core's `next`). */
+export function dodgeNextObstacle(v: DodgeView): DodgeObstacle | undefined {
+  return v.obstacles.find((o) => !o.passed)
+}
+
+/**
+ * The held maneuver, as the chip next to the drone shows it. `continue` holds the altitude and
+ * lateral offset reached (`tz = z`, `ty = y` in the core), hence "level"; `around` heads for the
+ * gap of the next obstacle, on its side.
+ */
+export function dodgeManeuverLabel(v: DodgeView): string {
+  if (v.action === 'continue') return 'continue · level'
+  if (v.action === 'around') {
+    const gap = dodgeNextObstacle(v)?.gap
+    return gap ? `around · ${gap[0] > 0 ? 'left' : 'right'} gap` : 'around · no gap ahead'
+  }
+  return v.action
+}
+
+/** True when the drone's x-span overlaps `[x0, x1]`, with the core's strict inequalities. */
+export function dodgeOverlapsX(d: DodgeView['drone'], x0: number, x1: number): boolean {
+  return d.x + d.hl > x0 && d.x - d.hl < x1
+}
+
+/**
+ * True when the drone's underside is at or above the top of `o`'s body (`z − hh >= top`): at
+ * this altitude the body is not in its way (the core's body test needs `z − hh < top`).
+ */
+export function dodgeAboveBody(o: DodgeObstacle, d: DodgeView['drone']): boolean {
+  return d.z - d.hh >= o.top
+}
+
+/**
+ * True when the obstacle is not in the drone's way at its altitude: above the body and, when
+ * there is a deck, not above its underside (the core's deck test is `z + hh > ceil`). The top
+ * view ghosts such an obstacle.
+ */
+export function dodgeClearsAtAltitude(o: DodgeObstacle, d: DodgeView['drone']): boolean {
+  return dodgeAboveBody(o, d) && (!o.deck || d.z + d.hh <= o.deck[2])
+}
+
+/** A clearance to show while the drone overlaps an obstacle along x: `m` meters of free space
+ * between its box and the obstacle's top (`above`) or the deck's underside (`under`). */
+export interface DodgeClearance {
+  kind: 'above' | 'under'
+  m: number
+  o: DodgeObstacle
+}
+
+/** The clearances of the obstacles the drone's x-span overlaps (the deck overhang included). A
+ * body the drone passes beside, in its gap lane, has no vertical clearance to show. */
+export function dodgeClearances(v: DodgeView): DodgeClearance[] {
+  const d = v.drone
+  if (v.crashed) return []
+  const out: DodgeClearance[] = []
+  for (const o of v.obstacles) {
+    if (dodgeOverlapsX(d, o.x0, o.x1) && !dodgeInGapLane(o, d) && dodgeAboveBody(o, d)) {
+      out.push({ kind: 'above', m: d.z - d.hh - o.top, o })
+    }
+    if (o.deck && dodgeOverlapsX(d, o.deck[0], o.deck[1]) && d.z + d.hh <= o.deck[2]) {
+      out.push({ kind: 'under', m: o.deck[2] - (d.z + d.hh), o })
+    }
+  }
+  return out
+}
+
+/** Meters with one decimal, rounded down so that a clearance is never overstated. */
+export function dodgeMeters(m: number): string {
+  return (Math.floor(m * 10 + 1e-6) / 10).toFixed(1)
+}
+
 /** Altitude the side view zooms to: the drone and the obstacles ahead, at least 8 m. */
 export function dodgeZoomTarget(v: DodgeView): number {
-  const ahead = v.obstacles.filter((o) => o.x1 > v.drone.x - 6 && o.x0 < v.drone.x + 50)
+  const ahead = v.obstacles.filter((o) => o.x1 > v.drone.x - DODGE_BEHIND_M && o.x0 < v.drone.x + 50)
   const zTop = Math.max(v.drone.z + 2, ...ahead.map((o) => (o.deck ? o.deck[2] + 1.5 : o.top + 2)))
   return clamp(zTop + 1, 8, v.z_max + 2)
 }
@@ -761,8 +866,9 @@ export interface DodgeLayout {
 export function dodgeLayout(w: number, h: number, v: DodgeView, zView: number): DodgeLayout {
   const sideH = Math.round(h * 0.7)
   let k = sideH / zView // px per meter
-  if (w / k < 44) k = w / 44 // at least 44 m of course in view
-  const camX = v.drone.x - 5
+  if (w / k < DODGE_MIN_VIEW_M) k = w / DODGE_MIN_VIEW_M // at least 44 m of course in view
+  // The drone 8 m from the left edge: its trail shows behind it, 36 m or more of course ahead.
+  const camX = v.drone.x - DODGE_BEHIND_M
   return {
     sideH,
     topH: h - sideH,
@@ -812,6 +918,98 @@ export function dodgeOutcome(v: DodgeView, done: boolean): { text: string; ok: b
   return null
 }
 
+/** Colors of the held maneuvers: the chip next to the drone and the trail it leaves. */
+export const DODGE_MANEUVER_COLOR: Record<Theme, Record<string, string>> = {
+  dark: { over: '#38bdf8', around: '#4ade80', brake: '#fbbf24', continue: '#cbd5e1', abort: '#f87171' },
+  light: { over: '#0369a1', around: '#15803d', brake: '#b45309', continue: '#334155', abort: '#b91c1c' },
+}
+
+const LABEL_FONT = '600 11px ui-sans-serif, system-ui, sans-serif'
+const REFLEX_FONT = '700 11px ui-sans-serif, system-ui, sans-serif'
+
+interface PillStyle {
+  font: string
+  bg: string
+  fg: string
+  border?: string
+  dot?: string
+}
+
+function pillWidth(ctx: CanvasRenderingContext2D, text: string, s: PillStyle): number {
+  ctx.font = s.font
+  return Math.ceil(ctx.measureText(text).width) + 12 + (s.dot ? 10 : 0)
+}
+
+/** A rounded label, `wd` px wide and `ht` tall, from its top-left corner. */
+function drawPill(ctx: CanvasRenderingContext2D, text: string, left: number, top: number, wd: number, ht: number, s: PillStyle) {
+  ctx.fillStyle = s.bg
+  roundRect(ctx, left, top, wd, ht, ht / 2)
+  ctx.fill()
+  if (s.border) {
+    ctx.strokeStyle = s.border
+    ctx.lineWidth = 1
+    ctx.stroke()
+  }
+  let tx = left + 6
+  if (s.dot) {
+    ctx.fillStyle = s.dot
+    ctx.beginPath()
+    ctx.arc(left + 9, top + ht / 2, 3, 0, Math.PI * 2)
+    ctx.fill()
+    tx += 10
+  }
+  ctx.fillStyle = s.fg
+  ctx.font = s.font
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, tx, top + ht / 2 + 0.5)
+  ctx.textBaseline = 'alphabetic'
+}
+
+/** The trail as runs of a few points fading with age (in frames), each in the color of the
+ * maneuver held along it. Butt caps, so that the runs meet without overlapping. */
+function drawTrail(
+  ctx: CanvasRenderingContext2D,
+  trail: DodgeTrailPoint[],
+  frame: number,
+  at: (p: DodgeTrailPoint) => [number, number],
+  theme: Theme,
+  width: number,
+) {
+  ctx.save()
+  ctx.lineWidth = width
+  ctx.lineCap = 'butt'
+  ctx.lineJoin = 'round'
+  let i = 1
+  while (i < trail.length) {
+    const a = trail[i].a
+    let j = i
+    while (j + 1 < trail.length && j - i < 8 && trail[j + 1].a === a) j++
+    ctx.globalAlpha = 0.85 * Math.max(0, 1 - (frame - trail[j].f) / DODGE_TRAIL_FRAMES)
+    ctx.strokeStyle = DODGE_MANEUVER_COLOR[theme][a] ?? DODGE_MANEUVER_COLOR[theme].continue
+    ctx.beginPath()
+    ctx.moveTo(...at(trail[i - 1]))
+    for (let q = i; q <= j; q++) ctx.lineTo(...at(trail[q]))
+    ctx.stroke()
+    i = j + 1
+  }
+  ctx.restore()
+}
+
+/** A vertical dimension mark from `y0` to `y1` at `x`, with end ticks. */
+function dimensionMark(ctx: CanvasRenderingContext2D, x: number, y0: number, y1: number, color: string) {
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(x, y0)
+  ctx.lineTo(x, y1)
+  ctx.moveTo(x - 3, y0)
+  ctx.lineTo(x + 3, y0)
+  ctx.moveTo(x - 3, y1)
+  ctx.lineTo(x + 3, y1)
+  ctx.stroke()
+}
+
 export function drawDodge(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -822,10 +1020,18 @@ export function drawDodge(
   opts: { done?: boolean; hitbox?: boolean } = {},
 ) {
   const p = PALETTE[theme]
-  // Zoom on what matters: the drone and the obstacles ahead, with at least 40 m of lookahead.
+  const mc = DODGE_MANEUVER_COLOR[theme]
+  const okColor = theme === 'dark' ? '#86efac' : '#15803d'
+  const labelBg = theme === 'dark' ? 'rgba(15,23,42,0.82)' : 'rgba(255,255,255,0.9)'
+  const nextOutline = theme === 'dark' ? 'rgba(248,250,252,0.55)' : 'rgba(15,23,42,0.5)'
+  // Zoom on what matters: the drone and the obstacles ahead, with at least 36 m of lookahead.
   const target = dodgeZoomTarget(v)
   fx.dodgeZ = fx.dodgeZ ? fx.dodgeZ + (target - fx.dodgeZ) * 0.04 : target
+  fx.dodgeTrail = nextDodgeTrail(fx.dodgeTrail, v)
+  const trail = fx.dodgeTrail
   const { sideH, topH, k, camX, X, Z, droneSize } = dodgeLayout(w, h, v, fx.dodgeZ)
+  const d = v.drone
+  const next = dodgeNextObstacle(v)
 
   // Side view.
   ctx.save()
@@ -850,7 +1056,6 @@ export function drawDodge(
     }
   }
 
-  const d = v.drone
   for (const o of v.obstacles) {
     const x0 = X(o.x0)
     const x1 = X(o.x1)
@@ -888,9 +1093,9 @@ export function drawDodge(
       }
       ctx.restore()
     }
+    const th = dodgeDeckThickness(k)
     if (o.deck) {
       const [d0, d1, ceil] = o.deck
-      const th = dodgeDeckThickness(k)
       ctx.fillStyle = theme === 'dark' ? '#475569' : '#334155'
       ctx.fillRect(X(d0), Z(ceil) - th, X(d1) - X(d0), th)
       ctx.strokeStyle = theme === 'dark' ? '#94a3b8' : '#64748b'
@@ -916,28 +1121,85 @@ export function drawDodge(
       ctx.setLineDash([5, 4])
       ctx.strokeRect(x0, Z(o.top), x1 - x0, Z(0) - Z(o.top))
       ctx.setLineDash([])
-      ctx.fillStyle = theme === 'dark' ? '#86efac' : '#15803d'
-      ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(`side gap (${o.gap![0] > 0 ? 'left' : 'right'}): passing beside`, (x0 + x1) / 2, Math.max(14, Z(o.top) - 6))
-      ctx.textAlign = 'left'
+      // Above the body, below the top line of text, inside the canvas.
+      // Lined up with the gap ahead of the body, passing beside it once along it.
+      const along = dodgeOverlapsX(d, o.x0, o.x1)
+      const text = `side gap (${o.gap![0] > 0 ? 'left' : 'right'}): ${along ? 'passing beside' : 'lined up'}`
+      const style: PillStyle = { font: LABEL_FONT, bg: labelBg, fg: okColor }
+      const pw = pillWidth(ctx, text, style)
+      const left = clamp((x0 + x1) / 2 - pw / 2, 4, w - 4 - pw)
+      // Above the body, unless that is where the drone's own labels go (a drone climbing beside
+      // a tall body): then at its foot.
+      const cx = X(d.x)
+      const cy = Z(d.z)
+      const clash = (top: number) => left < cx + 200 && left + pw > cx - 130 && top < cy + 32 && top + 15 > cy - 60
+      let top = Math.max(26, Z(o.top) - 19)
+      if (clash(top) && !clash(Z(0) - 21)) top = Z(0) - 21
+      drawPill(ctx, text, left, top, pw, 15, style)
+    } else if (o === next) {
+      // The obstacle the current decision is about.
+      ctx.strokeStyle = nextOutline
+      ctx.lineWidth = 1
+      ctx.setLineDash([3, 3])
+      ctx.strokeRect(x0 - 1.5, Z(o.top) - 1.5, x1 - x0 + 3, Z(0) - Z(o.top) + 1.5)
+      if (o.deck) ctx.strokeRect(X(o.deck[0]) - 1.5, Z(o.deck[2]) - th - 1.5, X(o.deck[1]) - X(o.deck[0]) + 3, th + 3)
+      ctx.setLineDash([])
     }
   }
 
+  // The last seconds of flight, in the colors of the maneuvers held.
+  drawTrail(ctx, trail, v.frame, (q) => [X(q.x), Z(q.z)], theme, 2.5)
+
   // The sprite spans the hitbox length (2 hl), so what touches on screen is what collides.
-  drawDroneSide(ctx, X(d.x), Z(d.z), droneSize, dodgeTilt(v), fx.t, theme, 0.4)
+  const cx = X(d.x)
+  const cy = Z(d.z)
+  const reach = droneSize * DRONE_SIDE_EXTENT.right
+  drawDroneSide(ctx, cx, cy, droneSize, dodgeTilt(v), fx.t, theme, 0.4)
   if (opts.hitbox && !v.crashed) strokeHitbox(ctx, X(d.x - d.hl), Z(d.z + d.hh), 2 * d.hl * k, 2 * d.hh * k)
   const outcome = dodgeOutcome(v, opts.done ?? (v.crashed || v.finished || v.aborted))
-  if (!outcome && v.vetoed && v.vetoed_request) {
-    // The reflex replaced the request: say so next to the drone (it can hold the drone in front
-    // of an obstacle until the model aborts or the episode times out).
-    ctx.fillStyle = '#ef4444'
-    ctx.font = '700 11px ui-sans-serif, system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    const held = d.v < 0.5 ? ' · holding' : ''
-    ctx.fillText(`reflex: ${v.vetoed_request} → ${v.action}${held}`, X(d.x), Math.max(14, Z(d.z) - Math.max(12, 0.6 * k)))
-    ctx.textAlign = 'left'
+
+  // Clearances while the drone overlaps an obstacle: a dimension mark just ahead of the drone,
+  // from its box to the obstacle's top or the deck's underside, and the free space in meters.
+  const PH = 15
+  const markX = cx + reach + 3
+  for (const c of dodgeClearances(v)) {
+    const y0 = c.kind === 'above' ? Z(d.z - d.hh) : Z(d.z + d.hh)
+    const y1 = c.kind === 'above' ? Z(c.o.top) : Z(c.o.deck![2])
+    // A high deck is not what the drone is squeezing under: its distance only, no long mark.
+    const mark = c.kind === 'above' || c.m <= 3
+    if (mark) dimensionMark(ctx, markX, y0, y1, okColor)
+    const text = c.kind === 'above' ? `${dodgeMeters(c.m)} m above` : `${dodgeMeters(c.m)} m under the deck`
+    const style: PillStyle = { font: LABEL_FONT, bg: labelBg, fg: okColor }
+    const pw = pillWidth(ctx, text, style)
+    const mid = mark ? (y0 + y1) / 2 : cy
+    const pyc = c.kind === 'above' ? Math.max(cy + 9, mid) : Math.min(cy - 9, mid)
+    const left = markX + 6 + pw <= w - 4 ? markX + 6 : cx - reach - 6 - pw
+    drawPill(ctx, text, left, pyc - PH / 2, pw, PH, style)
   }
+
+  // The held maneuver, and above it (it takes priority) the reflex's replacement, if any: above
+  // the drone when there is room under the top line, below it otherwise.
+  const stack: { text: string; style: PillStyle }[] = [
+    {
+      text: dodgeManeuverLabel(v),
+      style: { font: LABEL_FONT, bg: labelBg, fg: p.text, border: mc[v.action] ?? mc.continue, dot: mc[v.action] ?? mc.continue },
+    },
+  ]
+  if (!outcome && v.vetoed && v.vetoed_request) {
+    // The reflex replaced the request (it can hold the drone in front of an obstacle until the
+    // model aborts or the episode times out).
+    const held = d.v < 0.5 ? ' · holding' : ''
+    stack.push({ text: `reflex: ${v.vetoed_request} → ${v.action}${held}`, style: { font: REFLEX_FONT, bg: '#dc2626', fg: '#fff' } })
+  }
+  const CH = 17
+  const off = 20
+  const stackH = stack.length * CH + (stack.length - 1) * 3
+  const above = cy - off - stackH >= 26
+  stack.forEach((it, i) => {
+    const pw = pillWidth(ctx, it.text, it.style)
+    const top = above ? cy - off - (i + 1) * CH - i * 3 : cy + off + i * (CH + 3)
+    drawPill(ctx, it.text, clamp(cx - pw / 2, 4, w - 4 - pw), top, pw, CH, it.style)
+  })
 
   if (v.crashed) {
     // The box the core tested, where it touched.
@@ -979,6 +1241,10 @@ export function drawDodge(
 
   // Top view strip (lateral position y).
   const ty0 = sideH
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(0, ty0, w, topH)
+  ctx.clip()
   ctx.fillStyle = theme === 'dark' ? '#0f172a' : '#e2e8f0'
   ctx.fillRect(0, ty0, w, topH)
   const ky = (topH - 16) / (2 * v.y_max)
@@ -992,12 +1258,17 @@ export function drawDodge(
   ctx.lineTo(w, Y(0))
   ctx.stroke()
   ctx.setLineDash([])
+  let overLabel: number | null = null
   for (const o of v.obstacles) {
     const x0 = X(o.x0)
     const x1 = X(o.x1)
     if (x1 < -40 || x0 > w + 40) continue
+    // At the drone's altitude, an obstacle whose body is below it (and whose deck, if any, is
+    // above it) is not in its way: a ghost, as the side view draws a body passed beside.
+    const clear = !v.crashed && dodgeClearsAtAltitude(o, d)
+    const alpha = clear ? 0.28 : 1
     ctx.fillStyle = o.impassable ? '#b91c1c' : p.pipe[1]
-    ctx.globalAlpha = o.passed ? 0.5 : 1
+    ctx.globalAlpha = o.passed ? Math.min(0.5, alpha) : alpha
     if (o.gap) {
       const [lo, hi] = o.gap
       // Obstacle covers the corridor except the gap.
@@ -1009,15 +1280,37 @@ export function drawDodge(
       ctx.fillRect(x0, Y(v.y_max), x1 - x0, Y(-v.y_max) - Y(v.y_max))
     }
     ctx.globalAlpha = 1
+    if (clear && !o.passed) {
+      ctx.strokeStyle = 'rgba(34,197,94,0.9)'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([5, 4])
+      ctx.strokeRect(x0, Y(v.y_max), x1 - x0, Y(-v.y_max) - Y(v.y_max))
+      ctx.setLineDash([])
+      if (dodgeOverlapsX(d, o.x0, o.x1)) overLabel = (x0 + x1) / 2
+    } else if (o === next) {
+      ctx.strokeStyle = nextOutline
+      ctx.lineWidth = 1
+      ctx.setLineDash([3, 3])
+      ctx.strokeRect(x0 - 1.5, Y(v.y_max) - 1.5, x1 - x0 + 3, Y(-v.y_max) - Y(v.y_max) + 3)
+      ctx.setLineDash([])
+    }
   }
+  drawTrail(ctx, trail, v.frame, (q) => [X(q.x), Y(q.y)], theme, 2)
   // The drone's hitbox: hl along x (side-view scale k), hw across (scale ky).
   ctx.fillStyle = '#0ea5e9'
   ctx.beginPath()
   ctx.ellipse(X(d.x), Y(d.y), Math.max(2, d.hl * k), Math.max(2, d.hw * ky), 0, 0, Math.PI * 2)
   ctx.fill()
+  if (overLabel != null) {
+    const style: PillStyle = { font: LABEL_FONT, bg: labelBg, fg: okColor }
+    const text = 'flying over'
+    const pw = pillWidth(ctx, text, style)
+    drawPill(ctx, text, clamp(overLabel - pw / 2, 4, w - 4 - pw), Y(-v.y_max) - PH - 2, pw, PH, style)
+  }
   ctx.fillStyle = p.text
   ctx.globalAlpha = 0.7
-  ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif'
+  ctx.font = LABEL_FONT
   ctx.fillText('top view', 10, ty0 + 14)
   ctx.globalAlpha = 1
+  ctx.restore()
 }
