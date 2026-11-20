@@ -5,7 +5,7 @@ outline: [2, 3]
 
 # Results: what works, what does not
 
-Every model on this page was judged against criteria fixed before any test run, and failures are published like successes. The s6 family (November 2026) comes first, then the System 1 / System 2 router of LFM3-1.7B (November 2026), then s5 (October 2026).
+Every model on this page was judged against criteria fixed before any test run, and failures are published like successes. The experiments ended on 20 November 2026, so every verdict here is final. The s6 family (November 2026) comes first, then the System 1 / System 2 router of LFM3-1.7B (November 2026), then s5 (October 2026).
 
 ## Status at a glance {#status}
 
@@ -503,7 +503,7 @@ These are tests, not results. The training side is in `crates/sky-train/src/s5/i
   <S5Results />
 </ClientOnly>
 
-## Not done yet
+## Not done {#not-done-yet}
 
 - **s5 in French** (mmBERT-small, Phase 6) was dropped: s5 stays a small English model, and the French demos fall back on the English presets. The SIB-200 fr and MTOP fr gates of that phase are moot.
 - **Baselines B1 to B3** were not run. These deviations were declared in the pre-registration before any result.
@@ -514,4 +514,4 @@ These are tests, not results. The training side is in `crates/sky-train/src/s5/i
 - Q4 quantization and the online escalation bet were run afterwards. Both are reported above, as secondary and exploratory results.
 - Per-source calibration was run afterwards (amendment 5, exploratory). It is negative for B\* and reported above; the verdict of bet 1 does not change.
 - The closed-loop calibration of early exits was rerun over 5 arena seeds ([What we bring](/novelty/), point 3, [`loopcal.json`](/results/loopcal.json)). It confirms the failure of s2-nano at the i.i.d. τ; s3-pico shows no τ gap.
-- Still not done: a same-size MLP baseline on the games, s3 ablations over several seeds, a standard control benchmark with vector states, and a systematic literature review.
+- Never done, and not done when the experiments ended (20 November 2026): a same-size MLP baseline on the games, s3 ablations over several seeds, a standard control benchmark with vector states, and a systematic literature review.

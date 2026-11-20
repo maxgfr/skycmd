@@ -1,5 +1,5 @@
 // The Models catalogue: one entry per model family, grouped by what a visitor can do with it.
-// It drives /models/ and the "What works today" strip of the home page.
+// It drives /models/ and the "What works" strip of the home page.
 //
 // Update it with every new result, like site/novelty/index.md ("What we bring"). Every number
 // here is copied from site/results/index.md, site/novelty/index.md, hf/cards/*.md or
@@ -37,7 +37,7 @@ export interface CatalogueEntry {
   brings: string
   /** The limit a visitor must know before using it. */
   caveat?: string
-  /** On the home page: the key number of the "What works today" strip. */
+  /** On the home page: the key number of the "What works" strip. */
   home?: string
   /** On the home page: one of the lessons of "What failed, and what it taught". */
   lesson?: string

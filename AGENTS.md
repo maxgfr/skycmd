@@ -1,5 +1,9 @@
 # Instructions for agents working on skycmd
 
+The experiments ended on 20 November 2026: every line is closed or published, and the repository
+stays as the record. The rules below are the ones the project ran under; they still apply to any
+correction of a page, a card or a result file.
+
 ## Where things are published
 
 - **Everything about skycmd is published on skycmd's own site**: the VitePress site in `site/`,
@@ -57,7 +61,7 @@ Applied to every model whose gate has been read, passed or failed.
   table, with its measurement, its evidence and where to try it. **Update it with every result.**
   `site/results/index.md` holds the numbers. An article does not replace either and does not
   restate them: it tells the story of one line of experiments and links to both.
-- The Models catalogue (`site/models/`, the home page's "What works today") is driven by
+- The Models catalogue (`site/models/`, the home page's "What works") is driven by
   `site/.vitepress/theme/lib/catalogue.ts`. **Update it with every result, like What we bring**:
   a new model gets an entry, a verdict moves a card to its group, and every number on a card is
   copied from Results or a model card. `npm --prefix site test` checks it against the manifest.
@@ -72,7 +76,7 @@ Applied to every model whose gate has been read, passed or failed.
 
 - **Every example, label, paraphrase or teacher output that the project generates for a
   training, validation or test set comes from an open-weight model whose licence allows that
-  use**: today GLM-5.3-Flash (MIT), through `sky-data teacher` (rules in `docs/s6-gen-prereg.md`,
+  use**: GLM-5.3-Flash (MIT), the only teacher the project used for that, through `sky-data teacher` (rules in `docs/s6-gen-prereg.md`,
   amendments 1 and 3). Never from a proprietary model, nor from a model whose licence is not a
   permissive open-weight one (check its licence on the Hub before the first call).
 - Public datasets are another matter: each is used under its own licence, and `DATA_LICENSES.md`

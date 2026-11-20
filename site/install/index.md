@@ -17,9 +17,9 @@ and over HTTP.
 | Python >= 3.9 | `crates/sky-py`, built from source | yes | yes |
 | command line, HTTP server | `skycmd` binary, built from source with cargo | yes | yes |
 | llama.cpp `llama-server`, wllama | upstream | yes | no |
-| Ollama, LM Studio | upstream | no `/v1/systemone` for this head yet | no |
+| Ollama, LM Studio | upstream | no: no `/v1/systemone` for this head (tested versions in docs/compat.md) | no |
 
-Nothing is published to npm, PyPI or Homebrew yet, and there are no prebuilt binaries: outside
+Nothing is published to npm, PyPI or Homebrew, and there are no prebuilt binaries: outside
 the browser, build from this repository as shown below.
 
 s2 and s3 models, including the default s3-pico, run only in the skycmd engine (browser, Node,

@@ -6,7 +6,7 @@ titleTemplate: Tiny decision models in the browser
 hero:
   name: skycmd
   text: Tiny decision models in your browser
-  tagline: "Model files from 143 KB to 20.7 MB, built on one MacBook and run on your device through WebAssembly. Since s5, every experiment is pre-registered before training, and every result is published, failures included."
+  tagline: "Model files from 143 KB to 20.7 MB, built on one MacBook and run on your device through WebAssembly. From s5 on, every experiment was pre-registered before training, and every result was published, failures included."
   actions:
     - theme: brand
       text: See the models
@@ -25,13 +25,21 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <div class="home-section">
 
+<section class="home-block" aria-labelledby="project-state">
+
+<h2 id="project-state">The state of the project</h2>
+
+<p class="home-lead">The experiments are finished, as of 20 November 2026. Every line is closed or published: 20 model files (5 passed their gate, 10 failed it and are published as results, 5 had no gate), 16 data sets on Hugging Face and 24 pre-registrations. The repository stays as the record: the models, the data sets, the pre-registrations and the <a href="./paper/">technical report</a>.</p>
+
+</section>
+
 <LiveStats />
 
 <section class="home-block" aria-labelledby="works-today">
 
-<h2 id="works-today">What works today</h2>
+<h2 id="works-today">What works</h2>
 
-<p class="home-lead">Four of the models you can use now, each with its key number and a demo on this site. Their cards say how each was judged and what to know before using it.</p>
+<p class="home-lead">Four of the models you can use, each with its key number and a demo on this site. Their cards say how each was judged and what to know before using it.</p>
 
 <ModelCatalogue home />
 
@@ -44,8 +52,8 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 <h2 id="how-it-works">How the project works</h2>
 
 <ul class="home-facts">
-  <li><strong>A bar fixed before training.</strong> Since s5, each experiment has a pre-registration with its gate, committed before the model is trained; amendments are dated, and a missed gate is reported as missed.</li>
-  <li><strong>One laptop.</strong> The models are trained on one Apple M5 MacBook, in Rust; s3-pico was trained from scratch in about 47 minutes.</li>
+  <li><strong>A bar fixed before training.</strong> From s5 on, each experiment had a pre-registration with its gate, committed before the model was trained; amendments are dated, and a missed gate is reported as missed.</li>
+  <li><strong>One laptop.</strong> The models were trained on one Apple M5 MacBook, in Rust; s3-pico was trained from scratch in about 47 minutes.</li>
   <li><strong>Runs in your browser.</strong> The demos run the models in WebAssembly on your device, from the files their numbers were measured on; nothing is sent to a server.</li>
 </ul>
 
@@ -57,7 +65,7 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <h2 id="what-failed">What failed, and what it taught</h2>
 
-<p class="home-lead">Most experiments here missed their gate. Each failure is published with its numbers, and the next version started from what it showed:</p>
+<p class="home-lead">Most experiments here missed their gate. Each failure is published with its numbers, and the version after it started from what it showed:</p>
 
 <ModelCatalogue lessons />
 

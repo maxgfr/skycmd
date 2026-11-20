@@ -2,7 +2,7 @@
 
 The s1 ladder stops at s1-micro. The recipe still trains there, but a micro decision no longer fits in a browser frame (about 32.6 ms in WASM against a 16.7 ms frame) and micro is no better than pico on the games. This chapter shows which levers to pull for a bigger model (config, data, schedule) and which constraints of the GGUF and WASM paths to respect. It ends with the failures you are most likely to meet, each tied to the line of code that produces it.
 
-## The ladder today
+## The s1 ladder
 
 Parameter counts and training throughput come from `BENCH.md` (`sky-train bench`, MLX on Metal, bf16, decision phase at batch 64 × 192 tokens). Accuracy is the `games` row of each `runs/s1-*/report.md`. WASM latency is the `bench()` median of one Flappy decision (2 questions + physics): for s1-pico the current `wasm_us` of `site/public/bench.json`; for s1-nano and s1-micro a measurement with the engine as it was before the s3 kernel work ([chapter 21](./21-s3-recursive-tiny)), not re-measured (s1-micro on a busy machine, for [chapter 12](./12-size-ladder)).
 

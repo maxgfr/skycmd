@@ -241,7 +241,7 @@ $CARGO_TARGET_DIR/release/sky-train bench --config configs/s1-pico.json
 $CARGO_TARGET_DIR/release/sky-train bench --config configs/s1-pico.json --precision f32
 ```
 
-Defaults: `--mlm-batch 128 --mlm-seq 128 --dec-batch 64 --dec-seq 192 --dec-options 4 --warmup 10 --steps 50`. These are the bf16 rows currently in `BENCH.md` (mlx-rs 0.32, MLX 0.32.2, Metal):
+Defaults: `--mlm-batch 128 --mlm-seq 128 --dec-batch 64 --dec-seq 192 --dec-options 4 --warmup 10 --steps 50`. These are the bf16 rows in `BENCH.md` (mlx-rs 0.32, MLX 0.32.2, Metal):
 
 | model | phase | step (ms) | tok/s | peak mem (MB) |
 |---|---|---:|---:|---:|

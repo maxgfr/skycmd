@@ -15,7 +15,9 @@ digit, rule or date changed. On 20/11/2026 the absolute paths of the local worki
 17 result files under `runs/` (the commands, gate files, logs and reports of s6-nano2, s6-nano3,
 s6-micro2, s6-cast-pico, s6-cast2-pico, s6-sleep3 and s6-sleep4) were made repository-relative; no
 measured value changed. Paths into the data folder outside the repository are left as recorded.
-Status on 20/11/2026: every line is closed, and no pre-registration is open.
+Final status, 20/11/2026: the experiments are finished; every line below is closed or published,
+and no pre-registration is open. The whole project is written up in the technical report,
+[`site/paper/index.md`](../site/paper/index.md) (<https://maxgfr.github.io/skycmd/paper/>).
 
 ## s1 to s5 (October 2026)
 

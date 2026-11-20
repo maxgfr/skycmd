@@ -126,7 +126,7 @@ Per seed, q8_0 moves the ECE of B\* by less than 0.003 and its accuracy by at mo
 
 The model on /live is a longer B\* run: 8000 steps instead of 2000, declared during the night and outside the bets. It reaches 0.696 on the fitted bench (oscar-1-17m: 0.682 on the same records) and 21 of the 30 English demo cases. It is a 20.7 MB GGUF that answers in about 20 ms in the browser.
 
-## What is not done yet
+## What was not done
 
 - **The baselines that score labels** through the MLM head.
 

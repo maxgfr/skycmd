@@ -191,7 +191,7 @@ pub fn confidence_choice(p: &[f32]) -> f32 {
 
 This confidence rescales the top probability so that a uniform answer scores 0 whatever the number of options. It is only meaningful when the probabilities are calibrated, which is the point of this chapter.
 
-## What the report does not measure yet
+## What the report does not measure
 
 - **Coherence without labels.** `docs/research.md` lists the check that p(X) + p(not X) ≈ 1 for a statement and its negation (paper 2609.33209) as an evaluation idea. The s1 `sky-train eval` does not compute it. The s2 evaluation (`s2-eval`) looks for such pairs, but the test split contains none, so every s2 and s3 report shows 0 pairs (`runs/s2-nano-g2/report.md`, `runs/night-baseline/s3-pico-heldout.md`). Not measured.
 - **Shuffle stability.** `eval` scores every question once in record order, so s1 flip rates under option shuffling (paper 2610.06744) are not measured. s2 is equivariant by construction, and `s2-eval` checks it: shuffling the options of 256 questions moves the probabilities of the shipped s2-nano by at most 1.8e-7 and those of the shipped s3-pico by at most 4.2e-17 ([chapter 19](./19-s2-architecture), `runs/night-baseline/s3-pico-heldout.md`).

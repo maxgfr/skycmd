@@ -1,4 +1,4 @@
-# 22 · s4: a generic decision model distilled from Qwen3.5
+# 22 s4: a generic decision model distilled from Qwen3.5
 
 The s1 to s3 models know their games and the typed-decision sets they were trained on. On generic decisions they stay low: s3-pico scores 0.382 on `typed_decisions_bench`, against 0.6775 for oscar-1-17m ([chapter 11](./11-calibration-and-evaluation)). Two causes were documented: the sequences were truncated (96.8 % of them with the 1k vocabulary, [chapter 12](./12-size-ladder)), and the models learned language from scratch with no teacher. s4 attacks both. It is the s3 architecture at language scale, trained in one night on gold labels plus soft labels from Qwen3.5, and it runs in the browser on the [Live](/live/) page.
 
@@ -148,7 +148,7 @@ scripts/night-s4.sh teacher-eval               # the teacher on the same test se
 python3 scripts/s4-gate.py runs/s4-micro       # results table and gate
 ```
 
-## Next
+## Next, as planned in October 2026
 
 In order of expected gain:
 
@@ -180,4 +180,4 @@ When s5 was designed, the project read the terms of use of the hosted endpoint t
 
 The `glm_orders` and `paraphrased` files of the earlier models, and the model that wrote them, are described in `DATA_LICENSES.md`.
 
-[Chapter 23](/tutorial/23-s5-lite) starts from a pretrained encoder, as point 1 of "Next" suggested. It also fixes every claim in advance.
+[Chapter 23](/tutorial/23-s5-lite) starts from a pretrained encoder, as point 1 of "Next, as planned in October 2026" suggested. It also fixes every claim in advance.

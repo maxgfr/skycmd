@@ -1,4 +1,4 @@
-# 21 · s3: a 251 KB model that plays four games
+# 21 s3: a 251 KB model that plays four games
 
 s3 is the result of one night of research and experiments, aimed at the smallest and fastest model that still plays every game as well as the oracle. It is s2 (chapter 19) with three changes, each taken from recent work. The spec is in [`docs/SPEC-S3.md`](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S3.md), and the research notes with their sources are in [`docs/research-night.md`](https://github.com/maxgfr/skycmd/blob/main/docs/research-night.md).
 

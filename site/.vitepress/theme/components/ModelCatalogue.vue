@@ -2,7 +2,7 @@
 // Views of the Models catalogue (lib/catalogue.ts):
 //   <ModelCatalogue group="works" />   the cards of one group (/models/)
 //   <ModelCatalogue legend />          what each status means (/models/)
-//   <ModelCatalogue home />            "What works today" on the home page
+//   <ModelCatalogue home />            "What works" on the home page
 //   <ModelCatalogue lessons />         the lessons of failed gates on the home page
 import { computed } from 'vue'
 import { withBase } from 'vitepress'

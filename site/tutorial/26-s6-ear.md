@@ -1,6 +1,6 @@
 # 26 s6-ear: a decision model that listens
 
-*Code ready and tested end to end on a small sample (3 November 2026). The first s6-ear-nano was trained in November 2026 and failed three of its four gates: it failed its gate; its file is published as a result (owner's decision of 15/11/2026). The [result](#the-first-run-three-gates-failed) is at the end of this chapter.*
+*The code was tested end to end on a small sample on 3 November 2026. The first s6-ear-nano was trained in November 2026 and failed three of its four gates: it failed its gate; its file is published as a result (owner's decision of 15/11/2026). The [result](#the-first-run-three-gates-failed) is at the end of this chapter.*
 
 Every model so far reads its state as text. s6-ear reads **audio**: the last 10 seconds of speech, at 16 kHz. It answers typed questions about them with the same engine, the same GGUF format, the same early exits and the same WASM build as the game models. These are the decisions a voice agent needs every 80 ms: has the speaker finished, which word was said, and (designed, never run) whether to keep listening, acknowledge, speak or yield.
 

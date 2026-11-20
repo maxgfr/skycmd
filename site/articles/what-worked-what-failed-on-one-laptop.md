@@ -9,7 +9,7 @@ outline: [2, 2]
 
 *19 November 2026*
 
-*Updated on 20 November 2026: s6-ear v3 was trained and read late on 19 November, and failed its gate; its file is published as s6-ear3-nano, as a result. The failures, their count and the last paragraph say so, and [its own article](/articles/an-end-of-turn-detector-trained-on-real-conversations) tells it.*
+*Updated on 20 November 2026: s6-ear v3 was trained and read late on 19 November, and failed its gate; its file is published as s6-ear3-nano, as a result. The failures, their count and the last paragraph say so, and [its own article](/articles/an-end-of-turn-detector-trained-on-real-conversations) tells it. With that reading the experiments ended: no line is open, and the notes below are kept as they were written.*
 
 *Updated again on 19 November 2026: s6-ear v3's pre-registration was frozen that day, with amendments 1 and 2; its data build is running, and nothing has been trained or read. The last paragraph says so.*
 
