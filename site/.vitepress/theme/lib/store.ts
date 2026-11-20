@@ -8,6 +8,9 @@ export const live = reactive({
   bytes: 0,
   /** Rolling median of a full AI decision inside WASM (both questions + physics). */
   medianUs: 0,
+  /** Rolling mean of the same decisions, and how many they are. */
+  meanUs: 0,
+  timedN: 0,
   /** Decisions actually taken per second by the hero game. */
   decisionsPerS: 0,
   /** Best score of the hero game in this visit. */

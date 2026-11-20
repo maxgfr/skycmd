@@ -31,6 +31,8 @@ export interface Hud {
   policy: string
   medianUs: number
   meanUs: number
+  /** How many decisions `medianUs` and `meanUs` are over (the session keeps the last 120). */
+  timedN: number
   decisionsPerS: number
   decideEvery: number
   probs: { key: string; p: number }[]
@@ -61,6 +63,7 @@ export function newHud(): Hud {
     policy: '',
     medianUs: 0,
     meanUs: 0,
+    timedN: 0,
     decisionsPerS: 0,
     decideEvery: 1,
     probs: [],
@@ -389,6 +392,7 @@ export class GameRunner {
       const t = JSON.parse(this.session.timing())
       this.hud.medianUs = t.median_us
       this.hud.meanUs = t.mean_us
+      this.hud.timedN = t.n
       this.hud.decisionsPerS = this.rate.rate(now)
       this.hud.decideEvery = this.session.decide_every()
       this.hud.score = this.session.score()

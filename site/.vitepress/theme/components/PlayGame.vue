@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { GameRunner, newHud, type GameKind, type Hud, type Mode } from '../lib/runner'
 import { actionForKey, actionForSwipe, FirstPress } from '../lib/controls'
 import {
+  clockStepMicros,
   engineLabel,
   FAMILY_LABEL,
   familyOf,
@@ -22,6 +23,7 @@ import {
   type WasmEngine,
 } from '../lib/wasm'
 import { gateNotice } from '../lib/gate'
+import { decisionLatency } from '../lib/latency'
 import { formatSize } from '../lib/size'
 import GateNotice from './GateNotice.vue'
 
@@ -133,6 +135,11 @@ const tau = ref('auto')
 const status = ref('Loading the wasm module…')
 const error = ref('')
 const hud = ref<Hud>(newHud())
+/** The browser clock's step in µs, measured on the client at mount (0 until then). */
+const clockStep = ref(0)
+const latency = computed(() =>
+  decisionLatency({ medianUs: hud.value.medianUs, meanUs: hud.value.meanUs, n: hud.value.timedN }, clockStep.value),
+)
 const questions = ref<Question[]>([])
 const now = ref(0)
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -334,6 +341,7 @@ function onPointerUp(e: PointerEvent) {
 }
 
 onMounted(async () => {
+  clockStep.value = clockStepMicros()
   const q = new URLSearchParams(window.location.search).get('game')
   if (q === 'flappy' || q === 'rescue' || q === 'dodge' || q === 'doom') kind.value = q
   window.addEventListener('keydown', onKey)
@@ -450,8 +458,8 @@ function pct(p: number) {
 
         <div class="metrics">
           <div>
-            <div class="mv">{{ mode === 'ai' && engine && hud.medianUs > 0 ? formatInt(hud.medianUs) : '—' }}</div>
-            <div class="ml">µs / decision (median)</div>
+            <div class="mv">{{ mode === 'ai' && engine ? latency.us : '—' }}</div>
+            <div class="ml">µs / decision ({{ mode === 'ai' && engine && latency.kind === 'mean' ? 'mean' : 'median' }})</div>
           </div>
           <div>
             <div class="mv">{{ mode === 'ai' && engine ? formatInt(hud.decisionsPerS) : '—' }}</div>
@@ -463,6 +471,7 @@ function pct(p: number) {
           </div>
         </div>
         <div v-if="mode === 'ai' && engine && engineLabel()" class="ml engine">{{ engineLabel() }}</div>
+        <div v-if="mode === 'ai' && engine && latency.detail" class="ml engine">{{ latency.detail }}</div>
         <div v-if="info" class="depth" aria-label="Model depth and caches">
           <template v-if="info.family === 's2'">
             <div class="drow">
