@@ -12,7 +12,7 @@ import ModelCatalogue from '../.vitepress/theme/components/ModelCatalogue.vue'
 
 Every model skycmd publishes, one card each: what it is for, its file size, how it was judged, the one fact it brings and where to try it. Most were judged by a gate, a bar written down in a pre-registration before the model was trained; a model that misses its gate is published anyway, as a result. The numbers on the cards come from [Results](/results/), [What we bring](/novelty/) and the Hugging Face model cards. Download links, formats and the engines each file runs in are on [Install](/install/#models).
 
-Each model also has a demo on Hugging Face, and all of them are gathered in one place: [Every demo in one Space](https://huggingface.co/spaces/maxgfr/skycmd), where each demo opens with its model's verdict, passed or failed.
+Each model also has a demo on Hugging Face, and all of them are gathered in one place: [Every demo in one Space](https://huggingface.co/spaces/maxgfr/skycmd), where each demo opens with its model's verdict, passed or failed. The models, their Spaces and the data sets are also listed together, by verdict, in the [skycmd collection](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) on Hugging Face.
 
 <ModelCatalogue legend />
 

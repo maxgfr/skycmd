@@ -27,6 +27,9 @@ correction of a page, a card or a result file.
   anything unless `--allow-pinned-engine` is given. The global Space
   `maxgfr/skycmd` (the entry of kind `hub`) gathers every demo and is republished with
   `--only skycmd` after each new model.
+- The Hugging Face collection [skycmd](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) lists the hub Space, the models by verdict, their
+  Spaces and the data sets; it is kept up to date with `scripts/hf-collection.py --apply` after a
+  model or a data set is added.
 
 ## Publishing a result: checklist
 

@@ -43,7 +43,7 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <ModelCatalogue home />
 
-<p class="home-more"><a href="./models/">All models, with their status and what each one brings</a> · <a href="https://huggingface.co/spaces/maxgfr/skycmd">Every demo in one Space</a></p>
+<p class="home-more"><a href="./models/">All models, with their status and what each one brings</a> · <a href="https://huggingface.co/spaces/maxgfr/skycmd">Every demo in one Space</a> · <a href="https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603">Every model, Space and data set in one Hugging Face collection</a></p>
 
 </section>
 
