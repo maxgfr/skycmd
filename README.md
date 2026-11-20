@@ -91,7 +91,7 @@ For comparison, `oscar-1-17m`, the smallest public model in this format, has 17M
 
 Two results took more than one try, and the tutorial tells both stories:
 - **DAgger.** The first s1-pico labelled 82% of Flappy test states correctly and crashed in all 30 episodes before the first pipe. Relative clearances in the state text plus two DAgger rounds took it to 200/200. The 5.6× larger s1-nano did worse ([chapter 20](https://maxgfr.github.io/skycmd/tutorial/20-dagger-lessons)).
-- **Early exit.** s2-nano crashed in every Flappy episode at the exit thresholds calibrated on validation questions (τ 0.62–0.69), and played at the oracle's level at full depth or with τ = 0.95, using 3.2 to 3.4 of its 4 layers. Calibrate the exit on closed-loop states ([chapter 19](https://maxgfr.github.io/skycmd/tutorial/19-s2-architecture)).
+- **Early exit.** s2-nano crashed in every Flappy episode at the exit thresholds calibrated on validation questions (τ 0.62–0.69), and played at the oracle's level at full depth or with τ = 0.95, using 3.2 to 3.4 of its 4 layers in Flappy, Rescue and Dodge (Doom, played by its fine-tune s2-nano-doom, used 4.0; [`loopcal.json`](site/public/results/loopcal.json), 5 seeds). Calibrate the exit on closed-loop states ([chapter 19](https://maxgfr.github.io/skycmd/tutorial/19-s2-architecture)).
 
 ## How it works
 - **s1 format.** The format is the same as Laya/Julia-1 and llama.cpp `/v1/systemone` ([PR #29818](https://github.com/ggml-org/llama.cpp/pull/29818)):
