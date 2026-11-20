@@ -82,7 +82,7 @@ T-tools, every system (accuracy; ECE; *none* F1):
 |---|---:|---:|---:|---:|
 | **s6-route-nano** | 2.4 MB | **0.8395** | **0.0244** | 0.7041 |
 | BM25 (bm25s, over the slate's own tools) | no parameters | 0.8500 | 0.0610 | 0.6486 |
-| all-MiniLM-L6-v2, cosine | 90.9 MB | 0.8840 | 0.0231 | 0.7516 |
+| all-MiniLM-L6-v2, cosine | 91.6 MB | 0.8840 | 0.0231 | 0.7516 |
 | toolrouter (stanley-nv) | 7.66 MB | 0.7855 | 0.0886 | 0.3333 |
 | static-ft (potion fine-tuned, reduced to the model's bytes) | ≤ 2.4 MB | 0.6735 | 0.0430 | 0.4715 |
 | potion-base-2M, cosine | 7.56 MB | 0.6675 | 0.0393 | 0.4724 |
@@ -90,6 +90,8 @@ T-tools, every system (accuracy; ECE; *none* F1):
 | pair-lr (size-matched logistic regression) | ≤ 2.4 MB | 0.4500 | 0.0426 | 0.3114 |
 | name-prior | | 0.2000 | 0.8000 | 0.3333 |
 | s6-nano (v1), same prompt | 715 KB | 0.0885 | 0.1152 | 0.0049 |
+
+MiniLM's 91.6 MB is the eleven pinned files of all-MiniLM-L6-v2 at commit `1110a243` (91,578,415 bytes), the size the later versions report; `docs/s6-nano2-prereg.md` gives 90.9 MB, its weights file `model.safetensors` alone (90,868,376 bytes), the same way as potion-base-2M's 7.56 MB (its weights file; 8,250,167 bytes with its tokenizer and configuration). Note of 20/11/2026: until then this table gave 90.9 MB.
 
 By source (accuracy):
 

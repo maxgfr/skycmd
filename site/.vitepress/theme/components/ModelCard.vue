@@ -11,7 +11,6 @@ const href = (link: string) => (isExternal(link) ? link : withBase(link))
 const verb = computed(() => GROUPS[props.entry.group].verb)
 // on /models/ the heading's id is the card's anchor (and feeds the page outline)
 const headingId = computed(() => (props.compact ? `home-${props.entry.id}` : props.entry.id))
-const readLabel = computed(() => (props.entry.group === 'progress' ? 'Pre-registration' : 'Read'))
 </script>
 
 <template>
@@ -50,7 +49,7 @@ const readLabel = computed(() => (props.entry.group === 'progress' ? 'Pre-regist
           Get it<span class="sr-only">: {{ entry.name }} on Hugging Face</span>
         </a>
         <a v-if="entry.read" class="mc-action" :href="href(entry.read.link)">
-          {{ readLabel }}<span class="sr-only">: {{ entry.read.label }}</span>
+          Read<span class="sr-only">: {{ entry.read.label }}</span>
         </a>
       </template>
     </div>

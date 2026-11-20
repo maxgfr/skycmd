@@ -114,7 +114,7 @@ The s2 rounds were played at the thresholds calibrated on validation questions, 
 | round 2 | 1.0 (full depth) | 200.0 (0) | 1.00 | 0.87 | 25 | measured for [chapter 19](./19-s2-architecture) |
 | oracle | | 200.0 (0) | 1.00 | 0.87 | 0 | |
 
-The DAgger rounds worked; the exit threshold hid it. At τ = 0.95, round 2 matches the oracle on all three games, and its reflex fires 25 times in Dodge against 1,026 for the shipped s1-pico.
+The DAgger rounds worked; the exit threshold hid it. At τ = 0.95, on these 30 episodes per game with seed 7, round 2 matches the oracle on all three games (over five seeds it flies 191.94 of 200 pipes, with 2.4 crashes per seed, [`loopcal.json`](/results/loopcal.json)), and its reflex fires 25 times in Dodge against 1,026 for the shipped s1-pico.
 
 Two more data points, from `scripts/train-doom.sh` at τ = 0.95 with 50 episodes and seed 7 (`runs/doom/`): the s2-nano from before DAgger flies 30.6 pipes with 50 crashes and completes 0.58 of Dodge, and round 2 flies 196.2 pipes with 1 crash and completes 0.74 of Dodge, against 0.78 for the oracle on that seed. Round 2 is near the oracle there too, but not equal to it on every seed.
 

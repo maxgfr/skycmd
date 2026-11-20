@@ -25,16 +25,8 @@ const meta = computed(() => STATUS[props.status])
         <circle cx="8" cy="8" r="6.4" />
         <path class="fill" d="M8 1.6a6.4 6.4 0 0 1 0 12.8z" />
       </template>
-      <template v-else-if="status === 'part'">
-        <circle cx="8" cy="8" r="6.4" />
-        <path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" />
-      </template>
-      <template v-else-if="status === 'failed'">
-        <path d="M4 4l8 8M12 4l-8 8" />
-      </template>
       <template v-else>
-        <circle cx="8" cy="8" r="6.4" />
-        <path d="M8 4.6V8l2.4 1.6" />
+        <path d="M4 4l8 8M12 4l-8 8" />
       </template>
     </svg>
     <span>{{ meta.label }}</span>

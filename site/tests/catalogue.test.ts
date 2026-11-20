@@ -51,20 +51,9 @@ test('the groups hold the statuses they promise', () => {
   for (const e of CATALOGUE) {
     if (e.group === 'works') assert.ok(['passed', 'second-look', 'ungated'].includes(e.status), e.id)
     if (e.status === 'passed' || e.status === 'second-look') assert.equal(e.group, 'works', e.id)
-    if (e.group === 'progress') {
-      assert.equal(e.status, 'progress', e.id)
-      assert.equal(e.size, undefined, e.id)
-      assert.equal(e.try, undefined, `${e.id}: nothing to try before a result`)
-    }
     if (e.status === 'failed') assert.equal(e.group, 'results', e.id)
   }
 })
-
-// The models whose card says "usable as a part" although their gate failed. Each one is named
-// here on purpose: a new "part" entry with a failed gate must be added to this list by hand.
-// s6-secrets-verify-pico failed G1 and is shipped only as an experimental option, off by default,
-// inside secretgate (hf/cards/s6-secrets-verify-pico.md).
-const PART_WITH_FAILED_GATE = new Set(['s6-secrets-verify-pico'])
 
 test('every status agrees with the gate of the manifest', () => {
   for (const e of CATALOGUE) {
@@ -76,11 +65,6 @@ test('every status agrees with the gate of the manifest', () => {
         assert.equal(m.gate, 'passed', where)
       if (e.status === 'failed') assert.equal(m.gate, 'failed', where)
       if (e.status === 'ungated') assert.equal(m.gate, undefined, where)
-      if (e.status === 'part') {
-        assert.ok(m.gate === 'passed' || m.gate === 'failed', where)
-        if (m.gate === 'failed')
-          assert.ok(PART_WITH_FAILED_GATE.has(name), `${where}: a failed model used as a part must be listed in PART_WITH_FAILED_GATE`)
-      }
     }
   }
 })

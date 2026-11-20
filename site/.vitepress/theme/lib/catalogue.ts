@@ -8,9 +8,9 @@
 // model of the manifest has an entry, that every "Get it" link has a card in hf/cards/ and that
 // every page linked exists.
 
-export type Status = 'passed' | 'second-look' | 'ungated' | 'bench-only' | 'part' | 'failed' | 'progress'
+export type Status = 'passed' | 'second-look' | 'ungated' | 'bench-only' | 'failed'
 
-export type GroupId = 'works' | 'part' | 'results' | 'progress'
+export type GroupId = 'works' | 'results'
 
 export interface Link {
   /** A path of this site (without the base), or an absolute URL. */
@@ -72,28 +72,16 @@ export const STATUS: Record<Status, { label: string; tone: 'success' | 'neutral'
     tone: 'warning',
     meaning: 'It cleared its gate on generated data and fails on real data, measured after publication.',
   },
-  part: {
-    label: 'Failed gate, usable as a part',
-    tone: 'warning',
-    meaning: 'It missed its gate; what it does measure makes it worth using inside another tool.',
-  },
   failed: {
     label: 'Failed gate, a result',
     tone: 'danger',
     meaning: 'It missed its gate. The file is published as the result of its experiment, not for use.',
   },
-  progress: {
-    label: 'In progress',
-    tone: 'info',
-    meaning: 'Pre-registered, with no test result yet.',
-  },
 }
 
 export const GROUPS: Record<GroupId, { title: string; verb: string }> = {
   works: { title: 'Works: use it', verb: 'What it brings' },
-  part: { title: 'Useful as a part, with a failed gate', verb: 'What it brings' },
   results: { title: 'Published as results, not for use', verb: 'What it taught' },
-  progress: { title: 'In progress', verb: 'Being tested' },
 }
 
 const HF = 'https://huggingface.co/maxgfr/'
@@ -208,12 +196,12 @@ export const CATALOGUE: CatalogueEntry[] = [
     source: ['site/results/index.md#s5-october-2026', 'hf/cards/s5-lite.md', 'site/public/models/manifest.json'],
   },
 
-  // Useful as a part, with a failed gate
+  // Published as results, not for use
   {
     id: 's6-secrets-verify-pico',
     name: 's6-secrets-verify-pico',
-    group: 'part',
-    status: 'part',
+    group: 'results',
+    status: 'failed',
     statusNote: 'It missed one gate of seven (G1) by 0.027; the six others hold.',
     purpose:
       'Judges whether a value found by a secret-scanning rule is a real credential, from the value, its name and the lines around it.',
@@ -222,14 +210,12 @@ export const CATALOGUE: CatalogueEntry[] = [
     brings:
       'Line F1 0.8561 on 221 real test repositories of CredData, above every rule scanner tested (the best, Betterleaks, 0.7332), with 0.35% of clean real files flagged; its gate asked for 0.8832.',
     caveat:
-      'secretgate 1.9.0 offers it as an experimental option, off by default, where it can only add redactions. Its input comes from secretgate\'s rules, which the browser does not run: the demo proposes candidates with one simple rule instead.',
+      'A result, not a detector to use on its own: secretgate 1.9.0 offers it as an experimental option, off by default, where it can only add redactions. Its input comes from secretgate\'s rules, which the browser does not run: the demo proposes candidates with one simple rule instead.',
     try: { link: '/secrets-verify/', label: 'the Secrets verifier page, with a simplified proposer' },
     get: HF + 's6-secrets-verify-pico',
     read: { link: '/articles/a-250-kb-secrets-verifier', label: 'the article on the secrets verifier' },
     source: ['site/results/index.md#s6-secrets-verify-pico-failed', 'site/articles/index.md', 'site/public/models/manifest.json'],
   },
-
-  // Published as results, not for use
   {
     id: 's6-route-nano',
     name: 's6-route-nano',
@@ -412,8 +398,8 @@ export const CATALOGUE: CatalogueEntry[] = [
     size: '702 KB',
     manifest: ['s2-nano', 's2-nano-doom'],
     brings:
-      'Calibrate early exits by playing: at exit thresholds fitted on i.i.d. questions, s2-nano crashed in every Flappy episode; with thresholds chosen in the game it flew 191.9 of 200 pipes on average.',
-    lesson: 'crashed in every Flappy episode at exit thresholds fitted on questions, and flew 191.9 of 200 pipes once they were chosen by playing.',
+      'Calibrate early exits by playing: at exit thresholds fitted on i.i.d. questions, s2-nano crashed in every Flappy episode; with thresholds chosen in the game it flew 191.9 of 200 pipes on average over five seeds.',
+    lesson: 'crashed in every Flappy episode at exit thresholds fitted on questions, and flew 191.9 of 200 pipes on average over five seeds once they were chosen by playing.',
     lessonName: 's2-nano',
     try: { link: '/play/', label: 'the Play page' },
     get: HF + 's2-nano',
@@ -436,8 +422,6 @@ export const CATALOGUE: CatalogueEntry[] = [
     read: { link: '/tutorial/20-dagger-lessons', label: 'chapter 20 of the tutorial' },
     source: ['hf/cards/s1-pico.md', 'site/public/models/manifest.json'],
   },
-
-  // In progress: no numbers before a result (none: every line is closed; the last read, s6-ear v3, was on 19/11/2026)
 ]
 
 export function entriesOf(group: GroupId): CatalogueEntry[] {

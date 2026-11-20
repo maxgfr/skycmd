@@ -22,20 +22,12 @@ These models do what their card says, on the tests their card names. Four passed
 
 <ModelCatalogue group="works" />
 
-## Useful as a part, with a failed gate {#part}
-
-It missed its gate, and what it does measure makes it worth using behind a rule-based scanner.
-
-<ModelCatalogue group="part" />
-
 ## Published as results, not for use {#results}
 
-Models that failed their gate, or that a later model replaced. Each file stays published as the result of its experiment, and each one taught something a later experiment used.
+Models that failed their gate, that passed only on generated data, or that a later model replaced. Each file stays published as the result of its experiment, and each one taught something a later experiment used.
 
 <ModelCatalogue group="results" />
 
-## In progress {#in-progress}
+## Closed without a model {#closed}
 
-Pre-registered and not yet read on a test set: no score until the gate is read. Each pre-registration says what is tested, how, and what would count as a pass. No card is here: every line is closed (20 November 2026), and no pre-registration is waiting for its reading. The last ones to be read, s6-cast v2 on 18 November 2026, s6-route v7 and s6-ear v3 on 19 November, are now [s6-cast2-pico](#s6-cast2-pico), [s6-route7-nano](#s6-route7-nano) and [s6-ear3-nano](#s6-ear3-nano), under Published as results. s6-sleep v4 closed on 19 November at its check K1, on training sequences, with no model ([`docs/s6-sleep4-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep4-prereg.md) §16); [s6-sleep3-nano](#s6-sleep3-nano) stays the line's published result.
-
-<ModelCatalogue group="progress" />
+No model is in progress: the experiments ended on 20 November 2026, and every pre-registration has been read or closed. Nine versions closed without a model, so they have no card here. s6-sleep v1, v2 and v4 and s6-route v4, v5 and v6 stopped at a check their pre-registration named, before any model was published. The fine-tuning of LFM3-1.7B trained nothing, because no method fitted the machine's memory. The flexible-weights experiments were closed without running after a literature review, and a possible s6-secrets v4 was closed by a diagnosis. Each one is in [Results](/results/), with its reason.

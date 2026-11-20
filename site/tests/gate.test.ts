@@ -104,7 +104,7 @@ test('every demo and the Space app render a gate through GateNotice, never by ha
   }
 })
 
-const FAILED: Status[] = ['failed', 'part']
+const FAILED: Status[] = ['failed']
 const PASSED: Status[] = ['passed', 'second-look', 'bench-only']
 
 test('the manifest gives each model the verdict of its catalogue card', () => {

@@ -157,7 +157,7 @@ test('the list shows every model with its name, size, badge and purpose, each li
       assert.ok(unescape(html).includes(it.card.purpose), `${it.name}: purpose`)
     }
   }
-  for (const s of Object.values(STATUS)) if (CATALOGUE.some((c) => STATUS[c.status] === s && c.group !== 'progress')) assert.ok(html.includes(`<span>${s.label}</span>`), s.label)
+  for (const s of Object.values(STATUS)) if (CATALOGUE.some((c) => STATUS[c.status] === s)) assert.ok(html.includes(`<span>${s.label}</span>`), s.label)
 })
 
 test('picking a model mounts the demo of its own Space, with that Space', async () => {
