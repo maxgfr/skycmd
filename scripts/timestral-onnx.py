@@ -307,6 +307,11 @@ def main() -> None:
                 ts.append((time.perf_counter() - t0) * 1e3)
             bench.setdefault(variant, {})[f"{label}_median_ms"] = round(float(np.median(ts)), 2)
     print(f"latency (ms, median of 30): {json.dumps(bench)}")
+    # Unless it is chosen, the int8 file is not kept: its figures say which export they were measured
+    # on (the committed spec keeps those of the export of 26/10/2026, before its debug strings were
+    # cleared, not measured again).
+    measured_on = f"the export of {time.strftime('%d/%m/%Y')}, after its debug strings were cleared"
+    bench_out: dict[str, dict[str, float | str]] = {**bench, "int8": {"measured_on": measured_on, **bench["int8"]}}
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -355,9 +360,10 @@ def main() -> None:
         "reference": f"timestral.TimestralForecaster.forecast(context, prediction_length={args.horizon}) defaults",
         "torch_checks": {"metric": "max |a - b| / std(observed context), all quantiles", "cases": checks},
         "parity_vs_official": {"metric": "max |onnx - official| / std(observed context)", "int8_tolerance":
-                               args.int8_tolerance, "candidates": {k: {"size_bytes": sizes[k], "worst": worst(k),
+                               args.int8_tolerance, "candidates": {k: {**({"measured_on": measured_on} if k == "int8" else {}),
+                                                                      "size_bytes": sizes[k], "worst": worst(k),
                                                                       "cases": parity[k]} for k in parity}},
-        "benchmark_ort_python_cpu": {"machine": "macOS arm64", **bench},
+        "benchmark_ort_python_cpu": {"machine": "macOS arm64", **bench_out},
         "ops": op_types,
     }
     (out_dir / "timestral-5m.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
