@@ -73,6 +73,7 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
   <li><a href="./models/">Models</a><span>Every model, its status, its size and where to try it.</span></li>
   <li><a href="./play/">Demos</a><span><a href="./play/">Play</a> four games, ask your own questions on <a href="./live/">Live</a>, pick a tool on <a href="./router/">Router</a>, forecast a series on <a href="./forecast/">Forecast</a>, test audio on <a href="./ear/">Listen</a>.</span></li>
   <li><a href="./results/">Results</a><span>Every gate with its numbers, failures included, and the <a href="./bench/">Bench</a> of sizes and latencies.</span></li>
+  <li><a href="./paper/">Technical report</a><span>The whole project as a paper: the protocol, every gate as read, and what the readings show across lines. Not peer-reviewed.</span></li>
   <li><a href="./tutorial/">Tutorial</a><span>28 chapters: setup, data, training, export to WebAssembly, and the story of each model.</span></li>
   <li><a href="./install/">Install</a><span>The files, and the engine for the browser, Node, Python, the command line and an HTTP server.</span></li>
   <li><a href="https://github.com/maxgfr/skycmd">GitHub</a><span>The code, the pre-registrations and the result files.</span></li>
