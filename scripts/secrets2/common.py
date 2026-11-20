@@ -7,7 +7,7 @@ runners share (CredData's line convention, hashing, CPU time of a child process)
 
 The data folder is outside every repository and nothing in it is ever committed:
   SECRETS2_DATA        default: <parent of the main checkout>/skycmd-data/s6-secrets2
-  SECRETS2_SECRETGATE  default: <parent of the main checkout>/secretgate/.claude/worktrees/gen
+  SECRETS2_SECRETGATE  default: <parent of the main checkout>/secretgate
 
 The split guard. A runner names the split it works on and gets its repositories from
 `splits.json`; every path it reads or writes a flag for goes through `Split.check`, which
@@ -77,7 +77,7 @@ def data_root():
 
 
 def secretgate_root():
-    return os.environ.get("SECRETS2_SECRETGATE") or os.path.join(_main_parent(), "secretgate", ".claude", "worktrees", "gen")
+    return os.environ.get("SECRETS2_SECRETGATE") or os.path.join(_main_parent(), "secretgate")
 
 
 def eval_root():

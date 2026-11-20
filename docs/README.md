@@ -9,6 +9,12 @@ JSON files are left there ([`data-inventory.md`](data-inventory.md), sections 9 
 are in [`BENCH.md`](../BENCH.md). The nine pre-registrations of s5, s6, s6-gen, s6-ear, s6-secrets,
 s6-cast, LFM3 (two) and flexible weights, and `research-night.md`, were written in French and
 translated into English on 19/11/2026 (each says so at its top); every document is now in English.
+On 20/11/2026 the numbers those translations still wrote the French way were given English
+typography (decimal points, commas between thousands, the dollar sign before the amount), with no
+digit, rule or date changed. On 20/11/2026 the absolute paths of the local working copy recorded in
+17 result files under `runs/` (the commands, gate files, logs and reports of s6-nano2, s6-nano3,
+s6-micro2, s6-cast-pico, s6-cast2-pico, s6-sleep3 and s6-sleep4) were made repository-relative; no
+measured value changed. Paths into the data folder outside the repository are left as recorded.
 Status on 20/11/2026: every line is closed, and no pre-registration is open.
 
 ## s1 to s5 (October 2026)

@@ -1,10 +1,10 @@
-== runs/s6-sleep3/checks/c5/s0: --steps 600, seed 0 --sleep-records /Users/maxime/Documents/Code/skycmd/runs/s6-sleep/seq/recall.jsonl --sleep-weights recall=1 --sleep-batch 8 --seq-frac 0.9 --sleep-passes 1 --no-compile --val-max 256 --mem-lr-mult 10 --mem-gate-lr-mult 0 --memory-aux-weight 1 --memory-off-eval 4
+== runs/s6-sleep3/checks/c5/s0: --steps 600, seed 0 --sleep-records runs/s6-sleep/seq/recall.jsonl --sleep-weights recall=1 --sleep-batch 8 --seq-frac 0.9 --sleep-passes 1 --no-compile --val-max 256 --mem-lr-mult 10 --mem-gate-lr-mult 0 --memory-aux-weight 1 --memory-off-eval 4
 MLX device: cpu
 source decisions: 776101 train items, weight 0.300
 source games: 252591 train items, weight 0.600
 source numeric: 89997 train items, weight 0.100
 val 59164 / test 33534 items, 537348 distinct questions, 0 records skipped (56.5s)
-initialized 59 tensors from /Users/maxime/Documents/Code/skycmd/runs/s6lr/softmax-adamw-x2/decide/last/model.safetensors
+initialized 59 tensors from runs/s6lr/softmax-adamw-x2/decide/last/model.safetensors
 memory: read on, projections ternary under QAT
 memory: AdamW rate x10 on mem.*
 memory: AdamW rate of the gates x0 on top
@@ -51,13 +51,13 @@ done: 600 steps
   val[ternary] effective rank per exit: 44.3 41.1 37.7 34.0 (of 96)
 final val accuracy (last exit): latent f32 0.4297, ternary 0.4961
 checkpoint runs/s6-sleep3/checks/c5/s0/last
-== runs/s6-sleep3/checks/c5/s1: --steps 600, seed 1 --sleep-records /Users/maxime/Documents/Code/skycmd/runs/s6-sleep/seq/recall.jsonl --sleep-weights recall=1 --sleep-batch 8 --seq-frac 0.9 --sleep-passes 1 --no-compile --val-max 256 --mem-lr-mult 10 --mem-gate-lr-mult 0 --memory-aux-weight 1 --memory-off-eval 4
+== runs/s6-sleep3/checks/c5/s1: --steps 600, seed 1 --sleep-records runs/s6-sleep/seq/recall.jsonl --sleep-weights recall=1 --sleep-batch 8 --seq-frac 0.9 --sleep-passes 1 --no-compile --val-max 256 --mem-lr-mult 10 --mem-gate-lr-mult 0 --memory-aux-weight 1 --memory-off-eval 4
 MLX device: cpu
 source decisions: 776101 train items, weight 0.300
 source games: 252591 train items, weight 0.600
 source numeric: 89997 train items, weight 0.100
 val 59164 / test 33534 items, 537348 distinct questions, 0 records skipped (58.4s)
-initialized 59 tensors from /Users/maxime/Documents/Code/skycmd/runs/s6lr/softmax-adamw-x2/decide/last/model.safetensors
+initialized 59 tensors from runs/s6lr/softmax-adamw-x2/decide/last/model.safetensors
 memory: read on, projections ternary under QAT
 memory: AdamW rate x10 on mem.*
 memory: AdamW rate of the gates x0 on top

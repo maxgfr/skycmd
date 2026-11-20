@@ -1,5 +1,5 @@
 {
-  "config": "/Users/maxime/Documents/Code/skycmd/runs/recipe/configs/s6-cast-pico.json",
+  "config": "runs/recipe/configs/s6-cast-pico.json",
   "out": "runs/s6-cast-pico",
   "minutes": 480.0,
   "steps": null,

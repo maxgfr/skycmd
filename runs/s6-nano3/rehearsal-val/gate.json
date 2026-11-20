@@ -10,7 +10,7 @@
   "partner_temperature": 0.06710211671167063,
   "bytes": 3422864,
   "model_file": {
-   "model": "/Users/maxime/Documents/Code/skycmd/.claude/worktrees/s6-tranches-2-7/models/s6-nano2/skycmd-s6-route-nano-ternary.gguf",
+   "model": "models/s6-nano2/skycmd-s6-route-nano-ternary.gguf",
    "sha256": "a124dfe86f76e9547db98edc03351f66908617ae2be3f5a4f423a876b7956c82",
    "bytes": 2418912
   }

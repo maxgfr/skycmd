@@ -36,7 +36,7 @@ step    165 sequence loss 1.3583 (last 50 sequence steps, step 165/1310, 9.0 min
 step    220 loss 0.8416 lr x1.000 qat 292 tok/s 2 q/s (step 220/1310, 11.8 min)
 step    221 sequence loss 1.2561 (last 50 sequence steps, step 221/1310, 11.8 min)
 cooling down for 893 s (SKY_COOL)
-brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.85, 50 min of work, 10 of rest (runs/brake)
 step    274 sequence loss 1.1870 (last 50 sequence steps, step 274/1310, 14.0 min)
 step    320 loss 0.9108 lr x1.000 qat 176 tok/s 1 q/s (step 320/1310, 16.0 min)
 step    328 sequence loss 1.1440 (last 50 sequence steps, step 328/1310, 16.4 min)
@@ -65,7 +65,7 @@ step   1140 loss 0.8136 lr x0.687 qat 393 tok/s 3 q/s (step 1140/1310, 52.5 min)
 step   1150 sequence loss 0.4750 (last 50 sequence steps, step 1150/1310, 52.8 min)
 cooling down for 600 s (SKY_COOL)
 step   1205 sequence loss 0.4427 (last 50 sequence steps, step 1205/1310, 55.3 min)
-brake: duty 0.5, 45 min of work, 15 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake)
+brake: duty 0.5, 45 min of work, 15 of rest (runs/brake)
 step   1267 sequence loss 0.3883 (last 50 sequence steps, step 1267/1310, 57.8 min)
 done: 1310 steps
   val[f32] exit 0 (L1): acc all 0.478 | decisions 0.455 | games 0.567 | numeric 0.427  nll 2.0529

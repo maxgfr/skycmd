@@ -3,7 +3,7 @@
 # after K1 whatever it reads; exit 1 means K1's bar failed (a result, not a crash).
 # Run from this worktree, at main (267d3fb).
 set -uo pipefail
-export SKY_BRAKE_FILE=/Users/maxime/Documents/Code/skycmd/runs/brake
+export SKY_BRAKE_FILE=runs/brake
 export CARGO_BUILD_JOBS=2
 caffeinate -i bash scripts/train-sleep4.sh k1
 status=$?

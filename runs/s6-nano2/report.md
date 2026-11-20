@@ -8,16 +8,16 @@ Pre-registration: `docs/s6-nano2-prereg.md`, section 5. One run, seed 0; checkpo
 | pilot micro | 3191 | 20.01 | 20 |
 | main | 20504 | 120.00 | 120 |
 
-Brake at start: `SKY_DUTY SKY_COOL` = `0.5 45:15`, file `/Users/maxime/Documents/Code/skycmd/runs/brake`.
+Brake at start: `SKY_DUTY SKY_COOL` = `0.5 45:15`, file `runs/brake`.
 
-- `runs/s6-nano2-pilot/nano`: brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) (2 times)
-- `runs/s6-nano2-pilot/nano`: brake: duty 0.95, 55 min of work, 5 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) (2 times)
+- `runs/s6-nano2-pilot/nano`: brake: duty 0.85, 50 min of work, 10 of rest (runs/brake) (2 times)
+- `runs/s6-nano2-pilot/nano`: brake: duty 0.95, 55 min of work, 5 of rest (runs/brake) (2 times)
 - `runs/s6-nano2-pilot/nano`: cooling down for N s (SKY_COOL) (1 times)
-- `runs/s6-nano2-pilot/micro`: brake: duty 0.95, 55 min of work, 5 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) (2 times)
-- `runs/s6-nano2-pilot/micro`: brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) (1 times)
-- `runs/s6-nano2`: brake: duty 0.95, 55 min of work, 5 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) (1 times)
+- `runs/s6-nano2-pilot/micro`: brake: duty 0.95, 55 min of work, 5 of rest (runs/brake) (2 times)
+- `runs/s6-nano2-pilot/micro`: brake: duty 0.85, 50 min of work, 10 of rest (runs/brake) (1 times)
+- `runs/s6-nano2`: brake: duty 0.95, 55 min of work, 5 of rest (runs/brake) (1 times)
 - `runs/s6-nano2`: cooling down for N s (SKY_COOL) (3 times)
-- `runs/s6-nano2`: brake: duty 0.85, 50 min of work, 10 of rest (/Users/maxime/Documents/Code/skycmd/runs/brake) (1 times)
+- `runs/s6-nano2`: brake: duty 0.85, 50 min of work, 10 of rest (runs/brake) (1 times)
 
 ## Pilots (validation slates, ternary, full depth)
 
