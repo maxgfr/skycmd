@@ -172,7 +172,9 @@
     "bytes": 249984,
     "file": "s6-secrets-verify-pico.gguf",
     "sha256": "01e6db3fa71cc2c5563dea222c68e040d3994ee2abbb02b25491a51b8cb54f27",
-    "dictionary": "s6-secrets-verify-dictionary.txt"
+    "dictionary": "s6-secrets-verify-dictionary.txt",
+    "dictionary_sha256": "83f3f32b0df5fc92418dac25b8d1317ec537c0d4c6405961c9c06f31159c21e9",
+    "dictionary_bytes": 1706770
   },
   {
     "name": "s6-route-nano",
