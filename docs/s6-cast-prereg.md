@@ -21,22 +21,22 @@
 
 ## 2. Learning-rate pilot (`scripts/train-cast.sh pilot`)
 
-- 3 000 steps at 1e-3, 3e-3 and 1e-2 (AdamW; Muon v2 at the same rate), batch 256, without QAT.
+- 3,000 steps at 1e-3, 3e-3 and 1e-2 (AdamW; Muon v2 at the same rate), batch 256, without QAT.
 - **Choice.** The final validation pinball in f32 (last output). We keep 3e-3 unless another rate lowers it by at least 2 %.
-- **Distillation.** Same pilot at the chosen rate, with TinyCast as teacher (weight 0,5, 50 % of the windows). We distil, unless the pinball is worse by more than 1 %: the validation pinball is measured against the truth, and a teacher can degrade it without degrading GIFT-Eval. The threshold is therefore deliberately loose.
+- **Distillation.** Same pilot at the chosen rate, with TinyCast as teacher (weight 0.5, 50 % of the windows). We distil, unless the pinball is worse by more than 1 %: the validation pinball is measured against the truth, and a teacher can degrade it without degrading GIFT-Eval. The threshold is therefore deliberately loose.
 
 ## 3. The run (`scripts/train-cast.sh train`)
 
-- `configs/s6-cast-pico.json`: 388 320 parameters.
+- `configs/s6-cast-pico.json`: 388,320 parameters.
 - 480 minutes (time budget), batch 256, WSD.
-- Ternary QAT over the final 20 %, EMA 0,999.
-- **Teacher** (unless the pilot rules it out): TinyCast, whose deciles serve as a second target on 50 % of the windows. The loss is `pinball(truth) + w·L1(teacher's deciles)`, with w going linearly from 0,5 to 0 over the budget. This is the teacher annealing of BAM: the end of training follows the truth alone. A student that learns both the truth and the teacher can surpass the latter (Born-Again Networks, arXiv 1805.04770; Revisiting Self-Distillation, arXiv 2206.08491). TinyCast excludes from its training the sets that overlap the GIFT-Eval and Chronos-ZS tests: it does not leak the test.
+- Ternary QAT over the final 20 %, EMA 0.999.
+- **Teacher** (unless the pilot rules it out): TinyCast, whose deciles serve as a second target on 50 % of the windows. The loss is `pinball(truth) + w·L1(teacher's deciles)`, with w going linearly from 0.5 to 0 over the budget. This is the teacher annealing of BAM: the end of training follows the truth alone. A student that learns both the truth and the teacher can surpass the latter (Born-Again Networks, arXiv 1805.04770; Revisiting Self-Distillation, arXiv 2206.08491). TinyCast excludes from its training the sets that overlap the GIFT-Eval and Chronos-ZS tests: it does not leak the test.
 - Seed 1, once only. Only a technical failure justifies a rerun, and it is noted in the report.
 
 ## 4. Exported checkpoint (`export`)
 
 - **Choice of weights.** The EMA (`last-ema`) if its final ternary validation pinball is lower than that of `last`, otherwise `last`. No intermediate checkpoint is considered.
-- **Calibration of the early exit.** `sky-cast-eval calibrate`: α = 0,05, δ = 0,02 (normalised units), on 2 000 synthetic windows never seen.
+- **Calibration of the early exit.** `sky-cast-eval calibrate`: α = 0.05, δ = 0.02 (normalised units), on 2,000 synthetic windows never seen.
 
 ## 5. Evaluation (`eval`)
 
@@ -44,11 +44,11 @@
   - Each metric is divided by that of the reference seasonal naive (`eval/gift-eval/seasonal_naive.csv`), then the geometric mean is taken.
   - This gives **nGMASE** (point), **nWQL** (probabilistic) and nMSIS.
 - **Validation of the bench, before any reading of s6-cast.**
-  - Our seasonal naive (point forecast copied onto all the deciles) must give nGMASE at 1,00 ± 0,02. Its nWQL is not 1: the leaderboard's reference is probabilistic. The WQL is therefore validated by TinyCast, below.
-  - Our ported TinyCast (with flip, like their submission) must recover 0,774 and 0,545 to within ± 0,02.
-  - **Result (26/10/2026): bench validated.** Seasonal naive: nGMASE 0,99986. Ported TinyCast: nGMASE 0,786, nWQL 0,557 (nMSIS 0,578), on the 97 configurations.
-    - 95 configurations recover the published MASE to within 1 % (geometric ratio 1,015 over the 97).
-    - The gap comes from `bizitobs_l2c/5T` medium and long (MASE 0,85 and 1,25 against 0,49 and 0,48). For this set alone, TinyCast's driver (`tinycast/eval.py`) turns on two settings that are not in its generic predictor:
+  - Our seasonal naive (point forecast copied onto all the deciles) must give nGMASE at 1.00 ± 0.02. Its nWQL is not 1: the leaderboard's reference is probabilistic. The WQL is therefore validated by TinyCast, below.
+  - Our ported TinyCast (with flip, like their submission) must recover 0.774 and 0.545 to within ± 0.02.
+  - **Result (26/10/2026): bench validated.** Seasonal naive: nGMASE 0.99986. Ported TinyCast: nGMASE 0.786, nWQL 0.557 (nMSIS 0.578), on the 97 configurations.
+    - 95 configurations recover the published MASE to within 1 % (geometric ratio 1.015 over the 97).
+    - The gap comes from `bizitobs_l2c/5T` medium and long (MASE 0.85 and 1.25 against 0.49 and 0.48). For this set alone, TinyCast's driver (`tinycast/eval.py`) turns on two settings that are not in its generic predictor:
       - `no_daily`, chosen from the name of the set;
       - a period-alignment subsampling (k = 7), which is triggered only there.
     - Our port is the generic predictor. The bench applies the same protocol to all models, with no per-set setting.
@@ -57,16 +57,16 @@
 
 ## 6. Objective and publication gate
 
-**Objective: beat TinyCast on both metrics**, without flip: **nGMASE < 0,774 and nWQL < 0,545**. The report says, without ambiguity, whether the objective is reached.
+**Objective: beat TinyCast on both metrics**, without flip: **nGMASE < 0.774 and nWQL < 0.545**. The report says, without ambiguity, whether the objective is reached.
 
-The bar stays the published one, per-set settings included: it is the most demanding. The report also gives the gap to the generic TinyCast of our bench (0,786 / 0,557, with flip).
+The bar stays the published one, per-set settings included: it is the most demanding. The report also gives the gap to the generic TinyCast of our bench (0.786 / 0.557, with flip).
 
 s6-cast is published (site, manifest, Hugging Face) if, without flip, it beats the training-free reference FLAIR on both metrics:
 
-- **nGMASE ≤ 0,838**
-- **and nWQL ≤ 0,587**
+- **nGMASE ≤ 0.838**
+- **and nWQL ≤ 0.587**
 
-Whatever the result, the report gives the gap to TinyCast (0,774 / 0,545) and to Timestral-5M (leaderboard figures). It also gives the size, the latency and the mean exits used.
+Whatever the result, the report gives the gap to TinyCast (0.774 / 0.545) and to Timestral-5M (leaderboard figures). It also gives the size, the latency and the mean exits used.
 
 If the gate is not passed, the model is not published, and the report says so.
 
@@ -80,8 +80,8 @@ If the gate is not passed, the model is not published, and the report says so.
 
 2. **26/10/2026**, before any training:
    - result of the validation of the bench and origin of the gap on `bizitobs_l2c` (§5);
-   - the bar of the objective stays 0,774 / 0,545 (§6);
-   - the teacher's targets are computed on fixed cut points of each series (two per series), and no longer at each batch. It is a throughput change: 730 windows/s otherwise, against about 2 000. The distilled share (50 %) and the weight (0,5 → 0) do not change.
+   - the bar of the objective stays 0.774 / 0.545 (§6);
+   - the teacher's targets are computed on fixed cut points of each series (two per series), and no longer at each batch. It is a throughput change: 730 windows/s otherwise, against about 2,000. The distilled share (50 %) and the weight (0.5 → 0) do not change.
 
    No score of s6-cast existed.
 

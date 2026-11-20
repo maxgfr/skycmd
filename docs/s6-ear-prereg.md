@@ -18,16 +18,16 @@ All the sources are public, unrestricted and under CC-BY-4.0 (`DATA_LICENSES.md`
 
 | set | source | splits |
 |---|---|---|
-| smart-turn | train and val: `pipecat-ai/smart-turn-data-v3-train` (227 025 clips, 23 languages including French); test: `pipecat-ai/smart-turn-data-v3.2-test` (31 527 clips), the official test set of Smart Turn v3.2 | val 5 % of train by a seeded hash of the clip id; any train clip whose id is also in the test is removed (disjoint by clip) |
+| smart-turn | train and val: `pipecat-ai/smart-turn-data-v3-train` (227,025 clips, 23 languages including French); test: `pipecat-ai/smart-turn-data-v3.2-test` (31,527 clips), the official test set of Smart Turn v3.2 | val 5 % of train by a seeded hash of the clip id; any train clip whose id is also in the test is removed (disjoint by clip) |
 | speech-commands | Speech Commands v0.02 (official TensorFlow archive) | train / val by `validation_list.txt`; the clips of `testing_list.txt` are set aside; test = the official 12-class test archive |
 | mswc | `MLCommons/ml_spoken_words`, en and fr, WAV | train / dev / test of the set; the first archive of each split and language (`--mswc-archives 1`) |
 | mimi | `openslr/librispeech_asr` (`clean`, `train.100` and `validation`) joined to `shangeth/librispeech-mimi-codes` (`train_clean_100`, `dev_clean`) by utterance id | pre-training only |
 
 Smart Turn: the original plan drew the test from `smart-turn-data-v3-train` (10 % by seed). It was replaced before any complete data and any run, because this set is the one Smart Turn is trained on: the bar would have been measured on its own training data. The official test set of v3.2 has been seen by neither of the two models.
 
-Speech Commands: the 25 words outside the 10 words of the benchmark give the class "unknown", kept with a probability of 1/6 in train and in val. The class "silence" is made of 1 s cuts, every 0,5 s, of the noises of `_background_noise_`, of which 10 % go to val.
+Speech Commands: the 25 words outside the 10 words of the benchmark give the class "unknown", kept with a probability of 1/6 in train and in val. The class "silence" is made of 1 s cuts, every 0.5 s, of the noises of `_background_noise_`, of which 10 % go to val.
 
-Mimi: the codes are at 12,5 Hz, like our frames. An utterance in general has one more code frame than log-mel frames (rounding up against rounding down): the pair is cut to the shorter one. Only codebook 0 is used: it is the semantic codebook, distilled from WavLM.
+Mimi: the codes are at 12.5 Hz, like our frames. An utterance in general has one more code frame than log-mel frames (rounding up against rounding down): the pair is cut to the shorter one. Only codebook 0 is used: it is the semantic codebook, distilled from WavLM.
 
 ## 2. Questions (the audio jev, `sky-data audio-jev`)
 
@@ -43,10 +43,10 @@ One record per question, the state being the path of the clip's `.npy`. The text
 
 ## 3. Model
 
-`configs/s6-ear-nano.json`: the shape of s6-nano (d 144, ff 288, 2 blocks × 2 loops, exits 1 to 4, Parallax, 2 heads, tokenizer `tok-s6-2048`), with `state_kind: "audio"` and a state window of 128 frames (10,24 s). The parameter count is fixed by a test:
+`configs/s6-ear-nano.json`: the shape of s6-nano (d 144, ff 288, 2 blocks × 2 loops, exits 1 to 4, Parallax, 2 heads, tokenizer `tok-s6-2048`), with `state_kind: "audio"` and a state window of 128 frames (10.24 s). The parameter count is fixed by a test:
 
-- decision model: 1 615 681 parameters (s6-nano plus `audio_proj`, 46 224);
-- pre-training stack: 821 552.
+- decision model: 1,615,681 parameters (s6-nano plus `audio_proj`, 46,224);
+- pre-training stack: 821,552.
 
 Smart Turn v3.2 has 8M: s6-ear-nano is about 1/5 of that. Size is not a gate condition; it is fixed by the config.
 
@@ -59,8 +59,8 @@ Smart Turn v3.2 has 8M: s6-ear-nano is about 1/5 of that. Size is not a gate con
   - then `s2-calibrate` on val and the ternary export.
 - **Control** (pre-registered): the same model, the same data and the same decision budget, **without** Mimi pre-training (random init). It is reported next to each gate, without being a gate itself: it measures what the distillation of Mimi brings.
 - **Thresholds**, on val, at full depth, all exits (`sky-eval --dump-exits`, `scripts/ear-gate.py crc`):
-  - **early-exit thresholds** by conformal risk control, α = 0,02 (SPEC-S6 §9). They are written into a `-crc` copy of the GGUF;
-  - **threshold of hand-off to System 2** ρ, α = 0,05: the error rate among the decisions that s6-ear takes itself. It is reported with the coverage.
+  - **early-exit thresholds** by conformal risk control, α = 0.02 (SPEC-S6 §9). They are written into a `-crc` copy of the GGUF;
+  - **threshold of hand-off to System 2** ρ, α = 0.05: the error rate among the decisions that s6-ear takes itself. It is reported with the coverage.
 
 This run is not launched at the same time as another training on the GPU (the LFM3 run of §6 of TODO.md).
 
@@ -76,8 +76,8 @@ This run is not launched at the same time as another training on the GPU (the LF
 All are read on the ternary model at full depth. Their metric is **accuracy** (the share of right answers):
 
 1. **End of turn**: accuracy on `ear:turn_end` ≥ that of Smart Turn v3.2 on the same clips.
-2. **Keywords**: accuracy on `ear:keyword` (official test, 12 options) ≥ 0,90.
-3. **Zero-shot keywords**: accuracy on `ear:keyword_zs:en` **and** on `ear:keyword_zs:fr` ≥ 0,20, that is 2 × chance at 10 options. The bar is deliberately low: it is a first attempt.
+2. **Keywords**: accuracy on `ear:keyword` (official test, 12 options) ≥ 0.90.
+3. **Zero-shot keywords**: accuracy on `ear:keyword_zs:en` **and** on `ear:keyword_zs:fr` ≥ 0.20, that is 2 × chance at 10 options. The bar is deliberately low: it is a first attempt.
 
 `scripts/ear-gate.py gate` computes them. If a gate fails, the model is not published, but the result still goes into the report. The precision and the recall of the end of turn are reported for both models.
 
@@ -97,7 +97,7 @@ The model is published at the CRC thresholds if the gates hold there as at full 
   - `sky-data teacher label-transcripts` asks GLM-5.3-flash for a probability per option on each LibriSpeech transcription of `data/ear/mimi`. The labeller is the one of §1.1, which resumes after an interruption and isolates the moderation refusals.
   - `audio-jev --about` turns them into soft targets on the audio: the teacher reads the text, the student hears the sound.
   - The labelling is launched **after** that of §1.1 of TODO.md, which uses the same z.ai quota.
-  - **Gate**: accuracy ≥ 0,60 on the binary questions (val, against the teacher's argmax).
+  - **Gate**: accuracy ≥ 0.60 on the binary questions (val, against the teacher's argmax).
 
 ## 8. Amendments
 

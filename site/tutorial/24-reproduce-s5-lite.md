@@ -70,7 +70,7 @@ cargo xtask s5 teachers       # laya-typed-decisions soft labels of the English 
 cargo xtask s5 mix            # data/s5/mixed: gold + calibrated teacher, train split only
 ```
 
-Scoring is the long step: 155k corpus records, two option orders each, about 1 h 50 on the M5. The rows are sorted by length, so the last ones are the slowest.
+Scoring is the long step: 155k corpus records, two option orders each, about 1 h 50 min on the M5. The rows are sorted by length, so the last ones are the slowest.
 
 The mix proceeds as follows:
 

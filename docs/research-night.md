@@ -27,8 +27,8 @@ These models range from 100M to several billion parameters. Our goal is the reve
 - **BitNet b1.58 at small scales**: models from 100K to 48M parameters were studied. Adding capacity compensates for the reduced precision [S2].
 - **FoNE**: a number becomes a single token through Fourier features [S43]. A related work points out that xVal must bring numbers into a bounded range [S36].
 - **TRM**: a single 2-layer network, applied recursively, with ~7M parameters, reaches 45 % on ARC-AGI-1 [S60].
-- **Ouro (LoopLM)**: computation is done by iterating in latent space. An entropy-regularized objective learns the depth, and the 1,4B and 2,6B models match models of up to 12B [S61].
-- **LoopFormer**: a looped model conditioned on a compute budget. Its variable-depth training costs about 1,5× the FLOPs of a fixed-loop model [S10].
+- **Ouro (LoopLM)**: computation is done by iterating in latent space. An entropy-regularized objective learns the depth, and the 1.4B and 2.6B models match models of up to 12B [S61].
+- **LoopFormer**: a looped model conditioned on a compute budget. Its variable-depth training costs about 1.5× the FLOPs of a fixed-loop model [S10].
 - **Adaptive Depth in Looped Transformers**: separates the formation of the trajectory (the training objective) from the readout that chooses the exit, and compares fixed priors with learned gates [S14].
 - **Stochastic stopping**: drawing the depth at random around a value, rather than a fixed depth, stabilizes the out-of-distribution generalization of loops [S49].
 - **Universal Transformers Need Memory**: weight-shared recursion, adaptive halting and a state persistent across iterations are three lines of research that converge again in 2025–2026 [S8].
@@ -39,7 +39,7 @@ These models range from 100M to several billion parameters. Our goal is the reve
 | Depth without parameters | a tiny recursive block (TRM) [S60], a shared loop (Ouro) [S61] | `state_loops`: 1 state block looped 4 times [M] |
 | Early exit | the readout separates from the trajectory [S14]; threshold calibrated under risk [S30] | calibrate τ on the states visited while playing [M] |
 | Numbers | one token per number (FoNE) [S43]; one token per feature (FT-Transformer) [S62] | `fuse_numbers`: "key value" becomes a single token [M] |
-| Ternary | 1,58-bit QAT holds from 100K to 48M parameters [S2]; a QAT model of 2,1M parameters reaches a perplexity of 10,1 against 151,9 with post-training quantization [S1] | QAT throughout the decision phase [M] |
+| Ternary | 1.58-bit QAT holds from 100K to 48M parameters [S2]; a QAT model of 2.1M parameters reaches a perplexity of 10.1 against 151.9 with post-training quantization [S1] | QAT throughout the decision phase [M] |
 | Imitation | on-policy distillation: the teacher evaluates the states visited by the student [S54]; same loop in autonomous driving [S47]; BC then DAgger on Flappy Bird in Stanford's RL course [S53] | DAgger with the oracle as teacher |
 | Data | decider-4b: ten programmatic families with verifiable ground truth in its mix [S42] | programmatic numerical curriculum [M] |
 | WASM | the Relaxed SIMD instructions (dot product, FMA) speed up existing workloads [S7] | `relaxed_madd` behind a cfg [M] |
@@ -47,7 +47,7 @@ These models range from 100M to several billion parameters. Our goal is the reve
 ## Findings & consensus
 - **Depth.** With few parameters, recursion of a shared block is the cheapest way to get depth [S60][S61].
 - **Early exit.** The exit must be evaluated on the real trajectory: the readout rule is tuned separately from training [S14], and a threshold chosen with risk control gives guarantees that the naive threshold does not have [S30]. 
-> [model-hint] Internal skycmd measurement: a τ calibrated on isolated questions (0,62) made the model fail in a real game, whereas τ = 0,95 recovered full-depth quality with ~3,3 layers out of 4.
+> [model-hint] Internal skycmd measurement: a τ calibrated on isolated questions (0.62) made the model fail in a real game, whereas τ = 0.95 recovered full-depth quality with ~3.3 layers out of 4.
 
 - **Ternary.** QAT is clearly better than post-training quantization at small sizes [S1], and ternary remains viable under 1M parameters [S2].
 - **Controlling a game.** DAgger corrects the distribution shift of pure cloning. It is the standard recipe taught [S53][S39], and on-policy distillation generalizes it to language models [S54][S40].
@@ -78,7 +78,7 @@ The ideas to try tonight, ranked by expected gain in speed and quality [M]:
   - For high-frequency control, a VLA study reuses tokens from one step to the next [S66], and the Latent Recurrent Transformer reuses the previous hidden state as memory [S76].
 - **Event-driven computation.** Delta networks threshold the change in activation and skip the updates under the threshold, at the cost of a drift that requires periodic resets [S70].
 - **Expand-and-sparsify** [S71]:
-  - In the fly, about 50 projection neurons feed about 2 500 Kenyon cells, and k-WTA inhibition leaves only about 5 % of units active [S71].
+  - In the fly, about 50 projection neurons feed about 2,500 Kenyon cells, and k-WTA inhibition leaves only about 5 % of units active [S71].
   - This pattern has proven effective for route following in embedded robotics [S72], and its expressivity is studied formally [S73].
 - **Control circuits inspired by C. elegans.** Neural Circuit Policies are organized into sensory neurons, interneurons, recurrent command neurons and motor neurons, with few parameters [S74]. Drones piloted by these networks outperformed other networks on the hard tasks, such as chasing a target in the rain [S75].
 

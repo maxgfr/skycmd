@@ -21,8 +21,8 @@ Detect an API key or an exposed secret in a short text: a `.env` file, code, a c
 
 **Data.** `sky-data secret-jev` (seed 1234, default values) writes the files into `data/secrets`. Everything is synthetic and generated locally: each key follows the public format of its provider with a random body, so none is a real key, and nothing is committed.
 
-- `secret_synth`: 50 000 texts, about 193 000 questions, split 95/5 into train and val by text. They are drawn from 9 templates: env, export, python, js, yaml, json, curl, log, diff.
-- `secret_bench`: 2 000 texts, 7 984 questions, in test only. They come from 4 templates that training never sees: docker-compose, toml, go, ini.
+- `secret_synth`: 50,000 texts, about 193,000 questions, split 95/5 into train and val by text. They are drawn from 9 templates: env, export, python, js, yaml, json, curl, log, diff.
+- `secret_bench`: 2,000 texts, 7,984 questions, in test only. They come from 4 templates that training never sees: docker-compose, toml, go, ini.
 
 The two sources have the same class shares:
 
@@ -36,7 +36,7 @@ The two sources have the same class shares:
 
 `configs/s6-secrets-pico.json` takes the architecture of s6-pico identically (same number of parameters), with two widened windows:
 
-- **state: 320 tokens instead of 64.** With the s6 tokenizer (BPE 1 024 with [NUM]), a random key costs about one token per character. The states of the jev are 93 tokens at the median, 179 at the 95th percentile and 312 at the maximum.
+- **state: 320 tokens instead of 64.** With the s6 tokenizer (BPE 1,024 with [NUM]), a random key costs about one token per character. The states of the jev are 93 tokens at the median, 179 at the 95th percentile and 312 at the maximum.
 - **head: 192 tokens instead of 96.** The "service" question and its 15 options run to 179 tokens.
 
 These data do not go into `data/decisions`: the general s6 would truncate them before the key.
@@ -46,7 +46,7 @@ These data do not go into `data/decisions`: the general s6 would truncate them b
 - **MLM pre-processing**: 8 minutes on `data/text` plus 10 % of numeric curriculum, in sequences of 256 tokens.
 - **Decision training**: 15 minutes on `data/secrets` alone, batch 64.
   - Ternary QAT after 10 % of floating-point warm-up.
-  - Loop dropout 0,25.
+  - Loop dropout 0.25.
   - Same optimiser options as s6-pico (`OPT`).
 - Seed 0, once only. Only a technical failure justifies a rerun, and it is noted in the report.
 
@@ -63,15 +63,15 @@ These data do not go into `data/decisions`: the general s6 would truncate them b
 
 - gitleaks-style prefixes for 20 formats;
 - connection strings that carry their password;
-- an entropy rule (at least 3,5 bits per character, 20 characters at least, one digit) on names that sound secret;
+- an entropy rule (at least 3.5 bits per character, 20 characters at least, one digit) on names that sound secret;
 - a list of exceptions (EXAMPLE, test keys and public keys).
 
 Its scores:
 
 | question | accuracy | detail |
 |---|---:|---|
-| secret | **0,977** | precision 0,966, recall 0,989 (999 true positives, 35 false positives, 11 missed, 951 true negatives) |
-| service | **0,787** | it names the service only for what it flags, and calls `generic` any key without a prefix |
+| secret | **0.977** | precision 0.966, recall 0.989 (999 true positives, 35 false positives, 11 missed, 951 true negatives) |
+| service | **0.787** | it names the service only for what it flags, and calls `generic` any key without a prefix |
 
 The scanner's 35 false positives are all random values that are not credentials, under a name that sounds secret (`CACHE_KEY`, `KEY_FINGERPRINT`). The 11 missed are generic secrets with no distinctive sign.
 
@@ -79,8 +79,8 @@ The scanner's 35 false positives are all random values that are not credentials,
 
 **Objective: beat the rule-based scanner on the two questions it handles.** With the ternary GGUF at full depth, it needs:
 
-- a **secret accuracy > 0,977**,
-- **and** a **service accuracy > 0,787**.
+- a **secret accuracy > 0.977**,
+- **and** a **service accuracy > 0.787**.
 
 s6-secrets-pico is published (site, manifest, Hugging Face) if the objective is reached. Otherwise, it is not published, and the report says so.
 

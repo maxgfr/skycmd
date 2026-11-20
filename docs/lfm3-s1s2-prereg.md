@@ -18,13 +18,13 @@ LFM3-1.7B (Liquid AI, 27/10/2026) thinks by default. On a model of this size, a 
 
 - **A community measurement** (30 prompts, budgets 0 / 64 / 128 / 256 / unlimited) finds the optimum between 0 and 64 thinking tokens. With an unlimited budget, 9 answers out of 30 never reach the end.
 - **The official documentation** says that turning thinking off works inconsistently on reasoning tasks.
-- **The smoke test** shows the other side. Without thinking, a GSM8K question went into a loop up to the limit of 1 024 tokens; with 256 thinking tokens, the answer was right.
+- **The smoke test** shows the other side. Without thinking, a GSM8K question went into a loop up to the limit of 1,024 tokens; with 256 thinking tokens, the answer was right.
 
 The best mode therefore depends on the question. This project does not touch the weights: it chooses, question by question, whether to think. This is the principle of skycmd's calibrated early exits. The weight-editing approach (Weight-Space Programming, issue #75, closed) dealt with a loop bug. It added no capability, according to its own authors.
 
 ## 2. Model and environment
 
-- **Model**: `LiquidAI/LFM3-1.7B-MLX-4bit`, revision `deb2986b9660c15ff7dd4c2bb1211ce3bbb814d4` (0,97 GB, 4-bit affine quantization). Under LFM Open License v1.0; the weights are not redistributed.
+- **Model**: `LiquidAI/LFM3-1.7B-MLX-4bit`, revision `deb2986b9660c15ff7dd4c2bb1211ce3bbb814d4` (0.97 GB, 4-bit affine quantization). Under LFM Open License v1.0; the weights are not redistributed.
 - **Local inference**: mlx-vlm 0.7.11 (no version of mlx-lm loads LFM3), Python 3.12 via `uv`, `scripts/lfm3-s1s2.sh`.
 - **No training of LFM3.** Only the confidence probe is fitted: a logistic regression with 6 coefficients.
 
@@ -46,10 +46,10 @@ Frozen revisions, random draw with seed 1234:
 
 The same prompt for all modes: the question, then « Solve the problem. Put the final answer in \boxed{}. ».
 
-- **s1 (System 1)**: thinking turned off, that is an empty `<think></think>` block in LFM3's template. Greedy decoding, at most 1 024 tokens. The log-probability of each generated token is kept.
-- **s2-B (System 2)** for B = 256 and B = 1 024:
-  - thinking on, with the sampling Liquid AI recommends for maths (temperature 1,0, top_p 0,95, top_k 20, no repetition penalty);
-  - if B tokens go by without `</think>`, the thinking is closed and the answer is requested (at most 1 024 tokens);
+- **s1 (System 1)**: thinking turned off, that is an empty `<think></think>` block in LFM3's template. Greedy decoding, at most 1,024 tokens. The log-probability of each generated token is kept.
+- **s2-B (System 2)** for B = 256 and B = 1,024:
+  - thinking on, with the sampling Liquid AI recommends for maths (temperature 1.0, top_p 0.95, top_k 20, no repetition penalty);
+  - if B tokens go by without `</think>`, the thinking is closed and the answer is requested (at most 1,024 tokens);
   - one seed per question, derived from its id.
 - **The answer** is the last `\boxed{}`. Failing that, for GSM8K, it is the last number.
 - **The scoring** is an exact equality after normalization (spaces, `\left`/`\right`, `dfrac`, degrees, percents, `x=`), or a numeric equality. It is the same for all modes.
@@ -67,16 +67,16 @@ The same prompt for all modes: the question, then « Solve the problem. Put the 
 2. **The rule**: if the score is at least τ, the answer of s1 is kept. Otherwise, that of s2 is taken. If s2 gave no answer, that of s1 is kept. The cost of a question routed to s2 counts the tokens of s1 **and** of s2.
 3. **The threshold, by conformal risk control** on the calibration split (n = 600):
    - the loss of a question is 1 if the router is wrong while s2 alone is right;
-   - τ is the smallest threshold such that (n · R̂(τ) + 1) / (n + 1) ≤ **α = 0,02**;
+   - τ is the smallest threshold such that (n · R̂(τ) + 1) / (n + 1) ≤ **α = 0.02**;
    - the loss can only go down when τ goes up, so the guarantee holds: in expectation, at most 2 points of accuracy lost compared with s2 alone.
 4. **The budget retained, B\***, is the one of s2 whose calibration accuracy is the best. It is chosen before the test is read, and everything is reported for both budgets.
 
 ## 6. Criteria (test, budget B\*)
 
 - **H1 (diagnostic)**: the accuracy of s1 and of s2-B\* per task. It says whether thinking helps LFM3-1.7B in maths. No threshold.
-- **H2 (accuracy kept)**: router accuracy ≥ accuracy of s2-B\* − 0,02.
-- **H3 (compute halved)**: mean tokens of the router ≤ 0,5 × those of s2-B\*.
-- **H4 (better than both modes)**: router accuracy ≥ max(s1, s2-B\*) + 0,01.
+- **H2 (accuracy kept)**: router accuracy ≥ accuracy of s2-B\* − 0.02.
+- **H3 (compute halved)**: mean tokens of the router ≤ 0.5 × those of s2-B\*.
+- **H4 (better than both modes)**: router accuracy ≥ max(s1, s2-B\*) + 0.01.
 
 **Verdict:**
 - **success** if H2 and H3 hold;
@@ -104,7 +104,7 @@ The report gives everything, whatever the result:
 - **What does not change.**
   - The prompt, the modes s1, s2-256 and s2-1024: budget, forcing, sampling, one seed per question derived from its id.
   - The answer extraction, the scoring, the 6 features.
-  - The router, α = 0,02, the choice of B\*, the criteria H1 to H4 and the forbidden items.
+  - The router, α = 0.02, the choice of B\*, the criteria H1 to H4 and the forbidden items.
   - The code of `route` is that of `s1s2.py`, unchanged: `experiments/lfm3-ft/route.py` points it at `runs/lfm3-ft/eval/<base|ft>` instead of `runs/lfm3-s1s2`.
   - The functions copied into `experiments/lfm3-ft/common.py` are checked identical to those of `s1s2.py` by `test_common.py`.
 - **Applied to two models.**
@@ -118,7 +118,7 @@ The report gives everything, whatever the result:
 - **Change.** Amendment 1 is cancelled (the user's decision of 05/11/2026: « finalement je ferai tout sur mon pc » [in the end I will do everything on my PC]). The run is done as in §2: `LiquidAI/LFM3-1.7B-MLX-4bit`, revision `deb2986b`, mlx-vlm 0.7.11, on the M5, through `scripts/lfm3-s1s2.sh`. The results are those of the model in 4 bits.
 - **The braked mode.** The run is done in braked mode (`SKY_DUTY=0.5`, `SKY_COOL=45:15`), like amendment 5 of `docs/s6-prereg.md`: a pause after each question. H3 counts tokens and `seconds` remains the generation time: the braked mode changes neither one nor the other.
 - **The fine-tuned model.** What concerns the fine-tuned model is now in amendment 1 of `docs/lfm3-ft-prereg.md`. The base generations written here serve there as the reference if that amendment's conversion rule allows it.
-- **What does not change.** The data, the prompt, the modes, the budget and the forcing, the sampling, the seeds, the extraction and the scoring, the 6 features, the router, α = 0,02, the choice of B\*, the criteria H1 to H4 and the forbidden items.
+- **What does not change.** The data, the prompt, the modes, the budget and the forcing, the sampling, the seeds, the extraction and the scoring, the 6 features, the router, α = 0.02, the choice of B\*, the criteria H1 to H4 and the forbidden items.
 
 **Amendment 3 (12/11/2026, before any run: only the local smoke of 3 questions per mode has run, no calibration or test result exists). Two brake modes.**
 
