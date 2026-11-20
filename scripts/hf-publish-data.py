@@ -14,6 +14,8 @@ commit (DATA_LICENSES.md, "Published on Hugging Face").
                                       [--data data] [--private] [--merge-published]
                                       [--glm MIXDIR [--glm-date D] [--glm-final] [--glm-refused N]]
                                       [--route-data ../skycmd-data/s6-route]
+    uv run scripts/hf-publish-data.py --card-only --only decisions,glm-labels --user NAME [--dry-run]
+                                      [--glm-date D --glm-final --glm-refused N]
 
 Everything is assembled under target/hf-data/<repo>/ (parquet + README.md) before upload; with
 --dry-run nothing is uploaded. Publication rules:
@@ -63,6 +65,22 @@ For the sets of `SETS`:
     are uploaded. A carried config needs its licence entry still;
   * the script lists leftover parquet files after the upload (carried configs aside); removing
     them is a manual step.
+
+Every card names the models trained or tested on its rows, each with its verdict: the entries of
+hf/spaces.json (`datasets.train`, `datasets.test`) and the gates of site/public/models/manifest.json.
+
+--card-only (with --only: sets of SETS, or `glm-labels`) rebuilds a card without any local data,
+from the published repository read at its current revision, and uploads README.md alone:
+  * a set of SETS: every config, its rows and the commits come from the published MANIFEST.json
+    (and trajectories' table from the published `files/summary.json`);
+  * skycmd-glm-labels: the agreement per source from the published `agreement.json`, the rows of
+    `agree` and `labels` from their parquet metadata, the assembling commit from the live card,
+    the refused count and the date from --glm-refused and --glm-date (with --glm-final);
+  * refused when the rebuilt card's configs block differs from the live card's, when the
+    repository's parquet files are not exactly the card's configs, or when the published counts
+    disagree; the live card and the diff are written next to the rebuilt card
+    (target/hf-data/card-only/) and the diff is printed, with --dry-run too.
+skycmd-route and skycmd-route7 are not covered: their cards count rows of the data folder.
 """
 import argparse
 import hashlib
@@ -352,7 +370,7 @@ SETS = {
         "repo": "skycmd-decisions",
         "files": "decisions/*.jsonl",
         "pretty": "skycmd typed decisions",
-        "summary": "Typed decision questions (choice / score / noul with a probability per option) converted from public datasets with a permissive or share-alike licence, the decision data of the skycmd s3 to s6 models.",
+        "summary": "Typed decision questions (choice / score / noul with a probability per option) converted from public datasets with a permissive or share-alike licence: the decision data of the skycmd models listed below.",
         "command": "sky-data fetch-decisions data/decisions (seed 1234, default caps)",
         "languages": ["en", "fr"],
         "license": "other",
@@ -394,6 +412,7 @@ SETS = {
         "languages": ["en", "fr"],
         "license": "cc-by-4.0",
         "upstream": "MASSIVE (FitzGerald et al., 2022), CC-BY-4.0, via mteb/amazon_massive_intent",
+        "readers_note": "The tool routers read 14 of its 18 scenarios through their own data sets, where each intent is a tool: [skycmd-route](https://huggingface.co/datasets/{user}/skycmd-route) (s6-route-nano, s6-route) and [skycmd-route7](https://huggingface.co/datasets/{user}/skycmd-route7) (s6-route7-nano).",
     },
     "s4-heldout": {
         "repo": "skycmd-zero-shot",
@@ -441,6 +460,7 @@ SETS = {
         "license": "apache-2.0",
         "sources": CAST_SYNTH,
         "schema": CAST_SYNTH_SCHEMA,
+        "readers_note": "[s6-cast-pico](https://huggingface.co/{user}/s6-cast-pico) and [s6-cast2-pico](https://huggingface.co/{user}/s6-cast2-pico), which both failed their gates, train on an endless stream drawn from the same generators, not on these rows.",
         "task": "time-series-forecasting",
     },
     "trajectories": {
@@ -456,6 +476,7 @@ SETS = {
         "license": "apache-2.0",
         "sources": TRAJ,
         "schema": TRAJ_SCHEMA,
+        "readers_note": "It holds the episodes that four published models played, one config per policy: [s1-pico](https://huggingface.co/{user}/s1-pico), [s2-nano](https://huggingface.co/{user}/s2-nano), [s2-nano-doom](https://huggingface.co/{user}/s2-nano-doom) and [s3-pico](https://huggingface.co/{user}/s3-pico), all published without a gate.",
         "task": "reinforcement-learning",
     },
     "evals": {
@@ -471,6 +492,7 @@ SETS = {
         "license": "apache-2.0",
         "sources": EVALS,
         "schema": EVALS_SCHEMA,
+        "readers_note": "The demo cases are also the presets of the decision demos: the Spaces of [s5-lite](https://huggingface.co/spaces/{user}/s5-lite) and [s4-micro](https://huggingface.co/spaces/{user}/s4-micro), and the project site.",
     },
     "ear": {
         "repo": "skycmd-ear",
@@ -485,6 +507,12 @@ SETS = {
         "task": "audio-classification",
     },
 }
+
+
+# Every data set the project has on the Hub: the sets of SETS, the three this script writes
+# otherwise (route, route7, the GLM labels) and skycmd-math, whose entry left the script with the
+# LFM3 code (its card stays as published). scripts/hf-collection.py lists them in this order.
+PUBLISHED_SETS = [s["repo"] for s in SETS.values()] + ["skycmd-route", "skycmd-route7", "skycmd-glm-labels", "skycmd-math"]
 
 
 def set_files(data: Path, s: dict) -> list:
@@ -575,7 +603,66 @@ def provenance(s: dict, rows: dict, commit: str, carried: dict = None) -> str:
             f"the Hub revision it comes from.")
 
 
-def card(name: str, s: dict, rows: dict, commit: str, user: str, extra_files: list = (), carried: dict = None) -> str:
+# the project's pages that every data set card links
+SITE = "https://maxgfr.github.io/skycmd"
+REPORT = f"{SITE}/paper/"
+# the models of the project and what they read: hf/spaces.json (`datasets.train`, `datasets.test`)
+# and their verdicts, site/public/models/manifest.json (`gate`)
+SPACES_JSON = ROOT / "hf" / "spaces.json"
+MODELS_MANIFEST = ROOT / "site" / "public" / "models" / "manifest.json"
+VERDICT_WORDS = {"passed": "passed its gate", "failed": "failed its gate, published as a result",
+                 None: "published without a gate"}
+ROLE_WORDS = {"train": "trained on it", "test": "tested on it"}
+
+
+def size_category(n: int) -> str:
+    """The Hub's `size_categories` value of a data set of `n` rows."""
+    for bound, name in ((1_000, "n<1K"), (10_000, "1K<n<10K"), (100_000, "10K<n<100K"), (1_000_000, "100K<n<1M"),
+                        (10_000_000, "1M<n<10M"), (100_000_000, "10M<n<100M")):
+        if n < bound:
+            return name
+    return "100M<n<1B"
+
+
+def model_readers(repo: str, spaces: list = None, manifest: list = None) -> list:
+    """(model, gate, roles) of every published model whose entry of hf/spaces.json names `repo` in
+    `datasets.train` or `datasets.test`, in the order of that file."""
+    spaces = read_json(SPACES_JSON) if spaces is None else spaces
+    manifest = read_json(MODELS_MANIFEST) if manifest is None else manifest
+    gates = {e["name"]: e.get("gate") for e in manifest}
+    out = []
+    for s in spaces:
+        ds = s.get("datasets") or {}
+        roles = [r for r in ("train", "test") if repo in ds.get(r, [])]
+        if s.get("model") and roles:
+            if s["model"] not in gates:
+                raise SystemExit(f"hf/spaces.json: {s['model']} is not in the models manifest")
+            out.append((s["model"], gates[s["model"]], roles))
+    return out
+
+
+def readers_section(user: str, repo: str, note: str = "", spaces: list = None, manifest: list = None) -> str:
+    """The section of a data set card that names the models trained or tested on it, each with its
+    verdict, and links the hub Space and the technical report."""
+    rows = model_readers(repo, spaces, manifest)
+    body = "\n".join(f"- [{m}](https://huggingface.co/{user}/{m}), {VERDICT_WORDS[g]}: "
+                     f"{' and '.join(ROLE_WORDS[r] for r in roles)}" for m, g, roles in rows)
+    body = body or "No published model was trained or tested on these rows."
+    if note:
+        body += f"\n\n{note}"
+    return f"""## Models trained or tested on it
+
+{body}
+
+Every demo, with its model's verdict: [the skycmd Space](https://huggingface.co/spaces/{user}/skycmd).
+Technical report: [maxgfr.github.io/skycmd/paper]({REPORT}).
+"""
+
+
+def card(name: str, s: dict, rows: dict, commit: str, user: str, extra_files: list = (), carried: dict = None,
+         regenerated: str = None) -> str:
+    """The card of a set of SETS. `regenerated`: the commit of a --card-only run, which rebuilds the
+    card alone from the published manifest (the data files keep `commit` and `carried`)."""
     cfgs = "\n".join(
         f"- config_name: {stem}\n  data_files: data/{stem}.parquet" for stem in sorted(rows)
     )
@@ -621,6 +708,8 @@ Attribution goes to the upstream authors; the conversion is ours.
 {res}
 """
     note = f"\n{s['note']}\n" if s.get("note") else ""
+    regen = (f"This card was regenerated alone, from the published `MANIFEST.json`, at commit "
+             f"[`{regenerated[:8]}`]({REPO_URL}/commit/{regenerated}).\n" if regenerated else "")
     tags = "- skycmd\n- typed-decisions\n- system-one" if "schema" not in s else "- skycmd"
     lic_extra = (
         f"\nlicense_name: per-source\nlicense_link: {REPO_URL}/blob/main/DATA_LICENSES.md" if lic == "other" else ""
@@ -628,6 +717,8 @@ Attribution goes to the upstream authors; the conversion is ours.
     return f"""---
 license: {lic}{lic_extra}
 {lang_block}pretty_name: {s['pretty']}
+size_categories:
+- {size_category(sum(rows.values()))}
 task_categories:
 - {s.get('task', 'text-classification')}
 tags:
@@ -642,8 +733,9 @@ configs:
 
 Part of [skycmd]({REPO_URL}), tiny decision models trained from scratch in Rust that run in the
 browser. {provenance(s, rows, commit, carried)}
-Licences of every set: [DATA_LICENSES.md]({REPO_URL}/blob/main/DATA_LICENSES.md).
+{regen}Licences of every set: [DATA_LICENSES.md]({REPO_URL}/blob/main/DATA_LICENSES.md).
 
+{readers_section(user, s['repo'], s.get('readers_note', '').replace('{user}', user))}
 {schema}
 {extra}
 ## Files
@@ -704,43 +796,24 @@ def glm_source(k: str) -> tuple:
     return f"`{cfg}`: {up}, `{rest}`", lic
 
 
-def publish_glm(a, api, user: str, sha: str) -> None:
-    """skycmd-glm-labels: the GLM-5.3-flash teacher labels of the decision records."""
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    mix = Path(a.glm)
-    labels_path = Path(a.data) / "teacher" / "glm_labels.jsonl"
-    agree = list(iter_jsonl(mix / "glm.jsonl"))
-    labels = list(iter_jsonl(labels_path))
-    agreement = compute_agreement(labels, agree)
-    if (mix / "agreement.json").exists():
-        if read_json(mix / "agreement.json") != agreement:
-            raise SystemExit(f"glm: {mix / 'agreement.json'} differs from the agreement computed from the two files: refused")
-        print(f"glm: {mix / 'agreement.json'} equals the agreement computed from the two files")
-    else:
-        print(f"glm: no agreement.json in {mix}: recomputed from glm.jsonl and glm_labels.jsonl ({len(agreement)} sources)")
-    n_ref = refused_count(Path(a.data) / "teacher" / "glm_labels.refused.jsonl", a.glm_refused)
+def glm_readme(user: str, sha: str, agreement: dict, n_agree: int, n_labels: int, n_ref: int, date: str,
+               final: bool, regenerated: str = None) -> str:
+    """The card of skycmd-glm-labels: `agreement` per source, the rows of `agree` and `labels`, the
+    texts the moderation refused, the date of the release and the commit that assembled it;
+    `regenerated`, the commit of a --card-only run that rebuilt the card alone."""
+    regen = (f"\nThis card was regenerated alone, from the published files, at commit "
+             f"[`{regenerated[:8]}`]({REPO_URL}/commit/{regenerated})." if regenerated else "")
     sources = {k: glm_source(k) for k in agreement}
     n_lab = sum(v["labelled"] for v in agreement.values())
     n_ok = sum(v["agree"] for v in agreement.values())
-    if a.glm_final and n_lab + n_ref != GLM_SELECTED:
-        raise SystemExit(f"glm: {n_lab:,} labelled + {n_ref:,} refused is not the {GLM_SELECTED:,} selected decisions: refused")
-    out = OUT / "skycmd-glm-labels"
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "data").mkdir(parents=True)
-    pq.write_table(pa.Table.from_pylist(agree), out / "data" / "agree.parquet", compression="zstd")
-    pq.write_table(pa.Table.from_pylist(labels), out / "data" / "labels.parquet", compression="zstd")
-    (out / "agreement.json").write_text(json.dumps(agreement, indent=2) + "\n")
-
     decisions = f"[skycmd-decisions](https://huggingface.co/datasets/{user}/skycmd-decisions)"
     status = (
-        f"**Complete release** ({a.glm_date}): the labelling is finished. All {GLM_SELECTED:,} training\n"
+        f"**Complete release** ({date}): the labelling is finished. All {GLM_SELECTED:,} training\n"
         f"decisions of skycmd ({decisions})\n"
         f"were sent to the teacher, and all {n_lab:,} labels are here: every decision but the {n_ref:,}\n"
         f"texts the moderation refused."
-        if a.glm_final
-        else f"**Partial release** ({a.glm_date}): {n_lab:,} of the {GLM_SELECTED:,} training decisions of\n"
+        if final
+        else f"**Partial release** ({date}): {n_lab:,} of the {GLM_SELECTED:,} training decisions of\n"
         f"{decisions} are labelled so far. This repository is updated as the labelling goes on."
     )
     written, first = GLM_WRITTEN
@@ -749,7 +822,7 @@ def publish_glm(a, api, user: str, sha: str) -> None:
         f"{agreement[k]['agree']:,} ({agreement[k]['rate']:.3f}) |"
         for k in sorted(agreement)
     )
-    readme = f"""---
+    return f"""---
 license: other
 license_name: per-source
 license_link: {REPO_URL}/blob/main/DATA_LICENSES.md
@@ -757,6 +830,8 @@ language:
 - en
 - fr
 pretty_name: skycmd GLM-5.3-flash teacher labels
+size_categories:
+- {size_category(n_labels)}
 task_categories:
 - text-classification
 tags:
@@ -788,15 +863,16 @@ each typed decision question (choice / score / noul), GLM-5.3-flash gives one pr
 `sky-data teacher mix-labels --alpha 0`, finished on {written} (the first complete release, at
 commit [`{first[:8]}`]({REPO_URL}/commit/{first})). The labels of `typed_decisions_train`, written
 then and left out of that release, are here since 20 November 2026. This release is assembled by
-`scripts/hf-publish-data.py --glm` at commit [`{sha[:8]}`]({REPO_URL}/commit/{sha}).
+`scripts/hf-publish-data.py --glm` at commit [`{sha[:8]}`]({REPO_URL}/commit/{sha}).{regen}
 
+{readers_section(user, "skycmd-glm-labels")}
 ## Configs
 
-- **`agree`** (default, {len(agree):,} rows): the decision records whose teacher argmax equals the
+- **`agree`** (default, {n_agree:,} rows): the decision records whose teacher argmax equals the
   gold answer (the agreement filter of skycmd), with `target` = the teacher's probabilities and
   `src = glm:<source>`. Same schema as skycmd-decisions. For training, skycmd mixes them as
   `0.5 * gold + 0.5 * teacher`.
-- **`labels`** ({len(labels):,} rows): every raw label, `{{id, src, probs, model}}`. `id` is
+- **`labels`** ({n_labels:,} rows): every raw label, `{{id, src, probs, model}}`. `id` is
   `<source>-<hash>` of the record (`distill::record_id` in the skycmd code), so a label joins back to
   its record in skycmd-decisions.
 
@@ -815,6 +891,35 @@ GLM had generated, and every validation and test split.
 The texts keep **their source's licence** (share-alike stays share-alike); the probabilities are
 generated by GLM-5.3-flash, an open-weight model under the MIT licence.
 """
+
+
+def publish_glm(a, api, user: str, sha: str) -> None:
+    """skycmd-glm-labels: the GLM-5.3-flash teacher labels of the decision records."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    mix = Path(a.glm)
+    labels_path = Path(a.data) / "teacher" / "glm_labels.jsonl"
+    agree = list(iter_jsonl(mix / "glm.jsonl"))
+    labels = list(iter_jsonl(labels_path))
+    agreement = compute_agreement(labels, agree)
+    if (mix / "agreement.json").exists():
+        if read_json(mix / "agreement.json") != agreement:
+            raise SystemExit(f"glm: {mix / 'agreement.json'} differs from the agreement computed from the two files: refused")
+        print(f"glm: {mix / 'agreement.json'} equals the agreement computed from the two files")
+    else:
+        print(f"glm: no agreement.json in {mix}: recomputed from glm.jsonl and glm_labels.jsonl ({len(agreement)} sources)")
+    n_ref = refused_count(Path(a.data) / "teacher" / "glm_labels.refused.jsonl", a.glm_refused)
+    n_lab = sum(v["labelled"] for v in agreement.values())
+    if a.glm_final and n_lab + n_ref != GLM_SELECTED:
+        raise SystemExit(f"glm: {n_lab:,} labelled + {n_ref:,} refused is not the {GLM_SELECTED:,} selected decisions: refused")
+    out = OUT / "skycmd-glm-labels"
+    shutil.rmtree(out, ignore_errors=True)
+    (out / "data").mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist(agree), out / "data" / "agree.parquet", compression="zstd")
+    pq.write_table(pa.Table.from_pylist(labels), out / "data" / "labels.parquet", compression="zstd")
+    (out / "agreement.json").write_text(json.dumps(agreement, indent=2) + "\n")
+    readme = glm_readme(user, sha, agreement, len(agree), len(labels), n_ref, a.glm_date, a.glm_final)
     (out / "README.md").write_text(readme)
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(f"glm: {user}/skycmd-glm-labels, agree {len(agree):,}, labels {len(labels):,}, {size / 1e6:.1f} MB")
@@ -1938,6 +2043,179 @@ def warn_remote_leftovers(api, repo_id: str, out: Path, carried=()) -> None:
         print(f"  warning: {len(left)} parquet file(s) on the Hub are not in this build and were kept: " + ", ".join(left))
 
 
+# --card-only: the card of a published set rebuilt without its data, from what the Hub holds. Only
+# README.md is uploaded; every other file of the repository is left as it is.
+CARD_ONLY_GLM = "glm-labels"
+
+
+def front_matter_configs(readme: str) -> list:
+    """The `configs:` block of a card's front matter, line by line (what the viewer reads)."""
+    head = readme.split("\n---\n", 1)[0]
+    lines = head.split("\n")
+    if "configs:" not in lines:
+        return []
+    out = []
+    for ln in lines[lines.index("configs:") + 1:]:
+        if ln and not ln.startswith(("-", " ")):
+            break
+        out.append(ln)
+    return out
+
+
+def card_only_inputs(published: dict, sub: str) -> tuple:
+    """(rows, extra files, carried, commit) of a card rebuilt from a published MANIFEST.json: the
+    rows of each config, its extra files (entries without rows, under `sub`), the configs it
+    carries from an earlier release (`carried_from`) and the commit that wrote the others."""
+    src = published.get("source_files", {})
+    rows = {config_of(k): v["rows"] for k, v in src.items() if "rows" in v}
+    extras = [f"{sub}/{k}" for k, v in sorted(src.items()) if "rows" not in v]
+    carried = {config_of(k): v["carried_from"] for k, v in src.items() if "rows" in v and v.get("carried_from")}
+    if not rows or not re.fullmatch(r"[0-9a-f]{40}", published.get("commit", "")):
+        raise SystemExit("card-only: the published MANIFEST.json has no configs or no commit: refused")
+    return rows, extras, carried, published["commit"]
+
+
+def check_card_only(name: str, live: str, new: str, remote_files: list, configs: list) -> None:
+    """A card rebuilt alone may change its text only: refused when its configs block differs from
+    the live card's (the viewer would read other configs) or when the repository's parquet files
+    are not exactly the configs' (a config would be dropped from the card, or a file left out)."""
+    if front_matter_configs(live) != front_matter_configs(new):
+        raise SystemExit(f"{name}: card-only: the rebuilt card's configs differ from the live card's: refused")
+    have = sorted(f for f in remote_files if f.endswith(".parquet"))
+    want = sorted(f"data/{c}.parquet" for c in configs)
+    if have != want:
+        raise SystemExit(f"{name}: card-only: the repository holds {len(have)} parquet files and the card "
+                         f"{len(want)} configs (only in the repository: {sorted(set(have) - set(want))[:5]}, "
+                         f"only in the card: {sorted(set(want) - set(have))[:5]}): refused")
+
+
+def show_card_diff(name: str, live: str, new: str, out: Path) -> None:
+    """Writes the live card and the diff next to the rebuilt one (outside the upload) and prints it."""
+    import difflib
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    (out.parent / f"{out.name}.live.md").write_text(live)
+    diff = "".join(difflib.unified_diff(live.splitlines(True), new.splitlines(True), "live README.md", "rebuilt README.md"))
+    (out.parent / f"{out.name}.card.diff").write_text(diff)
+    print(f"{name}: diff of the live card against the rebuilt one ({out.parent / (out.name + '.card.diff')}):")
+    print(diff or "  (identical)")
+
+
+def upload_card(api, repo_id: str, readme: Path, message: str) -> None:
+    api.upload_file(path_or_fileobj=str(readme), path_in_repo="README.md", repo_id=repo_id,
+                    repo_type="dataset", commit_message=message)
+    print(f"  uploaded README.md only: https://huggingface.co/datasets/{repo_id}")
+
+
+def hub_reader():
+    """Read-only access to a public dataset repository: (info, download, parquet rows)."""
+    from huggingface_hub import HfApi, HfFileSystem, hf_hub_download
+    import pyarrow.parquet as pq
+
+    def rows(repo_id, path, revision):
+        with HfFileSystem().open(f"datasets/{repo_id}@{revision}/{path}", "rb") as f:
+            return pq.ParquetFile(f).metadata.num_rows
+
+    def download(repo_id, path, revision):
+        return Path(hf_hub_download(repo_id, path, repo_type="dataset", revision=revision)).read_text()
+
+    return HfApi().dataset_info, download, rows
+
+
+def card_only_set(name: str, s: dict, user: str, commit: str, hub=None) -> tuple:
+    """The card of a set of SETS rebuilt from its published MANIFEST.json (and, for trajectories,
+    its published `files/summary.json`). Returns (live card, rebuilt card)."""
+    info, download, _ = hub or hub_reader()
+    repo_id = f"{user}/{s['repo']}"
+    meta = info(repo_id, files_metadata=False)
+    revision = meta.sha
+    try:
+        published = json.loads(download(repo_id, "MANIFEST.json", revision))
+    except Exception as e:
+        raise SystemExit(f"{name}: card-only: no published MANIFEST.json in {repo_id} ({e}): refused")
+    live = download(repo_id, "README.md", revision)
+    rows, extras, carried, built = card_only_inputs(published, s.get("extra_dir", "tokenizers"))
+    known = DECISIONS if s.get("per_source") else s.get("sources")
+    if known is not None:
+        unknown = sorted(c for c in rows if c not in known)
+        if unknown:
+            raise SystemExit(f"{name}: card-only: no licence entry for {unknown}: refused")
+    if s.get("results"):
+        summary = f"{s.get('extra_dir', 'tokenizers')}/{Path(s['results']).name}"
+        s = {**s, "results_rows": json.loads(download(repo_id, summary, revision))}
+    new = card(name, s, rows, built, user, extras, carried, regenerated=commit)
+    check_card_only(name, live, new, [x.rfilename for x in meta.siblings], rows)
+    return live, new
+
+
+GLM_COMMIT = re.compile(r"`scripts/hf-publish-data\.py --glm` at commit \[`[0-9a-f]{8}`\]\(" + re.escape(REPO_URL)
+                        + r"/commit/([0-9a-f]{40})\)")
+
+
+def card_only_glm(a, user: str, commit: str, hub=None) -> tuple:
+    """The card of skycmd-glm-labels rebuilt from the published files: the agreement per source
+    from `agreement.json`, the rows of `agree` and `labels` from their parquet metadata, the
+    commit that assembled the release from the live card, the refused count and the date from the
+    arguments. Returns (live card, rebuilt card)."""
+    if a.glm_refused is None or not a.glm_date:
+        raise SystemExit("glm-labels: card-only needs --glm-refused N and --glm-date D: refused")
+    info, download, parquet_rows = hub or hub_reader()
+    repo_id = f"{user}/skycmd-glm-labels"
+    meta = info(repo_id, files_metadata=False)
+    revision = meta.sha
+    live = download(repo_id, "README.md", revision)
+    m = GLM_COMMIT.search(live)
+    if not m:
+        raise SystemExit("glm-labels: card-only: the live card names no assembling commit: refused")
+    agreement = json.loads(download(repo_id, "agreement.json", revision))
+    n_agree = parquet_rows(repo_id, "data/agree.parquet", revision)
+    n_labels = parquet_rows(repo_id, "data/labels.parquet", revision)
+    n_lab = sum(v["labelled"] for v in agreement.values())
+    n_ok = sum(v["agree"] for v in agreement.values())
+    if (n_lab, n_ok) != (n_labels, n_agree):
+        raise SystemExit(f"glm-labels: card-only: agreement.json counts {n_lab:,} labels and {n_ok:,} agreeing, the "
+                         f"parquet files {n_labels:,} and {n_agree:,}: refused")
+    if a.glm_final and n_lab + a.glm_refused != GLM_SELECTED:
+        raise SystemExit(f"glm-labels: card-only: {n_lab:,} labelled + {a.glm_refused:,} refused is not the "
+                         f"{GLM_SELECTED:,} selected decisions: refused")
+    new = glm_readme(user, m.group(1), agreement, n_agree, n_labels, a.glm_refused, a.glm_date, a.glm_final,
+                     regenerated=commit)
+    check_card_only("glm-labels", live, new, [x.rfilename for x in meta.siblings], ["agree", "labels"])
+    return live, new
+
+
+def card_only(a, user: str, commit: str, only: list, hub=None) -> None:
+    """--card-only: rebuild and (without --dry-run) upload the README.md of each set of `only`
+    alone, from the published repository; nothing else is written to the Hub."""
+    if not only:
+        raise SystemExit("--card-only needs --only (sets of SETS, or glm-labels)")
+    unknown = [x for x in only if x not in SETS and x != CARD_ONLY_GLM]
+    if unknown:
+        raise SystemExit(f"--card-only covers the sets of SETS and {CARD_ONLY_GLM}, not {unknown}: their cards need "
+                         f"their data")
+    if user == "USER":
+        raise SystemExit("--card-only reads the published repository: give --user")
+    api = None
+    if not a.dry_run:
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+    for name in only:
+        repo = "skycmd-glm-labels" if name == CARD_ONLY_GLM else SETS[name]["repo"]
+        live, new = card_only_glm(a, user, commit, hub) if name == CARD_ONLY_GLM else \
+            card_only_set(name, SETS[name], user, commit, hub)
+        out = OUT / "card-only" / repo
+        shutil.rmtree(out, ignore_errors=True)
+        out.mkdir(parents=True)
+        (out / "README.md").write_text(new)
+        show_card_diff(name, live, new, out)
+        if live == new:
+            print(f"{name}: the rebuilt card is the live one: nothing to upload")
+            continue
+        if api is not None:
+            upload_card(api, f"{user}/{repo}", out / "README.md", f"skycmd {commit[:8]}: card of {repo} (card only)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--data", default=str(ROOT / "data"))
@@ -1952,6 +2230,9 @@ def main() -> None:
                     help="texts refused by the moderation, required when data/teacher/glm_labels.refused.jsonl is gone")
     ap.add_argument("--merge-published", action="store_true",
                     help="sets of SETS: carry forward the published configs that the local build does not have")
+    ap.add_argument("--card-only", action="store_true",
+                    help="rebuild the README.md of the --only sets (of SETS, or glm-labels) from the published "
+                         "repository, without the data, and upload it alone")
     ap.add_argument("--route-data", default=str(ROUTE_DATA),
                     help="the s6-route data folder (skycmd-route, `--only route`; skycmd-route7, `--only route7`)")
     a = ap.parse_args()
@@ -1967,6 +2248,9 @@ def main() -> None:
         api = HfApi()
         user = user or api.whoami()["name"]
     user = user or "USER"
+    if a.card_only:
+        card_only(a, user, commit, only)
+        return
     if a.glm:
         publish_glm(a, api, user, commit)
     if "route" in only or not (only or a.glm):
