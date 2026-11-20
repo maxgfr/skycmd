@@ -166,6 +166,7 @@
         }
       },
       "int8": {
+        "measured_on": "the export of 26/10/2026, before its debug strings were cleared; not measured again",
         "size_bytes": 7402715,
         "worst": 0.2330490703080565,
         "cases": {
@@ -222,6 +223,7 @@
       "default_threads_median_ms": 5.45
     },
     "int8": {
+      "measured_on": "the export of 26/10/2026, before its debug strings were cleared; not measured again",
       "1_thread_median_ms": 5.33,
       "default_threads_median_ms": 5.99
     }
