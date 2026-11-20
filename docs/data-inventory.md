@@ -7,7 +7,8 @@ reuses the project: to rebuild a model, to find its data, or to know what exists
 disk. It changes nothing by itself: nothing was deleted, moved or uploaded to write it. The
 deletions of 19/11/2026 were the owner's decision and are recorded in section 8; the two later
 passes, on the evening of 19/11/2026 and on 20/11/2026, in sections 9 and 10; section 11 says what
-is left on the disk on 20/11/2026, why, and what is lost.
+is left on the disk on 20/11/2026, why, and what is lost. Section 12 records the last publication
+of 20/11/2026 (the G7 files) and the deletion that followed it.
 
 **Update of 19/11/2026 (s6-route v7).** s6-route v7 trained, was read once on its fresh test and
 failed its gate; the route line is closed. Its data (section 3.6) is assembled as the data set
@@ -52,6 +53,19 @@ closed and while s6-ear v3 trained (section 9; nothing s6-ear v3 read was touche
 20/11/2026, after s6-ear v3's result was merged (section 10). Section 11 lists what is kept and
 why, and says plainly what is lost. The rows of sections 1 to 7 and "Where things are" that the
 two passes make stale carry a dated note; the statements of 18/11 and 19/11 keep their text.
+
+**Update of 20/11/2026, after the last publication (G7 published, `data/` deleted).** The owner
+answered section 7's question 3 on 20/11/2026: everything of G7 is published, the benchmark's test
+split included, marked evaluation only on the card. `scripts/hf-publish-data.py` at commit
+`fb368b1c` added `typed_decisions_train` and `typed_decisions_bench` to `maxgfr/skycmd-decisions`
+and rebuilt `maxgfr/skycmd-glm-labels` with their label rows; every published row was downloaded
+again and checked against the local files, and then the whole `skycmd/data/` folder and `target/`
+were deleted (section 12). **After this pass, nothing the project wrote exists only on this disk
+except what section 11 lists outside G7:** the raw trace of s6-ear v3's gate
+(`skycmd-data/s6-ear3-gate`), s6-route's `eval/` and manifests, the run logs, the research dossiers
+and the small text logs of the main checkout's `runs/`. The rows that this pass makes stale carry a
+note marked *20/11, after the publication*; the earlier statements, those of 20/11 included, keep
+their text.
 
 **The owner's rule (18/11/2026). Once a model is in its final version and nobody will touch it
 again, and its training data is on Hugging Face, the local copy of that data may be deleted. The
@@ -110,6 +124,12 @@ second working tree's `runs/` and `models/` lost every untracked checkpoint and 
 `skycmd-data/` now holds `s6-route/` (its `eval/` and manifests), `s6-ear3-gate/`, `run-logs/` and
 `ultrasearch/` (section 11).
 
+*20/11, after the publication:* `skycmd/data/` no longer exists: it was deleted whole once the
+G7 files were on the Hub and checked (section 12). The main checkout is the only working tree of
+the repository: the last other local working copy (the session's working tree of section 10) was
+removed on 20/11 (section 12).
+`skycmd-data/` is unchanged.
+
 ## 1. Status of the models
 
 From `TODO.md` at commit `6b6ecac` ("Where we are", 18/11/2026) and the Hub (`list_models(author="maxgfr")`: 18 model
@@ -120,7 +140,7 @@ repositories, each holding its GGUF and card; none holds a training checkpoint).
 | s1-pico, s2-nano, s2-nano-doom, s3-pico, s4-micro, s5-lite | yes | yes | no open item reads them; `docs/weights-prereg.md` §2 moved its base to s6-nano |
 | s6 recipe (tranche 1: `runs/s6ab`, `runs/s6lr`) | not a model | yes | decided 12/11 (`runs/recipe/recipe.json`) |
 | s6-nano | yes, passed | **no** | `runs/s6-nano-g3/decide/last` is the base of s6-sleep v4 (`scripts/train-sleep4.sh`, `NANO_BASE`; K3 failed on 18/11, and K1 failed on 19/11: v4 is closed). **19/11:** §7, its other reader, was closed without running (`docs/weights-prereg.md`, amendment 1), so `runs/s6-nano/pretrain/init` (§7.2) has no reader left. **20/11:** final; its checkpoints and data were deleted on the evening of 19/11 (section 9) |
-| s6-micro (v2) | yes, passed | yes for its checkpoints; its data **no**; *20/11:* yes for both | its data (`data/decisions`, `distill`, `games`, `numeric`) was read by s6-sleep v4's K1, which closed v4 on 19/11 (§7, the other reader, was closed on 19/11); deleted on the evening of 19/11, except G7 (section 9) |
+| s6-micro (v2) | yes, passed | yes for its checkpoints; its data **no**; *20/11:* yes for both | its data (`data/decisions`, `distill`, `games`, `numeric`) was read by s6-sleep v4's K1, which closed v4 on 19/11 (§7, the other reader, was closed on 19/11); deleted on the evening of 19/11, except G7 (section 9); *20/11, after the publication:* G7 is on the Hub and its files were deleted (section 12) |
 | s6-micro-v1 | yes, failed | yes, since 19/11 | `runs/s6-micro/pretrain/init` was the initialisation of s6-route v4, v5 and v7 (`docs/s6-route4-prereg.md` §3, "as v4" in `docs/s6-route5-prereg.md` §5; `scripts/train-route4.sh` line 81); the route line is closed |
 | s6-secrets-pico | yes, passed | yes, since 19/11 | §7.4, its only reader, was closed without running on 19/11 (`docs/weights-prereg.md`, amendment 1) |
 | s6-secrets-verify-pico (v2) and v3 | v2 yes, failed; v3 failed | yes, by the lead's decision of 18/11 | closed as "not worth pre-registering" (`docs/s6-secrets4-diagnosis.md` §5, the note of 19/11/2026); its data was deleted on 19/11 (section 8) |
@@ -148,7 +168,7 @@ answers `viewer: true` (and preview, search, filter, statistics) for all 15. For
 
 | data set | Hub commit | files on the Hub | MB | built at | local source | manifest check |
 |---|---|---:|---:|---|---|---|
-| [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions) | `a8f33fd2` | 30 | 182.9 | `6cbcce8c` | `data/decisions/` | 27 of 27 identical; `typed_decisions_train` and `typed_decisions_bench` deliberately left out (section 4, G7) |
+| [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions) | `a8f33fd2` | 30 | 182.9 | `6cbcce8c` | `data/decisions/` | 27 of 27 identical; `typed_decisions_train` and `typed_decisions_bench` deliberately left out (section 4, G7). *20/11, after the publication:* Hub revision `36704fe4007b9ee27babe7cc35d917f742bfeaff`, 32 files (29 parquet), 831,387 rows, manifest at `fb368b1c`; `typed_decisions_train` (6,000 rows) and `typed_decisions_bench` (2,000) added, the other 27 configs carried from the manifest of `6cbcce8c` (section 12) |
 | [skycmd-games](https://huggingface.co/datasets/maxgfr/skycmd-games) | `fa4af24c` | 7 | 6.0 | `6cbcce8c` | `data/games/` | 4 of 4 identical |
 | [skycmd-numeric](https://huggingface.co/datasets/maxgfr/skycmd-numeric) | `9ddcd59e` | 4 | 2.5 | `6cbcce8c` | `data/numeric/` | 1 of 1 identical |
 | [skycmd-secrets](https://huggingface.co/datasets/maxgfr/skycmd-secrets) | `411d56ac` | 5 | 10.0 | `6cbcce8c` | `data/secrets/` | 2 of 2 identical |
@@ -162,7 +182,7 @@ answers `viewer: true` (and preview, search, filter, statistics) for all 15. For
 | [skycmd-evals](https://huggingface.co/datasets/maxgfr/skycmd-evals) | `d04e8159` | 6 | 0.0 | `8cc8e276` | `eval/s5/` (in git) | 3 of 3 identical |
 | [skycmd-trajectories](https://huggingface.co/datasets/maxgfr/skycmd-trajectories) | `1d8524c7` | 14 | 17.0 | `bd5a64a1` | `data/trajectories/` | 11 of 11 identical |
 | [skycmd-route](https://huggingface.co/datasets/maxgfr/skycmd-route) | `dab1725b` | 34 | 27.3 | `2eb6c9b6` | `skycmd-data/s6-route/` | 30 of 31 identical; the 31st, `scripts/route/pins.json`, equals the file in git at `2eb6c9b6`; the file in git today differs because v4 added its `v4_sources` entry (expected, not a data change) |
-| [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels) | `d9520508` | 5 | 129.4 | (no manifest) | `data/teacher/`, `data/distill/` | no sha256 to compare: `agreement.json` equals the local one after the publish filter; `labels` has 741,437 rows and `agree` 556,175, the counts of the local files without the two LocalLLaMA sources (G7) |
+| [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels) | `d9520508` | 5 | 129.4 | (no manifest) | `data/teacher/`, `data/distill/` | no sha256 to compare: `agreement.json` equals the local one after the publish filter; `labels` has 741,437 rows and `agree` 556,175, the counts of the local files without the two LocalLLaMA sources (G7). *20/11, after the publication:* rebuilt whole, Hub revision `486a2508836d5b582227bd652333adb403262ed5`, 5 files: `labels` 747,077 rows and `agree` 560,238, the counts of the local files with the G7 rows, and `agreement.json` with 470 sources (section 12) |
 
 **Result: no mismatch.** 119 local files are byte-identical to the files the published sets were
 built from. Nothing a manifest names is missing from disk (the main checkout lacks
@@ -171,6 +191,9 @@ built from. Nothing a manifest names is missing from disk (the main checkout lac
 **20/11/2026.** That check was of 18/11. After the deletions of sections 8 to 10, the local source
 files of these sets are gone, except those of skycmd-glm-labels (`data/teacher/glm_labels.jsonl`,
 `data/distill/glm.jsonl`) and of skycmd-evals (in git): the published sets are now the copy.
+*20/11, after the publication:* those two GLM files were deleted with `data/` once the rebuilt
+skycmd-glm-labels was checked row by row against them (section 12); only skycmd-evals keeps a local
+source, in git.
 
 ## 3. Each model family: its data, where it is, whether the local copy is removable
 
@@ -180,7 +203,7 @@ files of these sets are gone, except those of skycmd-glm-labels (`data/teacher/g
 
 | model | status | training data (val, test) | on Hugging Face | local path, size | removable | how to rebuild |
 |---|---|---|---|---|---|---|
-| s1-pico, s2-nano, s3-pico | final | `data/decisions` (with the GLM files `glm_orders`, `paraphrased`), `data/games`, `data/numeric`, MLM on `data/text` (`DATA_LICENSES.md`) | skycmd-decisions, -games, -numeric, -text; the two GLM files are not on the Hub | the GLM files are no longer on disk (not in `data/decisions/` on 18/11) | yes for what is on disk (the shared files are kept for the s6 models, 3.2); *20/11:* deleted on the evening of 19/11, except G7 (section 9) | `sky-data fetch-decisions`, `sky-games-gen`, `sky-train s2-numeric`, `sky-data fetch-text` (`scripts/prepare-data.sh`); the GLM files need new teacher calls |
+| s1-pico, s2-nano, s3-pico | final | `data/decisions` (with the GLM files `glm_orders`, `paraphrased`), `data/games`, `data/numeric`, MLM on `data/text` (`DATA_LICENSES.md`) | skycmd-decisions, -games, -numeric, -text; the two GLM files are not on the Hub | the GLM files are no longer on disk (not in `data/decisions/` on 18/11) | yes for what is on disk (the shared files are kept for the s6 models, 3.2); *20/11:* deleted on the evening of 19/11, except G7 (section 9); *20/11, after the publication:* G7 published and deleted (section 12) | `sky-data fetch-decisions`, `sky-games-gen`, `sky-train s2-numeric`, `sky-data fetch-text` (`scripts/prepare-data.sh`); the GLM files need new teacher calls |
 | s2-nano-doom | final | the above and DAgger rounds `data/dagger-doom/` | — | `data/dagger-doom/` is not on disk | — | `scripts/train-doom.sh` (needs s2-nano's checkpoint, not on disk) |
 | s4-micro | final | `data/s4/` (`queue/`, `gold/`, `heldout/`; the Qwen3.5 teacher's labels) | skycmd-zero-shot (`heldout/` only) | only `data/s4/heldout/` is on disk (1.9 MB) | `heldout/` is read by s6-sleep v4 (`scripts/train-sleep4.sh` line 517): after s6-sleep v4 (kept on 19/11); *20/11:* `data/s4` was deleted on the evening of 19/11 (section 9; skycmd-zero-shot holds it) | `sky-data s4-corpus`; the teacher labels need the teacher again |
 | s5-lite | final | `data/s5/` (`sky-data s5-build`, pinned sources of `DATA_LICENSES.md`) | skycmd-evals (hand-written material only) | `data/s5/` is not on disk; `models-src/` 39 MB | — | `cargo xtask s5 fetch-models` / `fetch-evals`, then `sky-data s5-build` (pinned commits) |
@@ -197,12 +220,12 @@ splits of `data/decisions` and `data/s4/heldout` (`docs/s6-gen-prereg.md`).
 
 | model | status | training data (val, test) | on Hugging Face (repository, config) | local path, size | removable | how to rebuild |
 |---|---|---|---|---|---|---|
-| s6-nano | not final (its checkpoint is a base); *20/11:* final | decisions, distill, games, numeric; text-open, text; DAgger `data/dagger-s6-nano/r1..r3` | skycmd-decisions (27 configs), skycmd-glm-labels (`agree`, `labels`), skycmd-games, skycmd-numeric, skycmd-text; **DAgger rounds not on the Hub** (G8) | `data/decisions` 0.84 GiB, `distill` 0.52, `teacher` 0.09, `games` 0.10, `numeric` 0.02, `text` 0.14, `text-open` 0.09, `tok` < 0.01, `dagger-s6-nano` 0.06 | no: s6-sleep v4's K1 read them (§7, the other reader, was closed on 19/11); kept on 19/11; v4 closed on 19/11 (evening). *20/11:* all deleted on the evening of 19/11 (section 9) except the files of G7 (`typed_decisions_*`, `teacher/glm_labels.jsonl`, `distill/glm.jsonl`), kept (section 11) | `scripts/prepare-data.sh`; `sky-data teacher mix-labels` (default `--alpha 0.5`) rebuilds `data/distill/glm.jsonl` from `data/teacher/glm_labels.jsonl` and `data/decisions`; the DAgger rounds need the round checkpoints `runs/s6-nano-g1`, `g2` (`sky-arena --dagger`). *20/11:* those checkpoints were deleted on the evening of 19/11; `sky-arena --dagger` plays the round's GGUF file, and those files are kept (section 11, G8) |
+| s6-nano | not final (its checkpoint is a base); *20/11:* final | decisions, distill, games, numeric; text-open, text; DAgger `data/dagger-s6-nano/r1..r3` | skycmd-decisions (27 configs), skycmd-glm-labels (`agree`, `labels`), skycmd-games, skycmd-numeric, skycmd-text; **DAgger rounds not on the Hub** (G8) | `data/decisions` 0.84 GiB, `distill` 0.52, `teacher` 0.09, `games` 0.10, `numeric` 0.02, `text` 0.14, `text-open` 0.09, `tok` < 0.01, `dagger-s6-nano` 0.06 | no: s6-sleep v4's K1 read them (§7, the other reader, was closed on 19/11); kept on 19/11; v4 closed on 19/11 (evening). *20/11:* all deleted on the evening of 19/11 (section 9) except the files of G7 (`typed_decisions_*`, `teacher/glm_labels.jsonl`, `distill/glm.jsonl`), kept (section 11). *20/11, after the publication:* those went too, once on the Hub and checked (section 12) | `scripts/prepare-data.sh`; `sky-data teacher mix-labels` (default `--alpha 0.5`) rebuilds `data/distill/glm.jsonl` from `data/teacher/glm_labels.jsonl` and `data/decisions`; the DAgger rounds need the round checkpoints `runs/s6-nano-g1`, `g2` (`sky-arena --dagger`). *20/11:* those checkpoints were deleted on the evening of 19/11; `sky-arena --dagger` plays the round's GGUF file, and those files are kept (section 11, G8) |
 | s6-micro v1 | final (since 19/11 for `runs/s6-micro/pretrain/init`: the route line is closed) | as s6-nano; DAgger `data/dagger-s6-micro/r1..r3` (14/11) | as s6-nano; **DAgger rounds not on the Hub** (G8) | `data/dagger-s6-micro` 0.06 GiB; *20/11:* deleted on the evening of 19/11 (section 9) | the DAgger rounds after an upload; deleted without one | as s6-nano |
 | s6-micro (v2) | final as a model | as s6-nano; DAgger `runs/s6-micro2/data/dagger-s6-micro/r1..r3` (16/11; different files from v1's, checked by sha256) | as s6-nano; **DAgger rounds not on the Hub** (G8) | `runs/s6-micro2/data/` 0.06 GiB; *20/11:* deleted on the evening of 19/11 (section 9) | after an upload; deleted without one | as s6-nano (`SKY_OUT=runs/s6-micro2/`, `runs/s6-micro2/env.sh`); its round files are gone too (section 11, G8) |
 | s6-sleep v1, v2 | stopped | `runs/s6-sleep/seq/` (`sky-train s2-seqgen --seed 61`: recall, rule110, flappy, rescue, dodge, doom; `scripts/train-sleep.sh` lines 105–109); stateless records as s6-nano | **sequences not on the Hub** (G9) | `runs/s6-sleep/seq` 0.48 GiB; *20/11:* deleted on the evening of 19/11 (section 9) | no: v3 and v4 read it; *20/11:* both closed, deleted without an upload | `s2-seqgen` with the seeds of `scripts/train-sleep.sh` (generated by our code; CPU) |
 | s6-sleep3-nano (v3) | not final (v4 cites it); *20/11:* final | v1's sequences, the stateless records, base s6-nano | as above | `runs/s6-sleep3/` (worktree) 0.36 GiB; *20/11:* its checkpoints deleted on 20/11 (section 10) | no, until v4's result, which came on 19/11 (v4 closed) | — |
-| s6-sleep v4 | closed: K3 failed (18/11), K1 failed (19/11) | v1's sequences; `data/decisions`, `distill`, `games`, `numeric`; tests `typed_decisions_bench`, `s4/heldout`, `when2call` (`scripts/train-sleep4.sh` lines 104, 266–268, 517) | as above | as above | no; *20/11:* v4 is closed and its inputs deleted (sections 9 and 10), except G7 | — |
+| s6-sleep v4 | closed: K3 failed (18/11), K1 failed (19/11) | v1's sequences; `data/decisions`, `distill`, `games`, `numeric`; tests `typed_decisions_bench`, `s4/heldout`, `when2call` (`scripts/train-sleep4.sh` lines 104, 266–268, 517) | as above | as above | no; *20/11:* v4 is closed and its inputs deleted (sections 9 and 10), except G7; *20/11, after the publication:* G7 too, after its upload (section 12) | — |
 | §7 flexible weights | closed without running (19/11) | would have read: base `runs/s6-nano-g3/decide/last`; §7.2 from `runs/s6-nano/pretrain/init` with the s6 records; §7.4 copies of s6-secrets-pico on `data/secrets`; nothing was computed | as above, skycmd-secrets | as above | no longer held by §7 | — |
 
 ### 3.3 s6-secrets
@@ -262,7 +285,7 @@ text and about the same for binary features.
 | G4 | GIFT-Eval `data/gift-eval/` (exported test windows) and `data/gift-eval-src/` (the download). **Deleted on 19/11/2026** (section 8) | 7.01 + 1.49 GiB | the GIFT-Eval scores of s6-cast v1 and v2 and of the references; the unscheduled §9 diagnostics | project rule: "an evaluation set never redistributed" (`DATA_LICENSES.md`, `scripts/gift-eval.py`) | `Salesforce/GiftEval`, local download at `30841734` (the `.cache/huggingface` metadata of `data/gift-eval-src`), the Hub's current commit, 1.59 GB; rebuild `uv run --python 3.12 scripts/gift-eval.py download --data data/gift-eval-src` then `export --out data/gift-eval` | no for this project: the card says "This release is for research purposes only in support of an academic paper" next to its Apache-2.0 tag, and the project decided never to redistribute an evaluation set | — |
 | G5 | USCRN series `skycmd-data/s6-cast2/series2-checked/uscrn_subhourly.jsonl` (and its identical copy in `series2/`). **Deleted on 19/11/2026** (section 8), without an upload | 41 MB (82 MB with the copy) | s6-cast2-pico training | `DATA_LICENSES.md`: "never committed or redistributed by this repository"; no entry in the publish script | NOAA NCEI, `subhourly01`, the 159 station files of 2025, not pinned by hash (`series2/uscrn_subhourly.manifest.json` lists the fetch); rebuild `scripts/cast2-data.py fetch` then `leak-check` | yes: public domain (U.S. Government work; `DATA_LICENSES.md`, s6-cast v2 table: "publication of the series: allowed") | 41 MB |
 | G6 | Chronos-ZS caches `skycmd-data/s6-cast2/hf/` (the `datasets` cache), `chronos-zs/` (exported windows), `chronos-zs-out/` (forecast dumps of four systems). **Deleted on 19/11/2026** (section 8), with `skycmd-data/s6-cast2` | 6.35 + 0.48 + 0.30 GiB | the Chronos-ZS readings of s6-cast v2 (reported, not gated) and the leakage check | evaluation sets | `autogluon/chronos_datasets` at `eeecad0b` (tagged `other`: each series keeps its own licence) and `autogluon/chronos_datasets_extra` at `84737b7` (ETT from GitHub); rebuild `scripts/chronos-zs.py` through `scripts/train-cast2.sh chronos`; the dumps by `sky-cast-eval` | not checked set by set; not needed, the sets are on the Hub | — |
-| G7 | `data/decisions/typed_decisions_train.jsonl` (6,000 rows) and `typed_decisions_bench.jsonl` (2,000 rows), and their GLM-5.3-Flash labels: 5,640 rows of `data/teacher/glm_labels.jsonl` and 4,063 rows of `data/distill/glm.jsonl`. **Kept on 20/11/2026** (section 11) | 8.9 MB, and the label rows within the files of 3.2 | every s6 decision model (train, the gated bench); s6-sleep v4 | project rule: "LocalLLaMA/typed-decisions is gated on the Hub" (`EXCLUDED` in `scripts/hf-publish-data.py`) | `LocalLLaMA/typed-decisions`: on 18/11/2026 the Hub API reports it **not gated** (`gated: False`), Apache-2.0, commit `e6aa632c` (16/11, leaderboard edits; s5 pinned `c806f6c6`); the labels exist only here and would need new teacher calls | rows: yes (Apache-2.0); labels: yes (MIT model, owner's decision of 16/11); but the bench is the test split of a public leaderboard, so publishing our copy of it is the owner's call | 8.9 MB and about 1% of the label files |
+| G7 | `data/decisions/typed_decisions_train.jsonl` (6,000 rows) and `typed_decisions_bench.jsonl` (2,000 rows), and their GLM-5.3-Flash labels: 5,640 rows of `data/teacher/glm_labels.jsonl` and 4,063 rows of `data/distill/glm.jsonl`. **Kept on 20/11/2026** (section 11). *20/11, after the publication:* **published on 20/11/2026** (`typed_decisions_train` and `typed_decisions_bench` in skycmd-decisions, the bench marked evaluation only; the label rows in skycmd-glm-labels), checked row by row, then **deleted** (section 12) | 8.9 MB, and the label rows within the files of 3.2 | every s6 decision model (train, the gated bench); s6-sleep v4 | project rule: "LocalLLaMA/typed-decisions is gated on the Hub" (`EXCLUDED` in `scripts/hf-publish-data.py`) | `LocalLLaMA/typed-decisions`: on 18/11/2026 the Hub API reports it **not gated** (`gated: False`), Apache-2.0, commit `e6aa632c` (16/11, leaderboard edits; s5 pinned `c806f6c6`); the labels exist only here and would need new teacher calls | rows: yes (Apache-2.0); labels: yes (MIT model, owner's decision of 16/11); but the bench is the test split of a public leaderboard, so publishing our copy of it is the owner's call | 8.9 MB and about 1% of the label files |
 | G8 | DAgger rounds `data/dagger-s6-nano/r1..r3`, `data/dagger-s6-micro/r1..r3` (v1), `runs/s6-micro2/data/dagger-s6-micro/r1..r3` (v2). **Deleted on the evening of 19/11/2026** (section 9), without an upload | 64 MB each | training of s6-nano, s6-micro v1, s6-micro v2 | no entry in the publish script | ours: game states reached by the models, labelled by the oracle; rebuilding needs the round checkpoints (`sky-arena --dagger`, `scripts/train-s6.sh` line 192) | yes (Apache-2.0, our code and models; no third-party data) | 0.19 GiB |
 | G9 | s6-sleep sequences `runs/s6-sleep/seq/` (recall 228 MB, doom 67, rescue 64, rule110 49, dodge 45, flappy 38). **Deleted on the evening of 19/11/2026** (section 9), without an upload | 0.48 GiB | s6-sleep v1, v3, v4 (closed on 19/11) | no entry in the publish script | ours: `sky-train s2-seqgen --seed 61` (`scripts/train-sleep.sh` lines 105–109) | yes (Apache-2.0, generated by our code) | 0.48 GiB |
 | G10 | `build/test/t_toolrouting.jsonl` (100 test slates). **Deleted on 19/11/2026** (section 8), with `build/` | 148 kB | s6-route-nano and s6-route tests (reported) | project rule: the card of `stanley-nv/tool-routing-data` "asks users to review the generating model's terms" (`ROUTE_EXCLUDED`) | `stanley-nv/tool-routing-data` at `249f72a6`; `scripts/build-route-data.sh` rebuilds it | unclear (CC-BY-4.0 tag, the card's request) | — |
@@ -271,7 +294,7 @@ text and about the same for binary features.
 | G16 (19/11) | the false-negative filter of s6-route v5, v6 and v7: `build7/teacher/false-negatives.jsonl` (58,984 answers, 2.8 MB), `build7/fix/teacher/` (694), `build7/fix7/teacher/` (296), and their items (36 MB, 0.4 MB, 0.2 MB). **Deleted on 19/11/2026** (section 8), with `build7/`, without an upload | 40 MB | the hard slates of v7's records (their effect is in the published records) | project rule, as G11 (`ROUTE7_EXCLUDED`): "their effect is in the hard slates" | the answers need new teacher calls; the items `sky-data route v5-plan` and `v5-fix-items` rebuild | yes (as G11) | 2.9 MB (answers) |
 | G13 | **Deleted on 19/11/2026** (section 8). s6-route's raw sources `src/` (glaive 259 MB, toucan 406 MB, when2call 59, hermes 56, toolace 35, api-bank 28, seal-tools 11, metatool 6.7, clinc, bfcl, tool-routing-data) | 0.84 GiB | v2 to v5 builds | the publish script leaves out raw upstream files | every file pinned and hashed in `MANIFEST.json` / `MANIFEST4.json`; `scripts/build-route-data.sh fetch`, `scripts/build-route4-data.sh fetch` | mostly yes (Apache-2.0, MIT, CC-BY), but republishing pinned upstream files adds nothing | — |
 | G14 | s6-secrets2 `skycmd-data/s6-secrets2/` and the two tokenized caches holding its text (section 3.3). **Deleted on 19/11/2026** (section 8) | 3.97 + 2 × 1.21 GiB | s6-secrets-verify-pico v2, v3 | never published: real-credential sets (owner, 16/11) | CredData at `01e3d135…` and Zenodo 19622962 (section 3.3); the rebuild depends on CredData's source repositories still existing | no: per-file licences of third-party repositories, real values in the test files; the project decided never to publish them | — |
-| G15 | the raw download cache `data/hf/` other than Speech Commands (tasksource-jev 642 MB, procedural 266 MB, chronos parquet 1.34 GiB, the other decision and text sources; `LocalLLaMA__typed-decisions`, 0.8 MB, is the raw of G7). **No longer on disk on 20/11/2026**, except `LocalLLaMA__typed-decisions` (section 11) | 2.72 GiB | `sky-data fetch-*` only, to write `data/decisions`, `text`, `commands`, `series`, `ear/mimi` | a cache of upstream files | the upstream sets on the Hub (not pinned for `fetch-decisions` and `fetch-commands`; `DATA_LICENSES.md`); `scripts/prepare-data.sh` (its `REFRESH=1` empties `data/hf` itself) | not needed: what the models read, the files derived from this cache, is on the Hub byte for byte (section 2) | — |
+| G15 | the raw download cache `data/hf/` other than Speech Commands (tasksource-jev 642 MB, procedural 266 MB, chronos parquet 1.34 GiB, the other decision and text sources; `LocalLLaMA__typed-decisions`, 0.8 MB, is the raw of G7). **No longer on disk on 20/11/2026**, except `LocalLLaMA__typed-decisions` (section 11); *20/11, after the publication:* that one was deleted with `data/` (section 12) | 2.72 GiB | `sky-data fetch-*` only, to write `data/decisions`, `text`, `commands`, `series`, `ear/mimi` | a cache of upstream files | the upstream sets on the Hub (not pinned for `fetch-decisions` and `fetch-commands`; `DATA_LICENSES.md`); `scripts/prepare-data.sh` (its `REFRESH=1` empties `data/hf` itself) | not needed: what the models read, the files derived from this cache, is on the Hub byte for byte (section 2) | — |
 
 Also not on the Hub, and not data: the Python environment `skycmd-data/s6-route/envs/` (1.10 GiB),
 the copies of upstream models `skycmd-data/s6-route/models/` (0.10 GiB, pinned in
@@ -281,7 +304,8 @@ assembled copy of the published sets `target/hf-data/` (0.58 GiB; `scripts/hf-pu
 (with `target/hf-data/`) were deleted; `eval/` is kept (section 8).
 
 **20/11/2026.** Section 11 goes through G1 to G16 one by one and says which still exists on
-the disk: only G7 does.
+the disk: only G7 does. *20/11, after the publication:* G7 is on the Hub and its files were
+deleted (section 12): none of G1 to G16 is on the disk any more.
 
 ## 5. Training checkpoints that exist only on this disk
 
@@ -368,7 +392,7 @@ before `uv run scripts/hf-publish-data.py --dry-run --only <set>` and the same w
 | USCRN series (G5) | 41 MB (and the identical `series2/` copy goes too) | deleted on 19/11 without an upload (rebuilt from NOAA) |
 | s6-sleep sequences (G9) | 0.48 GiB | after s6-sleep v4; deleted on the evening of 19/11 without an upload (`sky-train s2-seqgen --seed 61` rebuilds them) |
 | v4's teacher rewrites and v2's false-negative answers (G11, G12) | 5 MB | the rewrites are in skycmd-route7; the rest deleted on 19/11 without an upload (the route line is closed) |
-| `typed_decisions_*` and their GLM labels (G7) | 9 MB plus the label rows | after s6-sleep v4 (§7 is closed); only if the owner lifts the "gated" exclusion; kept on 20/11, the owner's question 3 being open (section 11) |
+| `typed_decisions_*` and their GLM labels (G7) | 9 MB plus the label rows | after s6-sleep v4 (§7 is closed); only if the owner lifts the "gated" exclusion; kept on 20/11, the owner's question 3 being open (section 11); *20/11, after the publication:* uploaded by `scripts/hf-publish-data.py` at `fb368b1c` (the bench included, by the owner's answer to question 3), then deleted (section 12) |
 | v1's features and v1-only WAVs (G1, G2) | 20.07 + 3.81 GiB, packed | deleted on 19/11 without an upload (questions 1 and 2) |
 | v2's stores (G3) | 11.14 GiB (train) | after s6-ear v3, and only with the same decision; deleted on 20/11 without an upload (section 10) |
 
@@ -386,7 +410,8 @@ before `uv run scripts/hf-publish-data.py --dry-run --only <set>` and the same w
 closed, so their items are no longer held by them):
 
 - s6-sleep v4 (closed on 19/11 at K1; held until the owner decides; *20/11:* deleted, on the evening
-  of 19/11 and on 20/11, sections 9 and 10, except the G7 files of `data/decisions` and `data/distill`): `runs/s6-nano-g3/decide/last`, `runs/s6-sleep/seq/`, `data/decisions`
+  of 19/11 and on 20/11, sections 9 and 10, except the G7 files of `data/decisions` and `data/distill`;
+  *20/11, after the publication:* those too, section 12): `runs/s6-nano-g3/decide/last`, `runs/s6-sleep/seq/`, `data/decisions`
   (all 29 files), `data/distill`, `data/games`, `data/numeric`, `data/s4/heldout`,
   `runs/s6-sleep3/`, `runs/s6-sleep4/`.
 - s6-ear v3 (it ran and failed its gate on 19/11, *corrected on 20/11*; held until the owner decides;
@@ -394,13 +419,17 @@ closed, so their items are no longer held by them):
   `data/ear/wav/smart-turn`, `data/ear/clips/smart-turn.jsonl`, `data/ear/jev/turn_end.jsonl`.
 - Not reproducible and only here: `data/teacher/glm_labels.jsonl` and `data/distill/glm.jsonl`
   hold the 5,640 and 4,063 rows of G7 that the Hub does not have. *20/11:* still kept, the only
-  item of this list left (section 11).
+  item of this list left (section 11). *20/11, after the publication:* those rows are in
+  skycmd-glm-labels since 20/11, and both files were deleted (section 12): nothing is left in
+  this list.
 
 **(e) Mismatches between a published set and the local files:** none (section 2). Three
 statements of the repository disagree with what was read on 18/11/2026: `scripts/hf-publish-data.py`
 and `DATA_LICENSES.md` call `LocalLLaMA/typed-decisions` gated, the Hub reports it ungated;
 `TODO.md` at commit `6b6ecac` (morning) said s6-cast2-pico was not uploaded, its Hub repository holds the file since
 12:47 UTC; the free space was 18 GiB at 15:30, not the 5 to 6 GiB of the morning's notes.
+*20/11, after the publication:* neither file calls the set gated any more: the script's rules say
+it is ungated and published since 20/11/2026 (section 12).
 
 ## 7. Questions only the owner can answer
 
@@ -415,6 +444,8 @@ and `DATA_LICENSES.md` call `LocalLLaMA/typed-decisions` gated, the Hub reports 
 3. `LocalLLaMA/typed-decisions` is ungated on 18/11/2026. Publish `typed_decisions_train` and
    its GLM labels (G7)? The bench is the test split of a public leaderboard; keep it out?
    **Still open on 20/11:** the files of G7 are kept until it is answered (section 11).
+   **Answered on 20/11, later:** publish everything of G7, the benchmark's test split included,
+   marked evaluation only on the card. Done on 20/11 (section 12).
 4. Publish the generated sets that the publish script does not cover (G5, G8, G9, G11, G12)?
    All are allowed by their licences. **20/11: no longer open.** G5 and G11 were deleted on 19/11
    (section 8), G8 and G9 on the evening of 19/11 (section 9), all without an upload; G12's
@@ -508,7 +539,8 @@ the Hub and the site.
   `runs/s6-nano-g3/decide/last`) and the `runs/s6-sleep*` folders (with v1's sequences
   `runs/s6-sleep/seq`, G9). *20/11:* deleted on the evening of 19/11 (section 9), except the G7
   files of `data/decisions` and `data/distill`; the s6-sleep v3 and v4 checkpoints of the second
-  working tree on 20/11 (section 10).
+  working tree on 20/11 (section 10). *20/11, after the publication:* the G7 files were deleted
+  after their upload (section 12).
 
 **What becomes removable when those two lines end.**
 
@@ -524,6 +556,8 @@ the Hub and the site.
   rounds of G8, which are not on the Hub); `runs/s6-sleep*`, whose sequences (G9) are not on the
   Hub and are rebuilt by `sky-train s2-seqgen --seed 61`; and `data/s4/heldout` (skycmd-zero-shot).
   *20/11:* all of it went on the evening of 19/11 (section 9), except G7, kept (section 11).
+  *20/11, after the publication:* G7's rows and labels are on the Hub since 20/11, and their files
+  went with `data/` (section 12).
 
 ## 9. Deleted on the evening of 19/11/2026 (s6-sleep v4 closed; s6-ear v3 training)
 
@@ -600,10 +634,10 @@ Folder sizes in MB of 1024 KB; single files in MB of 10⁶ bytes (`ls -l`).
 
 | kept | size | why | on the Hub? |
 |---|---:|---|---|
-| `data/teacher/glm_labels.jsonl` | 92 MB | G7: its 5,640 label rows of `typed_decisions_*` exist nowhere else | its other rows yes, `maxgfr/skycmd-glm-labels`; the G7 rows no |
-| `data/distill/glm.jsonl` | 555 MB | G7: its 4,063 label rows of `typed_decisions_*` exist nowhere else | as above |
-| `data/decisions/typed_decisions_train.jsonl`, `typed_decisions_bench.jsonl` | 7.0 MB, 2.3 MB | G7: the rows those labels belong to | no (`EXCLUDED` in `scripts/hf-publish-data.py`) |
-| `data/hf/LocalLLaMA__typed-decisions` | 0.8 MB | G7: the raw download of those rows | no; upstream `LocalLLaMA/typed-decisions` |
+| `data/teacher/glm_labels.jsonl` | 92 MB | G7: its 5,640 label rows of `typed_decisions_*` exist nowhere else | its other rows yes, `maxgfr/skycmd-glm-labels`; the G7 rows no. *20/11, after the publication:* all its rows are in skycmd-glm-labels (`labels`, 747,077 rows, checked row by row); **deleted** (section 12) |
+| `data/distill/glm.jsonl` | 555 MB | G7: its 4,063 label rows of `typed_decisions_*` exist nowhere else | as above. *20/11, after the publication:* all its rows are in skycmd-glm-labels (`agree`, 560,238 rows, checked row by row); **deleted** (section 12) |
+| `data/decisions/typed_decisions_train.jsonl`, `typed_decisions_bench.jsonl` | 7.0 MB, 2.3 MB | G7: the rows those labels belong to | no (`EXCLUDED` in `scripts/hf-publish-data.py`). *20/11, after the publication:* yes, skycmd-decisions configs `typed_decisions_train` (6,000 rows) and `typed_decisions_bench` (2,000, evaluation only), checked row by row; **deleted** (section 12) |
+| `data/hf/LocalLLaMA__typed-decisions` | 0.8 MB | G7: the raw download of those rows | no; upstream `LocalLLaMA/typed-decisions`. *20/11, after the publication:* **deleted** with `data/`; upstream is ungated, Apache-2.0, at `822f44b3` on 20/11 (section 12) |
 | `skycmd-data/s6-ear3-gate` | 80 MB | the raw trace of s6-ear v3's gate: the per-record outputs the gate read, v2's readings on the same cuts, the harness files, the training log, the pilot logs | **never**: part of it derives from otoSpeech |
 | `skycmd-data/s6-route` | 229 MB | `eval/` and the manifests `MANIFEST.json`, `MANIFEST4.json` (section 8): the only raw trace of v7's gate | no (the records are skycmd-route and skycmd-route7) |
 | `skycmd-data/run-logs` | 2.5 MB | the consoles of the runs of 9 to 19/11 and the brake's log | no |
@@ -612,6 +646,12 @@ Folder sizes in MB of 1024 KB; single files in MB of 10⁶ bytes (`ls -l`).
 
 Section 7's question 3 (publish `typed_decisions_train` and its GLM labels, keep the bench out?)
 is still the owner's. The files of G7 stay until it is answered.
+
+*20/11, after the publication:* the owner answered it the same day (publish everything, the bench
+included, marked evaluation only); the four G7 rows above were published, checked and deleted
+(section 12). Of this table, what is left on the disk is `skycmd-data/s6-ear3-gate`,
+`skycmd-data/s6-route`, `skycmd-data/run-logs`, `skycmd-data/ultrasearch` and the main checkout's
+`runs/`, unchanged.
 
 Also still on the disk, and not data: the main checkout's `models/` (18 MB: the exported GGUF files
 of s6-nano and s6-micro v1 with those of their DAgger rounds, of s6-cast-pico, s6-ear-nano,
@@ -649,7 +689,7 @@ Neither pass touched them.
 | G4 | no: deleted on 19/11 (section 8) |
 | G5 | no: deleted on 19/11 (section 8) |
 | G6 | no: deleted on 19/11 (section 8) |
-| G7 | **yes**: kept (above) |
+| G7 | **yes**: kept (above). *20/11, after the publication:* no: published on 20/11, then deleted with `data/` (section 12) |
 | G8 | no: deleted on the evening of 19/11 (section 9); the files that played s6-nano's and s6-micro v1's rounds are kept (above) |
 | G9 | no: deleted on the evening of 19/11 (section 9) |
 | G10 | no: deleted on 19/11 with `build/` (section 8) |
@@ -657,5 +697,67 @@ Neither pass touched them.
 | G12 | no: deleted on 19/11 (section 8); the rewrites are in skycmd-route7 |
 | G13 | no: deleted on 19/11 (section 8) |
 | G14 | no: deleted on 19/11 (section 8) |
-| G15 | no, except `LocalLLaMA__typed-decisions` (G7). Section 8 does not list the rest of `data/hf/`; the folder was last changed at 10:28 on 19/11, so it went no later than then |
+| G15 | no, except `LocalLLaMA__typed-decisions` (G7). Section 8 does not list the rest of `data/hf/`; the folder was last changed at 10:28 on 19/11, so it went no later than then. *20/11, after the publication:* `LocalLLaMA__typed-decisions` was deleted with `data/` (section 12) |
 | G16 | no: deleted on 19/11 with `build7/` (section 8) |
+
+## 12. Published and deleted on 20/11/2026, after the owner's answer to question 3
+
+On 20/11/2026 the owner answered section 7's question 3: publish everything of G7, the benchmark's
+test split included, marked evaluation only on the card. This section records that upload, the
+checks made on it, and the deletion that followed. Nothing else was uploaded or changed on the Hub.
+
+### What was uploaded
+
+`scripts/hf-publish-data.py` at commit `fb368b1c`:
+
+| data set | what the upload did | Hub revision after it | files | rows |
+|---|---|---|---:|---:|
+| [skycmd-decisions](https://huggingface.co/datasets/maxgfr/skycmd-decisions) | added the configs `typed_decisions_train` (6,000 rows) and `typed_decisions_bench` (2,000 rows, the benchmark's test split, marked evaluation only), with `--merge-published`: the other 27 configs were carried from the manifest of commit `6cbcce8c` (Hub revision `a8f33fd2`), not uploaded again | `36704fe4007b9ee27babe7cc35d917f742bfeaff`, manifest at `fb368b1c` | 32 (29 parquet) | 831,387 |
+| [skycmd-glm-labels](https://huggingface.co/datasets/maxgfr/skycmd-glm-labels) | rebuilt whole, now with the G7 rows: `labels` 747,077 rows, `agree` 560,238 rows, and `agreement.json` with 470 sources. `agreement.json` was no longer on the disk (section 9), so it was recomputed from the two label files; without `typed_decisions_train` it is byte-identical to the one published before. The 121 texts the provider's moderation refused are given by `--glm-refused 121`, since `data/teacher/glm_labels.refused.jsonl` went on 19/11 (section 9) | `486a2508836d5b582227bd652333adb403262ed5` | 5 | 747,077 + 560,238 |
+
+### How the upload was checked
+
+- Every row of the four parquet files (`typed_decisions_train`, `typed_decisions_bench`, `labels`,
+  `agree`), downloaded again from the Hub after the upload, equals the local file's rows: an
+  order-independent hash of every row, on 6,000, 2,000, 747,077 and 560,238 rows, identical in all
+  four.
+- The sha256 that skycmd-decisions' manifest gives for the two source files
+  (`typed_decisions_train.jsonl`, `typed_decisions_bench.jsonl`) equal those of the local files.
+- `load_dataset("maxgfr/skycmd-decisions", …)` loads `typed_decisions_train`,
+  `typed_decisions_bench` and `boolq`.
+
+### What was deleted, after the checks
+
+| deleted | size | on the Hub? | to get it back |
+|---|---:|---|---|
+| the whole `skycmd/data/` folder: `data/teacher/glm_labels.jsonl`, `data/distill/glm.jsonl`, `data/decisions/typed_decisions_train.jsonl` and `typed_decisions_bench.jsonl`, and the raw download `data/hf/LocalLLaMA__typed-decisions` (0.8 MB) | 626 MB | yes: the label files are skycmd-glm-labels (`labels`, `agree`, `agreement.json`), the two decision files are skycmd-decisions (`typed_decisions_train`, `typed_decisions_bench`), every row checked (above) | the published sets. The raw download: upstream `LocalLLaMA/typed-decisions`, ungated, Apache-2.0, at `822f44b3` on 20/11; our rows were downloaded on 25/10/2026 without a pinned revision, so a new download may differ from them, and the published configs are the copy to take |
+| `target/` (the assembled upload, `target/hf-data/`) | 125 MB | it is what was uploaded | `scripts/hf-publish-data.py --dry-run` assembles it again, given the data |
+
+**Also removed on 20/11/2026, and not recorded before:** the last local working copy besides the
+main checkout (the session's working tree of section 10), after its HEAD was checked equal to
+`origin/main`; and every local branch except `main`. The main checkout is now the only working
+tree of the repository.
+
+### What is on the disk after this pass
+
+Unchanged since section 11 (nothing of it was opened or changed). Free space on the data volume:
+154 GiB.
+
+| kept | size | why | on the Hub? |
+|---|---:|---|---|
+| `skycmd-data/s6-ear3-gate` | 80 MB | the raw trace of s6-ear v3's gate (section 11) | **never**: part of it derives from otoSpeech |
+| `skycmd-data/s6-route` | 229 MB | `eval/` and the manifests: the only raw trace of v7's gate (section 8) | no (the records are skycmd-route and skycmd-route7) |
+| `skycmd-data/run-logs` | 2.5 MB | the consoles of the runs of 9 to 19/11 and the brake's log | no |
+| `skycmd-data/ultrasearch` | 1.4 MB | web research dossiers | no |
+| the main checkout's `runs/` (ignored files) | small text logs and JSON files | the logs of finished runs, next to the tracked result files | the result files are in the repository |
+| the main checkout's `models/`, `models-src/` (ignored; not data) | 18 MB, 39 MB | as section 11 | the published GGUF files are on the Hub; `models-src/` is s5's model sources (3.1) |
+
+**What exists only on this disk now.** Of what the project wrote, only the items of the table
+above: the raw trace of s6-ear v3's gate, s6-route's `eval/` and manifests, the run logs, the
+research dossiers and the small logs of `runs/`, which are the items of section 11 outside G7.
+None of G1 to G16 is on the disk: each is on the Hub, rebuilt from upstream by the commands of
+sections 3 and 8 to 10, or lost as section 11 ("What is lost") says.
+
+**What this pass loses.** Nothing that is not on the Hub. The local raw download of
+`LocalLLaMA/typed-decisions` is gone, and since it was not pinned, the bytes of 25/10/2026 now exist
+only as the published configs derived from them.
