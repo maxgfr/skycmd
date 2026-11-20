@@ -75,3 +75,39 @@ local teachers (laya) ──┘   (records)  (mlx-rs)                  ├─ sk
 26. [s6-ear: a decision model that listens](./26-s6-ear): log-mel frames at Mimi's frame rate, pretraining on Mimi's semantic codes without running Mimi, questions in text about audio, and a hand-off to a larger model with a conformal guarantee.
 27. [s6-nano: one small file for the games and for free-text questions](./27-s6-nano): a recipe chosen by a pre-registered ablation that adopted none of its eight additions, a GLM-5.3-flash teacher, 0.480 on `typed_decisions_bench` above the majority class, the early exits rejected in closed loop, and the sibling s6-micro, whose first version failed its calibration guard and whose second passed it on a second look.
 28. [s6-secrets-pico: is a secret exposed in this text?](./28-s6-secrets-pico): synthetic keys in their public formats, a rule scanner scored before training as the bar, four typed questions on file types the training never shows, a line answer that does not work yet, and a model that fails on real files.
+
+## Every training command in one block (macOS, Apple Silicon)
+
+The commands the chapters run, in order, from an empty data folder to the s6 models. Each line is explained in its chapter; the s6 models of the [Results](/results/) page were each trained by one script under its pre-registration, listed in the README's [Reproduce a result](https://github.com/maxgfr/skycmd#reproduce-a-result) table.
+
+```sh
+xcodebuild -downloadComponent MetalToolchain            # MLX needs the Metal compiler
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+scripts/prepare-data.sh                                   # every dataset below, from scratch (FORCE=1, REFRESH=1)
+cargo run --release -p sky-data -- fetch-decisions        # Hugging Face → data/decisions
+cargo run --release -p sky-data -- fetch-text
+cargo run --release -p sky-data -- fetch-text --set open    # Dolma 3 + TxT360 → data/text-open (s6 pretraining)
+cargo run --release -p sky-games --bin sky-games-gen -- --game all --n 60000 --seed 1
+cargo run --release -p sky-data -- train-tokenizer --vocab 1024
+scripts/train-ladder.sh pico                               # pretrain → decide → calibrate → export → eval
+scripts/specialize.sh pico 2 6                             # DAgger rounds on the games
+cargo run --release -p sky-arena -- models/s1-pico-g2 --episodes 30
+cargo run --release -p sky-data -- train-tokenizer --vocab 2048 --num   # s2 tokenizer with [NUM]
+CARGO_TARGET_DIR=$PWD/target/sky-infer-s2 cargo build --release -p sky-arena
+scripts/train-s2.sh nano && scripts/specialize-s2.sh nano 2 8      # the s2 model (chapter 19)
+cargo run --release -p sky-data -- train-tokenizer --vocab 1024 --num   # s3-pico tokenizer
+cargo run --release -p sky-games --bin sky-games-gen -- --game doom --n 100000 --seed 1 --out data/games/doom.jsonl
+CARGO_TARGET_DIR=$PWD/target/s3-arena cargo build --release -p sky-arena
+scripts/train-s3.sh numeric pico && scripts/specialize-s3.sh pico 3 8   # the s3 model (chapter 21)
+scripts/calibrate-exit.sh models/s3-pico-g3/skycmd-s3-pico-g3-ternary.gguf s3-pico.gguf   # closed-loop τ
+scripts/night-s4.sh                                        # s4-micro: Qwen3.5-4B teacher, distillation, gate (chapter 22)
+export SKYCMD_STORE=$PWD && cargo xtask s5 list             # s5-lite: every stage of the pre-registered run (chapter 24)
+cargo xtask s6lr && cargo xtask s6ab --adamw-lr-scale 1 --muon-lr-scale 1   # s6: learning-rate pilot, then the ablation
+SIZE=nano scripts/train-s6.sh lr train dagger exit eval    # s6-nano, then SIZE=micro (docs/s6-gen-prereg.md)
+scripts/train-cast.sh data pilot                           # s6-cast: data, then the pre-registered pilots
+scripts/train-cast.sh train export eval                    # s6-cast: training, export, GIFT-Eval (docs/s6-cast-prereg.md)
+scripts/train-secrets.sh data train eval                   # s6-secrets-pico: jev, training, bench vs the rule scanner
+scripts/train-ear.sh data pretrain decide eval             # s6-ear-nano: audio data, Mimi pretraining, gates vs Smart Turn
+```
+
+The trainings read a brake file, so they can run on a Mac in use: see [Train while you work](/idle-training/).

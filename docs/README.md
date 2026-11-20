@@ -6,7 +6,9 @@ line. Each row gives a version, its status with its date (copied from the
 diagnoses written around it, and its result folder. A result folder marked "not committed" exists
 only on the training machine, and since the deletions of 19 and 20/11/2026 only its small text and
 JSON files are left there ([`data-inventory.md`](data-inventory.md), sections 9 to 11); its numbers
-are in [`BENCH.md`](../BENCH.md). The nine pre-registrations of s5, s6, s6-gen, s6-ear, s6-secrets,
+are in [`BENCH.md`](../BENCH.md). `runs/` is ignored by git by default: the small result files of a
+gated run (results, summaries, gate files) are force-added and tracked under `runs/<name>/`, while
+checkpoints, logs and the arena files written by `sky-arena --json` are not. The nine pre-registrations of s5, s6, s6-gen, s6-ear, s6-secrets,
 s6-cast, LFM3 (two) and flexible weights, and `research-night.md`, were written in French and
 translated into English on 19/11/2026 (each says so at its top); every document is now in English.
 On 20/11/2026 the numbers those translations still wrote the French way were given English
