@@ -150,8 +150,8 @@ The identifiers are never rendered.
 
 The check covers the **states** of the evaluation sets and of the demo cases. A record is removed in two cases:
 
-- 13-gram coverage ≥ 0,5 of a reference;
-- MinHash Jaccard ≥ 0,8.
+- 13-gram coverage ≥ 0.5 of a reference;
+- MinHash Jaccard ≥ 0.8.
 
 **Records removed:**
 
@@ -174,10 +174,10 @@ No class exceeds 60 % per source, with a deterministic rebalancing. The coherenc
 - **Rendering:** native rendering, two option orders averaged.
 - **Calibration per group** (source × type × K): temperature and bias, on the gold train records. Below 150 records, the group takes the global temperature.
 - **Agreement filter:** the teacher's target is taken only if its argmax equals the gold argmax. Otherwise, the gold target is kept.
-- **Final target:** target = 0,5 · gold + 0,5 · teacher, for the corpus and the first member of the pairs, **of the train split only**. The second member of a pair takes the target of the first. The val and cal splits keep the gold: selection and calibration are judged against the gold (amendment 1).
+- **Final target:** target = 0.5 · gold + 0.5 · teacher, for the corpus and the first member of the pairs, **of the train split only**. The second member of a pair takes the target of the first. The val and cal splits keep the gold: selection and calibration are judged against the gold (amendment 1).
 - **Keep their exact gold target:** the generated records and the coherence families.
 
-**Deviation from the plan:** the teacher is single. oscar-1-150m (downloaded, 0,7755 on the bench against 0,7665) would have cost about 45 more minutes of GPU, at the measured throughput of 50 to 140 lines/s. With a single teacher:
+**Deviation from the plan:** the teacher is single. oscar-1-150m (downloaded, 0.7755 on the bench against 0.7665) would have cost about 45 more minutes of GPU, at the measured throughput of 50 to 140 lines/s. With a single teacher:
 
 - there is no choice of teacher per group;
 - the measurement of the teacher in native and definition-only renderings is not done.
@@ -191,21 +191,21 @@ No class exceeds 60 % per source, with a deterministic rebalancing. The coherenc
 - AdamW (without Muon), full fine-tuning;
 - peak LR according to the grid below; head × 20;
 - warmup over 6 % of the steps, then linear decay;
-- weight decay 0,01; EMA 0,999 (weights evaluated: the EMA);
+- weight decay 0.01; EMA 0.999 (weights evaluated: the EMA);
 - batch 32, bf16.
 
 **Loss:**
 
-- soft CE + Brier (1) + RPS (0,25, `score` questions);
-- symmetric KL 0,5 on the pairs (definition paraphrases and distractors), **identical for all variants**.
+- soft CE + Brier (1) + RPS (0.25, `score` questions);
+- symmetric KL 0.5 on the pairs (definition paraphrases and distractors), **identical for all variants**.
 
-**Group sampling:** typed 0,25; corpus 0,4; gen 0,15; pairs 0,1; coherence 0,1. The coherence families are drawn whole.
+**Group sampling:** typed 0.25; corpus 0.4; gen 0.15; pairs 0.1; coherence 0.1. The coherence families are drawn whole.
 
 **Augmentation:** a single stream, common to all variants:
 
 - option order;
-- random names (p = 0,5);
-- `noul` polarity (p = 0,25).
+- random names (p = 0.5);
+- `noul` polarity (p = 0.25).
 
 It has no effect on B, since B does not render the labels.
 
@@ -228,7 +228,7 @@ It has no effect on B, since B does not render the labels.
    - A′ at seeds 0, 1 and 2;
    - B\* at seeds 0, 1 and 2;
    - A at seed 0, at the configuration chosen for A′.
-4. **`lambda`** (bet 2, on its support): λ ∈ {0,1 ; 0,3} at seed 0.
+4. **`lambda`** (bet 2, on its support): λ ∈ {0.1, 0.3} at seed 0.
 5. **`lambda-final`**: λ\* at seeds 1 and 2.
 
 ### Selection rules
@@ -237,7 +237,7 @@ They are frozen in `runs/s5-select/*.json` at their first computation, and use o
 
 - **Configuration of a variant:** the lowest validation NLL, over all the English val records (9189 questions, at the end of the run).
 - **B\*:** B-i or B-ii, according to the lowest validation NLL at the chosen configuration.
-- **λ\*:** the lowest validation MAD_neg among the λ whose validation accuracy is ≥ that of λ = 0 (seed 0) − 0,01. If no λ passes, bet 2 stops, and that is published.
+- **λ\*:** the lowest validation MAD_neg among the λ whose validation accuracy is ≥ that of λ = 0 (seed 0) − 0.01. If no λ passes, bet 2 stops, and that is published.
 - **Support of bet 2:** B\* if bet 1 succeeds, otherwise A′. The arm λ = 0 is formed of the support's three finalist runs.
 - **Delivered model (s5-lite):** in the chosen arm, the run with the lowest validation NLL, in calibrated q8_0 format.
   - The chosen arm is B\* if bet 1 succeeds, otherwise A′.
@@ -259,8 +259,8 @@ For each evaluated run, the chain is as follows:
 
 **Main criteria (both are required):**
 
-- **Accuracy:** upper bound of the 95 % CI of (A′ − B\*) ≤ 0,02.
-- **ECE** (top-label, 15 bins): upper bound of the 95 % CI of (B\* − A′) ≤ 0,01.
+- **Accuracy:** upper bound of the 95 % CI of (A′ − B\*) ≤ 0.02.
+- **ECE** (top-label, 15 bins): upper bound of the 95 % CI of (B\* − A′) ≤ 0.01.
 
 **Secondary, with p-values adjusted by Holm** over these 6 tests:
 
@@ -284,19 +284,19 @@ For each evaluated run, the chain is as follows:
 
 **Losses trained:** L_neg, L_part and L_xf only. No D question, no monotonicity, description or disjunction loss.
 
-**D competence, measured first at λ = 0:** the lower bound of the CI of the accuracy of the D_ij questions against the gold must be > rate of the majority class of their golds + 0,10.
+**D competence, measured first at λ = 0:** the lower bound of the CI of the accuracy of the D_ij questions against the gold must be > rate of the majority class of their golds + 0.10.
 
-- The "chance" used here is the majority class, stricter than 0,5.
+- The "chance" used here is the majority class, stricter than 0.5.
 - Without competence, the identities held out of training are declared **not measurable** and do not count as a success.
 
 **Main criteria (all required, competence included):**
 
 | criterion | measurement | threshold |
 |---|---|---|
-| MAD_neg | mean over the families of \|s_k + n_k − 1\| for λ\*, negations rephrased as separate queries, mean of the 3 seeds | < 0,03 |
-| partition | mean of Σ_k s_k for λ\* | in [0,97 ; 1,03] |
-| bench accuracy | non-inferiority, margin 0,02 (as in bet 1) | — |
-| monotonicity | share of the checks s_i ≤ d_ij violated by more than 0,05 | relative drop ≥ 30 %, and upper bound of the CI of (λ\* − λ = 0) < 0 |
+| MAD_neg | mean over the families of \|s_k + n_k − 1\| for λ\*, negations rephrased as separate queries, mean of the 3 seeds | < 0.03 |
+| partition | mean of Σ_k s_k for λ\* | in [0.97, 1.03] |
+| bench accuracy | non-inferiority, margin 0.02 (as in bet 1) | — |
+| monotonicity | share of the checks s_i ≤ d_ij violated by more than 0.05 | relative drop ≥ 30 %, and upper bound of the CI of (λ\* − λ = 0) < 0 |
 
 **If only the trained identities improve** (MAD_neg, partition and accuracy pass, but not monotonicity or competence), the result is published as such.
 
@@ -312,18 +312,18 @@ For each evaluated run, the chain is as follows:
 ### Phase 5: quantisation
 
 - **Measurement:** ΔECE = ECE(recalibrated q8_0) − ECE(recalibrated f32) on the bench, paired, for A′ and B\* (3 seeds).
-- **Criterion:** upper bound of the CI ≤ 0,01.
+- **Criterion:** upper bound of the CI ≤ 0.01.
 - Q4 is not done here.
 
 ### Gates of s5-lite (delivered model, calibrated q8_0)
 
 | gate | threshold |
 |---|---|
-| bench fitted | ≥ 0,65 |
+| bench fitted | ≥ 0.65 |
 | English demo cases | ≥ 90 % (27/30) |
 | each set | ≥ its majority baseline (share of the most frequent gold identifier) |
 
-**Any set above 0,735** (the teacher's agreement ceiling) is investigated before publication.
+**Any set above 0.735** (the teacher's agreement ceiling) is investigated before publication.
 
 ### Phase 7: error-controlled escalation (offline)
 
@@ -331,7 +331,7 @@ For each evaluated run, the chain is as follows:
 
 - binomial p-value of the error of the accepted;
 - fixed-sequence test over 200 thresholds, from highest to lowest;
-- δ = 0,05.
+- δ = 0.05.
 
 **Calibration data:**
 
@@ -371,7 +371,7 @@ For each evaluated run, the chain is as follows:
 - **Not done:**
   - A′ + perm-KL;
   - baselines B1 (log-prob of the labels by the MLM head), B2 (cascade) and B3 (linear head). Only the majority class and the uniform are reported.
-- **Comparison with Jev (MAD_neg 0,064, Σ s 1,14, |s − c| 0,091):** done on the original battery of 2609.33209, converted into an s5 set (amendment 1). It remains **descriptive**: a single measurement per model, without a hypothesis test. Our rephrased negations form another set, reported separately.
+- **Comparison with Jev (MAD_neg 0.064, Σ s 1.14, |s − c| 0.091):** done on the original battery of 2609.33209, converted into an s5 set (amendment 1). It remains **descriptive**: a single measurement per model, without a hypothesis test. Our rephrased negations form another set, reported separately.
 - **Postponed:**
   - Q4 (reported later as a secondary result, without a criterion);
   - online bet 3 (launched later, exploratory: amendment 4);
@@ -422,7 +422,7 @@ Each run is evaluated on it in f32, and `sky-s5-report coherence --set battery_2
 **oscar-1-17m reference (descriptive, outside the bets).** The step `cargo xtask s5 oscar-ref` evaluates oscar-1-17m (Laya format, published weights, original temperatures) on two sets:
 
 - **`reassign_test`**: the yes/no swap of 2609.26758, next to the iso guarantee;
-- **the bench**: our rendering of the s5 records must give back its published score, 0,6775; a gap would be investigated.
+- **the bench**: our rendering of the s5 records must give back its published score, 0.6775; a gap would be investigated.
 
 No criterion depends on it.
 
@@ -436,14 +436,14 @@ No criterion depends on it.
 | `gen.jsonl` | 25328 | `505ffef41c2fcc6269c968bcf000200ac1e789e768132dc6f8f1f2ea4df6ad72` |
 | `pairs.jsonl` | 7828 | `6151b962dca5b1a921ce7183c2600a8bdb5ee1aa59e545fb1d742ed651836720` |
 
-### Amendment 2: 14/10/2026 around 01 h 05, before any result of bet 1
+### Amendment 2: 14/10/2026 around 01:05, before any result of bet 1
 
 **Finding, on training and validation only.** The A′ finalists are unstable over 2000 steps, at the LR of 2e-4 chosen over 600 steps:
 
-- **seed 1:** gradient-norm spike (22) at step 400, then the loss stays around 1,3; validation accuracy 0,373;
-- **seed 0:** spikes up to 36 between steps 1000 and 1400; validation accuracy 0,426.
+- **seed 1:** gradient-norm spike (22) at step 400, then the loss stays around 1.3; validation accuracy 0.373;
+- **seed 0:** spikes up to 36 between steps 1000 and 1400; validation accuracy 0.426.
 
-B-i, seed 0, reaches 0,529 on the same validation. Selecting on short runs favours an LR too high for long runs: this known bias can favour B against a badly tuned A′.
+B-i, seed 0, reaches 0.529 on the same validation. Selecting on short runs favours an LR too high for long runs: this known bias can favour B against a badly tuned A′.
 
 **Sensitivity analysis added (secondary):**
 
@@ -452,13 +452,13 @@ B-i, seed 0, reaches 0,529 on the same validation. Selecting on short runs favou
 
 **What does not change.** The main verdict of bet 1 remains that of the pre-registered comparison (B\* against the selected A′). The sensitivity is reported alongside. If it contradicts it, both are published, and no superiority of B is claimed.
 
-**Test results seen before this decision.** Only one: the accuracy of f-b-s0 on amazonpolarity (0,679), a secondary zero-shot set. No test result of A′, no bench result, no comparison.
+**Test results seen before this decision.** Only one: the accuracy of f-b-s0 on amazonpolarity (0.679), a secondary zero-shot set. No test result of A′, no bench result, no comparison.
 
-### Amendment 3: 14/10/2026 around 01 h 20, model of the /live demo, outside the bets
+### Amendment 3: 14/10/2026 around 01:20, model of the /live demo, outside the bets
 
 **Finding, after the test results of f-b-s0** (a single seed of B\*, no comparison):
 
-- the bench gate passes (0,667);
+- the bench gate passes (0.667);
 - the gate of the English demo cases fails (70 %, against 90 % required);
 - five sets remain below their majority baseline.
 
@@ -504,12 +504,12 @@ A line of section 3 (excluded sources) was rephrased so as no longer to name GLM
 - ê_t = err_t · O_t / P(O_t), with P(O_t) = 1 for an escalated one and π for an accepted one;
 - λ_{t+1} = λ_t + η · 1{accepted_t} · (ê_t − α), bounded in [0, 1].
 
-**Grid:** α ∈ {5, 10} %, π ∈ {0,1 ; 0,2 ; 0,5}, η = 0,005, 20 stream seeds (0 to 19).
+**Grid:** α ∈ {5, 10} %, π ∈ {0.1, 0.2, 0.5}, η = 0.005, 20 stream seeds (0 to 19).
 
 **Criterion, per cell (α, π):**
 
-- the mean over the seeds of the estimated error of the accepted of the second half is ≤ α + 0,01;
-- the mean of the escalations of the second half is at most 1,2 times that of the frozen threshold on the same streams.
+- the mean over the seeds of the estimated error of the accepted of the second half is ≤ α + 0.01;
+- the mean of the escalations of the second half is at most 1.2 times that of the frozen threshold on the same streams.
 
 The bet succeeds if all the cells succeed.
 
@@ -519,7 +519,7 @@ The bet succeeds if all the cells succeed.
 
 Phase 6 (s5 en + fr, on mmBERT-small) is closed without being launched: s5 remains a small English model. No bet, no gate and no criterion of s5-lite changes. The gates that bore only on the French version (SIB-200 fr, MTOP fr and the French demo cases) are moot. The banner of /live now says « s5 est un petit modèle anglais ; il n'a pas de version française » [s5 is a small English model; it has no French version], and the French demos keep the English presets. The French data (`sib200_fr`, the fr demo cases) remain in the store.
 
-### Amendment 5: 14/10/2026 around 15 h 30, calibration per source, exploratory, fixed before its computation
+### Amendment 5: 14/10/2026 around 15:30, calibration per source, exploratory, fixed before its computation
 
 **Status.** **Exploratory** analysis, decided after the results of bet 1, which are known. It never changes the verdict of bet 1 nor any criterion: bet 1 remains judged on the pre-registered calibration (section 5). It is published as is, gain or loss. No new pass on the test: it reuses the bench dumps already written. Everything that follows is fixed in the code (`sky-s5-report retemper`, commit that follows this amendment) before its first computation.
 

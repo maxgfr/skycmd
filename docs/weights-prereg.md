@@ -41,9 +41,9 @@ On the dev seeds, for each game: `gap = (oracle − model) / |oracle|` with the 
 
 ## 4. 7.1: targeted editing without forgetting
 
-**What an edit is allowed to do.** A list of `{parameter, index, delta}` on the floating-point checkpoint, at most **2 000 weights**, each `|delta|` at most equal to the standard deviation of the parameter touched. Then ternary re-export **with the existing calibration**, without recalibrating. The report gives the number of weights whose ternary value actually changed. An edit that changes none is invalid.
+**What an edit is allowed to do.** A list of `{parameter, index, delta}` on the floating-point checkpoint, at most **2,000 weights**, each `|delta|` at most equal to the standard deviation of the parameter touched. Then ternary re-export **with the existing calibration**, without recalibrating. The report gives the number of weights whose ternary value actually changed. An edit that changes none is invalid.
 
-**What GLM sees at each pass.** At most 20 000 weights as text, drawn from the last parameters before the final output; the activations on 20 failure states and 20 success states of the target game; the dev score of its last edit. **One pass = one proposal + one dev measurement.**
+**What GLM sees at each pass.** At most 20,000 weights as text, drawn from the last parameters before the final output; the activations on 20 failure states and 20 success states of the target game; the dev score of its last edit. **One pass = one proposal + one dev measurement.**
 
 **Arms** (each frozen on dev before the test):
 
@@ -52,12 +52,12 @@ On the dev seeds, for each game: `gap = (oracle − model) / |oracle|` with the 
 | A. base | the model without an edit |
 | B10, B25, B50 | GLM, the best edit on dev among its first 10, 25 or 50 passes. 3 independent loops; the arm keeps the one of the 3 that is best on dev |
 | C. random | same parameters, same number of weights and same deltas as B50, indices drawn at random. 5 draws, all on the test, and the report gives the mean |
-| D. no LLM | difference of the means of the activations between failure and success states, subtracted on the columns of the same parameters, at most 2 000 weights |
+| D. no LLM | difference of the means of the activations between failure and success states, subtracted on the columns of the same parameters, at most 2,000 weights |
 | E. direct ternary | like B50, but the changes are written directly into {−1, 0, +1} of the GGUF. Secondary variant, with no effect on the verdict |
 
 **Guard rule (arm by arm, on the test, episodes paired by seed):**
 
-- the target game gains: mean score higher than A, lower bound of the 95 % CI (paired bootstrap, 10 000 draws) > 0;
+- the target game gains: mean score higher than A, lower bound of the 95 % CI (paired bootstrap, 10,000 draws) > 0;
 - **and** no other game loses more than 2 % of its mean score.
 
 **Verdict.** The hypothesis "LLM editing works here" is accepted if **B50 passes the guard rule and beats C in score on the target game**. Otherwise, the report says that it is not shown. D is reported in the same way: if D passes without an LLM and B does no better, the LLM brings nothing here, and the report says so.
@@ -66,9 +66,9 @@ On the dev seeds, for each game: `gap = (oracle − model) / |oracle|` with the 
 
 **The test.** GLM receives, without data or score, the description of a game and of the state features, and writes in one answer the weights of the decision head of s6-nano. Then `s2-decide` training with the recipe, from the same `pretrain/init`.
 
-**Arms, 3 training seeds each, 6 400 steps:** default initialisation; GLM (3 independent answers, one per seed); random with the same norms per parameter as the weights written by GLM.
+**Arms, 3 training seeds each, 6,400 steps:** default initialisation; GLM (3 independent answers, one per seed); random with the same norms per parameter as the weights written by GLM.
 
-**Measurement.** The TODO speaks of "la qualité de s3-pico" [the quality of s3-pico]. As the architecture and the data have changed, that level is not comparable. It is replaced by: **steps needed to reach, on `games` in ternary validation, the final mean of the default arm minus 0,01**, read in `log.jsonl`.
+**Measurement.** The TODO speaks of "la qualité de s3-pico" [the quality of s3-pico]. As the architecture and the data have changed, that level is not comparable. It is replaced by: **steps needed to reach, on `games` in ternary validation, the final mean of the default arm minus 0.01**, read in `log.jsonl`.
 
 **Verdict.** Gain shown if the mean of the steps of the GLM arm is at least **20 % lower** than that of the default arm, and also lower than that of the random arm with the same norms. With 3 seeds, the result remains indicative, and the report gives the 9 curves.
 
@@ -81,7 +81,7 @@ On the dev seeds, for each game: `gap = (oracle − model) / |oracle|` with the 
 1. the weights alone;
 2. the activations on a corpus of probes containing 50 candidate strings, among them the true trigger.
 
-**Prior check.** The trap must work: attack rate ≥ 90 % on `secret_bench` with the trigger and clean accuracy within 0,02 of the clean model. Otherwise, the audit does not take place and the report says so.
+**Prior check.** The trap must work: attack rate ≥ 90 % on `secret_bench` with the trigger and clean accuracy within 0.02 of the clean model. Otherwise, the audit does not take place and the report says so.
 
 **What is reported.** The number of models correctly classified out of 4 and the rank of the true trigger among the 50, with no success threshold: with 4 models, no statistical conclusion is possible. The article finds 0 out of 4 on the weights alone and 3 out of 3 with the activations; that is the point of comparison, not a bar.
 
@@ -89,11 +89,11 @@ On the dev seeds, for each game: `gap = (oracle − model) / |oracle|` with the 
 
 **The model.** The ternary s6-nano stays frozen. An adapter of **rank 4** is added to the logits of the last output, initialised to zero. After each veto, one descent step on the cross-entropy towards the action kept by the veto. The base weights never move.
 
-**Protocol, first in the native arena**, not in the browser. A stream of 300 episodes per game, seed 7000, on which the adapter learns continuously. The learning rate is chosen once, in {0,01 ; 0,03 ; 0,1}, on dev streams (seed 6000), at the best mean score.
+**Protocol, first in the native arena**, not in the browser. A stream of 300 episodes per game, seed 7000, on which the adapter learns continuously. The learning rate is chosen once, in {0.01, 0.03, 0.1}, on dev streams (seed 6000), at the best mean score.
 
 **Arms:** frozen; adapter without a guardrail; adapter with a guardrail.
 
-**The guardrail (α = 0,02).** Every 10 episodes, the risk control (`crates/sky-arena/src/crc.rs`) compares the score of the adapter to a frozen mirror that replays the same seeds. If the relative loss exceeds α, the adapter is removed for the rest of the stream.
+**The guardrail (α = 0.02).** Every 10 episodes, the risk control (`crates/sky-arena/src/crc.rs`) compares the score of the adapter to a frozen mirror that replays the same seeds. If the relative loss exceeds α, the adapter is removed for the rest of the stream.
 
 **Acknowledged limit.** Conformal control assumes exchangeable examples, which an adapter that learns on a stream does not give. Here, the "guarantee" is therefore not one in the strict sense: we **measure** it (frequency of exceeding α on the test stream) and the report writes it that way.
 

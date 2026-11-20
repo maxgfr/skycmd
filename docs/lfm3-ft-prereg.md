@@ -14,7 +14,7 @@
 
 ## 1. Why
 
-The S1/S2 routing (`docs/lfm3-s1s2-prereg.md`) chooses, question by question, whether to think, without touching the weights. It does not fix the defect itself: without thinking, LFM3-1.7B can go into a loop. The smoke test (`runs/lfm3-s1s2-smoke`) showed it: a GSM8K question went into a loop up to the limit of 1 024 tokens and the answer was wrong; with 256 thinking tokens, it was right. Liquid AI's documentation says so too: turning thinking off works inconsistently on reasoning.
+The S1/S2 routing (`docs/lfm3-s1s2-prereg.md`) chooses, question by question, whether to think, without touching the weights. It does not fix the defect itself: without thinking, LFM3-1.7B can go into a loop. The smoke test (`runs/lfm3-s1s2-smoke`) showed it: a GSM8K question went into a loop up to the limit of 1,024 tokens and the answer was wrong; with 256 thinking tokens, it was right. Liquid AI's documentation says so too: turning thinking off works inconsistently on reasoning.
 
 This project tries the other way: **a LoRA fine-tuning that teaches the model to answer right and short without thinking (System 1)**, without degrading thinking (System 2) or the rest. It does not replace the router: the router is measured on the base model **and** on the fine-tuned model, with the same protocol (§5).
 
@@ -26,7 +26,7 @@ This project tries the other way: **a LoRA fine-tuning that teaches the model to
 - **Compute**: Hugging Face Jobs (`hf jobs uv run`), account `maxgfr`, uv scripts with pinned dependencies in `experiments/lfm3-ft/`. Nothing runs locally apart from `route` and `gate` (CPU).
 - **Inference engine**: vLLM 0.33.0. Fallback: transformers 5.12.1's `generate` if vLLM does not load LFM3 correctly.
   - vLLM 0.33.0 has no native implementation of LFM3 (its registry only has LFM2): it would go through its transformers backend, with no guarantee for the stateful convolution layers. The two engines do not fit in the same environment (vLLM 0.33 requires transformers 5.16 to 5.20, LFM3 was published with 5.12.1).
-  - **Decision rule, fixed now**: the smoke runs both engines on the same 20 questions. vLLM is retained if it loads LFM3, runs s1, s2-256 and s2-1024, and agrees with transformers in s1 (greedy) on at least 0,8 of the first 64 tokens on average **and** on at least 0,8 of the answers. Otherwise, the transformers fallback is retained.
+  - **Decision rule, fixed now**: the smoke runs both engines on the same 20 questions. vLLM is retained if it loads LFM3, runs s1, s2-256 and s2-1024, and agrees with transformers in s1 (greedy) on at least 0.8 of the first 64 tokens on average **and** on at least 0.8 of the answers. Otherwise, the transformers fallback is retained.
   - The engine retained is recorded by an amendment and serves for **all** the following jobs: the generation, and the evaluation of the base as well as of the fine-tuned model.
   - With the fallback: the requests are grouped in batches (128, left padding), each batch receives the seed of its first request, and the log-probabilities come from a forward pass over the finished sequence (raw distribution, like those of vLLM).
 - **Repositories, all private**:
@@ -48,15 +48,15 @@ Only MIT sources. No test question, none of the router's 600 calibration questio
 - the 600 calibration ids (`gsm8k-train-<i>`, `math-train-<i>`, `data/lfm3/calib.jsonl`);
 - any question whose normalized text (NFKC, lower case, letters and digits only) is that of a calibration question, a test question (`data/lfm3/test.jsonl`) or one of the 500 MMLU-Pro questions of §5.
 
-About 14 400 questions remain. The exact numbers of exclusions are written by `gen` and `sft`.
+About 14,400 questions remain. The exact numbers of exclusions are written by `gen` and `sft`.
 
 **(a) Written solutions, NO-THINK targets.** For each question kept, the data set's solution:
 - GSM8K: the calculator annotations `<<...>>` removed, the last line `#### answer` replaced by `\boxed{answer}`;
 - MATH: the solution as is (it ends with a `\boxed{}`).
 
 **(b) Self-distillation** (`gen`).
-- The base model answers each question kept **4 times** in s2-1024, with the budget forcing and the sampling of `docs/lfm3-s1s2-prereg.md` §4. Seed of sample k: seed of the question (that of `s1s2.py`) + 1 000 003 × k.
-- With the transformers fallback, only a subset drawn with seed 1234 is sampled: 1 000 questions per task. The rule is fixed now, because of the throughput.
+- The base model answers each question kept **4 times** in s2-1024, with the budget forcing and the sampling of `docs/lfm3-s1s2-prereg.md` §4. Seed of sample k: seed of the question (that of `s1s2.py`) + 1,000,003 × k.
+- With the transformers fallback, only a subset drawn with seed 1234 is sampled: 1,000 questions per task. The rule is fixed now, because of the throughput.
 - A sample is **retained** if it is right (same scoring as `s1s2.py`) and if its answer has a `\boxed{}`.
 - Per question, among the samples retained:
   - **NO-THINK target**: the answer after `</think>` that is shortest in tokens;
@@ -68,19 +68,19 @@ About 14 400 questions remain. The exact numbers of exclusions are written by `g
   - Thinking off (`enable_thinking=False`, prompt ending with `<think></think>`) for the NO-THINK targets.
   - Thinking on (prompt ending with `<think>`) for the THINK targets.
 - The target is followed by the end-of-turn token `<|im_end|>`.
-- Examples of more than 2 048 tokens are set aside and counted, never truncated.
+- Examples of more than 2,048 tokens are set aside and counted, never truncated.
 
 **Never used**: the GLM / z.ai labels (the terms of z.ai's API forbid training an external model on its outputs, and they are not maths), and any output of a model other than LFM3-1.7B itself.
 
 ## 4. Training (`sft`)
 
-- **LoRA**: r = 32, alpha = 64, dropout 0,05, on all the linear projections except `lm_head` (tied to the embeddings).
+- **LoRA**: r = 32, alpha = 64, dropout 0.05, on all the linear projections except `lm_head` (tied to the embeddings).
   - According to `modeling_lfm3.py` (revision `0dc4268b`), these are: `q_proj`, `k_proj`, `v_proj`, `o_proj`, the attention gate `gate_proj`, the MLP `w1`, `w2`, `w3`, and the projections of the short convolution `in_proj`, `out_proj`.
   - The smoke checks this list on the loaded model. A discrepancy goes through an amendment.
 - **Optimization**:
   - 2 epochs, lr 1e-4 with cosine, warmup 3 % of the steps;
   - batches of 8, accumulation 4 (32 examples per step);
-  - max length 2 048, bf16, seed 1234.
+  - max length 2,048, bf16, seed 1234.
 - **Implementation**: TRL `SFTTrainer` (trl 1.17.1, peft 0.21.2, transformers 5.12.1).
   - The loss bears on the completion only (`completion_mask`). The job checks that the collator masks the prompt before training, and stops otherwise.
   - No intermediate checkpoint: **the last one is the model**.
@@ -90,7 +90,7 @@ About 14 400 questions remain. The exact numbers of exclusions are written by `g
 
 The base model and the fine-tuned model are evaluated the same way: same engine, same code revision, same prompts, same seeds.
 
-- **Modes**: s1, s2-256 and s2-1024, exactly those of `docs/lfm3-s1s2-prereg.md` §4, on the calibration (600) and the test (1 000) of `data/lfm3`.
+- **Modes**: s1, s2-256 and s2-1024, exactly those of `docs/lfm3-s1s2-prereg.md` §4, on the calibration (600) and the test (1,000) of `data/lfm3`.
   - s1 keeps the log-probability of each token, for the router's features.
   - Answer: the last `\boxed{}`, failing that the last number for GSM8K. Same scoring.
 - **MMLU-Pro**: `TIGER-Lab/MMLU-Pro` (MIT), revision `b189ec76`, test split. 500 questions drawn with seed 1234, asked in s1:
@@ -100,16 +100,16 @@ The base model and the fine-tuned model are evaluated the same way: same engine,
 
 ## 6. Gates (test, fine-tuned against base, same engine)
 
-- **G1 (System 1 repaired)**: s1 accuracy ≥ base + 0,03 **and** share of s1 answers stopped by the limit of 1 024 tokens ≤ 0,5 × that of the base.
-- **G2 (System 2 kept)**: s2-1024 accuracy ≥ base − 0,01 **and** mean thinking tokens in s2-1024 ≤ 0,6 × those of the base.
-- **G3 (no forgetting)**: s1 accuracy on the 500 MMLU-Pro questions ≥ base − 0,02.
+- **G1 (System 1 repaired)**: s1 accuracy ≥ base + 0.03 **and** share of s1 answers stopped by the limit of 1,024 tokens ≤ 0.5 × that of the base.
+- **G2 (System 2 kept)**: s2-1024 accuracy ≥ base − 0.01 **and** mean thinking tokens in s2-1024 ≤ 0.6 × those of the base.
+- **G3 (no forgetting)**: s1 accuracy on the 500 MMLU-Pro questions ≥ base − 0.02.
 
 **Verdict:**
 - **"LFM3 improved"** if G1 and G3 hold;
 - G2 is reported separately: it says whether thinking gets shorter without loss, but does not condition the verdict.
 - This verdict is that of the fine-tuning. It is distinct from the router's "LFM3 improved" (H4 of `docs/lfm3-s1s2-prereg.md`), which the report gives under its own name ("H4").
 
-An incomplete evaluation (different ids between the two models, or fewer than 1 000 / 500 questions) gives no verdict: it is reported as such.
+An incomplete evaluation (different ids between the two models, or fewer than 1,000 / 500 questions) gives no verdict: it is reported as such.
 
 The report (`runs/lfm3-ft/report.md`, `gate.json`) gives everything, whatever the result:
 - the accuracies per task;
@@ -132,14 +132,14 @@ The report (`runs/lfm3-ft/report.md`, `gate.json`) gives everything, whatever th
 
 | step | machine | estimated duration | estimated cost | timeout (max cost) |
 |---|---|---|---:|---|
-| `smoke` (20 calibration questions, two engines, 2 LoRA steps) | L4 (`l4x1`, 0,80 $/h) | 30 to 40 min | about 0,50 $ | 1 h (0,80 $) |
+| `smoke` (20 calibration questions, two engines, 2 LoRA steps) | L4 (`l4x1`, $0.80/h) | 30 to 40 min | about $0.50 | 1 h ($0.80) |
 | amendment: revision and engine | — | — | — | — |
-| `gen` (self-distillation) | A100 (`a100-large`, 2,50 $/h) or L40S | about 2 h | about 5 $ | 4 h (10 $) |
-| `sft` | A100 | 1 to 2 h | about 5 $ | 4 h (10 $) |
-| `eval` base, then `eval` fine-tuned | A100, one job each | about 1 h 30 each | about 7,50 $ | 3 h each (15 $) |
+| `gen` (self-distillation) | A100 (`a100-large`, $2.50/h) or L40S | about 2 h | about $5 | 4 h ($10) |
+| `sft` | A100 | 1 to 2 h | about $5 | 4 h ($10) |
+| `eval` base, then `eval` fine-tuned | A100, one job each | about 1 h 30 min each | about $7.50 | 3 h each ($15) |
 | `pull`, `route`, `gate` | local, CPU | a few minutes | 0 | — |
 
-Estimated total: **about 18 $**, at most 36 $. The prices are those of `hf jobs hardware` as of 05/11/2026.
+Estimated total: **about $18**, at most $36. The prices are those of `hf jobs hardware` as of 05/11/2026.
 
 ## 9. Licences and publication
 
@@ -149,7 +149,7 @@ Estimated total: **about 18 $**, at most 36 $. The prices are those of `hf jobs 
   - a `NOTICE`;
   - the list of modified files (already written to the private repository by `sft`).
 - The name does not present itself as "LFM3": the licence gives no right to the trademarks. The repository is called `maxgfr/skycmd-lfm3-1.7b-s1`, "fine-tuned from LiquidAI/LFM3-1.7B".
-- Commercial use is allowed only within the limits of the licence (organizations under 10 M$ of revenue).
+- Commercial use is allowed only within the limits of the licence (organizations under $10M of revenue).
 - The data sources are in `DATA_LICENSES.md`.
 
 ## 10. Amendments
@@ -158,7 +158,7 @@ Estimated total: **about 18 $**, at most 36 $. The prices are those of `hf jobs 
 
 - **Compute.** §2 ("Compute") and §8 are replaced: everything runs on the M5, nothing is paid, no Hugging Face job is launched (the user's decision of 05/11/2026). `scripts/lfm3-ft.sh` switches to local mode by default. The artefacts stay in `runs/lfm3-ft/`, the model in `models/lfm3-ft/`, and the two private repositories of §2 are no longer used.
 - **Inference engine.** mlx-vlm 0.7.11 on `LiquidAI/LFM3-1.7B-MLX-4bit` (revision `deb2986b`), that of `docs/lfm3-s1s2-prereg.md`: vLLM does not run on a Mac. The results are those of the model in 4 bits, and the report says so. The prompts, the modes, the seeds, the extraction and the scoring do not change (the functions of `s1s2.py` are reused).
-- **Cap on the generation.** The throughput rule of §3 (b) applies automatically: 1 000 questions per task (`hf_fallback_subset`, seed 1234), 4 samples each.
+- **Cap on the generation.** The throughput rule of §3 (b) applies automatically: 1,000 questions per task (`hf_fallback_subset`, seed 1234), 4 samples each.
 - **The LoRA, rule written before the local smoke.** It trains on the bf16 weights of `LiquidAI/LFM3-1.7B`, with the unchanged hyperparameters of §4.
   1. transformers + peft + TRL on MPS, if the smoke validates: `lora_targets_match`, the prompt mask, 2 steps with a finite loss on a batch of the maximum length, the merge and the reload.
   2. Otherwise, mlx-vlm's LoRA trainer, with the same hyperparameters, if it loads LFM3 and validates the same points.
@@ -167,7 +167,7 @@ Estimated total: **about 18 $**, at most 36 $. The prices are those of `hf jobs 
 - **Checkpoints.** §4 ("no intermediate checkpoint") stays true for the choice: **the last one is the model**. Technical save points exist only to resume after the Mac stops. They are never evaluated, and a resumption is noted as a technical failure.
 - **Conversion of the fine-tuned model.** The merged model is converted to MLX 4 bits (`mlx_vlm.convert -q --q-bits 4 --q-mode affine`) to be evaluated by the same engine as the base.
   - **Rule written before the smoke.** The smoke also converts the bf16 base with the same command, and compares this conversion with the published base, in s1 (greedy), on 20 calibration questions.
-  - If the agreement reaches at least 0,8 on the first 64 tokens on average **and** at least 0,8 on the answers (the thresholds of §2), the published base serves as the reference.
+  - If the agreement reaches at least 0.8 on the first 64 tokens on average **and** at least 0.8 on the answers (the thresholds of §2), the published base serves as the reference.
   - Otherwise, **the base is re-evaluated with the local conversion**, so that both models have gone through the same chain.
 - **Evaluation of the base.** If the published base serves as the reference, its generations are those of `docs/lfm3-s1s2-prereg.md` (`runs/lfm3-s1s2`, same prompts, seeds and engine), copied as they are into `runs/lfm3-ft/eval/base`. Only the 500 MMLU-Pro questions in s1 are generated in addition. The router (`route`) computes on these files what it has already computed for §6 of the TODO [`TODO.md`, removed on 19/11/2026; last version at commit `0e45b7b`]: no new choice depends on it.
 - **The revision.** The local smoke resolves the revision of `LiquidAI/LFM3-1.7B` and returns it in `runs/lfm3-ft/smoke/report.json`. A dated amendment copies it, with the LoRA method retained, before `gen`.
