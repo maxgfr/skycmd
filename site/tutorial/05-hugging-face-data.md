@@ -92,6 +92,9 @@ pub fn sources() -> Vec<Source> {
             cap: None,
             load: load_bench,
         },
+        // The train split of the same benchmark (s5: the "fitted" bench column), split
+        // train / val by state.
+        src("typed_decisions_train", load_bench_train),
         // Typed-decision corpora on the Hub.
         capped("tasksource_jev", 120_000, load_tasksource_jev),
         capped("procedural_typed", 80_000, load_procedural),
@@ -114,16 +117,24 @@ pub fn sources() -> Vec<Source> {
         src("when2call", load_when2call),
         capped("snli", 40_000, load_snli),
         capped("hellaswag", 30_000, load_hellaswag),
+        src("qasc", load_qasc),
+        capped("refusal", 30_000, load_refusal),
+        // Laya-format corpora of September–October 2026 (issue #38).
+        capped("neuro_laya", 20_000, load_neuro_laya),
+        src("trading_laya", load_trading_laya),
+        src("tetris_laya", load_tetris_laya),
         // GLM teacher data (local, no download).
         capped("glm_orders", usize::MAX, crate::augment::load_glm_orders),
     ]
 }
 ```
 
-`sky-data fetch-decisions --list` prints the 24 names with their caps. The first eight sources and the benchmark are described below. The others were added for the s2 and s3 models (loaders in `crates/sky-data/src/typed.rs` and `nlu.rs`):
+`sky-data fetch-decisions --list` prints the 30 names with their caps. The first eight sources and the benchmark are described below. The others were added later (loaders in `crates/sky-data/src/typed.rs` and `nlu.rs`):
 
 - **More typed-decision corpora**: `tasksource/tasksource-jev-typed-decisions` (only rows marked for commercial use, minus sources that duplicate a set loaded directly), `tasksource/procedural-typed-decisions`, `ZefanCai/Open-Jev` (all 18,130 drone-control rows plus 30k from its other sources), `Aditharavind/swarm-laya-decisions`, `helmo/synthetic-typed-decisions`, `tasksource/synthetic-typed-decisions` and `m-lagnajit/calibrated-typed-decisions`.
-- **More NLU and preference sets**: HelpSteer2 (one 5-level score per attribute), PAWS-X French and Allociné (French nouls), When2Call (a 4-way choice between calling a tool, asking for information, refusing and answering directly), SNLI and HellaSwag.
+- **The benchmark's train split**: `typed_decisions_train`, the train split of `LocalLLaMA/typed-decisions`, split train / val by state like the other sources.
+- **More NLU and preference sets**: HelpSteer2 (one 5-level score per attribute), PAWS-X French and Allociné (French nouls), When2Call (a 4-way choice between calling a tool, asking for information, refusing and answering directly), SNLI, HellaSwag, QASC (`qasc`) and `agentlans/refusal-classifier-data` (`refusal`).
+- **Laya-format corpora**: `Aditharavind/laya-neuro-decisions` (`neuro_laya`), `Anay2010/laya-trading-decisions` (`trading_laya`) and `aaung/laya-tetris-decisions` (`tetris_laya`).
 - **A second external benchmark**: `AirsideLabs/notam-typed-decisions` (`notam`), evaluation only, like `typed_decisions_bench`.
 - **GLM teacher data**: `glm_orders`, the validated drone orders of [chapter 06](./06-glm-top-up), read from `data/teacher` without any download.
 

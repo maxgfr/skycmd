@@ -99,7 +99,7 @@ DECISIONS = {
     "when2call": ("nvidia/When2Call", "cc-by-4.0", "tool_call / request_for_info / cannot_answer / direct_answer"),
     "helmo_synth": ("helmo/synthetic-typed-decisions", "mit", "gold labels"),
     "tasksource_synth": ("tasksource/synthetic-typed-decisions", "apache-2.0", "aggregated soft answers"),
-    "calibrated_typed": ("m-lagnajit/calibrated-typed-decisions", "cc-by-4.0", "permissive rows, calibrated teacher_probs"),
+    "calibrated_typed": ("m-lagnajit/calibrated-typed-decisions", "cc-by-4.0 for the set; each row's text keeps its source's licence, per row in the upstream source_license column: Apache-2.0, CC-BY-3.0 or CC-BY-4.0", "permissive rows, calibrated teacher_probs"),
     "snli": ("stanfordnlp/snli", "cc-by-sa-4.0", "as MNLI, 40k"),
     "hellaswag": ("Rowan/hellaswag", "mit", "choice A..D over the endings, 30k"),
     "notam": ("AirsideLabs/notam-typed-decisions", "cc-by-4.0", "evaluation only (split test)"),
@@ -699,6 +699,8 @@ def glm_source(k: str) -> tuple:
     up, lic = DECISIONS[cfg][:2]
     if lic.startswith("other (per row"):
         lic = f"per row, see `{cfg}`"
+    elif "per row" in lic:
+        lic = f"{lic.split(';')[0]}; the texts per row, see `{cfg}`"
     return f"`{cfg}`: {up}, `{rest}`", lic
 
 
