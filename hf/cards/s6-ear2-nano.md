@@ -17,11 +17,14 @@ tags:
   - rust
   - wasm
   - skycmd
+  - passed-gate
+datasets:
+  - pipecat-ai/smart-turn-data-v3.2-train
 ---
 
 # s6-ear2-nano
 
-> **Passed its pre-registered gate, every condition.** A 632 KB ternary end-of-turn detector:
+> **Passed its pre-registered gate.** Every condition held. A 632 KB ternary end-of-turn detector:
 > given the last 4 s of audio it says whether the speaker has finished their turn. On the
 > 31,527 test clips of Smart Turn v3.2 it is right on **0.8993** (bars: ≥ 0.85 and ≥ the
 > teacher − 0.08, the teacher measured at 0.9260 on the same clips through the same harness);
@@ -50,7 +53,7 @@ tags:
 > labels. Most of its test set is synthetic speech. The official test set is partly in-sample
 > for the design choices, though never for the weights. **Try it with your microphone** on the
 > site's [Listen page](https://maxgfr.github.io/skycmd/ear/) or in the
-> [Space](https://huggingface.co/spaces/maxgfr/s6-ear2-nano); the demo runs a fallback timer
+> [Space](https://huggingface.co/spaces/{{USER}}/s6-ear2-nano); the demo runs a fallback timer
 > next to the model, for the reason above ([How to use it](#how-to-use-it)).
 
 **Its successor failed, so this stays the file to take.** [s6-ear3-nano](https://huggingface.co/{{USER}}/s6-ear3-nano)
@@ -60,7 +63,7 @@ same cuts: it failed its pre-registered gate and is published as a result. It wa
 this model's eot-bench reading, and its label cross-check was amended after a measurement on five
 training sessions; its card discloses both.
 
-**A dedicated model, not a shared one.** The first version, [s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano),
+**A dedicated model, not a shared one.** The first version, [s6-ear-nano](https://huggingface.co/{{USER}}/s6-ear-nano),
 shared one ternary model between end of turn and keywords on top of a codec pretraining, and
 failed three of its four gates (end of turn 0.5681). This version drops all of that: one task,
 no pretraining, a dedicated `turn` graph (a patch projection, 4 s2 encoder blocks, Smart Turn's
@@ -70,12 +73,11 @@ trained for 240 working minutes on one Apple M5 as a student of Smart Turn v3.2,
 
 - **Demo:** in the browser, with the microphone or a self-test without one: the site's
   [Listen page](https://maxgfr.github.io/skycmd/ear/) and the Space
-  [maxgfr/s6-ear2-nano](https://huggingface.co/spaces/maxgfr/s6-ear2-nano). The owner checked the
+  [{{USER}}/s6-ear2-nano](https://huggingface.co/spaces/{{USER}}/s6-ear2-nano). The owner checked the
   microphone path on the site in Chrome on 17/11/2026; Safari, and the microphone inside the Hugging
-  Face frame, are not checked yet. How the demo decides is in [How to use it](#how-to-use-it).
+  Face frame, were not checked. How the demo decides is in [How to use it](#how-to-use-it).
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust; the model is `sky_infer::turn`, the front end `crates/sky-infer/src/audio.rs`)
-- **Pre-registration:** [docs/s6-ear2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear2-prereg.md) (the design in §2, the gate in §9, amendment 1, the result block)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## The gate, as read
 
@@ -103,7 +105,7 @@ At τ₀.₅: precision 0.8776, recall 0.9271, F1 0.9017; AUC 0.9600 [0.9581, 0.
 | Smart Turn v3.2 CPU (int8, through the same harness) | 0.9260 | 8.7 MB | 31.7 ms native |
 | Smart Turn v3.2 GPU (Pipecat's published number) | 0.9371 | | |
 | v1's control (no Mimi pretraining, not published) | 0.7647 | | |
-| [s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano) (v1, failed its gate) | 0.5681 | 899 KB | |
+| [s6-ear-nano](https://huggingface.co/{{USER}}/s6-ear-nano) (v1, failed its gate) | 0.5681 | 899 KB | |
 | silence timer (always "finished") | 0.4979 | no parameters | |
 
 The harness was checked before the test was read: Smart Turn v3.2 CPU through it gives 0.9260 on
@@ -184,7 +186,7 @@ silence (Pipecat's `SmartTurnParams.stop_secs`); if speech resumes, the turn's a
 the model runs again at the next pause.
 
 **How the demo decides** (the [Listen page](https://maxgfr.github.io/skycmd/ear/) and the
-[Space](https://huggingface.co/spaces/maxgfr/s6-ear2-nano) run the same code). An energy VAD
+[Space](https://huggingface.co/spaces/{{USER}}/s6-ear2-nano) run the same code). An energy VAD
 over 10 ms frames finds the speech and the pauses; the model is asked once after 0.2 s of silence
 following speech, then again every 0.2 s while the pause lasts; it answers "finished" at or above
 the threshold, τ₈₅ by default (τ₀.₅ can be chosen); and a fallback timer ends the turn after
@@ -203,7 +205,7 @@ measured with no training running (`runs/s6-ear2-nano/latency/`):
 |---|---:|---:|
 | median per decision | 1.40 ms | **2.39 ms** |
 | p95 | 1.42 ms | 2.41 ms |
-| front end per 10 ms hop | 0.013 ms | 0.019 ms |
+| front end per 10 ms hop | 0.0134 ms | 0.0186 ms |
 
 Smart Turn v3.2 CPU through onnxruntime, one thread, in the same session: median 31.7 ms per
 decision. File: `s6-ear2-nano.gguf`, 631,936 bytes.

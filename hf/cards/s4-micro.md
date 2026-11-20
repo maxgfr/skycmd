@@ -14,6 +14,8 @@ tags:
   - wasm
   - skycmd
   - experimental
+  - failed-gate
+  - negative-result
 ---
 
 # s4-micro
@@ -26,12 +28,13 @@ tags:
 
 **A 5.6M-parameter ternary decision model with free-text options, distilled from Qwen3.5-4B in one
 night.** It is the first skycmd model trained for decisions in general rather than for games. It
-**failed its quality gate** and is published as a documented negative result and as a
-demonstration of the interface.
+**failed its gate** and is published as a documented negative result and as a demonstration of the
+interface.
 
 - **Demo:** [huggingface.co/spaces/{{USER}}/s4-micro](https://huggingface.co/spaces/{{USER}}/s4-micro)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd)
 - **Story:** [chapter 22](https://maxgfr.github.io/skycmd/tutorial/22-s4-generic-decisions)
+{{LINKS}}
 
 ## Architecture
 
@@ -48,7 +51,9 @@ never attend to each other, ternary weights trained with QAT. 2.4 MB in total.
 | Banking77 (zero-shot, 8 options) | 0.303 | s3-pico 0.247 |
 | MASSIVE English (zero-shot, 8 options) | 0.335 | s3-pico 0.187 |
 
-ECE on the zero-shot sets: 0.066. A fine-tuned 4.4M BERT-Tiny reaches 0.794 on Banking77: language
+The s6 models' evaluation, on its newer record layout and at full depth (6 of 6 passes), reads
+0.352 on the bench for the same file. ECE over all its test sets (the bench, Banking77, MASSIVE English and French, When2Call): 0.066.
+A fine-tuned 4.4M BERT-Tiny reaches 0.794 on Banking77: language
 pretraining (30 minutes of masked-language modelling from scratch here) was the missing piece,
 which led to [s5-lite](https://huggingface.co/{{USER}}/s5-lite).
 
@@ -82,4 +87,5 @@ Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LIC
 
 ## Files
 
-- `s4-micro.gguf`: ternary weights, tokenizer, temperatures and exit thresholds.
+- `s4-micro.gguf`: ternary weights, tokenizer, temperatures and exit thresholds. 2,419,456 bytes,
+  sha256 `49956d1b6d11f772815c9f28bea2a85e5fe7313009ae519012baddc2653848d7`.

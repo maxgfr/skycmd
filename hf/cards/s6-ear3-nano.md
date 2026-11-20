@@ -3,6 +3,7 @@ license: apache-2.0
 language:
   - en
   - fr
+base_model: {{USER}}/s6-ear2-nano
 library_name: gguf
 pipeline_tag: audio-classification
 tags:
@@ -19,6 +20,9 @@ tags:
   - skycmd
   - failed-gate
   - negative-result
+datasets:
+  - pipecat-ai/smart-turn-data-v3.2-train
+  - otoearth/otoSpeech-full-duplex-280h
 ---
 
 # s6-ear3-nano
@@ -32,8 +36,8 @@ tags:
 > pause (16,230 cuts from 7,342 turns), its AUC is **0.7197 against v2's 0.7448** on the same
 > cuts: −0.0252, 95% interval [−0.0336, −0.0167], where the gate (E1) asked for at least +0.02
 > with a lower bound above 0. Smart Turn v3.2 reads **0.7873** there. Its recall at a false
-> cut-off of 0.10 is 0.0563 below v2's (E2: −0.0563 [−0.0832, −0.0315]), and outside English it
-> loses −0.0209 [−0.0308, −0.0111], where a lower bound above −0.02 was asked (E3). It keeps v2's
+> cut-off of 0.10 is 0.0563 below v2's (E2: −0.0563 [−0.0832, −0.0315]), and outside English its AUC
+> is 0.0209 below v2's (−0.0209 [−0.0308, −0.0111]), where a lower bound above −0.02 was asked (E3). It keeps v2's
 > level on Smart Turn's 31,527 test clips (0.8978, bar 0.8893; A1) and is a drop-in file (2.39 ms
 > per decision in WASM, 631,936 bytes, v2's tensor list; G3). On the held-out human-to-human
 > conversations of its own corpus (reported, not gated) it reads **0.6878 against v2's 0.6031**: by
@@ -87,9 +91,8 @@ v3 keeps v2's graph, front end, rung and GGUF keys, and changes only the trainin
   eot-bench at each pause's start (17,934 cuts) were reproduced before any v3 score was read.
 
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust for the model and the engine; the model is `sky_infer::turn`, the front end `crates/sky-infer/src/audio.rs`; the run `scripts/train-turn3.sh`)
-- **Pre-registration:** [docs/s6-ear3-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear3-prereg.md) (the design in §2, the gate in §9, what a failure means in §12, amendments 1 to 3, the result in §17)
 - **Demo:** the [Space](https://huggingface.co/spaces/{{USER}}/s6-ear3-nano), the same microphone demo as v2's, on this file; the site's [Listen page](https://maxgfr.github.io/skycmd/ear/) keeps v2.
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/#s6-ear3-nano-failed)
+{{LINKS}}
 
 ## The gate, as read
 

@@ -3,6 +3,7 @@ license: apache-2.0
 language:
   - en
   - fr
+base_model: minishlab/potion-base-2M
 library_name: gguf
 pipeline_tag: text-classification
 tags:
@@ -57,13 +58,7 @@ version of the s6-route line and the last.
   runs this pair in the browser, its failed gate first.
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust; the router is
   `crates/sky-web/src/router.rs`, the engine `crates/sky-infer`)
-- **Pre-registration:** [docs/s6-route7-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route7-prereg.md)
-  (v7: v6 with one change, amendments 1 to 3, the result block), on top of
-  [v6's](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route6-prereg.md) (the request-blind
-  gate G6), [v5's](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route5-prereg.md) and
-  [v4's](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-prereg.md) (the data, the fresh
-  test and G1 to G5)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/#s6-route7-nano-failed)
+{{LINKS}}
 
 ## The gate, as read
 
@@ -92,13 +87,14 @@ With servers resampled, the pair − BM25 is −0.0065 [−0.0309, +0.0170] and 
 embedding part +0.0585 [+0.0278, +0.0860]. all-MiniLM-L6-v2 with cosine (91.6 MB) reads 0.6630,
 0.1020 above the pair; that difference is reported and was not a gate (the code gives no interval
 for it). Without the 1,204 slates that show other tools of the right tool's own server, G6 fails
-too (the model part's server upper bound 0.2421, the pair 0.3081), so the failure is not confined
-to those slates.
+too (the model part 0.1692, servers upper bound 0.2421; the pair 0.3081 [0.2208, 0.3974]), so the
+failure is not confined to those slates.
 
 Announced goals (not gates): T5-tools ≥ 0.80, not met; within 0.03 of MiniLM, not met; ≥ 0.95
 among answered requests at τ_ask7 with coverage ≥ 0.80, not met (0.7127 at coverage 0.5325, from
 the log of the reading); the fast mode within 0.015, met (0.5595); with the request hidden, the
-pair says *none* or asks on at least 0.80 of the slates, met (0.9955).
+pair says *none* or asks on at least 0.80 of the slates, met (0.9955); G6 (a) and (b) on the masked
+copy, met for the model part, not for the pair (servers upper bound 0.2241 against 0.2229).
 
 ## Results
 

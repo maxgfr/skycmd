@@ -23,7 +23,7 @@ tags:
 > **Failed its pre-registered gate: published as a result, not for use.** The gate
 > ([`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md) §6)
 > asked for at least 0.45 on `typed_decisions_bench`, an ECE of at most 0.08 over the test sources
-> and no game more than 5% below s3-pico. s6-micro reached **0.547** on the bench and plays every
+> and no game more than 5% below s3-pico. s6-micro-v1 reached **0.547** on the bench and plays every
 > game at s3-pico's score, but its ECE is **0.0821 at full depth** (0.0804 at its conformal
 > thresholds) against the guard of 0.08: it **failed its calibration guard**. The file is published
 > so that the result can be checked and run (owner's decision of 15/11/2026, amendment 15 of the
@@ -41,16 +41,14 @@ as [s6-micro](https://huggingface.co/{{USER}}/s6-micro). This file's verdict doe
 - **Demo:** [huggingface.co/spaces/{{USER}}/s6-micro-v1](https://huggingface.co/spaces/{{USER}}/s6-micro-v1)
   (the games, and typed questions you can edit)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-gen-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)
-  (gates in §6, the reading in amendments 12 to 15, the second version in amendment 17)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## Results
 
 Test sets, at most 2,000 questions per source, ternary GGUF of the last DAgger round, full depth
 (τ = 1); the reference rows are the same records:
 
-| set | s6-micro | s6-nano (passed) | reference |
+| set | s6-micro-v1 | s6-nano (passed) | reference |
 |---|---:|---:|---|
 | `typed_decisions_bench` | **0.547** | 0.480 | majority class 0.398; s3-pico 0.382, s4-micro 0.352, s5-lite 0.696 |
 | MASSIVE intents, English | 0.518 | 0.425 | s3-pico 0.187 (see the limitations) |
@@ -64,7 +62,7 @@ Test sets, at most 2,000 questions per source, ternary GGUF of the last DAgger r
   passes on average instead of 6, early exit on 36.0% of the questions. Still above 0.08.
 - **Where the ECE comes from** (read after the gate, exploratory, amendment 12): the largest part is
   `notam:notam_multi` (ECE 0.2558, against 0.0710 for s6-nano). On one NOTAM statement, false for
-  99.5% of its 412 items, s6-micro answers "true" for almost all of them. The model is
+  99.5% of its 412 items, s6-micro-v1 answers "true" for almost all of them. The model is
   under-confident on the bench (mean confidence 0.4815 against an accuracy of 0.5470) and
   over-confident on When2Call (0.5372 against 0.4305). The 95% bootstrap interval of the pooled
   ECE is [0.0746, 0.0900]; the gate is read on the point value, as pre-registered.
@@ -152,4 +150,4 @@ other license.
 ## Files
 
 - `s6-micro-v1.gguf`: ternary weights, tokenizer, temperatures, and exit thresholds set to 1 (full
-  depth). 2,420,032 bytes.
+  depth). 2,420,032 bytes, sha256 `33b160fc6491d0f9d198e1e0f6eaed2f7a7c2d82d69fdce384ad9b60814913c7`.

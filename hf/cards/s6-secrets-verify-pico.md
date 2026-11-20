@@ -11,6 +11,7 @@ tags:
   - ternary
   - secret-detection
   - rust
+  - wasm
   - skycmd
   - failed-gate
   - negative-result
@@ -56,9 +57,7 @@ best result on real data, and it is a failed gate.
   simplified one-rule proposer, not secretgate's engine, and sends the filter flags as false, so it
   shows the model's judgement on those records, not the measured system.
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-secrets2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets2-prereg.md)
-  (the gates in §8, amendments 1 to 8 before the run, the result block, amendment 9)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## The seven gates, as read
 
@@ -113,10 +112,19 @@ read; full-universe numbers in BENCH.md):
   ([`docs/s6-secrets4-diagnosis.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets4-diagnosis.md),
   18/11/2026, no model run) found that most missed API lines get no candidate from the rules, so
   no verifier can recover them; no number on this card changes.
-- **It only judges what the rules propose.** On the test repositories the generator overlaps
-  0.9260 of the gated positive rows: its misses are misses of the model.
+- **It only judges what the rules propose.** On the test repositories the generator's candidates
+  cover 0.9260 of the gated positive rows; the rows it misses count as misses of the model, as
+  they would for any system that judges candidates.
 - **On unlabelled lines** (lines CredData never judged) it accepts 99.7 candidates per 1,000 test
   files, against 27.0 for Gitleaks and 39.1 for Betterleaks.
+- **The value alone carries much of the signal.** The value-only probe of the pre-registration
+  (§9; trained on CredData training, scored on validation) reaches a ROC-AUC of 0.9197 and a PR-AUC
+  of 0.8202: on CredData the shape of a value alone separates real credentials from the rest, the
+  artefact §10 warns about. G4, read on real values of the issue reports, holds.
+- **A deviation (amendment 4).** Before any training, while the data folder was explored, the
+  header and the first two rows of the meta file of one test repository were printed (two real
+  Password rows with their line numbers and offsets). No content of a test file was read and
+  nothing was chosen from it.
 
 ## How to ask it
 
@@ -177,4 +185,5 @@ A candidate is a secretgate `sg-cand-1` record as JSON: `rule` and `value` requi
 ## Files
 
 - `s6-secrets-verify-pico.gguf`: ternary weights, tokenizer, temperatures, exit thresholds set to
-  1 (full depth) and the three operating thresholds. 249,984 bytes.
+  1 (full depth) and the three operating thresholds. 249,984 bytes, sha256
+  `01e6db3fa71cc2c5563dea222c68e040d3994ee2abbb02b25491a51b8cb54f27`.

@@ -12,6 +12,7 @@ tags:
   - ternary
   - tool-routing
   - rust
+  - wasm
   - skycmd
   - failed-gate
   - negative-result
@@ -51,9 +52,7 @@ against 0.5778 for nano on validation, at least 0.04 asked), so it has the shape
   alone, with its failed gate first and a link to the pair that passed (s6-route); the verdict does
   not change.
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
-- **Pre-registration:** [docs/s6-nano2-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano2-prereg.md)
-  (the gate in §8, amendments 1 and 2 before training, the result block)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## The gate, as read
 
@@ -208,7 +207,7 @@ so the budget is working minutes. The s6-micro graph (2 weight-shared blocks loo
 exits after 2, 4 and 6 block passes, d 256, 4 heads, vocabulary 4,096, windows of 384 state tokens
 and 256 head tokens), initialised from s6-micro's masked-language pretraining (SimpleStories,
 TinyStories, FineWeb and the non-web parts of Dolma 3 and TxT360), then decision training for
-120 working minutes (20,504 steps; ternary QAT after the first 12), gold one-hot targets, on routing data only,
+120 working minutes (20,504 steps; ternary QAT after the first 12 minutes, over the last 90 %), gold one-hot targets, on routing data only,
 drawn 0.60 / 0.25 / 0.15:
 
 - **Tools** (81,596 training records): glaive-function-calling-v2, hermes-function-calling-v1,
@@ -236,15 +235,19 @@ the 100 tool-routing-data slates are left out.
 **Disclosure** (§10 of the pre-registration). This version was designed after s6-nano's results
 were read, and after a study that read s6-nano's test dumps. Its gated test, T-tools, is new:
 built by a rule fixed before training, hashed and read once. The When2Call and MASSIVE test
-utterances were read in s6-nano's evaluation and are reported only. The clustering that defines
-"unseen tool" uses all-MiniLM-L6-v2, which is also a reported baseline.
+utterances were read in s6-nano's evaluation and are reported only (amendment 1 also records one
+BFCL function name and one MASSIVE test line seen while a schema was printed). The clustering that
+defines "unseen tool" uses all-MiniLM-L6-v2, which is also a reported baseline. Two deviations:
+the test's open marker (`runs/s6-nano2/TEST-OPEN`) was created by the run's operator under the
+owner's delegation, not by the owner's hand, and the evaluation binaries were rebuilt after
+training (WASM and native agree to 2.2e-6, with the same answer on 200 of 200).
 
 **Read after the gate, not a result.** On the already-read test, with nothing fitted, the
 equal-weight geometric mean of this model's probabilities and potion-base-2M's (4 bits) reaches
 0.8885 on T-tools, and 0.5290 on MetaTool and 0.7935 on CLINC150. These are hypotheses, not
-results. That fusion is pre-registered as s6-nano v3
-([`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md)),
-to be read on fresh slates. It was read once on 16/11/2026 and passed: see
+results. That fusion was then pre-registered as s6-nano v3
+([`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md))
+and read once on fresh slates, on 16/11/2026: it passed, see
 [s6-route](https://huggingface.co/{{USER}}/s6-route).
 
 ## Files

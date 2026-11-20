@@ -3,6 +3,7 @@ license: apache-2.0
 language:
   - en
 library_name: gguf
+pipeline_tag: text-classification
 tags:
   - gguf
   - decision-model
@@ -13,9 +14,13 @@ tags:
   - rust
   - wasm
   - skycmd
+  - no-gate
 ---
 
 # s2-nano
+
+> **Published without a gate.** Its numbers below are measured and published, but no gate was
+> fixed for this file before it was tested.
 
 **A 702 KB ternary decision model with a cached question stream and early exits.** 1,532,033
 parameters. It answers typed questions about a game state in one forward pass each and stops at
@@ -24,6 +29,7 @@ the first exit confident enough.
 - **Demo:** [huggingface.co/spaces/{{USER}}/s2-nano](https://huggingface.co/spaces/{{USER}}/s2-nano)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 - **Story:** [chapter 19, the s2 architecture](https://maxgfr.github.io/skycmd/tutorial/19-s2-architecture)
+{{LINKS}}
 
 ## Results (closed loop, `sky-arena`, 30 episodes per game, seed 7)
 
@@ -33,9 +39,11 @@ the first exit confident enough.
 | Rescue Run | 100 % |
 | Obstacle Dodge | 87 % (= oracle), 25 reflex vetoes |
 
-Latency per decision: 273.0 µs native, 409.1 µs in WASM (Apple M5). At the exit thresholds
-calibrated on validation questions it crashed in every Flappy episode; at τ = 0.95 (shipped) it
-plays at the oracle's level using 3.2 to 3.4 of its 4 layers. Calibrate early exits on closed-loop
+Latency (Apple M5): 273.0 µs per question natively (`sky-bench`), 409.1 µs per Flappy frame in
+WASM (two questions and the physics step). At the exit thresholds calibrated on validation
+questions it crashed in every Flappy episode; at τ = 0.95 (shipped) it plays at the oracle's level
+on seed 7. Over five seeds (7, 11, 13, 17, 19; 30 episodes each) it uses 3.2 to 3.4 of its 4 layers
+and flies 191.9 of 200 pipes with 2.4 crashes on average. Calibrate early exits on closed-loop
 states.
 
 ## Architecture
@@ -67,4 +75,5 @@ states labelled by exact oracles. Part of the training data was generated with G
 
 ## Files
 
-- `s2-nano.gguf`: ternary weights, tokenizer, temperatures and exit thresholds.
+- `s2-nano.gguf`: ternary weights, tokenizer, temperatures and exit thresholds. 701,568 bytes,
+  sha256 `9a0e96547f79e62cdadd551ee478e4f51d4438f763b70a898eca30ee454b0b8e`.

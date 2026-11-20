@@ -7,6 +7,27 @@
     "color_to": "green",
     "tagline": "A 715 KB ternary decision model that plays four games at the oracle's level and answers typed questions in free text, above the majority class of the typed-decisions bench.",
     "short_description": "715 KB model for four games and typed questions",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-nano-passed-published-at-full-depth",
+    "prereg": [
+      "docs/s6-gen-prereg.md"
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-glm-labels",
+        "skycmd-games",
+        "skycmd-numeric",
+        "skycmd-text"
+      ],
+      "test": [
+        "skycmd-decisions",
+        "skycmd-zero-shot"
+      ]
+    },
+    "space_datasets": [
+      "skycmd-games",
+      "skycmd-numeric"
+    ],
     "notes": [
       "Published at full depth: its conformal early-exit thresholds were rejected by the pre-registered arena check.",
       "0.480 on the typed-decisions bench, where the majority class is 0.398 and s5-lite reaches 0.696: expect mistakes on questions in free text.",
@@ -21,6 +42,30 @@
     "color_to": "purple",
     "tagline": "A 2.4 MB ternary decision model that plays four games at the oracle's level and answers typed questions in free text: 0.553 on the typed-decisions bench. Its second version passed the gate that the first one failed, on the same test records.",
     "short_description": "2.4 MB model for four games and typed questions",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-micro-v2-passed-on-a-second-look",
+    "prereg": [
+      {
+        "path": "docs/s6-gen-prereg.md",
+        "note": "gates in §6, this version in amendments 12, 16 and 17"
+      }
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-glm-labels",
+        "skycmd-games",
+        "skycmd-numeric",
+        "skycmd-text"
+      ],
+      "test": [
+        "skycmd-decisions",
+        "skycmd-zero-shot"
+      ]
+    },
+    "space_datasets": [
+      "skycmd-games",
+      "skycmd-numeric"
+    ],
     "notes": [
       "A second look: the first version (s6-micro-v1) failed the ECE guard at 0.0821 against 0.08. This version was designed after that reading (twice the decision-training minutes) and judged on the same test records: 0.553 on the bench (gate 0.45), ECE 0.0588, every game at s3-pico's score (docs/s6-gen-prereg.md, amendment 17).",
       "Published at full depth: its conformal early-exit thresholds were rejected by the pre-registered arena check (one extra Dodge veto).",
@@ -35,6 +80,22 @@
     "color_to": "red",
     "tagline": "A 250 KB ternary secret detector that passes its pre-registered gate on a synthetic bench and fails on real files: published as a result, not as a scanner.",
     "short_description": "250 KB secrets model: a result, not a scanner",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-secrets-pico-passed-published-at-full-depth",
+    "prereg": [
+      "docs/s6-secrets-prereg.md"
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-secrets",
+        "skycmd-text"
+      ],
+      "test": [
+        "skycmd-secrets"
+      ]
+    },
+    "space_datasets": [
+      "skycmd-secrets"
+    ],
     "notes": [
       "On a synthetic bench of file types it never saw, it beats a gitleaks-style rule scanner: secret 0.9990 against 0.977, service 0.9795 against 0.787. The bench comes from our own generator.",
       "On real files it fails: on 719 source, configuration and documentation files with no secret, it flags 59.8% of the files at p ≥ 0.9 and 49.4% at p ≥ 0.999 (github.com/maxgfr/secretgate/pull/19). Do not use it to scan real files.",
@@ -50,6 +111,30 @@
     "color_to": "indigo",
     "tagline": "Failed its pre-registered gate, published as a result: a 2.4 MB ternary model for four games and typed questions, 0.547 on the typed-decisions bench but ECE 0.0821 against a guard of 0.08.",
     "short_description": "Failed its gate: 2.4 MB s6 model, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-micro-v1-failed-on-calibration-only",
+    "prereg": [
+      {
+        "path": "docs/s6-gen-prereg.md",
+        "note": "gates in §6, the reading in amendments 12 to 15, the second version in amendment 17"
+      }
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-glm-labels",
+        "skycmd-games",
+        "skycmd-numeric",
+        "skycmd-text"
+      ],
+      "test": [
+        "skycmd-decisions",
+        "skycmd-zero-shot"
+      ]
+    },
+    "space_datasets": [
+      "skycmd-games",
+      "skycmd-numeric"
+    ],
     "notes": [
       "The gate (docs/s6-gen-prereg.md §6): at least 0.45 on the typed-decisions bench, ECE at most 0.08, no game more than 5% below s3-pico. It reached 0.547 and plays every game at s3-pico's score, but its ECE is 0.0821 at full depth: it failed, and is recommended for no use.",
       "Published at full depth (its three exit thresholds set to 1). Its four-times-smaller sibling s6-nano passed the same gate, and so did the second version, s6-micro, on a second look at the same test records.",
@@ -64,6 +149,19 @@
     "color_to": "purple",
     "tagline": "Failed three of its four pre-registered gates, published as a result: a 899 KB ternary model that hears the last 10 s of audio and answers typed questions about it.",
     "short_description": "Failed its gates: 899 KB audio model, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-ear-nano-failed",
+    "prereg": [
+      "docs/s6-ear-prereg.md"
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-ear"
+      ],
+      "test": [
+        "skycmd-ear"
+      ]
+    },
+    "data_note": "the audio features are not republished: `sky-data fetch-audio` rebuilds them from the upstream sets",
     "notes": [
       "End of turn 0.5681 against 0.9263 for Smart Turn v3.2 on the same clips (fail; Pipecat's report; the v1 harness read 0.8518); 12 Speech Commands keywords 0.8885 against 0.90 (fail); zero-shot keywords 0.2100 in English (pass, bar 0.20) and 0.1330 in French (fail).",
       "Its control, trained the same way without the Mimi pretraining, is more accurate on all four sets: the pretraining did not help in this run. The control is not published.",
@@ -78,6 +176,18 @@
     "color_to": "blue",
     "tagline": "A 632 KB ternary end-of-turn detector: from the last 4 s of audio it says whether the speaker has finished. It passed its pre-registered gate: 0.8993 on the 31,527 test clips of Smart Turn v3.2, where Smart Turn itself is at 0.9260.",
     "short_description": "632 KB end-of-turn detector; passed its gate",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-ear2-nano-passed",
+    "prereg": [
+      {
+        "path": "docs/s6-ear2-prereg.md",
+        "note": "the design in §2, the gate in §9, amendment 1, the result block"
+      }
+    ],
+    "datasets": {
+      "train": [],
+      "test": []
+    },
+    "data_note": "its feature stores are not republished; they are rebuilt from the public Smart Turn v3.2 sets (Training data and licences, below)",
     "notes": [
       "The gate: accuracy 0.8993 (bars 0.85 and Smart Turn's 0.9260 minus 0.08); at its cautious threshold a false cut-off on 0.0847 of the not-finished clips (bar 0.20) with an END recall of 0.8627 (bar 0.80); 2.39 ms per decision in WASM (bar 5 ms) from 631,936 bytes.",
       "It is a student of Smart Turn v3.2 (Pipecat, BSD-2-Clause, 8.7 MB, about 32 ms per decision natively), trained on Smart Turn's public training set; it cannot be more right than the labels it imitates.",
@@ -93,6 +203,18 @@
     "color_to": "blue",
     "tagline": "Failed its pre-registered gate, published as a result: s6-ear2-nano's 632 KB end-of-turn graph trained again on real two-speaker conversations and on the silences this demo asks at (s6-ear v3). On eot-bench, real speech addressed to an agent, read 0.2 s into each pause, its AUC is 0.7197, where v2 reads 0.7448 and Smart Turn 0.7873. The detector to use stays s6-ear2-nano.",
     "short_description": "Failed its gate: 632 KB end-of-turn v3, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-ear3-nano-failed",
+    "prereg": [
+      {
+        "path": "docs/s6-ear3-prereg.md",
+        "note": "the design in §2, the gate in §9, what a failure means in §12, amendments 1 to 3, the result in §17"
+      }
+    ],
+    "datasets": {
+      "train": [],
+      "test": []
+    },
+    "data_note": "no record derived from otoSpeech is published, under its access conditions; the other stores are rebuilt from public sets (Training data and licences, below)",
     "notes": [
       "The gate (docs/s6-ear3-prereg.md §9): E1 asked for an AUC at least 0.02 above v2's on eot-bench, 0.2 s into each pause (16,230 cuts, 14 languages), with the lower bound of a paired bootstrap above 0: −0.0252 [−0.0336, −0.0167], so E1 fails. E2 (recall at a false cut-off of 0.10, −0.0563 [−0.0832, −0.0315]) and E3 (the 13 languages other than English, −0.0209 [−0.0308, −0.0111], a lower bound above −0.02 asked) fail too. A1 holds (0.8978 on Smart Turn's 31,527 test clips, bar 0.8893), and so do A2 (false cut-off 0.0881, END recall 0.8597 at τ85) and G3 (2.39 ms in WASM, 631,936 bytes, v2's tensor list).",
       "What it learned: on the 113 held-out sessions of its own corpus, human-to-human conversations (reported, not gated), its AUC is 0.6878 against v2's 0.6031. By the reading its pre-registration fixed before the run, the human-to-human signal was learned and does not transfer to speech addressed to an agent. In English, the language of its conversations, eot-bench reads 0.7375 against v2's 0.7737.",
@@ -108,6 +230,17 @@
     "color_to": "blue",
     "tagline": "Failed its pre-registered gate, published as a result: a 143 KB ternary forecaster (nine deciles) that scores nGMASE 0.9471 and nWQL 0.6646 on GIFT-Eval, where the gate asked for 0.838 and 0.587.",
     "short_description": "Failed its gate: 143 KB forecaster, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-cast-pico-failed",
+    "prereg": [
+      "docs/s6-cast-prereg.md"
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-series"
+      ],
+      "test": []
+    },
+    "data_note": "[skycmd-cast-synth](https://huggingface.co/datasets/{user}/skycmd-cast-synth) is a fixed sample of the synthetic generators it also trains on; GIFT-Eval, its test, is not redistributed",
     "notes": [
       "The gate was to beat the training-free FLAIR on GIFT-Eval (nGMASE ≤ 0.838 and nWQL ≤ 0.587), with the goal of beating TinyCast (0.774 / 0.545). It met neither, with or without flip (0.9099 / 0.6417 with flip).",
       "It beats the seasonal naive on WQL in 84 of 97 configurations, but on MASE only in 52; on MASE, medium and long horizons are worse than the seasonal naive.",
@@ -122,6 +255,20 @@
     "color_to": "blue",
     "tagline": "Failed its pre-registered gate, published as a result: a 149 KB ternary forecaster (nine deciles) with a periodicity front end that scores nGMASE 0.8847 and nWQL 0.6190 on GIFT-Eval, where its gate asked for 0.838 and 0.587. Better than its first version, behind TinyCast.",
     "short_description": "Failed its gate: 149 KB forecaster, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-cast2-pico-failed",
+    "prereg": [
+      {
+        "path": "docs/s6-cast2-prereg.md",
+        "note": "amendments 1 to 3, all before training, and the result block of 18/11/2026; its design study: [docs/s6-cast2-study.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-cast2-study.md)"
+      }
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-series"
+      ],
+      "test": []
+    },
+    "data_note": "its USCRN sub-hourly series are not republished (`scripts/cast2-data.py` rebuilds them from NOAA); [skycmd-cast-synth](https://huggingface.co/datasets/{user}/skycmd-cast-synth) is a fixed sample of the synthetic generators it also trains on; GIFT-Eval, its test, is not redistributed",
     "notes": [
       "Failed its gate: G1 asked for nGMASE ≤ 0.838 and nWQL ≤ 0.587 on GIFT-Eval without flip, the bars of the training-free FLAIR; it scored 0.8847 and 0.6190 (0.8692 / 0.6071 with flip). G2 holds: its MASE ratio to the seasonal naive is under 1.00 at each term (short 0.833, medium 0.928, long 0.988). The Chronos-ZS gate was dropped before training (its harness did not reproduce the published TinyCast); there it reads 0.9014 / 0.7143, reported, against 0.8598 / 0.6928 for our TinyCast port without flip.",
       "It improves on s6-cast-pico (0.9471 / 0.6646) and stays behind our TinyCast port (0.7918 / 0.5622 without flip) on MASE in every term, band and domain. GIFT-Eval is partly in-sample for its design choices, never for its weights. By its pre-registration the s6-cast line stops here: TinyCast is the forecaster to use.",
@@ -138,6 +285,18 @@
     "color_to": "yellow",
     "tagline": "Failed its pre-registered gate G1 by 0.027, published as a result: a 250 KB ternary verifier that judges whether a value found by a secret-scanning rule is a real credential. Line F1 0.8561 on 221 real CredData test repositories, where the gate asked for 0.7332 + 0.15 = 0.8832; the six other gates held.",
     "short_description": "Failed its gate: 250 KB secrets verifier, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-secrets-verify-pico-failed",
+    "prereg": [
+      {
+        "path": "docs/s6-secrets2-prereg.md",
+        "note": "the gates in §8, amendments 1 to 8 before the run, the result block, amendment 9"
+      }
+    ],
+    "datasets": {
+      "train": [],
+      "test": []
+    },
+    "data_note": "never republished: CredData and the issue-report set hold real credentials (Training, below)",
     "notes": [
       "The gate (docs/s6-secrets2-prereg.md §8): G1 asked for a line F1 at least 0.15 above the best rule scanner on the CredData test, on every repository and without the largest one. On every repository it reached 0.8561 against Betterleaks 0.7332 + 0.15 = 0.8832: it failed G1. Without the largest repository it holds (0.8114 against 0.6867), and the six other gates held.",
       "What it does well: above every rule scanner tested on CredData (Betterleaks 0.7332, Gitleaks 0.7037), calibrated on real candidates (ECE 0.0073), and an accepted candidate in 0.35% of 8,825 clean real files. Its weakest category is API keys (line F1 0.541). Since version 1.9.0, secretgate offers it as an experimental option, off by default, where it can only add redactions.",
@@ -156,6 +315,21 @@
     "color_to": "blue",
     "tagline": "Failed its pre-registered gate, published as a result: a 2.4 MB ternary tool router that tied BM25, the score it reads in its input (0.8395 against 0.8500 on 2,000 slates of tools never seen in training), at 38.9 ms per request in WASM against a bar of 2 ms. This Space runs the file alone; the pair that passed is the Space s6-route.",
     "short_description": "Failed its gate: 2.4 MB tool router, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-route-nano-failed",
+    "prereg": [
+      {
+        "path": "docs/s6-nano2-prereg.md",
+        "note": "the gate in §8, amendments 1 and 2 before training, the result block"
+      }
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-route"
+      ],
+      "test": [
+        "skycmd-route"
+      ]
+    },
     "notes": [
       "The gate (docs/s6-nano2-prereg.md §8 and amendment 1) asked it to beat BM25 on T-tools, 2,000 slates of tools that no training item contains: 0.8395 against 0.8500 (difference −0.0105, 95% interval [−0.0265, +0.0055]), so it failed G1. It also failed G4: 38.9 ms per request in WASM with the tool list cached, where the bar is 2 ms. G2 and G3 held (ECE 0.0244).",
       "It is above potion-base-2M with cosine + 0.03 (0.6975) and above both trained baselines of its size (0.6735 and 0.4500), but outside its training families it is below potion-cos on every other source.",
@@ -171,7 +345,22 @@
     "color_to": "green",
     "tagline": "A 3.7 MB tool router in two files: the s6-route-nano file fused with potion-base-2M packed to 4 bits. It passed its pre-registered gate on fresh slates, with a system defined after v2's test was read: 0.8868 on requests about tools never seen in training, against 0.8169 for BM25 and 0.9048 for all-MiniLM-L6-v2 (91.6 MB).",
     "short_description": "3.7 MB tool router; passed on fresh slates",
-    "readme_notice": "**Passed its pre-registered gate on fresh slates; the system was defined after v2's test was read.** v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps. Its parameters come from validation. Its gate is read on requests no system had scored; on T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30 times v2's and was set after v2 was measured. The system needs distinctive tool names.",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-route-passed",
+    "prereg": [
+      {
+        "path": "docs/s6-nano3-prereg.md",
+        "note": "the system in §2, the gate in §5, the disclosure in §7, amendments 1 and 2 before the reading, the result block"
+      }
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-route"
+      ],
+      "test": [
+        "skycmd-route"
+      ]
+    },
+    "readme_notice": "**Passed its pre-registered gate.** On fresh slates; the system was defined after v2's test was read. v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps. Its parameters come from validation. Its gate is read on requests no system had scored; on T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30 times v2's and was set after v2 was measured. The system needs distinctive tool names.",
     "notes": [
       "Disclosure: v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps. Its parameters come from validation. Its gate is read on requests no system had scored; on T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30 times v2's and was set after v2 was measured. The system needs distinctive tool names.",
       "Every gate held: on 945 fresh requests, 0.8868 against 0.8169 for BM25 (+0.0698 [0.0455, 0.0952]) and 0.9048 for MiniLM (the bar was MiniLM − 0.03); ECE 0.0162; 30.9 ms per request in WASM with the tool list cached (bar 60 ms), 3,692,224 bytes for the two files.",
@@ -187,6 +376,33 @@
     "color_to": "green",
     "tagline": "Failed its pre-registered gate, published as a result: the 3.7 MB tool router with its model part retrained on data rebuilt against the cues that give the answer without the request (s6-route v7, the last version of the line). On 2,000 fresh requests about MCP tools of a new family it reads 0.5610, where BM25 reads 0.5675; its trained part is at chance with the request hidden, the pair is not. This Space runs the pair.",
     "short_description": "Failed its gate: 3.7 MB tool router v7, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-route7-nano-failed",
+    "prereg": [
+      {
+        "path": "docs/s6-route7-prereg.md",
+        "note": "v7: v6 with one change, amendments 1 to 3, the result block"
+      },
+      {
+        "path": "docs/s6-route6-prereg.md",
+        "note": "the request-blind gate G6"
+      },
+      {
+        "path": "docs/s6-route5-prereg.md"
+      },
+      {
+        "path": "docs/s6-route4-prereg.md",
+        "note": "the data, the fresh test and G1 to G5"
+      }
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-route7"
+      ],
+      "test": [
+        "skycmd-route7",
+        "skycmd-route"
+      ]
+    },
     "notes": [
       "The gate (docs/s6-route7-prereg.md, with v6's §8): G1 asked the pair to beat BM25 on T5-tools, 2,000 fresh requests about the tools of 262 MCP servers (Toucan) that no training slate holds: 0.5610 against 0.5675, −0.0065 [−0.0235, +0.0120], so G1 fails. G2 fails on its part (c): with the names masked it answers none on 0.3345 of the requests, where none is right on 0.20. G3 fails: ECE 0.1845 against 0.05. G4 holds (13.9 ms per request in WASM, 3,692,288 bytes) and so does G5 (0.8815 on T2-tools against 0.8668).",
       "G6, the request hidden (replaced by ?): the trained model part picks the right tool on 0.1406 of the tool-right requests, at chance (1/7 = 0.1429), so G6 (a) holds; the pair picks it on 0.1969, above the bar of 0.1929 (server upper bound 0.2350 against 0.2229), so G6 (b) fails. The static embedding part alone, which no version of the line trained, already reads 0.1931 there.",
@@ -202,6 +418,31 @@
     "color_to": "indigo",
     "tagline": "Failed its pre-registered gate, published as a result: a 752 KB ternary decision model with a fast-weight memory. The memory is used (0.4892 on the recall test against 0.2440 without one) and fades with the delay; sleep passes do not help (+0.0030), and it plays two of four games far worse than the same training without a memory. This Space plays recall episodes with it, with its memory zeroed, and with its control.",
     "short_description": "Failed its gate: 752 KB memory model, a result",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s6-sleep3-nano-failed",
+    "prereg": [
+      {
+        "path": "docs/s6-sleep3-prereg.md",
+        "note": "v3: two changes to v2 and one more check, amendments 1 to 3, the result block"
+      },
+      {
+        "path": "docs/s6-sleep2-prereg.md",
+        "note": "the memory, the pilot, the nano runs, the gate"
+      },
+      {
+        "path": "docs/s6-sleep-prereg.md",
+        "note": "the probes, the hypotheses H0 to H3, the publication gate"
+      }
+    ],
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-glm-labels",
+        "skycmd-games",
+        "skycmd-numeric"
+      ],
+      "test": []
+    },
+    "data_note": "its memory sequences are generated by the game cores and are not published",
     "notes": [
       "The gate (docs/s6-sleep-prereg.md §7 and §8, docs/s6-sleep2-prereg.md §7, docs/s6-sleep3-prereg.md): H0, the memory is used, holds: recall 0.4892 at N = 1 against 0.2440 for the control without memory, +0.2452 (95% interval +0.2370 to +0.2532; at least 0.10 asked). H1, sleep helps, is not shown: N = 4 minus N = 1 = +0.0030 (interval −0.0010 to +0.0068). H2, the games do not lose, is not shown: Flappy 15.87 against 71.05, Dodge 5.89 against 7.94. H3 holds (typed_decisions_bench 0.4897 against 0.4808). The exported file fails the s6-nano gate on Flappy (2.10 against s3-pico's 200.00) and Dodge (6.90 against 9.47).",
       "The memory fades with the delay: at N = 1, 0.6147 for questions 1 to 4 frames after the show, 0.5590 at 5 to 8, 0.4530 at 9 to 16 and 0.3302 at 17 to 32, where the control is at about 0.24 everywhere. At the pico size the pilot of the same recipe had reached 1.0000 at every delay on development episodes.",
@@ -221,6 +462,25 @@
     "color_to": "blue",
     "tagline": "A 17M-parameter decision model whose options cannot see each other: reordering the options or renaming their keys cannot change an answer.",
     "short_description": "17M decision model, invariant to option order and keys",
+    "results_url": "https://maxgfr.github.io/skycmd/results/#s5-october-2026",
+    "prereg": [
+      {
+        "url": "https://github.com/maxgfr/skycmd/blob/main/docs/s5-prereg.md",
+        "label": "docs/s5-prereg.md",
+        "note": "the s5 bets, which failed; this checkpoint was added outside them (amendment 3) and published without a gate"
+      }
+    ],
+    "datasets": {
+      "train": [],
+      "test": [
+        "skycmd-decisions",
+        "skycmd-evals"
+      ]
+    },
+    "data_note": "its training build (`sky-data s5-build`) is not republished; its sources are pinned in DATA_LICENSES.md",
+    "space_datasets": [
+      "skycmd-evals"
+    ],
     "notes": [
       "This checkpoint is a longer run (8,000 steps) added for the demo outside the pre-registered bets; see the results page for what failed and why.",
       "It answers 21 of the 30 English demo cases: expect mistakes, especially on incidents and severity."
@@ -235,7 +495,26 @@
     "color_from": "gray",
     "color_to": "purple",
     "tagline": "An experimental 5.6M ternary decision model with free-text options, distilled from Qwen3.5-4B in one night. It failed its gate, fixed before training: 0.343 on the typed-decisions bench, where the gate asked for more than 0.55.",
-    "short_description": "Experimental 2.4 MB ternary decision model",
+    "short_description": "Failed its gate: 2.4 MB decision model, a result",
+    "results_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s4-s4-micro-generic-decisions-distilled-from-qwen35-experimental",
+    "prereg": [
+      {
+        "url": "https://github.com/maxgfr/skycmd/issues/1",
+        "label": "issue #1",
+        "note": "the gate, written down before training; there is no pre-registration document"
+      }
+    ],
+    "datasets": {
+      "train": [],
+      "test": [
+        "skycmd-decisions",
+        "skycmd-zero-shot"
+      ]
+    },
+    "data_note": "its training corpus, with the Qwen3.5-4B labels, is not republished",
+    "space_datasets": [
+      "skycmd-evals"
+    ],
     "notes": [
       "Published as a documented negative result: it scores below the majority class on the typed-decisions bench."
     ]
@@ -247,7 +526,18 @@
     "color_from": "blue",
     "color_to": "green",
     "tagline": "A 251 KB ternary decision model that plays four games in your browser, with a looped state block and early exits.",
-    "short_description": "251 KB model playing four games in the browser"
+    "short_description": "251 KB model playing four games in the browser",
+    "results_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#skycmd-s3-s3-pico-value-fused-looped-ternary",
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-games",
+        "skycmd-numeric",
+        "skycmd-text"
+      ],
+      "test": []
+    },
+    "data_note": "its game episodes are in [skycmd-trajectories](https://huggingface.co/datasets/{user}/skycmd-trajectories)"
   },
   {
     "model": "s1-pico",
@@ -256,7 +546,18 @@
     "color_from": "yellow",
     "color_to": "blue",
     "tagline": "A 545 KB ModernBERT decision model in the System One format, the same file that runs in llama.cpp and wllama.",
-    "short_description": "545 KB ModernBERT decision model playing games"
+    "short_description": "545 KB ModernBERT decision model playing games",
+    "results_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s3-pico-vs-s2-nano-vs-s1-pico",
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-games",
+        "skycmd-numeric",
+        "skycmd-text"
+      ],
+      "test": []
+    },
+    "data_note": "its game episodes are in [skycmd-trajectories](https://huggingface.co/datasets/{user}/skycmd-trajectories)"
   },
   {
     "model": "s2-nano",
@@ -265,7 +566,18 @@
     "color_from": "green",
     "color_to": "blue",
     "tagline": "A 702 KB ternary decision model with a cached question stream and early exits.",
-    "short_description": "702 KB ternary decision model with early exits"
+    "short_description": "702 KB ternary decision model with early exits",
+    "results_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s3-pico-vs-s2-nano-vs-s1-pico",
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-games",
+        "skycmd-numeric",
+        "skycmd-text"
+      ],
+      "test": []
+    },
+    "data_note": "its game episodes are in [skycmd-trajectories](https://huggingface.co/datasets/{user}/skycmd-trajectories)"
   },
   {
     "model": "s2-nano-doom",
@@ -275,7 +587,18 @@
     "color_from": "red",
     "color_to": "gray",
     "tagline": "A 702 KB ternary model that plays a Doom-like shooter from 14 numbers (Freedoom art).",
-    "short_description": "702 KB model playing a Doom-like shooter"
+    "short_description": "702 KB model playing a Doom-like shooter",
+    "results_url": "https://github.com/maxgfr/skycmd/blob/main/BENCH.md#doom-like-game-scriptstrain-doomsh",
+    "datasets": {
+      "train": [
+        "skycmd-decisions",
+        "skycmd-games",
+        "skycmd-numeric",
+        "skycmd-text"
+      ],
+      "test": []
+    },
+    "data_note": "its Doom DAgger rounds are not published; its game episodes are in [skycmd-trajectories](https://huggingface.co/datasets/{user}/skycmd-trajectories)"
   },
   {
     "space_name": "skycmd",

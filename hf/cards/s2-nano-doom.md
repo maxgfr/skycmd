@@ -3,6 +3,7 @@ license: apache-2.0
 language:
   - en
 library_name: gguf
+pipeline_tag: text-classification
 tags:
   - gguf
   - decision-model
@@ -14,9 +15,13 @@ tags:
   - rust
   - wasm
   - skycmd
+  - no-gate
 ---
 
 # s2-nano-doom
+
+> **Published without a gate.** Its numbers below are measured and published, but no gate was
+> fixed for this file before it was tested.
 
 **A 702 KB ternary model that plays a Doom-like shooter from 14 numbers.** Same s2 architecture as
 [s2-nano](https://huggingface.co/{{USER}}/s2-nano) (1,532,033 parameters), specialized on a
@@ -27,6 +32,7 @@ first-person shooter on a grid drawn with [Freedoom](https://github.com/freedoom
 - **Demo:** [huggingface.co/spaces/{{USER}}/s2-nano-doom](https://huggingface.co/spaces/{{USER}}/s2-nano-doom)
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 - **Story:** [chapter 18, a Doom-like shooter](https://maxgfr.github.io/skycmd/tutorial/18-doom)
+{{LINKS}}
 
 ## Results (closed loop, `sky-arena`, 50 episodes per game, seed 7)
 
@@ -51,12 +57,14 @@ Request format: [install guide](https://maxgfr.github.io/skycmd/install/).
 
 ## Training
 
-From scratch in Rust (mlx-rs) on Apple Silicon (`scripts/train-doom.sh`): numeric masked-language
-pretraining, decision training with deep supervision over the exits, ternary QAT and DAgger rounds
-in the Doom-like game, on top of the s2 decision data (typed-decision sets, classic datasets
-converted into typed questions, game states labelled by exact oracles). Part of the training data
+Fine-tuned in Rust (mlx-rs) on Apple Silicon (`scripts/train-doom.sh`) from s2-nano-g2, a
+DAgger-improved checkpoint of s2-nano (numeric masked-language pretraining, decision training with
+deep supervision over the exits, ternary QAT): two fully ternary rounds, the Doom oracle's data then
+one DAgger round over the four games, on top of the s2 decision data (typed-decision sets, classic
+datasets converted into typed questions, game states labelled by exact oracles). Part of the training data
 was generated with GLM-5.3-Flash (open weights, MIT). Licenses: [DATA_LICENSES.md](https://github.com/maxgfr/skycmd/blob/main/DATA_LICENSES.md).
 
 ## Files
 
-- `s2-nano-doom.gguf`: ternary weights, tokenizer, temperatures and exit thresholds.
+- `s2-nano-doom.gguf`: ternary weights, tokenizer, temperatures and exit thresholds. 701,568 bytes,
+  sha256 `fb6df8401e78363fc6c84a403c852c56cc3b555ce4128ada19093e13c9a8abb3`.

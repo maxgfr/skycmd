@@ -3,6 +3,9 @@ license: apache-2.0
 language:
   - en
   - fr
+base_model:
+  - {{USER}}/s6-route-nano
+  - minishlab/potion-base-2M
 library_name: gguf
 pipeline_tag: text-classification
 tags:
@@ -15,12 +18,13 @@ tags:
   - rust
   - wasm
   - skycmd
+  - passed-gate
 ---
 
 # s6-route
 
-> **Passed its pre-registered gate on fresh slates; the system was defined after v2's test was
-> read.** v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps.
+> **Passed its pre-registered gate.** On fresh slates; the system was defined after v2's test was
+> read. v3 was designed after v2's test was read, from an exploratory reading of v2's test dumps.
 > Its parameters come from validation. Its gate is read on requests no system had scored; on
 > T2-tools these requests are about the same held-out tools as v2's test. The latency bar is 30
 > times v2's and was set after v2 was measured. The system needs distinctive tool names.
@@ -52,10 +56,7 @@ validation, and the gate was read once on fresh files.
   [Router page](https://maxgfr.github.io/skycmd/router/) of the project site
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust; the router
   is `crates/sky-web/src/router.rs` and `crates/sky-infer/src/embed.rs`)
-- **Pre-registration:** [docs/s6-nano3-prereg.md](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md)
-  (the system in §2, the gate in §5, the disclosure in §7, amendments 1 and 2 before the reading,
-  the result block)
-- **All results, failures included:** [results page](https://maxgfr.github.io/skycmd/results/)
+{{LINKS}}
 
 ## The gate, as read
 
@@ -147,7 +148,8 @@ Paired bootstrap (slates): +0.0942 [0.0720, 0.1185] over the model alone, +0.148
   0.5175 (the embedding alone 0.5340, toolrouter 0.5910), CLINC150 0.8040 (0.7855), MASSIVE
   0.5340 (0.4755; toolrouter 0.5900).
 - **The tools of T2-tools are v2's held-out test tools**, whose results this project had already
-  read; the requests are fresh. A confirmation on tools of other families has not been run.
+  read; the requests are fresh. On tools of a new family (above, reported with s6-route v7) it
+  reads 0.5530, below BM25's 0.5675.
 
 ## How to use it
 
