@@ -56,7 +56,7 @@ const RULES: Record<GameKind, string> = {
   rescue:
     'The arrows are wind: they never push the drone. Entering a cell against its arrow costs 3 battery, any other move 1. With the reflex on, a move into a rock or off the board becomes hover, and a move that would leave too little battery to get home becomes return home, which can fly the opposite way.',
   dodge:
-    'A crash is the drone touching an obstacle, a deck, the ground, the ceiling or the corridor sides. Around flies beside an obstacle through its side gap (green in the top view): the side view has no depth, so it shows that obstacle as a ghost. With the reflex on, a drone that does not abort stops in front of an impassable obstacle and waits there until it aborts or the episode times out at 120 s.',
+    'A crash is the drone touching an obstacle, a deck, the ground, the ceiling or the corridor sides. Continue holds the altitude and lateral offset already reached: after a climb the drone flies level over every lower obstacle, with no new maneuver. Around flies beside an obstacle through its side gap (green in the top view): the side view has no depth, so it shows that obstacle as a ghost, and the top view ghosts an obstacle the drone is flying above. The chip next to the drone names the maneuver it holds, its trail shows the last 4 s in the color of each maneuver, a green mark gives the clearance over an obstacle or under a deck, and a dashed outline marks the obstacle the next decision is about. With the reflex on, a drone that does not abort stops in front of an impassable obstacle and waits there until it aborts or the episode times out at 120 s.',
   doom: 'Walls stop the player and slide it along, they never hurt. The run ends at the exit switch, or as a death when health reaches 0.',
 }
 
@@ -75,7 +75,7 @@ const OTHER_LABEL: Record<string, string> = {
 const HELP: Record<GameKind, string> = {
   flappy: 'Tap the game, press Space or ↑ to thrust.',
   rescue: 'Arrow keys / WASD or swipe to move, H to hover, R to return home.',
-  dodge: '↑ over, ← → around, ↓ brake, Space continue, A abort.',
+  dodge: '↑ over, ← or → around (through the side gap, on whichever side it is), ↓ brake, Space continue, A abort. Swipe up, sideways or down: over, around, brake.',
   doom: 'W / S or ↑ / ↓ move, A / D strafe, ← / → turn, Space shoot, E use (doors, exit switch).',
 }
 
