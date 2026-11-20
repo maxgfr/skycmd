@@ -694,7 +694,7 @@ On the full universe the model's candidate F1 is 0.8832 and its ECE 0.0072.
 - **End to end** (the generator and the model on the issue texts, the dataset's positives as the reference; 3,068 accepted flags): F1 0.3219 when the precision counts every accepted flag, 0.7405 when it counts the flags on a dataset candidate only. The logistic regression: 0.2822 and 0.7185.
 - **Obfuscation sensitivity** (candidate F1 as published minus F1 after CredData's obfuscation function): model −0.0336 (0.8498 on the obfuscated values), logistic regression −0.0361, Gitleaks +0.0618, cbx-17M +0.0594. The function also rewrites the key names inside a candidate string, so this is a reported number only (amendment 6).
 
-**Clean real text** (§7.7: 8,825 real source, configuration and documentation files of secretgate, its dependency tree and this repository, read without their path, as secretgate's census reads them):
+**Clean real text** (§7.7: 8,825 real source, configuration and documentation files of secretgate, its dependency tree and this repository; no source path given to the generator and to the default engine, as secretgate's census reads them):
 
 | system | files with an accepted candidate | share | accepted candidates |
 |---|---:|---:|---:|
@@ -705,6 +705,8 @@ On the full universe the model's candidate F1 is 0.8832 and its ECE 0.0072.
 | generator alone | 2,161 | 24.49% | 14,756 |
 
 v1 flagged 59.8% of a 719-file subset of real files (amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md)). With the file's path given, the generator proposes candidates in 2.12% of the files and the default engine flags 0.08%.
+
+**The path in the model's state (disclosed on 20/11/2026, after the gate was read).** The state the model read for each candidate held the file's path below its repository: the `path` part of the state, its scope words and extension ([`crates/sky-data/src/secrets2/states.rs`](crates/sky-data/src/secrets2/states.rs)); the two trained baselines read the same states. Without it, the same model accepts 141 candidates in 51 files (0.58%), as measured in secretgate's [`docs/verifier.md`](https://github.com/maxgfr/secretgate/blob/main/docs/verifier.md) (proof 3), which also finds, with the path, the evaluation's state for 14,756 of its 14,756 candidates and the same 110 accepted candidates in 31 files. G7 holds in both readings (0.35% and 0.58%, bar 1.0%). The same page gives the rates of secretgate's option as its hooks pay them: 0.46% of these files without a path (Bash output), 0.27% with one (a Read).
 
 **Hand reading of the 110 accepted candidates (§7.7).** The pre-registration asks for every accepted candidate on clean text to be read and for the count that looks like a real credential; its result block listed this as still to do. It was done on 15/11, after the gate was read, and completes §7.7. The 110 candidates of the 31 files were read one by one with their line. **None of the 110 looks like a real credential.** By structure:
 

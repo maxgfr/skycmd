@@ -99,7 +99,10 @@ read; full-universe numbers in BENCH.md):
   accepted candidate in 31 files (0.35%), 110 candidates. Read one by one after the gate: none of
   the 110 looks like a real credential (test fixtures, documentation examples, provider-format
   values on a rule's allowlist, code, public hashes). v1 flagged 59.8% of
-  a 719-file subset.
+  a 719-file subset. The model's state held each file's path below its repository; without it
+  the same model accepts 141 candidates in 51 files (0.58%), as measured after the gate was read
+  in secretgate's [`docs/verifier.md`](https://github.com/maxgfr/secretgate/blob/main/docs/verifier.md)
+  (proof 3, disclosed on 20/11/2026): G7 holds in both readings.
 
 ## What it does well, and badly
 
