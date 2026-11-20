@@ -93,11 +93,12 @@ export default defineConfig({
       },
       {
         text: 'Results',
-        activeMatch: '^/(results|bench|novelty)/',
+        activeMatch: '^/(results|bench|novelty|paper)/',
         items: [
           { text: 'Results', link: '/results/' },
           { text: 'Bench', link: '/bench/' },
           { text: 'What we bring', link: '/novelty/' },
+          { text: 'Technical report', link: '/paper/' },
         ],
       },
       {

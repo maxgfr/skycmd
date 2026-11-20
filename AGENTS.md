@@ -5,6 +5,9 @@
 - **Everything about skycmd is published on skycmd's own site**: the VitePress site in `site/`,
   deployed to <https://maxgfr.github.io/skycmd/> on every push to `main`. That covers results,
   model pages, demos, tutorials and **articles** (`site/articles/`).
+- **The technical report lives at `site/paper/`** (<https://maxgfr.github.io/skycmd/paper/>), with its
+  figure written by `scripts/paper-figures.py` and its PDF in `site/public/paper/`. It is updated
+  when a result changes, like What we bring and Results; `CITATION.cff` cites it.
 - **Never publish skycmd content on the owner's personal site** (the repository
   `maxgfr/maxgfr.github.io`, served at <https://maxgfr.github.io/>). That site is the owner's:
   touch it only when the owner names it in the request.
