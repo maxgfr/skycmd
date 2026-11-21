@@ -44,7 +44,7 @@ A `choice` returns the argmax and a confidence. A `score` returns the expected l
 
 ## What "tiny" means here
 
-The open decision models listed in `docs/research.md` range from 17M parameters (`mgoeckel/oscar-1-17m`) up to 27B. Even the 17M model is mostly vocabulary: about 12.9M of its parameters sit in a 50k-token embedding table. skycmd keeps the same architecture (ModernBERT encoder plus the Laya decision head) but shrinks both the vocabulary and the transformer.
+The open decision models listed in `docs/research.md` range from `mgoeckel/oscar-1-17m` (about 18.5M parameters on the Hub; "17m" is its name) up to 27B. Smaller ones appeared later, such as cua-s1-forms (706,048 parameters, one form-filling task) and TinyDecide (10.4M), listed on [Sources](/sources/#related-work-found-later). Even oscar-1-17m is mostly vocabulary: about 12.9M of its parameters sit in a 50k-token embedding table. skycmd keeps the same architecture (ModernBERT encoder plus the Laya decision head) but shrinks both the vocabulary and the transformer.
 
 The size ladder comes from `docs/SPEC.md` and `configs/s1-*.json`:
 

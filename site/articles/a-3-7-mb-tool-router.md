@@ -27,6 +27,8 @@ The task is called tool routing. At run time, an assistant receives a list of to
 
 The hard part is that the list changes. The router must work with tools it never saw during training. So it cannot learn the list by heart: it has to connect a request to a description.
 
+The idea of a small, fast router in front of a language model is not mine. The open-source [semantic-router](https://github.com/aurelio-labs/semantic-router) compares the meaning of a request with each route in embedding space and decides in milliseconds; [OATS](https://arxiv.org/abs/2603.13426) (2026) improves such a router by moving each tool's embedding, offline, toward the requests where that tool succeeded, with no parameter added at serving time. What this article adds is a router of a few megabytes, judged against BM25 under gates written before each test, and the controls that showed what it had learned (*added on 21 November 2026*).
+
 ## v1: a gate that a constant answer could pass
 
 The first version, s6-nano, was 715 KB. It was a small general-purpose model, and it passed its own gate. A later study found the problem: on 17 tasks out of 20, it gave the same answer to at least 95% of the items. A program that always gives the same answer would have passed the gate too.

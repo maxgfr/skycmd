@@ -33,7 +33,7 @@ These models answer questions you write yourself, so they are measured on held-o
 | s6-micro (/live, /play; second version) | s6, ternary, full depth | 5,587,201 | 2.4 MB | 0.553 | `typed_decisions_bench`; also plays the four games at s3-pico's score; ECE 0.0588; passed its gate on a second look (v1 failed it; v2 was designed after that reading, on the same test records) |
 | s6-micro-v1 (/live, /play; failed its gate) | s6, ternary, full depth | 5,587,201 | 2.4 MB | 0.547 | `typed_decisions_bench`; ECE 0.0821 against the guard of 0.08: failed its gate; its file is published as a result (owner's decision of 15/11/2026) |
 | s5 B\* finalists (3 seeds) | iso, f32 | 17M | | 0.674 | pre-registered bet 1: more accurate than A′ (0.429) but ECE 0.088 against 0.057 |
-| oscar-1-17m (reference) | Laya, f32 | 17M | | 0.682 | the public model of this format, on the same records |
+| oscar-1-17m (reference) | Laya, f32 | 18,511,622 | | 0.682 | an open model of this format, on the same records |
 | s4-micro | s2, ternary | 5,587,201 | 2.4 MB | 0.343 | measured on `typed_decisions_bench`, the same test split in the older record layout; experimental, below the majority class (0.398) |
 
 ## s6 results

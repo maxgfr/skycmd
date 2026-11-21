@@ -107,8 +107,8 @@ softmax attention and AdamW.
 - **A second look.** v1 failed the ECE guard and this version was designed after reading that
   result, on the same test records. Its pass would be stronger on test sets read for the first
   time.
-- A modest generalist: 0.553 on the bench, against about 0.69 for 17M models (s5-lite 0.696,
-  oscar-1-17m 0.6775). On 11 of the 20 bench tasks it answers one constant to at least 95% of the
+- A modest generalist: 0.553 on the bench, against about 0.69 for models of 17M to 18.5M
+  parameters (s5-lite 0.696, oscar-1-17m 0.6775). On 11 of the 20 bench tasks it answers one constant to at least 95% of the
   items.
 - It cannot read NOTAMs (0.092 on the subject question), and on When2Call it stays at 0.401 and
   rarely chooses to call a tool.

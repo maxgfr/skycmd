@@ -4,7 +4,7 @@ skycmd trains its own byte-level BPE tokenizers with 1024, 2048 and 4096 entries
 
 ## Why the vocabulary is the first size decision
 
-An encoder's embedding table holds `vocab_size × hidden_size` parameters. Large vocabularies dominate small models. `docs/research.md` notes that about 12.9M of the 17M parameters of `oscar-1-17m` sit in its 50k-token embedding table. skycmd does the opposite and keeps the vocabulary close to the size of the transformer:
+An encoder's embedding table holds `vocab_size × hidden_size` parameters. Large vocabularies dominate small models. `docs/research.md` notes that about 12.9M of the roughly 18.5M parameters of `oscar-1-17m` sit in its 50k-token embedding table. skycmd does the opposite and keeps the vocabulary close to the size of the transformer:
 
 | model | vocab | d | embedding table | encoder total |
 |---|---:|---:|---:|---:|

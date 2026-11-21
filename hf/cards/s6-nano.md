@@ -102,8 +102,8 @@ adopted none of them, so this model uses softmax attention and AdamW.
 
 ## Limitations
 
-- A modest generalist: 0.480 on the bench clears the majority class, but 17M models reach about
-  0.69 (s5-lite 0.696, oscar-1-17m 0.6775). The bench score is that of a constant answer per task
+- A modest generalist: 0.480 on the bench clears the majority class, but models of 17M to 18.5M
+  parameters reach about 0.69 (s5-lite 0.696, oscar-1-17m 0.6775). The bench score is that of a constant answer per task
   (see the notice above).
 - It cannot read NOTAMs (0.055 on the subject question) and stays at 0.404 on When2Call.
 - The English MASSIVE score is not strictly zero-shot: 206 of the 2,000 test utterances also

@@ -45,6 +45,8 @@ A rule engine runs first: secretgate's engine with the filters that normally dis
 
 The model never searches. The cheap, deterministic part finds; the small learned part judges one value.
 
+The split is not mine. Samsung's [CredSweeper](https://github.com/Samsung/CredSweeper) runs rules and then a machine-learning validator, whose model file (`ml_model.onnx`) is 11,545,911 bytes; SAP's [Credential Digger](https://github.com/SAP-archive/credential-digger) filters the hits of its regular expressions with machine-learning models; GitGuardian's [FP Remover](https://blog.gitguardian.com/fp-remover-cuts-false-positives-by-half/) removes false positives from what its generic detectors flag. What this version adds is the size, 249,984 bytes, and a comparison on 221 CredData repositories that it never trained on (*added on 21 November 2026*).
+
 The data was real this time. The main source is CredData, Samsung's public benchmark of real repositories, where each value is labelled a real credential, an example or test value, or not a credential. It is used in its obfuscated form: every real secret replaced by random characters of the same shape. Training used 100 of its repositories and validation 16, each licence-checked (MIT, Apache-2.0 or BSD). Public issue reports containing leaked secrets, their training values replaced by look-alikes, and synthetic candidates make up the rest. The test: 221 other CredData repositories, never trained on, and the issue reports' test split, whose values are real.
 
 Training was one run on the MacBook, from 19:39 to 20:42 on 14 November: 12 working minutes of pretraining on text, then 30 on the question itself (the braked mode's pauses not counted).

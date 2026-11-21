@@ -16,7 +16,7 @@ All rows are measured by `sky-eval` on the test split, through the same engine t
 | s4-micro, f32 (QAT master weights) | 5.6M | 22 MB | 0.348 | 0.131 | 0.192 | 0.186 | 0.365 | 0.268 |
 | **s4-micro, ternary** | 5.6M | 2.4 MB | 0.343 | **0.303** | **0.335** | **0.240** | **0.387** | **0.340** |
 | teacher Qwen3.5-4B (4-bit) | 4B | ≈ 3 GB | 0.501 | 0.898 | 0.893 | 0.873 | — | — |
-| oscar-1-17m (published) | 17M | | 0.6775 | — | — | — | — | — |
+| oscar-1-17m (published) | 18.5M | | 0.6775 | — | — | — | — | — |
 | majority class (per question type) | | | 0.398 | | | | | |
 | chance | | | | 0.125 | 0.125 | 0.125 | | |
 

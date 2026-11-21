@@ -51,6 +51,14 @@ of [s6-secrets-pico](https://huggingface.co/{{USER}}/s6-secrets-pico), which rea
 failed on real files; this one was trained and tested on real repositories. It is the project's
 best result on real data, and it is a failed gate.
 
+The design, rules first and a learned judge of each candidate, is not new: it is that of Samsung's
+[CredSweeper](https://github.com/Samsung/CredSweeper) (rules, then an ML validator whose
+`ml_model.onnx` is 11,545,911 bytes), SAP's
+[Credential Digger](https://github.com/SAP-archive/credential-digger) and GitGuardian's
+[FP Remover](https://blog.gitguardian.com/fp-remover-cuts-false-positives-by-half/). What this model
+adds is its size (249,984 bytes) and a comparison on 221 CredData test repositories it never trained
+on.
+
 - **Demo:** on the site at [/secrets-verify/](https://maxgfr.github.io/skycmd/secrets-verify/) and as
   the Space [{{USER}}/s6-secrets-verify-pico](https://huggingface.co/spaces/{{USER}}/s6-secrets-verify-pico)
   (every published model gets a Space, owner's decision of 17/11/2026). It proposes candidates with a
