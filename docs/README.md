@@ -37,7 +37,7 @@ and no pre-registration is open. The whole project is written up in the technica
 | s6-pico pilot and ablation (the recipe) | ran before 12/11/2026 | [`s6-prereg.md`](s6-prereg.md) | [`SPEC-S6.md`](SPEC-S6.md) | [`runs/recipe/`](../runs/recipe/) |
 | s6-nano | passed (13/11/2026) | [`s6-gen-prereg.md`](s6-gen-prereg.md) | [`big-run-report.md`](big-run-report.md) | [`runs/s6-nano/eval/`](../runs/s6-nano/eval/results.md) |
 | s6-micro v1 (s6-micro-v1) | failed, calibration (14/11/2026) | [`s6-gen-prereg.md`](s6-gen-prereg.md) | [`big-run-report.md`](big-run-report.md) | [`runs/s6-micro/eval/`](../runs/s6-micro/eval/results.md) |
-| s6-secrets-pico | passed on its synthetic bench (12/11/2026); fails on real text (14/11/2026) | [`s6-secrets-prereg.md`](s6-secrets-prereg.md) | [`big-run-report.md`](big-run-report.md) | [`runs/s6-secrets-pico/`](../runs/s6-secrets-pico/report.md) |
+| s6-secrets-pico | passed on its synthetic bench (12/11/2026); fails on real text (14/11/2026) | [`s6-secrets-prereg.md`](s6-secrets-prereg.md) | [`big-run-report.md`](big-run-report.md), [`secretgate-model-comparison.md`](secretgate-model-comparison.md) | [`runs/s6-secrets-pico/`](../runs/s6-secrets-pico/report.md) |
 | s6-ear-nano | failed, three gates of four (12/11/2026) | [`s6-ear-prereg.md`](s6-ear-prereg.md) | [`big-run-report.md`](big-run-report.md) | [`runs/s6-ear-nano/eval/`](../runs/s6-ear-nano/eval/gate.json) |
 | s6-cast-pico | failed (14/11/2026) | [`s6-cast-prereg.md`](s6-cast-prereg.md) | [`SPEC-S6-CAST.md`](SPEC-S6-CAST.md), [`big-run-report.md`](big-run-report.md) | [`runs/s6-cast-pico/`](../runs/s6-cast-pico/gift-eval/summary.json) |
 
@@ -54,7 +54,7 @@ The run's own gate table is [`runs/all/REPORT.md`](../runs/all/REPORT.md).
 
 | version | status | pre-registration | study or diagnosis | results |
 |---|---|---|---|---|
-| v1 (s6-secrets-pico) | passed on its synthetic bench (12/11/2026); fails on real text (14/11/2026) | [`s6-secrets-prereg.md`](s6-secrets-prereg.md) | | [`runs/s6-secrets-pico/`](../runs/s6-secrets-pico/report.md) |
+| v1 (s6-secrets-pico) | passed on its synthetic bench (12/11/2026); fails on real text (14/11/2026) | [`s6-secrets-prereg.md`](s6-secrets-prereg.md) | [`secretgate-model-comparison.md`](secretgate-model-comparison.md) | [`runs/s6-secrets-pico/`](../runs/s6-secrets-pico/report.md) |
 | v2 (s6-secrets-verify-pico) | failed, G1 (15/11/2026) | [`s6-secrets2-prereg.md`](s6-secrets2-prereg.md) | [`s6-secrets2-feasibility.md`](s6-secrets2-feasibility.md), [`research-s6-usefulness.md`](research-s6-usefulness.md) | [`runs/s6-secrets2/`](../runs/s6-secrets2/) |
 | v3 (the rules and v2 together) | failed, G1, a second look (15/11/2026) | [`s6-secrets3-prereg.md`](s6-secrets3-prereg.md) | [`s6-secrets3-diagnosis.md`](s6-secrets3-diagnosis.md) | [`runs/s6-secrets3/`](../runs/s6-secrets3/) |
 | a possible v4 | closed with a diagnosis, nothing trained (18/11/2026) | none | [`s6-secrets4-diagnosis.md`](s6-secrets4-diagnosis.md) | |

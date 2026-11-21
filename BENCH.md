@@ -414,7 +414,7 @@ Pre-registration: [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md), gate
 
 ### Real text (14/11, after publication)
 
-Amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md). The published file was run on real files outside its generator, for a possible use in [secretgate](https://github.com/maxgfr/secretgate), a rule-based secrets firewall for coding agents. The measurement, its script and its limits are in that repository (`docs/model-comparison.md`, [pull request 19](https://github.com/maxgfr/secretgate/pull/19)); secretgate did not adopt the model.
+Amendment 6 of [`docs/s6-secrets-prereg.md`](docs/s6-secrets-prereg.md). The published file was run on real files outside its generator, for a possible use in [secretgate](https://github.com/maxgfr/secretgate), a rule-based secrets firewall for coding agents. The measurement, its script and its limits are in [`docs/secretgate-model-comparison.md`](docs/secretgate-model-comparison.md) (first published in secretgate as `docs/model-comparison.md`, [pull request 19](https://github.com/maxgfr/secretgate/pull/19)); secretgate did not adopt the model.
 
 **Corpus.** 719 real source, configuration and documentation files in which the rules of secretgate find nothing (its own sources and tests, a sample of its `node_modules`, and `crates/` and `docs/` of this repository), cut into 22,433 chunks of at most 7 lines and 300 characters, the length of the training texts. The secret question is asked on each chunk; a file counts as flagged when one of its chunks is. Since no file holds a secret, every flag is a false positive.
 
