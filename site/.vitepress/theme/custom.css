@@ -182,6 +182,42 @@
 .vp-doc .paper td:first-child {
   white-space: nowrap;
 }
+/* The methods paper (site/paper/methods/): its numbered equations and its algorithm boxes. */
+.vp-doc .paper-eq {
+  margin: 18px 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.vp-doc .paper-eq p {
+  margin: 4px 0;
+  line-height: 1.8;
+}
+.vp-doc .paper-eq-n {
+  float: right;
+  padding-left: 1em;
+  color: var(--vp-c-text-2);
+}
+.vp-doc .paper-algo {
+  margin: 24px 0;
+  padding: 8px 0 4px;
+  border-top: 2px solid var(--vp-c-text-1);
+  border-bottom: 2px solid var(--vp-c-text-1);
+  font-size: 15px;
+}
+.vp-doc .paper-algo p {
+  margin: 6px 0;
+}
+.vp-doc .paper-algo .paper-algo-title {
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.vp-doc .paper-algo ol {
+  margin: 6px 0;
+}
+.vp-doc .paper-algo li.paper-algo-l1 {
+  margin-left: 1.6em;
+}
 @media print {
   @page {
     size: A4;
