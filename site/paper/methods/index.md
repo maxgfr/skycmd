@@ -8,7 +8,7 @@ outline: [2, 3]
 
 # Looped ternary encoders for typed decisions: a recipe from laptop to browser
 
-<p class="paper-meta"><strong>Maxime Golfier</strong> · 21 November 2026 · <a href="/skycmd/paper/skycmd-methods.pdf">PDF (LaTeX)</a> · <a href="https://github.com/maxgfr/skycmd/tree/main/paper/methods">LaTeX source</a> · companion: <a href="/skycmd/paper/">the technical report</a>, <a href="https://doi.org/10.5281/zenodo.24418316">DOI 10.5281/zenodo.24418316</a> · <a href="#how-to-cite">How to cite</a></p>
+<p class="paper-meta"><strong>Maxime Golfier</strong> · 21 November 2026 · <a href="/skycmd/paper/skycmd-methods.pdf">PDF (LaTeX)</a> · <a href="https://github.com/maxgfr/skycmd/tree/main/paper/methods">LaTeX source</a> · <a href="https://doi.org/10.5281/zenodo.24420817">DOI 10.5281/zenodo.24420817</a> (Zenodo) · companion: <a href="/skycmd/paper/">the technical report</a>, <a href="https://doi.org/10.5281/zenodo.24418316">DOI 10.5281/zenodo.24418316</a> · <a href="#how-to-cite">How to cite</a></p>
 
 ::: warning Technical report, not peer-reviewed
 This report has not been peer-reviewed, nor reviewed by anyone outside the project. Every number in it is copied from a page or a file of the repository, and each one links to its evidence. Where a number is computed here, the text says so. It describes the methods; the protocol and every gate's reading are in the companion report [[1]](#ref-1).
@@ -553,11 +553,12 @@ The run folders do not record the commit of the binary that trained a file, so e
                   a recipe from laptop to browser},
   year         = {2026},
   publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.24420817},
   howpublished = {\url{https://maxgfr.github.io/skycmd/paper/methods/}},
   note         = {Technical report, not peer-reviewed}
 }
 ```
 
-This report will be archived on Zenodo, and its DOI added here then. The companion report's citation is in [`CITATION.cff`](https://github.com/maxgfr/skycmd/blob/main/CITATION.cff). The report is updated when a method's description changes; the date at the top is that of its last change.
+This report is archived on Zenodo with the DOI [10.5281/zenodo.24420817](https://doi.org/10.5281/zenodo.24420817). The companion report's citation is in [`CITATION.cff`](https://github.com/maxgfr/skycmd/blob/main/CITATION.cff). The report is updated when a method's description changes; the date at the top is that of its last change.
 
 </div>
