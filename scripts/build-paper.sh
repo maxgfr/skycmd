@@ -5,18 +5,18 @@
 #   scripts/build-paper.sh --arxiv             # the same, and target/paper/skycmd-arxiv.tar.gz
 #   scripts/build-paper.sh --methods [--arxiv] # the methods paper instead (paper/methods/)
 #
-# The first report's source is paper/skycmd.tex, with paper/references.bib and paper/figure-1.tex;
-# the figure is written first by scripts/paper-figures.py from the numbers that also draw the SVG
-# of the web page. Its PDF is copied to site/public/paper/skycmd-technical-report.pdf.
+# The first report's source is paper/skycmd.tex, with paper/references.bib, paper/figure-1.tex and
+# paper/figure-2.tex; the figures are written first by scripts/paper-figures.py from the numbers that
+# also draw the SVGs of the web page. Its PDF is copied to site/public/paper/skycmd-technical-report.pdf.
 #
 # --methods builds the methods paper, paper/methods/skycmd-methods.tex with
-# paper/methods/references.bib and paper/methods/figure-1.tex, written first by
-# scripts/paper-methods-figure.py from the coordinates that also draw the web page's SVG, into
+# paper/methods/references.bib, paper/methods/figure-1.tex and paper/methods/figure-2.tex, written
+# first by scripts/paper-methods-figure.py from the data that also draw the web page's SVGs, into
 # site/public/paper/skycmd-methods.pdf. Tectonic (https://tectonic-typesetting.github.io)
 # compiles either one and runs BibTeX itself; the paths every link uses are those above.
 #
 # --arxiv also packs what arXiv needs to compile the report with pdfLaTeX: the .tex, the .bib, the
-# .bbl that BibTeX wrote (arXiv does not run BibTeX) and the figure, if it has its own file.
+# .bbl that BibTeX wrote (arXiv does not run BibTeX) and the figures, each in its own file.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,15 +43,15 @@ if [ "$methods" -eq 1 ]; then
   NAME="skycmd-methods"
   PDF="$ROOT/site/public/paper/skycmd-methods.pdf"
   SOURCES=(paper/methods)
-  EXTRA=(figure-1.tex)
+  EXTRA=(figure-1.tex figure-2.tex)
   python3 -I "$ROOT/scripts/paper-methods-figure.py"
 else
   SRC_DIR="$ROOT/paper"
   NAME="skycmd"
   PDF="$ROOT/site/public/paper/skycmd-technical-report.pdf"
   # The first report's own files, so that a commit to paper/methods/ leaves its PDF unchanged.
-  SOURCES=(paper/skycmd.tex paper/references.bib paper/figure-1.tex)
-  EXTRA=(figure-1.tex)
+  SOURCES=(paper/skycmd.tex paper/references.bib paper/figure-1.tex paper/figure-2.tex)
+  EXTRA=(figure-1.tex figure-2.tex)
   python3 -I "$ROOT/scripts/paper-figures.py"
 fi
 

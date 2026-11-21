@@ -1,68 +1,143 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 502" width="480" height="502" role="img" aria-labelledby="paper-fig1-title paper-fig1-desc" fill="currentColor" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" style="display:block;width:100%;max-width:520px;height:auto;margin:0 auto">
-<title id="paper-fig1-title">Readings of the same file on its own distribution and on other data</title>
-<desc id="paper-fig1-desc">Dot plot, one row per line, on an axis from 0.4 to 1. s6-route7-nano, accuracy: validation 0.8802; fresh tools of a new family 0.5610; BM25 on the other data 0.5675. s6-route, accuracy: held-out tools 0.8868; a new tool family (reported) 0.5530; BM25 on the other data 0.5675. s6-ear2-nano, AUC: Smart Turn's test clips 0.9600; eot-bench, real speech 0.7299; Smart Turn on the other data 0.7838. s6-secrets-verify-pico, line F1: validation repositories 0.8603; test repositories 0.8561; best rule scanner on the other data 0.7332. On other data the reading falls far below the line's own for the two routers and the end-of-turn detector, and stays level with it for the secrets verifier.</desc>
-<g font-size="13">
-<circle cx="8" cy="12" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/><text x="20" y="17">its own distribution</text>
-<path class="paper-fig1-b" fill="#c2410c" d="M171,5L178,12L171,19L164,12Z"/><text x="184" y="17">other data</text>
-<path d="M271,4V20" stroke="currentColor" stroke-width="2"/><text x="279" y="17">reference, on the other data</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 618" width="640" height="618" role="img" aria-labelledby="paper-gates-title paper-gates-desc" fill="currentColor" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" style="display:block;width:100%;max-width:680px;height:auto;margin:0 auto">
+<title id="paper-gates-title">Every gate, as read: one condition of each gated file against its bar</title>
+<desc id="paper-gates-desc">Gate dashboard: one row per gated file, with one condition of its gate. Each row has its own scale centred on the bar, and right is better. s6-nano: typed_decisions_bench: 0.480, bar &gt; 0.398; passed. s6-micro v2: typed_decisions_bench: 0.553, bar ≥ 0.45; passed, a second look. s6-micro-v1: ECE: 0.0821 [0.0746, 0.0900], bar ≤ 0.08; failed. s4-micro: typed_decisions_bench: 0.343, bar &gt; 0.55; failed. s6-secrets-pico: secret exposed, secret_bench: 0.9990, bar &gt; 0.977; passed. s6-secrets-verify-pico: line F1 over the best rule scanner: +0.1229 [+0.0413, +0.3613], bar ≥ +0.15; failed. s6-ear-nano: end of turn: 0.5681, bar ≥ 0.9263; failed. s6-ear2-nano: accuracy, Smart Turn's test: 0.8993 [0.8962, 0.9027], bar ≥ 0.85; passed. s6-ear3-nano: AUC change on eot-bench (E1): −0.0252 [−0.0336, −0.0167], bar ≥ +0.02; failed. s6-cast-pico: GIFT-Eval nGMASE: 0.9471, bar ≤ 0.838; failed. s6-cast2-pico: GIFT-Eval nGMASE (G1): 0.8847, bar ≤ 0.838; failed. s6-route-nano: accuracy minus BM25 (G1): −0.0105 [−0.0265, +0.0055], bar &gt; 0; failed. s6-route: accuracy minus BM25: +0.0698 [+0.0455, +0.0952], bar lower bound &gt; 0; passed, a second look. s6-route7-nano: accuracy minus BM25 on T5 (G1): −0.0065 [−0.0235, +0.0120], bar lower bound &gt; 0; failed. s6-sleep3-nano: sleep gain on recall (H1): +0.0030 [−0.0010, +0.0068], bar lower bound &gt; 0; failed.</desc>
+<g font-size="12">
+<circle cx="8" cy="12" r="6" fill="#0284c7"/><text x="20" y="16">passed</text>
+<path class="paper-fig1-b" fill="#c2410c" d="M88,5L95,12L88,19L81,12Z"/><text x="100" y="16">failed</text>
+<circle cx="166" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="182" y="16">second look</text>
+<path d="M281,3V21" stroke="currentColor" stroke-width="2"/><text x="289" y="16">bar</text>
+<path d="M325,12H351" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/><text x="358" y="16">published interval</text>
 </g>
-<text x="0" y="44" font-size="12" fill-opacity=".75">Each row has its own metric; higher is better on all four. The axis starts at 0.4.</text>
+<text x="0" y="42" font-size="12" fill-opacity=".75">Each row has its own scale, centred on its bar, with the half-width at its right; right is better on every row.</text>
+<g font-size="11" fill-opacity=".75" text-anchor="middle"><text x="330" y="60">worse</text><text x="458" y="60">bar</text><text x="586" y="60">better</text></g>
 <g>
-<text x="0" y="86" font-weight="650">s6-route7-nano<tspan font-weight="400" fill-opacity=".75"> · accuracy</tspan></text>
-<text x="0" y="104" font-size="12" fill-opacity=".8">validation 0.8802 → fresh tools of a new family 0.5610</text>
-<text x="0" y="119" font-size="12" fill-opacity=".8">BM25 on the other data: 0.5675</text>
-<path d="M12,132H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
-<path d="M133.3,132H373.8" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
-<g><title>BM25, fresh tools of a new family: 0.5675</title><path d="M138.2,122V142" stroke="currentColor" stroke-width="2"/></g>
-<g><title>s6-route7-nano, fresh tools of a new family: 0.5610</title><path class="paper-fig1-b" fill="#c2410c" d="M133.3,125L140.3,132L133.3,139L126.3,132Z"/></g>
-<g><title>s6-route7-nano, validation: 0.8802</title><circle cx="373.8" cy="132" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
-</g>
-<g>
-<text x="0" y="182" font-weight="650">s6-route<tspan font-weight="400" fill-opacity=".75"> · accuracy</tspan></text>
-<text x="0" y="200" font-size="12" fill-opacity=".8">held-out tools 0.8868 → a new tool family (reported) 0.5530</text>
-<text x="0" y="215" font-size="12" fill-opacity=".8">BM25 on the other data: 0.5675</text>
-<path d="M12,228H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
-<path d="M127.3,228H378.7" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
-<g><title>BM25, a new tool family (reported): 0.5675</title><path d="M138.2,218V238" stroke="currentColor" stroke-width="2"/></g>
-<g><title>s6-route, a new tool family (reported): 0.5530</title><path class="paper-fig1-b" fill="#c2410c" d="M127.3,221L134.3,228L127.3,235L120.3,228Z"/></g>
-<g><title>s6-route, held-out tools: 0.8868</title><circle cx="378.7" cy="228" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
+<text x="0" y="83" font-weight="650">s6-nano<tspan font-weight="400" fill-opacity=".75"> · passed</tspan></text>
+<text x="0" y="98" font-size="11.5" fill-opacity=".8">typed_decisions_bench: 0.480, bar &gt; 0.398</text>
+<path d="M330,87H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,77V97" stroke="currentColor" stroke-width="2"/>
+<g><title>s6-nano: typed_decisions_bench: 0.480, bar &gt; 0.398</title><circle cx="563" cy="87" r="6" fill="#0284c7"/></g>
+<text x="594" y="91" font-size="11" fill-opacity=".75">±0.1</text>
 </g>
 <g>
-<text x="0" y="278" font-weight="650">s6-ear2-nano<tspan font-weight="400" fill-opacity=".75"> · AUC</tspan></text>
-<text x="0" y="296" font-size="12" fill-opacity=".8">Smart Turn's test clips 0.9600 → eot-bench, real speech 0.7299</text>
-<text x="0" y="311" font-size="12" fill-opacity=".8">Smart Turn on the other data: 0.7838</text>
-<path d="M12,324H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
-<path d="M260.5,324H433.9" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
-<g><title>Smart Turn, eot-bench, real speech: 0.7838</title><path d="M301.1,314V334" stroke="currentColor" stroke-width="2"/></g>
-<g><title>s6-ear2-nano, eot-bench, real speech: 0.7299</title><path class="paper-fig1-b" fill="#c2410c" d="M260.5,317L267.5,324L260.5,331L253.5,324Z"/></g>
-<g><title>s6-ear2-nano, Smart Turn's test clips: 0.9600</title><circle cx="433.9" cy="324" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
+<text x="0" y="119" font-weight="650">s6-micro v2<tspan font-weight="400" fill-opacity=".75"> · passed, second look</tspan></text>
+<text x="0" y="134" font-size="11.5" fill-opacity=".8">typed_decisions_bench: 0.553, bar ≥ 0.45</text>
+<path d="M330,123H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,113V133" stroke="currentColor" stroke-width="2"/>
+<g><title>s6-micro v2: typed_decisions_bench: 0.553, bar ≥ 0.45</title><circle cx="523.9" cy="123" r="6" fill="#0284c7"/></g>
+<circle cx="523.9" cy="123" r="9.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+<text x="594" y="127" font-size="11" fill-opacity=".75">±0.2</text>
 </g>
 <g>
-<text x="0" y="374" font-weight="650">s6-secrets-verify-pico<tspan font-weight="400" fill-opacity=".75"> · line F1</tspan></text>
-<text x="0" y="392" font-size="12" fill-opacity=".8">validation repositories 0.8603 → test repositories 0.8561</text>
-<text x="0" y="407" font-size="12" fill-opacity=".8">best rule scanner on the other data: 0.7332</text>
-<path d="M12,420H464" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
-<path d="M355.6,420H358.8" stroke="currentColor" stroke-opacity=".45" stroke-width="2"/>
-<g><title>best rule scanner, test repositories: 0.7332</title><path d="M263,410V430" stroke="currentColor" stroke-width="2"/></g>
-<g><title>s6-secrets-verify-pico, test repositories: 0.8561</title><path class="paper-fig1-b" fill="#c2410c" d="M355.6,413L362.6,420L355.6,427L348.6,420Z"/></g>
-<g><title>s6-secrets-verify-pico, validation repositories: 0.8603</title><circle cx="358.8" cy="420" r="5.5" fill="none" stroke="#0284c7" stroke-width="3"/></g>
+<text x="0" y="155" font-weight="650">s6-micro-v1<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="170" font-size="11.5" fill-opacity=".8">ECE: 0.0821 [0.0746, 0.0900], bar ≤ 0.08</text>
+<path d="M330,159H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,149V169" stroke="currentColor" stroke-width="2"/>
+<path d="M394,159H492.6" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-micro-v1: ECE: 0.0821 [0.0746, 0.0900], bar ≤ 0.08</title><path class="paper-fig1-b" fill="#c2410c" d="M444.6,152L451.6,159L444.6,166L437.6,159Z"/></g>
+<text x="594" y="163" font-size="11" fill-opacity=".75">±0.02</text>
 </g>
-<g stroke="currentColor" stroke-opacity=".5"><path d="M12,464H464"/>
-<path d="M12,464V469"/>
-<path d="M87.3,464V469"/>
-<path d="M162.7,464V469"/>
-<path d="M238,464V469"/>
-<path d="M313.3,464V469"/>
-<path d="M388.7,464V469"/>
-<path d="M464,464V469"/>
+<g>
+<text x="0" y="191" font-weight="650">s4-micro<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="206" font-size="11.5" fill-opacity=".8">typed_decisions_bench: 0.343, bar &gt; 0.55</text>
+<path d="M330,195H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,185V205" stroke="currentColor" stroke-width="2"/>
+<g><title>s4-micro: typed_decisions_bench: 0.343, bar &gt; 0.55</title><path class="paper-fig1-b" fill="#c2410c" d="M352,188L359,195L352,202L345,195Z"/></g>
+<text x="594" y="199" font-size="11" fill-opacity=".75">±0.25</text>
 </g>
-<g font-size="12" fill-opacity=".8" text-anchor="middle">
-<text x="12" y="484">0.4</text>
-<text x="87.3" y="484">0.5</text>
-<text x="162.7" y="484">0.6</text>
-<text x="238" y="484">0.7</text>
-<text x="313.3" y="484">0.8</text>
-<text x="388.7" y="484">0.9</text>
-<text x="464" y="484">1</text>
+<g>
+<text x="0" y="227" font-weight="650">s6-secrets-pico<tspan font-weight="400" fill-opacity=".75"> · passed</tspan></text>
+<text x="0" y="242" font-size="11.5" fill-opacity=".8">secret exposed, secret_bench: 0.9990, bar &gt; 0.977</text>
+<path d="M330,231H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,221V241" stroke="currentColor" stroke-width="2"/>
+<g><title>s6-secrets-pico: secret exposed, secret_bench: 0.9990, bar &gt; 0.977</title><circle cx="514.3" cy="231" r="6" fill="#0284c7"/></g>
+<text x="594" y="235" font-size="11" fill-opacity=".75">±0.05</text>
+</g>
+<g>
+<text x="0" y="263" font-weight="650">s6-secrets-verify-pico<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="278" font-size="11.5" fill-opacity=".8">line F1 over the best rule scanner: +0.1229 [+0.0413, +0.3613], bar ≥ +0.15</text>
+<path d="M330,267H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,257V277" stroke="currentColor" stroke-width="2"/>
+<path d="M402.3,267H566.2" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-secrets-verify-pico: line F1 over the best rule scanner: +0.1229 [+0.0413, +0.3613], bar ≥ +0.15</title><path class="paper-fig1-b" fill="#c2410c" d="M444.1,260L451.1,267L444.1,274L437.1,267Z"/></g>
+<text x="594" y="271" font-size="11" fill-opacity=".75">±0.25</text>
+</g>
+<g>
+<text x="0" y="299" font-weight="650">s6-ear-nano<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="314" font-size="11.5" fill-opacity=".8">end of turn: 0.5681, bar ≥ 0.9263</text>
+<path d="M330,303H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,293V313" stroke="currentColor" stroke-width="2"/>
+<g><title>s6-ear-nano: end of turn: 0.5681, bar ≥ 0.9263</title><path class="paper-fig1-b" fill="#c2410c" d="M366.3,296L373.3,303L366.3,310L359.3,303Z"/></g>
+<text x="594" y="307" font-size="11" fill-opacity=".75">±0.5</text>
+</g>
+<g>
+<text x="0" y="335" font-weight="650">s6-ear2-nano<tspan font-weight="400" fill-opacity=".75"> · passed</tspan></text>
+<text x="0" y="350" font-size="11.5" fill-opacity=".8">accuracy, Smart Turn's test: 0.8993 [0.8962, 0.9027], bar ≥ 0.85</text>
+<path d="M330,339H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,329V349" stroke="currentColor" stroke-width="2"/>
+<path d="M517.1,339H525.5" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-ear2-nano: accuracy, Smart Turn's test: 0.8993 [0.8962, 0.9027], bar ≥ 0.85</title><circle cx="521.1" cy="339" r="6" fill="#0284c7"/></g>
+<text x="594" y="343" font-size="11" fill-opacity=".75">±0.1</text>
+</g>
+<g>
+<text x="0" y="371" font-weight="650">s6-ear3-nano<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="386" font-size="11.5" fill-opacity=".8">AUC change on eot-bench (E1): −0.0252 [−0.0336, −0.0167], bar ≥ +0.02</text>
+<path d="M330,375H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,365V385" stroke="currentColor" stroke-width="2"/>
+<path d="M389.4,375H411" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-ear3-nano: AUC change on eot-bench (E1): −0.0252 [−0.0336, −0.0167], bar ≥ +0.02</title><path class="paper-fig1-b" fill="#c2410c" d="M400.1,368L407.1,375L400.1,382L393.1,375Z"/></g>
+<text x="594" y="379" font-size="11" fill-opacity=".75">±0.1</text>
+</g>
+<g>
+<text x="0" y="407" font-weight="650">s6-cast-pico<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="422" font-size="11.5" fill-opacity=".8">GIFT-Eval nGMASE: 0.9471, bar ≤ 0.838</text>
+<path d="M330,411H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,401V421" stroke="currentColor" stroke-width="2"/>
+<g><title>s6-cast-pico: GIFT-Eval nGMASE: 0.9471, bar ≤ 0.838</title><path class="paper-fig1-b" fill="#c2410c" d="M388.2,404L395.2,411L388.2,418L381.2,411Z"/></g>
+<text x="594" y="415" font-size="11" fill-opacity=".75">±0.2</text>
+</g>
+<g>
+<text x="0" y="443" font-weight="650">s6-cast2-pico<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="458" font-size="11.5" fill-opacity=".8">GIFT-Eval nGMASE (G1): 0.8847, bar ≤ 0.838</text>
+<path d="M330,447H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,437V457" stroke="currentColor" stroke-width="2"/>
+<g><title>s6-cast2-pico: GIFT-Eval nGMASE (G1): 0.8847, bar ≤ 0.838</title><path class="paper-fig1-b" fill="#c2410c" d="M398.2,440L405.2,447L398.2,454L391.2,447Z"/></g>
+<text x="594" y="451" font-size="11" fill-opacity=".75">±0.1</text>
+</g>
+<g>
+<text x="0" y="479" font-weight="650">s6-route-nano<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="494" font-size="11.5" fill-opacity=".8">accuracy minus BM25 (G1): −0.0105 [−0.0265, +0.0055], bar &gt; 0</text>
+<path d="M330,483H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,473V493" stroke="currentColor" stroke-width="2"/>
+<path d="M390.2,483H472.1" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-route-nano: accuracy minus BM25 (G1): −0.0105 [−0.0265, +0.0055], bar &gt; 0</title><path class="paper-fig1-b" fill="#c2410c" d="M431.1,476L438.1,483L431.1,490L424.1,483Z"/></g>
+<text x="594" y="487" font-size="11" fill-opacity=".75">±0.05</text>
+</g>
+<g>
+<text x="0" y="515" font-weight="650">s6-route<tspan font-weight="400" fill-opacity=".75"> · passed, second look</tspan></text>
+<text x="0" y="530" font-size="11.5" fill-opacity=".8">accuracy minus BM25: +0.0698 [+0.0455, +0.0952], bar lower bound &gt; 0</text>
+<path d="M330,519H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,509V529" stroke="currentColor" stroke-width="2"/>
+<path d="M487.1,519H518.9" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-route: accuracy minus BM25: +0.0698 [+0.0455, +0.0952], bar lower bound &gt; 0</title><circle cx="502.7" cy="519" r="6" fill="#0284c7"/></g>
+<circle cx="502.7" cy="519" r="9.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+<text x="594" y="523" font-size="11" fill-opacity=".75">±0.2</text>
+</g>
+<g>
+<text x="0" y="551" font-weight="650">s6-route7-nano<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="566" font-size="11.5" fill-opacity=".8">accuracy minus BM25 on T5 (G1): −0.0065 [−0.0235, +0.0120], bar lower bound &gt; 0</text>
+<path d="M330,555H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,545V565" stroke="currentColor" stroke-width="2"/>
+<path d="M397.8,555H488.7" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-route7-nano: accuracy minus BM25 on T5 (G1): −0.0065 [−0.0235, +0.0120], bar lower bound &gt; 0</title><path class="paper-fig1-b" fill="#c2410c" d="M441.4,548L448.4,555L441.4,562L434.4,555Z"/></g>
+<text x="594" y="559" font-size="11" fill-opacity=".75">±0.05</text>
+</g>
+<g>
+<text x="0" y="587" font-weight="650">s6-sleep3-nano<tspan font-weight="400" fill-opacity=".75"> · failed</tspan></text>
+<text x="0" y="602" font-size="11.5" fill-opacity=".8">sleep gain on recall (H1): +0.0030 [−0.0010, +0.0068], bar lower bound &gt; 0</text>
+<path d="M330,591H586" stroke="currentColor" stroke-opacity=".18" stroke-width="2"/>
+<path d="M458,581V601" stroke="currentColor" stroke-width="2"/>
+<path d="M445.2,591H545" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+<g><title>s6-sleep3-nano: sleep gain on recall (H1): +0.0030 [−0.0010, +0.0068], bar lower bound &gt; 0</title><path class="paper-fig1-b" fill="#c2410c" d="M496.4,584L503.4,591L496.4,598L489.4,591Z"/></g>
+<text x="594" y="595" font-size="11" fill-opacity=".75">±0.01</text>
 </g>
 </svg>

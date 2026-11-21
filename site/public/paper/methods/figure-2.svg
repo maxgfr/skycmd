@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 355.2" width="720" height="355.2" role="img" aria-labelledby="paper-m-fig2-title paper-m-fig2-desc" fill="currentColor" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="12" style="display:block;width:100%;max-width:720px;height:auto;margin:0 auto">
+<title id="paper-m-fig2-title">The router size map: accuracy against bytes, with tool names shown and masked</title>
+<desc id="paper-m-fig2-desc">Accuracy on 945 fresh requests against the bytes each router downloads, on a logarithmic axis from 1 MB to 100 MB, with BM25 at a separate 0-byte position. 1. BM25 (0 bytes): 0.8169; names masked 0.8138. 2. embedding part, potion-base-2M at 4 bits (1,273,312 bytes): 0.7386; names masked 0.7280. 3. model part, s6-route-nano (2,418,912 bytes): 0.7926; names masked 0.0720. 4. s6-route, the two parts multiplied (3,692,224 bytes): 0.8868; names masked 0.2497. 5. all-MiniLM-L6-v2 (91.6 MB): 0.9048; names masked 0.9005.</desc>
+<g stroke="currentColor" stroke-opacity=".5" fill="none"><path d="M139.2,297.6H700.8"/><path d="M52.8,297.6H91.2"/><path d="M139.2,297.6V28.8"/></g>
+<g font-size="11" fill-opacity=".8" text-anchor="middle">
+<path d="M139.2,297.6v5" stroke="currentColor" stroke-opacity=".5"/><text x="139.2" y="315.6">1 MB</text>
+<path d="M420,297.6v5" stroke="currentColor" stroke-opacity=".5"/><text x="420" y="315.6">10 MB</text>
+<path d="M700.8,297.6v5" stroke="currentColor" stroke-opacity=".5"/><text x="700.8" y="315.6">100 MB</text>
+<text x="72" y="315.6">0 bytes</text>
+<text x="420" y="333.6">bytes downloaded (logarithmic axis; BM25 stores no weights)</text></g>
+<g font-size="11" fill-opacity=".8" text-anchor="end">
+<path d="M139.2,297.6h-5" stroke="currentColor" stroke-opacity=".5"/><text x="131.2" y="301.6">0</text>
+<path d="M139.2,243.8h-5" stroke="currentColor" stroke-opacity=".5"/><text x="131.2" y="247.8">0.2</text>
+<path d="M139.2,190.1h-5" stroke="currentColor" stroke-opacity=".5"/><text x="131.2" y="194.1">0.4</text>
+<path d="M139.2,136.3h-5" stroke="currentColor" stroke-opacity=".5"/><text x="131.2" y="140.3">0.6</text>
+<path d="M139.2,82.6h-5" stroke="currentColor" stroke-opacity=".5"/><text x="131.2" y="86.6">0.8</text>
+<path d="M139.2,28.8h-5" stroke="currentColor" stroke-opacity=".5"/><text x="131.2" y="32.8">1</text>
+<text x="109.2" y="14.8" text-anchor="start">accuracy on 945 fresh requests</text></g>
+<path d="M72,78V78.9" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/>
+<g><title>BM25, names masked: 0.8138</title><circle cx="72" cy="78.9" r="5.5" fill="none" stroke="#0284c7" stroke-width="2.5"/></g>
+<g><title>BM25: 0.8169</title><circle cx="72" cy="78" r="6" fill="#0284c7"/></g>
+<text x="72" y="67" text-anchor="middle" font-size="12" font-weight="650">1</text>
+<path d="M168.7,99.1V101.9" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/>
+<g><title>embedding part, potion-base-2M at 4 bits, names masked: 0.7280</title><circle cx="168.7" cy="101.9" r="5.5" fill="none" stroke="#0284c7" stroke-width="2.5"/></g>
+<g><title>embedding part, potion-base-2M at 4 bits: 0.7386</title><circle cx="168.7" cy="99.1" r="6" fill="#0284c7"/></g>
+<text x="168.7" y="88.1" text-anchor="middle" font-size="12" font-weight="650">2</text>
+<path d="M246.9,84.5V278.2" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/>
+<g><title>model part, s6-route-nano, names masked: 0.0720</title><circle cx="246.9" cy="278.2" r="5.5" fill="none" stroke="#0284c7" stroke-width="2.5"/></g>
+<g><title>model part, s6-route-nano: 0.7926</title><circle cx="246.9" cy="84.5" r="6" fill="#0284c7"/></g>
+<text x="246.9" y="73.5" text-anchor="middle" font-size="12" font-weight="650">3</text>
+<path d="M298.5,59.2V230.5" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/>
+<g><title>s6-route, the two parts multiplied, names masked: 0.2497</title><circle cx="298.5" cy="230.5" r="5.5" fill="none" stroke="#0284c7" stroke-width="2.5"/></g>
+<g><title>s6-route, the two parts multiplied: 0.8868</title><circle cx="298.5" cy="59.2" r="6" fill="#0284c7"/></g>
+<text x="298.5" y="48.2" text-anchor="middle" font-size="12" font-weight="650">4</text>
+<path d="M690.1,54.4V55.5" stroke="currentColor" stroke-opacity=".35" stroke-width="1.5"/>
+<g><title>all-MiniLM-L6-v2, names masked: 0.9005</title><circle cx="690.1" cy="55.5" r="5.5" fill="none" stroke="#0284c7" stroke-width="2.5"/></g>
+<g><title>all-MiniLM-L6-v2: 0.9048</title><circle cx="690.1" cy="54.4" r="6" fill="#0284c7"/></g>
+<text x="690.1" y="43.4" text-anchor="middle" font-size="12" font-weight="650">5</text>
+<g font-size="11.5"><circle cx="338.4" cy="130.4" r="6" fill="#0284c7"/><text x="352.8" y="134.4">tool names shown</text><circle cx="511.2" cy="130.4" r="5.5" fill="none" stroke="#0284c7" stroke-width="2.5"/><text x="525.6" y="134.4">names masked as tool_&lt;k&gt;</text>
+<text x="331.2" y="154.6">1. BM25 (0 bytes): 0.8169; names masked 0.8138</text>
+<text x="331.2" y="174.7">2. embedding part, potion-base-2M at 4 bits (1,273,312 bytes): 0.7386; names masked 0.7280</text>
+<text x="331.2" y="194.9">3. model part, s6-route-nano (2,418,912 bytes): 0.7926; names masked 0.0720</text>
+<text x="331.2" y="215">4. s6-route, the two parts multiplied (3,692,224 bytes): 0.8868; names masked 0.2497</text>
+<text x="331.2" y="235.2">5. all-MiniLM-L6-v2 (91.6 MB): 0.9048; names masked 0.9005</text>
+</g>
+</svg>
