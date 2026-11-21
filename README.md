@@ -1,50 +1,8 @@
 # skycmd
 
-[![Site](https://img.shields.io/badge/site-maxgfr.github.io%2Fskycmd-blue)](https://maxgfr.github.io/skycmd/) [![Hugging Face collection](https://img.shields.io/badge/%F0%9F%A4%97%20collection-skycmd-yellow)](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) [![Every demo](https://img.shields.io/badge/%F0%9F%A4%97%20Space-every%20demo-yellow)](https://huggingface.co/spaces/maxgfr/skycmd) [![License](https://img.shields.io/badge/code-Apache--2.0-green)](LICENSE)
+[![Technical report on Zenodo](https://img.shields.io/badge/Zenodo-technical%20report-blue)](https://zenodo.org/records/24421273) [![Methods paper on Zenodo](https://img.shields.io/badge/Zenodo-methods%20paper-blue)](https://zenodo.org/records/24420817) [![Site](https://img.shields.io/badge/site-maxgfr.github.io%2Fskycmd-blue)](https://maxgfr.github.io/skycmd/) [![Hugging Face collection](https://img.shields.io/badge/%F0%9F%A4%97%20collection-skycmd-yellow)](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) [![Every demo](https://img.shields.io/badge/%F0%9F%A4%97%20Space-every%20demo-yellow)](https://huggingface.co/spaces/maxgfr/skycmd) [![License](https://img.shields.io/badge/code-Apache--2.0-green)](LICENSE)
 
 skycmd trains small decision models and runs them in the browser. A decision model does not generate text: it reads a state (a game frame, a text, a request with a list of tools, a few seconds of audio) and typed questions, and returns a calibrated probability for every allowed option in one forward pass. The models were trained from scratch in Rust on one Apple M5 MacBook, and every demo runs them in WebAssembly from the files their numbers were measured on.
-
-## The papers
-
-[*Pre-registered gates for small models trained on one laptop: what passed, what failed, and what the readings show*](https://maxgfr.github.io/skycmd/paper/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed).
-
-- Read it on the site: [maxgfr.github.io/skycmd/paper](https://maxgfr.github.io/skycmd/paper/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf).
-- The LaTeX source is in [`paper/`](paper/); `scripts/build-paper.sh` builds the PDF.
-
-It reports every gated experiment of the project: from s5 on, each one had a pre-registration committed before the computation it governs, its test was read once, and a model that missed its gate was published with its file. Of the 20 published model files, 15 were judged by a gate fixed before training: 5 passed and 10 failed. The report also states what the project takes from earlier work and what it adds.
-
-```bibtex
-@misc{golfier2026skycmd,
-  author    = {Golfier, Maxime},
-  title     = {Pre-registered gates for small models trained on one laptop:
-               what passed, what failed, and what the readings show},
-  year      = {2026},
-  publisher = {Zenodo},
-  doi       = {10.5281/zenodo.24418316},
-  url       = {https://maxgfr.github.io/skycmd/paper/},
-  note      = {Technical report, not peer-reviewed}
-}
-```
-
-[*Looped ternary encoders for typed decisions: a recipe from laptop to browser*](https://maxgfr.github.io/skycmd/paper/methods/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed), the companion on method.
-
-- Read it on the site: [maxgfr.github.io/skycmd/paper/methods](https://maxgfr.github.io/skycmd/paper/methods/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf).
-- The LaTeX source is in [`paper/methods/`](paper/methods/); `scripts/build-paper.sh --methods` builds the PDF.
-
-It describes how the models, their training, their calibration and the engine work, precisely enough to reimplement them: the ternary decision graph with its two streams, cache and looped exits, the training recipe of seven published files, exit thresholds chosen by playing the games, the task-specific systems, and the Rust engine that runs every file natively and in WebAssembly. It cites the first report for the protocol and the verdicts.
-
-```bibtex
-@misc{golfier2026skycmdmethods,
-  author       = {Golfier, Maxime},
-  title        = {Looped ternary encoders for typed decisions:
-                  a recipe from laptop to browser},
-  year         = {2026},
-  publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.24420816},
-  howpublished = {\url{https://maxgfr.github.io/skycmd/paper/methods/}},
-  note         = {Technical report, not peer-reviewed}
-}
-```
 
 ## The state of the project
 
@@ -57,7 +15,7 @@ The experiments are finished, as of 20 November 2026. Every line is closed or pu
   - every demo in one Space: [maxgfr/skycmd](https://huggingface.co/spaces/maxgfr/skycmd);
   - the collection [skycmd](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603): the hub Space, the models by verdict, their Spaces and the 16 data sets;
   - every model, Space and data set: [huggingface.co/maxgfr](https://huggingface.co/maxgfr). Each model card opens with its verdict; each data set gives the licence of each source ([`DATA_LICENSES.md`](DATA_LICENSES.md)).
-- **The papers**: the technical report ([site](https://maxgfr.github.io/skycmd/paper/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf)) and the methods paper ([site](https://maxgfr.github.io/skycmd/paper/methods/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf)).
+- **The papers**: the technical report ([site](https://maxgfr.github.io/skycmd/paper/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf), [Zenodo](https://zenodo.org/records/24421273)) and the methods paper ([site](https://maxgfr.github.io/skycmd/paper/methods/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf), [Zenodo](https://zenodo.org/records/24420817)).
 - **The raw archive**: the release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20): raw traces of two gates, run logs and intermediate model files ([`docs/data-inventory.md`](docs/data-inventory.md), section 13).
 
 ## The 20 published models
@@ -158,9 +116,48 @@ Each s6 model was trained by one script under its pre-registration; the small re
 
 ## Licence and citation
 
-The code is under the Apache-2.0 licence ([`LICENSE`](LICENSE)). The data sets keep their own licences, listed source by source in [`DATA_LICENSES.md`](DATA_LICENSES.md). To cite the project, use [`CITATION.cff`](CITATION.cff), which points to the [technical report](https://maxgfr.github.io/skycmd/paper/).
+The code is under the Apache-2.0 licence ([`LICENSE`](LICENSE)). The data sets keep their own licences, listed source by source in [`DATA_LICENSES.md`](DATA_LICENSES.md). To cite the project, use [`CITATION.cff`](CITATION.cff), which points to the [technical report](https://maxgfr.github.io/skycmd/paper/) and its [Zenodo record](https://zenodo.org/records/24421273).
 
-Both papers are archived on Zenodo, with their PDF and LaTeX source:
+## The papers
 
-- the technical report: [zenodo.org/records/24421273](https://zenodo.org/records/24421273);
-- the methods paper: [zenodo.org/records/24420817](https://zenodo.org/records/24420817).
+[*Pre-registered gates for small models trained on one laptop: what passed, what failed, and what the readings show*](https://maxgfr.github.io/skycmd/paper/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed).
+
+- Read it on the site: [maxgfr.github.io/skycmd/paper](https://maxgfr.github.io/skycmd/paper/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf).
+- On Zenodo: [zenodo.org/records/24421273](https://zenodo.org/records/24421273), with its LaTeX source.
+- The LaTeX source is in [`paper/`](paper/); `scripts/build-paper.sh` builds the PDF.
+
+It reports every gated experiment of the project: from s5 on, each one had a pre-registration committed before the computation it governs, its test was read once, and a model that missed its gate was published with its file. Of the 20 published model files, 15 were judged by a gate fixed before training: 5 passed and 10 failed. The report also states what the project takes from earlier work and what it adds.
+
+```bibtex
+@misc{golfier2026skycmd,
+  author    = {Golfier, Maxime},
+  title     = {Pre-registered gates for small models trained on one laptop:
+               what passed, what failed, and what the readings show},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.24418316},
+  url       = {https://maxgfr.github.io/skycmd/paper/},
+  note      = {Technical report, not peer-reviewed}
+}
+```
+
+[*Looped ternary encoders for typed decisions: a recipe from laptop to browser*](https://maxgfr.github.io/skycmd/paper/methods/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed), the companion on method.
+
+- Read it on the site: [maxgfr.github.io/skycmd/paper/methods](https://maxgfr.github.io/skycmd/paper/methods/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf).
+- On Zenodo: [zenodo.org/records/24420817](https://zenodo.org/records/24420817), with its LaTeX source.
+- The LaTeX source is in [`paper/methods/`](paper/methods/); `scripts/build-paper.sh --methods` builds the PDF.
+
+It describes how the models, their training, their calibration and the engine work, precisely enough to reimplement them: the ternary decision graph with its two streams, cache and looped exits, the training recipe of seven published files, exit thresholds chosen by playing the games, the task-specific systems, and the Rust engine that runs every file natively and in WebAssembly. It cites the first report for the protocol and the verdicts.
+
+```bibtex
+@misc{golfier2026skycmdmethods,
+  author       = {Golfier, Maxime},
+  title        = {Looped ternary encoders for typed decisions:
+                  a recipe from laptop to browser},
+  year         = {2026},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.24420816},
+  howpublished = {\url{https://maxgfr.github.io/skycmd/paper/methods/}},
+  note         = {Technical report, not peer-reviewed}
+}
+```
