@@ -9,7 +9,7 @@ skycmd trains small decision models and runs them in the browser. A decision mod
 [*Pre-registered gates for small models trained on one laptop: what passed, what failed, and what the readings show*](https://maxgfr.github.io/skycmd/paper/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed).
 
 - Read it on the site: [maxgfr.github.io/skycmd/paper](https://maxgfr.github.io/skycmd/paper/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf).
-- Archived on Zenodo: [DOI 10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316) (all versions; this version is [10.5281/zenodo.24418317](https://doi.org/10.5281/zenodo.24418317)), with its LaTeX source.
+- Archived on Zenodo: [DOI 10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316) (all versions; the current version, v2, is [10.5281/zenodo.24421273](https://doi.org/10.5281/zenodo.24421273)), with its LaTeX source.
 - The LaTeX source is in [`paper/`](paper/); `scripts/build-paper.sh` builds the PDF.
 
 It reports every gated experiment of the project: from s5 on, each one had a pre-registration committed before the computation it governs, its test was read once, and a model that missed its gate was published with its file. Of the 20 published model files, 15 were judged by a gate fixed before training: 5 passed and 10 failed. The report also states what the project takes from earlier work and what it adds.
