@@ -23,7 +23,7 @@ Before an experiment runs, I commit the test, the bar to clear and what a failur
 
 A voice agent is a program you talk to: it listens and answers aloud. End-of-turn detection is how it knows when to start: from the audio alone, decide whether the speaker has finished their turn or has only paused. The usual alternative, a silence timer, cuts people off when too short and drags when too long.
 
-Accuracy is the share of right answers. A false cut-off is the costliest mistake: answering "finished" while the speaker was only drawing breath. Recall is the share of real cases a system catches — here, of clips that really end a turn.
+Accuracy is the share of right answers. A false cut-off is the costliest mistake: answering "finished" while the speaker was only drawing breath. Recall is the share of real cases a system catches; here, of clips that really end a turn.
 
 The reference is [Smart Turn v3.2](https://github.com/pipecat-ai/smart-turn) by Pipecat, open under the BSD-2-Clause licence: an 8.7 MB file at about 32 ms per decision on one CPU core. On its official test set of 31,527 clips Pipecat reports 0.9263; a timer that always answers "finished" scores 0.4979 there.
 
@@ -31,13 +31,13 @@ The reference is [Smart Turn v3.2](https://github.com/pipecat-ai/smart-turn) by 
 
 The first version, [s6-ear-nano](https://huggingface.co/maxgfr/s6-ear-nano), was ambitious: one 899 KB model as the ears of a whole agent. It began by pretraining (predicting, on LibriSpeech, the codes that Mimi, a neural audio codec, would produce), then shared its weights between three tasks: end of turn (45% of the budget), keywords, and keywords in words it had never heard. Its input: 10.24 s of log-mel frames, sound cut into short overlapping windows, each summarised by its energy in a few dozen frequency bands, on a logarithmic scale.
 
-Its gate had four conditions; three failed. End of turn 0.5681 against 0.8518, the number my harness then read for Smart Turn — hold that number. Keywords 0.8885 against 0.90; French zero-shot keywords 0.1330 against 0.20; only English zero-shot passed. The pre-registered control — same model, data and budget, without the pretraining — did better on all four sets, 0.7647 on end of turn. The pretraining had learned its own task and still hurt: the pretrained model underfit its training clips, 0.702 against 0.861 for the control. The failure is published with its file. Two lessons: one job at a time; at this scale a codec pretraining bought nothing.
+Its gate had four conditions; three failed. End of turn 0.5681 against 0.8518, the number my harness then read for Smart Turn. Hold that number. Keywords 0.8885 against 0.90; French zero-shot keywords 0.1330 against 0.20; only English zero-shot passed. The pre-registered control (same model, data and budget, without the pretraining) did better on all four sets, 0.7647 on end of turn. The pretraining had learned its own task and still hurt: the pretrained model underfit its training clips, 0.702 against 0.861 for the control. The failure is published with its file. Two lessons: one job at a time; at this scale a codec pretraining bought nothing.
 
 ## The bug in the harness
 
 That 0.8518 changed v2's design. To score Smart Turn I had written a small script around its ONNX file; one step of its preprocessing came out wrong: a clip shorter than 8 s has to be padded, my script at the end, Smart Turn at the start. A short clip then ends in zeros, and trailing silence looks exactly like a finished turn. On 3,000 test clips my harness read 0.8437 where the reference padding reads 0.9243; on the full set, 0.8518 instead of the published 0.9263. Every "0.5681 against 0.8518" understated the gap by about 7.5 points. The verdicts did not move, but every file that printed the wrong bar was corrected.
 
-The correction was procedural: a comparison against a baseline you have not reproduced is a comparison against a number you do not have. v2's pre-registration made the check a precondition — the fixed harness had to give 0.9263 ± 0.003 on all 31,527 clips, and a timer the test's share of finished clips, before any v2 score could be read. It gave 0.9260 and 0.4979; only then was the test read.
+The correction was procedural: a comparison against a baseline you have not reproduced is a comparison against a number you do not have. v2's pre-registration made the check a precondition: the fixed harness had to give 0.9263 ± 0.003 on all 31,527 clips, and a timer the test's share of finished clips, before any v2 score could be read. It gave 0.9260 and 0.4979; only then was the test read.
 
 ## v2: one job, one teacher, the size chosen by a stopwatch
 
@@ -45,9 +45,9 @@ The second version was designed before anything ran: a design study, then the [p
 
 - **One task, the teacher's data.** Keywords are dropped, and v1's older release lacked 17.4% of the test's sources; v2 trains on `smart-turn-data-v3.2-train`, Smart Turn's training set, 270,946 clips, CC-BY-4.0.
 - **Distillation, credited.** Distillation trains a small model, the student, to reproduce the outputs of a larger one, the teacher. The student copies Smart Turn's output score, pooled vector and encoder states, on training clips only; its 8 million parameters carry speech pretraining a from-scratch student cannot rebuild.
-- **A 4 s window, measured.** I fed Smart Turn the last few seconds of 3,000 test clips: at 4 s it keeps 0.9190 of its 0.9243, at 3 s 0.9033 — so the student reads the last 4 s where the teacher reads 8.
-- **Features the engine computes itself.** Per 10 ms hop: 40 log-mel bands plus three prosody channels — log pitch, voicing, energy — each window normalised so microphone gain cancels. v1 had none of this.
-- **The size, chosen by a probe.** Four candidate sizes were exported with random ternary weights and timed over 1,000 decisions on a full 4 s window; the rule, written first: the first size whose median stays under 4.0 ms, 1 ms of margin under the gate's bound. The candidates took 10.10, 6.79 and 4.89 ms — the third rejected by 0.89 ms — the fourth, R4, 2.39 ms: one position per 80 ms instead of 40, so attention runs over half the positions. That is the model: 1,306,178 parameters, 631,936 bytes.
+- **A 4 s window, measured.** I fed Smart Turn the last few seconds of 3,000 test clips: at 4 s it keeps 0.9190 of its 0.9243, at 3 s 0.9033, so the student reads the last 4 s where the teacher reads 8.
+- **Features the engine computes itself.** Per 10 ms hop: 40 log-mel bands plus three prosody channels (log pitch, voicing, energy), each window normalised so microphone gain cancels. v1 had none of this.
+- **The size, chosen by a probe.** Four candidate sizes were exported with random ternary weights and timed over 1,000 decisions on a full 4 s window; the rule, written first: the first size whose median stays under 4.0 ms, 1 ms of margin under the gate's bound. The candidates took 10.10, 6.79 and 4.89 ms (the third rejected by 0.89 ms), and the fourth, R4, 2.39 ms: one position per 80 ms instead of 40, so attention runs over half the positions. That is the model: 1,306,178 parameters, 631,936 bytes.
 
 The pilot chose the learning rate and tested distillation: the best distilled arm reached 0.8715 on validation, hard labels 0.8437, and cleared the 0.82 stop rule. The main run took 240 working minutes: 305,700 steps, about 152 epochs, seed 1, once, ternary quantisation over the last 15%. The whole line used about 293 working minutes of GPU.
 
@@ -59,7 +59,7 @@ Read once, at the end: Smart Turn v3.2's 31,527 official clips, one fixed harnes
 |---|---:|---:|
 | silence timer (always "finished") | 0 bytes | 0.4979 |
 | s6-ear-nano (v1, failed) | 899 KB | 0.5681 |
-| v1's control (no Mimi pretraining, not published) | — | 0.7647 |
+| v1's control (no Mimi pretraining, not published) | not published | 0.7647 |
 | Smart Turn v3.2 CPU, as v1's harness read it (wrong padding) | 8.7 MB | 0.8518 |
 | **s6-ear2-nano (v2)** | **632 KB** | **0.8993** [0.8962, 0.9027] |
 | Smart Turn v3.2 CPU, fixed harness | 8.7 MB | 0.9260 |
@@ -92,10 +92,10 @@ The gate's sentence on which model to take: "Take v2 when size and speed matter:
 
 The pass says the model cleared its bars, not that the problem is solved.
 
-- **On real conversations, both models are far weaker.** LiveKit's eot-bench is real human-to-agent speech — 14 languages, 17,934 decisions at labelled pauses — and the design never read it. The student's AUC falls from 0.9600 on the official test to 0.7299 there, the teacher's to 0.7838 (AUC: how well a model ranks finished above unfinished; 0.5 is chance, 1 is perfect). At the cautious threshold, v2 answers "finished" on 0.5253 of the real ends of turn: about half pass by it. The pre-registered "does not carry over" needed a gap above 0.10; at 0.054, the plainer sentence stands.
+- **On real conversations, both models are far weaker.** LiveKit's eot-bench is real human-to-agent speech (14 languages, 17,934 decisions at labelled pauses), and the design never read it. The student's AUC falls from 0.9600 on the official test to 0.7299 there, the teacher's to 0.7838 (AUC: how well a model ranks finished above unfinished; 0.5 is chance, 1 is perfect). At the cautious threshold, v2 answers "finished" on 0.5253 of the real ends of turn: about half pass by it. The pre-registered "does not carry over" needed a gap above 0.10; at 0.054, the plainer sentence stands.
 - **The weakest clips have names.** Vietnamese 0.7749, Marathi 0.7907, Bengali 0.7950, against 0.8993 overall; English 0.9056.
 - **The test is mostly synthetic.** Most clips are text-to-speech voices.
-- **The official test is partly in-sample for the design** — never for the weights: no test clip is trained on, no threshold chosen on test — but the 4 s window and the data change came from readings on 3,000 of its clips.
+- **The official test is partly in-sample for the design**, never for the weights (no test clip is trained on, no threshold chosen on test), but the 4 s window and the data change came from readings on 3,000 of its clips.
 - **It is a student.** Trained to reproduce its teacher, it cannot be more right than the labels it imitates; it agrees with Smart Turn on 91.8% of test clips.
 
 ## What I take from it

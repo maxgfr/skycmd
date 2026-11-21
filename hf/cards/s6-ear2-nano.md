@@ -48,7 +48,7 @@ datasets:
 > eot-bench](https://huggingface.co/datasets/livekit/eot-bench-data), 17,934 cuts, which the
 > design never read) this model and its teacher are far weaker than on the test clips: AUC
 > 0.7299 against 0.7838, and at τ₈₅ this model answers "finished" on 0.5253 of the real ends of
-> turn — about half pass. Its weakest languages are Vietnamese (0.7749), Marathi (0.7907) and
+> turn: about half pass. Its weakest languages are Vietnamese (0.7749), Marathi (0.7907) and
 > Bengali (0.7950). It is a student of Smart Turn: it cannot be better than its teacher's
 > labels. Most of its test set is synthetic speech. The official test set is partly in-sample
 > for the design choices, though never for the weights. **Try it with your microphone** on the
@@ -68,7 +68,7 @@ shared one ternary model between end of turn and keywords on top of a codec pret
 failed three of its four gates (end of turn 0.5681). This version drops all of that: one task,
 no pretraining, a dedicated `turn` graph (a patch projection, 4 s2 encoder blocks, Smart Turn's
 attention pooling, a 2-layer head; 1,306,178 ternary parameters), and a front end built for the
-job — 40 log-mel bands plus 3 prosody channels (log f0, voicing, energy) per 10 ms hop. It was
+job: 40 log-mel bands plus 3 prosody channels (log f0, voicing, energy) per 10 ms hop. It was
 trained for 240 working minutes on one Apple M5 as a student of Smart Turn v3.2, once, seed 1.
 
 - **Demo:** in the browser, with the microphone or a self-test without one: the site's
@@ -156,12 +156,12 @@ from a policy sweep:
 The pre-registration fixed the reading in advance: "does not carry over" is said only if the
 student's AUC is more than 0.10 below the teacher's. It is 0.054 below, so that sentence does
 not apply. Said plainly: **both models are far weaker on these real conversational cuts than on
-the test clips, and at τ₈₅ this model answers "finished" on 0.5253 of the real ends of turn —
+the test clips, and at τ₈₅ this model answers "finished" on 0.5253 of the real ends of turn:
 about half pass.** On a real deployment, use τ₈₅ only together with the fallback timer below.
 
 ## How to use it
 
-**The input.** 16 kHz mono PCM. The engine computes the front end itself — no external
+**The input.** 16 kHz mono PCM. The engine computes the front end itself, with no external
 extractor: a 25 ms Hann window, a 10 ms hop, 40 log-mel bands, and per hop the three prosody
 channels (log f0, voicing, energy; pitch searched between 80 and 400 Hz by autocorrelation).
 Each window is normalised per clip by Whisper's rule, and the model reads the **last 4 s**
@@ -170,8 +170,8 @@ gives the calibrated probability that the turn is finished, `σ(logit / temperat
 stored temperature 1.4948.
 
 **The two thresholds in the file.** Both come from validation, never from test: **τ₀.₅ = 0.5**
-on the calibrated probability — the accuracy reading (0.8993 on the test clips) — and
-**τ₈₅ = 0.7244**, the highest threshold whose validation END recall is at least 0.85 — the
+on the calibrated probability, the accuracy reading (0.8993 on the test clips), and
+**τ₈₅ = 0.7244**, the highest threshold whose validation END recall is at least 0.85: the
 reading for a voice agent that must not cut people off (false cut-off 0.0847, END recall 0.8627
 on test). Answer "finished" when the probability reaches the threshold, else keep listening.
 
@@ -245,7 +245,7 @@ on validation and stored in the file; the test set was read once, at the end.
   training, 13,593 validation. A clip is dropped if its id is a test id or its decoded PCM
   hashes to a test clip's; the filter dropped no row (the sentence-level overlap cannot be
   checked, `spoken_text` being empty, as for Smart Turn's own numbers).
-- **Test (gated):** `pipecat-ai/smart-turn-data-v3.2-test`, 31,527 clips, CC-BY-4.0 — Smart
+- **Test (gated):** `pipecat-ai/smart-turn-data-v3.2-test`, 31,527 clips, CC-BY-4.0: Smart
   Turn v3.2's own official held-out set. Never trained on, never used for a threshold.
 - **Second test (reported only):** `livekit/eot-bench-data`, CC-BY-4.0, real conversational
   speech, one decision per labelled pause; never trained on.
