@@ -7,6 +7,10 @@ authors:
     family-names: Golfier
     alias: maxgfr
 repository-code: "https://github.com/maxgfr/skycmd"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24418316"
+    description: "The technical report on Zenodo, all versions (concept DOI)"
 url: "https://maxgfr.github.io/skycmd/"
 license: Apache-2.0
 abstract: "Small decision models trained on one laptop and run in the browser through WebAssembly, with pre-registered gates. The licence applies to the code; each data set keeps its own licence (DATA_LICENSES.md)."
@@ -19,5 +23,6 @@ preferred-citation:
       alias: maxgfr
   year: 2026
   month: 11
+  doi: "10.5281/zenodo.24418316"
   url: "https://maxgfr.github.io/skycmd/paper/"
   notes: "Technical report, not peer-reviewed"

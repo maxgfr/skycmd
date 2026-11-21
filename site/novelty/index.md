@@ -5,7 +5,7 @@ description: "Every claim of skycmd in one table, with its measurement, its evid
 
 # What skycmd brings
 
-*The whole project is also written up as a [technical report](/paper/) (not peer-reviewed): the protocol, every gate as read, and what the readings show across lines. This page stays the reference for each claim.*
+*The whole project is also written up as a [technical report](/paper/) (not peer-reviewed; archived on Zenodo, [DOI 10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316)): the protocol, every gate as read, and what the readings show across lines. This page stays the reference for each claim.*
 
 *Final state, 20 November 2026: the experiments are finished, and every line is closed or published. Of the 20 published model files, 5 passed their gate (s6-micro on a second look, and s6-route with a system defined after its predecessor's test was read), 10 failed it and are published as results, and 5 had no gate; the last reading, s6-ear v3 on 19 November, failed its gate, and s6-ear2-nano stays the end-of-turn file. The dated updates of this page are in the [change log](#change-log) at its end.*
 

@@ -9,7 +9,7 @@ The experiments are finished, as of 20 November 2026. Every line is closed or pu
 ## Links
 
 - The site: <https://maxgfr.github.io/skycmd/>, with [Results](https://maxgfr.github.io/skycmd/results/) (every gate and its numbers, failures included) and [What we bring](https://maxgfr.github.io/skycmd/novelty/) (every claim, its measurement and its evidence).
-- The technical report: [*Pre-registered gates for small models trained on one laptop*](https://maxgfr.github.io/skycmd/paper/) (20 November 2026, not peer-reviewed), also as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf).
+- The technical report: [*Pre-registered gates for small models trained on one laptop*](https://maxgfr.github.io/skycmd/paper/) (21 November 2026, not peer-reviewed), also as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf), archived on Zenodo with the DOI [10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316).
 - Every demo in one Space: [maxgfr/skycmd](https://huggingface.co/spaces/maxgfr/skycmd). Each model also has its own Space.
 - The models and the data sets on Hugging Face: [huggingface.co/maxgfr](https://huggingface.co/maxgfr), gathered in the collection [skycmd](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) (the hub Space, the models by verdict, their Spaces and the 16 data sets). Each model card opens with its verdict; each data set gives the licence of each source ([`DATA_LICENSES.md`](DATA_LICENSES.md)).
 - The release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20): raw traces of two gates, run logs and intermediate model files ([`docs/data-inventory.md`](docs/data-inventory.md), section 13).
@@ -112,4 +112,4 @@ Each s6 model was trained by one script under its pre-registration; the small re
 
 ## Licence and citation
 
-The code is under the Apache-2.0 licence ([`LICENSE`](LICENSE)). The data sets keep their own licences, listed source by source in [`DATA_LICENSES.md`](DATA_LICENSES.md). To cite the project, use [`CITATION.cff`](CITATION.cff), which points to the [technical report](https://maxgfr.github.io/skycmd/paper/).
+The code is under the Apache-2.0 licence ([`LICENSE`](LICENSE)). The data sets keep their own licences, listed source by source in [`DATA_LICENSES.md`](DATA_LICENSES.md). To cite the project, use [`CITATION.cff`](CITATION.cff), which points to the [technical report](https://maxgfr.github.io/skycmd/paper/) and its DOI, [10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316).
