@@ -50,7 +50,7 @@ The [Listen](/ear/) demo runs the model with this policy (the defaults of `site/
 
 ### The code
 
-The browser or Deno, with the module this site deploys. The detector reads 16 kHz mono audio as a `Float32Array` in [−1, 1]; if your audio comes at another rate, resample it first (the Listen demo uses a linear resampler).
+The browser or Deno (`deno run --allow-net --allow-import`), with the module this site deploys. The detector reads 16 kHz mono audio as a `Float32Array` in [−1, 1]; if your audio comes at another rate, resample it first (the Listen demo uses a linear resampler).
 
 ```js
 import init, { TurnDetector } from 'https://maxgfr.github.io/skycmd/lib/sky_infer.js'
