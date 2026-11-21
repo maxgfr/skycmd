@@ -1,6 +1,31 @@
 # skycmd
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24418316.svg)](https://doi.org/10.5281/zenodo.24418316) [![Site](https://img.shields.io/badge/site-maxgfr.github.io%2Fskycmd-blue)](https://maxgfr.github.io/skycmd/) [![Hugging Face collection](https://img.shields.io/badge/%F0%9F%A4%97%20collection-skycmd-yellow)](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) [![Every demo](https://img.shields.io/badge/%F0%9F%A4%97%20Space-every%20demo-yellow)](https://huggingface.co/spaces/maxgfr/skycmd) [![License](https://img.shields.io/badge/code-Apache--2.0-green)](LICENSE)
+
 skycmd trains small decision models and runs them in the browser. A decision model does not generate text: it reads a state (a game frame, a text, a request with a list of tools, a few seconds of audio) and typed questions, and returns a calibrated probability for every allowed option in one forward pass. The models were trained from scratch in Rust on one Apple M5 MacBook, and every demo runs them in WebAssembly from the files their numbers were measured on.
+
+## The paper
+
+[*Pre-registered gates for small models trained on one laptop: what passed, what failed, and what the readings show*](https://maxgfr.github.io/skycmd/paper/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed).
+
+- Read it on the site: [maxgfr.github.io/skycmd/paper](https://maxgfr.github.io/skycmd/paper/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf).
+- Archived on Zenodo: [DOI 10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316) (all versions; this version is [10.5281/zenodo.24418317](https://doi.org/10.5281/zenodo.24418317)), with its LaTeX source.
+- The LaTeX source is in [`paper/`](paper/); `scripts/build-paper.sh` builds the PDF.
+
+It reports every gated experiment of the project: from s5 on, each one had a pre-registration committed before the computation it governs, its test was read once, and a model that missed its gate was published with its file. Of the 20 published model files, 15 were judged by a gate fixed before training: 5 passed and 10 failed. The report also states what the project takes from earlier work and what it adds.
+
+```bibtex
+@misc{golfier2026skycmd,
+  author    = {Golfier, Maxime},
+  title     = {Pre-registered gates for small models trained on one laptop:
+               what passed, what failed, and what the readings show},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.24418316},
+  url       = {https://maxgfr.github.io/skycmd/paper/},
+  note      = {Technical report, not peer-reviewed}
+}
+```
 
 ## The state of the project
 
@@ -8,38 +33,40 @@ The experiments are finished, as of 20 November 2026. Every line is closed or pu
 
 ## Links
 
-- The site: <https://maxgfr.github.io/skycmd/>, with [Results](https://maxgfr.github.io/skycmd/results/) (every gate and its numbers, failures included) and [What we bring](https://maxgfr.github.io/skycmd/novelty/) (every claim, its measurement and its evidence).
-- The technical report: [*Pre-registered gates for small models trained on one laptop*](https://maxgfr.github.io/skycmd/paper/) (21 November 2026, not peer-reviewed), also as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf), archived on Zenodo with the DOI [10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316).
-- Every demo in one Space: [maxgfr/skycmd](https://huggingface.co/spaces/maxgfr/skycmd). Each model also has its own Space.
-- The models and the data sets on Hugging Face: [huggingface.co/maxgfr](https://huggingface.co/maxgfr), gathered in the collection [skycmd](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) (the hub Space, the models by verdict, their Spaces and the 16 data sets). Each model card opens with its verdict; each data set gives the licence of each source ([`DATA_LICENSES.md`](DATA_LICENSES.md)).
-- The release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20): raw traces of two gates, run logs and intermediate model files ([`docs/data-inventory.md`](docs/data-inventory.md), section 13).
+- **The site**: <https://maxgfr.github.io/skycmd/>, with [Use it for real](https://maxgfr.github.io/skycmd/use/) (which files fit a real project, and the code), [Models](https://maxgfr.github.io/skycmd/models/), [Results](https://maxgfr.github.io/skycmd/results/) (every gate and its numbers, failures included) and [What we bring](https://maxgfr.github.io/skycmd/novelty/) (every claim, its measurement, its evidence and the prior work it builds on).
+- **Hugging Face**:
+  - every demo in one Space: [maxgfr/skycmd](https://huggingface.co/spaces/maxgfr/skycmd);
+  - the collection [skycmd](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603): the hub Space, the models by verdict, their Spaces and the 16 data sets;
+  - every model, Space and data set: [huggingface.co/maxgfr](https://huggingface.co/maxgfr). Each model card opens with its verdict; each data set gives the licence of each source ([`DATA_LICENSES.md`](DATA_LICENSES.md)).
+- **The paper**: [site](https://maxgfr.github.io/skycmd/paper/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf), [Zenodo DOI 10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316).
+- **The raw archive**: the release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20): raw traces of two gates, run logs and intermediate model files ([`docs/data-inventory.md`](docs/data-inventory.md), section 13).
 
 ## The 20 published models
 
 Sizes are the files of [`site/public/models/manifest.json`](site/public/models/manifest.json). A gate is a bar written down before the model was trained and tested; a model that missed it is published as a result, not for use.
 
-| model | what it does | size | verdict |
-|---|---|---:|---|
-| [s6-ear2-nano](https://maxgfr.github.io/skycmd/results/#s6-ear2-nano-passed) | detects the end of a speaker's turn from the last 4 s of audio | 632 KB | passed |
-| [s6-route](https://maxgfr.github.io/skycmd/results/#s6-route-passed) | picks a tool from a list given at run time, or says that none fits | 3.7 MB, two files | passed, on fresh slates; system defined after v2's test was read |
-| [s6-nano](https://maxgfr.github.io/skycmd/results/#s6-nano-passed-published-at-full-depth) | plays four browser games and answers typed questions in free text | 715 KB | passed |
-| [s6-micro](https://maxgfr.github.io/skycmd/results/#s6-micro-v2-passed-on-a-second-look) | the same, four times larger | 2.4 MB | passed, on a second look |
-| [s6-secrets-pico](https://maxgfr.github.io/skycmd/results/#s6-secrets-pico-passed-published-at-full-depth) | says whether a short text exposes a secret, and which service issued it | 250 KB | passed on its synthetic bench; fails on real files |
-| [s6-micro-v1](https://maxgfr.github.io/skycmd/results/#s6-micro-v1-failed-on-calibration-only) | the first version of s6-micro | 2.4 MB | failed its gate (calibration) |
-| [s6-ear-nano](https://maxgfr.github.io/skycmd/results/#s6-ear-nano-failed) | answers typed questions about the last 10 s of audio | 899 KB | failed its gate |
-| [s6-ear3-nano](https://maxgfr.github.io/skycmd/results/#s6-ear3-nano-failed) | s6-ear2-nano trained again on real two-speaker conversations | 632 KB | failed its gate |
-| [s6-cast-pico](https://maxgfr.github.io/skycmd/results/#s6-cast-pico-failed) | forecasts the next 64 steps of a time series as nine deciles | 143 KB | failed its gate |
-| [s6-cast2-pico](https://maxgfr.github.io/skycmd/results/#s6-cast2-pico-failed) | the same, with the periods it detects as an extra input | 149 KB | failed its gate |
-| [s6-secrets-verify-pico](https://maxgfr.github.io/skycmd/results/#s6-secrets-verify-pico-failed) | judges whether a value found by a secret-scanning rule is a real credential | 250 KB | failed its gate |
-| [s6-route-nano](https://maxgfr.github.io/skycmd/results/#s6-route-nano-failed) | picks a tool from a run-time list, with each tool's BM25 score in its input | 2.4 MB | failed its gate |
-| [s6-route7-nano](https://maxgfr.github.io/skycmd/results/#s6-route7-nano-failed) | s6-route with its model part retrained, read on tools of a new family | 3.7 MB, two files | failed its gate |
-| [s6-sleep3-nano](https://maxgfr.github.io/skycmd/results/#s6-sleep3-nano-failed) | s6-nano with a fast-weight memory that carries a fact across frames | 752 KB | failed its gate |
-| [s4-micro](BENCH.md#skycmd-s4-s4-micro-generic-decisions-distilled-from-qwen35-experimental) | generic decisions with options in free text, distilled from Qwen3.5-4B | 2.4 MB | failed its gate (fixed before training, no pre-registration document) |
-| [s5-lite](hf/cards/s5-lite.md) | answers questions you write, each option defined in plain words | 20.7 MB | no gate (the pre-registered s5 bets failed; this longer run is outside them) |
-| [s3-pico](hf/cards/s3-pico.md) | plays four browser games from the game state | 251 KB | no gate |
-| [s1-pico](hf/cards/s1-pico.md) | plays three browser games; the same file runs in llama.cpp and wllama | 545 KB | no gate |
-| [s2-nano](hf/cards/s2-nano.md) | plays the three drone games | 702 KB | no gate |
-| [s2-nano-doom](hf/cards/s2-nano-doom.md) | s2-nano fine-tuned for the Doom-like game | 702 KB | no gate |
+| model | what it does | size | verdict | Hugging Face |
+|---|---|---:|---|---|
+| [s6-ear2-nano](https://maxgfr.github.io/skycmd/results/#s6-ear2-nano-passed) | detects the end of a speaker's turn from the last 4 s of audio | 632 KB | passed | [model](https://huggingface.co/maxgfr/s6-ear2-nano) · [demo](https://huggingface.co/spaces/maxgfr/s6-ear2-nano) |
+| [s6-route](https://maxgfr.github.io/skycmd/results/#s6-route-passed) | picks a tool from a list given at run time, or says that none fits | 3.7 MB, two files | passed, on fresh slates; system defined after v2's test was read | [model](https://huggingface.co/maxgfr/s6-route) · [demo](https://huggingface.co/spaces/maxgfr/s6-route) |
+| [s6-nano](https://maxgfr.github.io/skycmd/results/#s6-nano-passed-published-at-full-depth) | plays four browser games and answers typed questions in free text | 715 KB | passed | [model](https://huggingface.co/maxgfr/s6-nano) · [demo](https://huggingface.co/spaces/maxgfr/s6-nano) |
+| [s6-micro](https://maxgfr.github.io/skycmd/results/#s6-micro-v2-passed-on-a-second-look) | the same, four times larger | 2.4 MB | passed, on a second look | [model](https://huggingface.co/maxgfr/s6-micro) · [demo](https://huggingface.co/spaces/maxgfr/s6-micro) |
+| [s6-secrets-pico](https://maxgfr.github.io/skycmd/results/#s6-secrets-pico-passed-published-at-full-depth) | says whether a short text exposes a secret, and which service issued it | 250 KB | passed on its synthetic bench; fails on real files | [model](https://huggingface.co/maxgfr/s6-secrets-pico) · [demo](https://huggingface.co/spaces/maxgfr/s6-secrets-pico) |
+| [s6-micro-v1](https://maxgfr.github.io/skycmd/results/#s6-micro-v1-failed-on-calibration-only) | the first version of s6-micro | 2.4 MB | failed its gate (calibration) | [model](https://huggingface.co/maxgfr/s6-micro-v1) · [demo](https://huggingface.co/spaces/maxgfr/s6-micro-v1) |
+| [s6-ear-nano](https://maxgfr.github.io/skycmd/results/#s6-ear-nano-failed) | answers typed questions about the last 10 s of audio | 899 KB | failed its gate | [model](https://huggingface.co/maxgfr/s6-ear-nano) · [demo](https://huggingface.co/spaces/maxgfr/s6-ear-nano) |
+| [s6-ear3-nano](https://maxgfr.github.io/skycmd/results/#s6-ear3-nano-failed) | s6-ear2-nano trained again on real two-speaker conversations | 632 KB | failed its gate | [model](https://huggingface.co/maxgfr/s6-ear3-nano) · [demo](https://huggingface.co/spaces/maxgfr/s6-ear3-nano) |
+| [s6-cast-pico](https://maxgfr.github.io/skycmd/results/#s6-cast-pico-failed) | forecasts the next 64 steps of a time series as nine deciles | 143 KB | failed its gate | [model](https://huggingface.co/maxgfr/s6-cast-pico) · [demo](https://huggingface.co/spaces/maxgfr/s6-cast-pico) |
+| [s6-cast2-pico](https://maxgfr.github.io/skycmd/results/#s6-cast2-pico-failed) | the same, with the periods it detects as an extra input | 149 KB | failed its gate | [model](https://huggingface.co/maxgfr/s6-cast2-pico) · [demo](https://huggingface.co/spaces/maxgfr/s6-cast2-pico) |
+| [s6-secrets-verify-pico](https://maxgfr.github.io/skycmd/results/#s6-secrets-verify-pico-failed) | judges whether a value found by a secret-scanning rule is a real credential | 250 KB | failed its gate | [model](https://huggingface.co/maxgfr/s6-secrets-verify-pico) · [demo](https://huggingface.co/spaces/maxgfr/s6-secrets-verify-pico) |
+| [s6-route-nano](https://maxgfr.github.io/skycmd/results/#s6-route-nano-failed) | picks a tool from a run-time list, with each tool's BM25 score in its input | 2.4 MB | failed its gate | [model](https://huggingface.co/maxgfr/s6-route-nano) · [demo](https://huggingface.co/spaces/maxgfr/s6-route-nano) |
+| [s6-route7-nano](https://maxgfr.github.io/skycmd/results/#s6-route7-nano-failed) | s6-route with its model part retrained, read on tools of a new family | 3.7 MB, two files | failed its gate | [model](https://huggingface.co/maxgfr/s6-route7-nano) · [demo](https://huggingface.co/spaces/maxgfr/s6-route7-nano) |
+| [s6-sleep3-nano](https://maxgfr.github.io/skycmd/results/#s6-sleep3-nano-failed) | s6-nano with a fast-weight memory that carries a fact across frames | 752 KB | failed its gate | [model](https://huggingface.co/maxgfr/s6-sleep3-nano) · [demo](https://huggingface.co/spaces/maxgfr/s6-sleep3-nano) |
+| [s4-micro](BENCH.md#skycmd-s4-s4-micro-generic-decisions-distilled-from-qwen35-experimental) | generic decisions with options in free text, distilled from Qwen3.5-4B | 2.4 MB | failed its gate (fixed before training, no pre-registration document) | [model](https://huggingface.co/maxgfr/s4-micro) · [demo](https://huggingface.co/spaces/maxgfr/s4-micro) |
+| [s5-lite](hf/cards/s5-lite.md) | answers questions you write, each option defined in plain words | 20.7 MB | no gate (the pre-registered s5 bets failed; this longer run is outside them) | [model](https://huggingface.co/maxgfr/s5-lite) · [demo](https://huggingface.co/spaces/maxgfr/s5-lite) |
+| [s3-pico](hf/cards/s3-pico.md) | plays four browser games from the game state | 251 KB | no gate | [model](https://huggingface.co/maxgfr/s3-pico) · [demo](https://huggingface.co/spaces/maxgfr/s3-pico) |
+| [s1-pico](hf/cards/s1-pico.md) | plays three browser games; the same file runs in llama.cpp and wllama | 545 KB | no gate | [model](https://huggingface.co/maxgfr/s1-pico) · [demo](https://huggingface.co/spaces/maxgfr/s1-pico) |
+| [s2-nano](hf/cards/s2-nano.md) | plays the three drone games | 702 KB | no gate | [model](https://huggingface.co/maxgfr/s2-nano) · [demo](https://huggingface.co/spaces/maxgfr/s2-nano) |
+| [s2-nano-doom](hf/cards/s2-nano-doom.md) | s2-nano fine-tuned for the Doom-like game | 702 KB | no gate | [model](https://huggingface.co/maxgfr/s2-nano-doom) · [demo](https://huggingface.co/spaces/maxgfr/s2-nano-doom) |
 
 Every number behind these verdicts is on [Results](https://maxgfr.github.io/skycmd/results/) and in [`BENCH.md`](BENCH.md); what each model is for and where to try it is on [Models](https://maxgfr.github.io/skycmd/models/).
 
