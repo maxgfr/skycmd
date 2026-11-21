@@ -142,10 +142,18 @@ export default defineConfig({
   },
   themeConfig: {
     logo: { src: '/favicon.svg', alt: '' },
-    // Five entries: the catalogue, the demos, the evidence, the reading and the install guide.
+    // Five entries: the catalogue (with how to use the real-use models), the demos, the evidence,
+    // the reading and the install guide.
     // Every page keeps its URL; only the menu groups them.
     nav: [
-      { text: 'Models', link: '/models/', activeMatch: '^/models/' },
+      {
+        text: 'Models',
+        activeMatch: '^/(models|use)/',
+        items: [
+          { text: 'All models', link: '/models/' },
+          { text: 'Use it for real', link: '/use/' },
+        ],
+      },
       {
         text: 'Demos',
         activeMatch: '^/(play|live|router|forecast|ear|secrets-verify|memory)/',
@@ -179,7 +187,6 @@ export default defineConfig({
           { text: 'Sources', link: '/sources/' },
         ],
       },
-      { text: 'Use it for real', link: '/use/', activeMatch: '^/use/' },
       { text: 'Install', link: '/install/', activeMatch: '^/install/' },
     ],
     socialLinks: [{ icon: 'github', link: 'https://github.com/maxgfr/skycmd' }],
