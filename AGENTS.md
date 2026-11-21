@@ -10,7 +10,11 @@ correction of a page, a card or a result file.
   deployed to <https://maxgfr.github.io/skycmd/> on every push to `main`. That covers results,
   model pages, demos, tutorials and **articles** (`site/articles/`).
 - **The technical report lives at `site/paper/`** (<https://maxgfr.github.io/skycmd/paper/>), with its
-  figure written by `scripts/paper-figures.py` and its PDF in `site/public/paper/`. It is updated
+  figure written by `scripts/paper-figures.py` and its PDF in `site/public/paper/`. The PDF is
+  typeset in LaTeX from `paper/skycmd.tex` (with `paper/references.bib` and the TikZ figure that
+  `scripts/paper-figures.py` writes from the same numbers as the SVG) by `scripts/build-paper.sh`
+  (Tectonic; `--arxiv` also packs the arXiv sources in `target/paper/`). The page is the reference:
+  when it changes, the .tex follows it word for word and the PDF is built again. It is updated
   when a result changes, like What we bring and Results; `CITATION.cff` cites it.
 - **Never publish skycmd content on the owner's personal site** (the repository
   `maxgfr/maxgfr.github.io`, served at <https://maxgfr.github.io/>). That site is the owner's:
