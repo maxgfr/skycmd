@@ -1,12 +1,12 @@
 ---
 title: "Methods paper: looped ternary encoders for typed decisions"
-description: "The methods of skycmd: the ternary decision graph with its two streams, cache and looped exits, the training recipe on one laptop, exit thresholds chosen by playing, the task-specific systems and the Rust engine that runs every file in the browser. Not peer-reviewed."
+description: "The methods of skycmd as a recipe from laptop to browser: the ternary decision graph with its two streams, cache and looped exits, the training recipe on one laptop, exit thresholds chosen by playing, the task-specific systems, the Rust engine that runs every file in the browser, and what each choice bought. Not peer-reviewed."
 outline: [2, 3]
 ---
 
 <div class="paper">
 
-# Looped ternary encoders for typed decisions: architecture, training on one laptop, exit thresholds checked by playing, and a Rust engine for the browser
+# Looped ternary encoders for typed decisions: a recipe from laptop to browser
 
 <p class="paper-meta"><strong>Maxime Golfier</strong> · 21 November 2026 · <a href="/skycmd/paper/skycmd-methods.pdf">PDF (LaTeX)</a> · <a href="https://github.com/maxgfr/skycmd/tree/main/paper/methods">LaTeX source</a> · companion: <a href="/skycmd/paper/">the technical report</a>, <a href="https://doi.org/10.5281/zenodo.24418316">DOI 10.5281/zenodo.24418316</a> · <a href="#how-to-cite">How to cite</a></p>
 
@@ -16,7 +16,7 @@ This report has not been peer-reviewed, nor reviewed by anyone outside the proje
 
 ## Abstract
 
-This report describes how the models of the skycmd project are built, trained, calibrated and run, precisely enough to reimplement them; a companion report [[1]](#ref-1) holds the protocol and every gate as read. The models answer typed questions (`choice`, `score` and `noul`) about a state, with a probability for every option in one forward pass. The graph encodes the question and its options once and caches them, encodes each new state with one token per measured value, loops a small stack of shared blocks with an exit after each pass, and scores every option with a fusion head in which no option sees another. Every linear layer is ternary, trained with a straight-through estimator after a float warm-up and stored at 2 bits per weight: s3-pico holds 445,345 parameters in 251,104 bytes. Training mixes game oracles written in Rust, public data sets and soft labels from an open-weight teacher, puts a loss on every exit, and runs DAgger on the games, under budgets counted in working minutes on one Apple M5 laptop. Exit thresholds are chosen by playing the games, because thresholds fitted on held-out questions made s2-nano crash in every Flappy episode. Variants of the same blocks detect the end of a turn in speech, route requests to tools, judge secret candidates proposed by rules, and forecast time series. One Rust engine runs every file natively and in WebAssembly, where s6-nano's probabilities differ from the native ones by at most 9.5e-7 on 200 bench questions. Most pieces are adopted from prior work, and the report says which; what it adds is their combination in files of a few hundred kilobytes, the closed-loop check of the exits, and the measurements.
+How to build a typed-decision model of 251,104 bytes, train it on one laptop and run the same file in a browser. The graph encodes the question and its options once and caches them, gives each measured value one token (9 instead of 16 for a Flappy frame), loops shared blocks with an exit after each pass, and stores ternary weights at 2 bits. Where a choice was measured, we say what it bought: training the ternary weights in recovers the 6 to 11 points of validation accuracy that rounding a float model loses; three DAgger rounds take s3-pico from 145.3 Flappy pipes with 14 crashes in 30 episodes to 200 of 200 with none; exit thresholds chosen by playing keep 200 of 200 at 1.44 of 4 passes, where thresholds fitted on held-out questions crash s2-nano in every Flappy episode; the browser's probabilities stay within 9.5e-7 of the native engine's; and on these small matrices float kernels beat packed ternary ones (3.99 against 12.23 µs per product), so 2 bits is a storage format. The same blocks give a 631,936-byte end-of-turn detector (2.39 ms per decision in WebAssembly) and a tool router that fuses a trained model with a static embedding without further training. Every piece is adopted from prior work, each recipe was trained once on one seed, and Table 3 lists what was never measured. A companion report [[1]](#ref-1) holds the protocol and every gate as read.
 
 ## 1. Introduction
 
@@ -26,15 +26,18 @@ skycmd trained such models from scratch under three constraints: small files, fr
 
 The companion report [[1]](#ref-1) is the record of the protocol and of every gate's reading. This report is its counterpart on method: it describes what the code does, gives at most one sentence per system on its result, with a pointer, and follows the code where the project's specifications disagree with it.
 
-It contributes five descriptions, each with the parts it adopts named as such.
+It contributes five descriptions, each with the parts it adopts named as such, and the lessons they leave.
 
 1. **The decision graph** (section 3): two streams and a cache, options isolated by the attention mask, one token per measured value, shared blocks looped with an exit after each pass, a fusion head shared by the exits, and ternary weights trained in. Each piece is adopted: order invariance from Set-LLM [[5]](#ref-5) and Amit [[6]](#ref-6), a looped shared block with an answer after each loop from TRM [[7]](#ref-7) and Ouro [[8]](#ref-8), one token per value from FT-Transformer [[9]](#ref-9) and FoNE [[10]](#ref-10), ternary weights from BitNet b1.58 [[11]](#ref-11). Built from them, s3-pico is, among the open decision models we found that take their options at request time (searches made in November 2026, the last on 21 November), the smallest file that accepts all three question types, and the only one with published ternary weights; the companion report names systems that are smaller or ternary under other conditions ([What we bring, section 1](/novelty/#_1-a-decision-model-in-251-kb)).
 2. **A training recipe for one laptop** (section 4): masked-language pretraining with a loss on numbers, a loss at every exit, soft labels from an open-weight teacher kept only where they agree with the gold answer, DAgger [[12]](#ref-12) on the games, and budgets counted in working minutes. A recipe table gives the settings of seven published files.
 3. **Exit thresholds chosen by playing** (section 5): temperatures per exit, type and bucket, and a threshold accepted only if the games played at that threshold stay within 2% of full depth. DeeR-VLA [[13]](#ref-13) sets the exit thresholds of a robot policy under compute and memory budgets and, in an online variant its body describes, against task success; the readings here are consistent with that line of work and do not introduce it. A conformal variant is described with how the rule judged it on each model.
 4. **Task-specific systems on the same blocks** (section 6): an end-of-turn student of a larger audio model, a tool router fused with a static embedding, a verifier of secret candidates, and a forecaster. The verifier's design, rules that propose and a learned model that judges, is that of Samsung's CredSweeper [[14]](#ref-14) and GitGuardian's FP Remover [[15]](#ref-15).
 5. **One inference engine in Rust** (section 7): the GGUF files, the ternary kernels, the caches and the WebAssembly builds, with the measured agreement between the browser and the native engine.
+6. **Lessons for practitioners** (section 8): what each choice bought where it was measured, how strong that evidence is, and what was never measured.
 
 What the combination adds is a chain from data to a browser in which every step fits one laptop and every claim is measured; no single piece is new ([What we bring](/novelty/#at-a-glance)).
+
+To use a file, start at [Use it for real](/use/): two files are usable with a safety net (s6-ear2-nano with a fallback timer; s6-route when tool names are distinctive, otherwise BM25).
 
 ## 2. Related work
 
@@ -57,32 +60,17 @@ Figure 1 shows the graph, `skycmd-s2` in the files, used by s3-pico, s6-nano, s6
 <figcaption>Figure 1. The decision graph. The question and its options are encoded once and cached (shaded); each frame, the state goes through B shared blocks up to L times, and after each pass an exit feeds the fusion head, which is shared by all exits. The answer is returned at the first exit whose top probability reaches the threshold of the question's type, or at the last. The figure is written by <a href="https://github.com/maxgfr/skycmd/blob/main/scripts/paper-methods-figure.py"><code>scripts/paper-methods-figure.py</code></a>; its text alternative is in the SVG.</figcaption>
 </figure>
 
-**Notation.** Each symbol keeps one meaning throughout; the indices i and j are local (options, tokens, columns), and code names are written in `code`.
-
-| symbol | meaning | symbol | meaning |
-|---|---|---|---|
-| d | model width | n | number of options of a question |
-| B, L | distinct state blocks, loops over them | t, b(n) | question type, bucket of n |
-| l | loop index, from 0 | T | a softmax temperature |
-| e, N<sub>x</sub> | exit index, number of exits (the last exit is N<sub>x</sub>) | τ<sub>t</sub> | exit threshold of type t |
-| u(v), φ(v) | signed logarithm of a value v, its 17 features | γ<sub>o</sub> | scale of output row o of a ternary matrix |
-| ω<sub>k</sub> | frequency k of φ, k = 0, …, 7 | q | fraction of a run trained ternary |
-| W<sub>tok</sub>, χ<sub>i</sub> | token embedding table, value flag of token i | ℒ, w<sub>e</sub> | decision loss, weight of exit e |
-| H<sub>e</sub>, m<sub>i</sub> | state after exit e, marker vector of option i | λ | weight of the value loss in pretraining |
-| s<sub>i</sub>, p<sub>i</sub><sup>(e)</sup> | logit and probability of option i at exit e | β<sub>1</sub>, β<sub>2</sub> | AdamW moment decays |
-| R, r | DAgger rounds, round index | μ<sub>r</sub> | oracle share of round r |
-| n<sub>ep</sub> | episodes per game in Algorithm 2 | A<sub>g</sub>(τ) | metrics of game g at threshold τ |
-| n<sub>dec</sub>, R̂(τ), α | decisions, empirical risk and risk level of the conformal rule | η | duty cycle of the brake |
-| ν | quantile level of the forecaster | δ | a decision threshold of a task-specific system |
-| κ | fusion exponent of the router | c<sub>none</sub>, T<sub>emb</sub> | constant of *none*, temperature of the router's embedding part |
-
 ### 3.1 Requests and tokenization
+
+**In short.** A byte-level BPE of 1,024 to 4,096 entries, trained on the text the model will read, keeps the embedding table close to the size of the network; its size was not ablated.
 
 A request holds a state and one or more questions; a question has a type, an instruction and its options. The options are rendered as Laya's runtime and llama.cpp's server render them: a `choice` option is `key` or `key: description`, a `score` option is `level i: description` for i = 0, 1, and so on, and the two `noul` options are `false: …` and `true: …`, with the defaults `no, the statement does not hold` and `yes, the statement holds` ([`crates/sky-infer/src/prompt.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/prompt.rs)).
 
 The tokenizers are byte-level BPE in the GPT-2 style with an NFC normaliser, trained with Hugging Face `tokenizers` at 1,024, 2,048 or 4,096 entries on the text the model will read: each question head, each option with its leading space, and each state ([tutorial, chapter 07](/tutorial/07-tokenizer)). Their special tokens have fixed ids: `[PAD]` 0, `[UNK]` 1, `[CLS]` 2, `[SEP]` 3, `[MASK]` 4 and `[NUM]` 5 ([`docs/SPEC-S2.md`](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S2.md) §2). A small vocabulary keeps the embedding table close to the size of the network; the game generators clamp their values to small ranges for the same reason.
 
 ### 3.2 One token per measured value
+
+**In short.** Each measured value rides on one token, which takes a Flappy frame from 16 tokens to 9; what the value channel adds to accuracy was not measured apart (section 8).
 
 Before BPE, every match of `-?\d+(?:\.\d+)?` on ASCII digits is replaced by `[NUM]` and its value is kept in a parallel array, unless the match is glued to a preceding ASCII letter, as in `b2` or `glm-5` ([`crates/sky-infer/src/num.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/num.rs)). With `fuse_numbers`, set in every published s3 and s6 decision file, a `[NUM]` is removed and its value moved onto the token before it, unless that token is `[CLS]`, `[SEP]` or `[MASK]` or already carries a value; then the `[NUM]` stays a token of its own. A pair such as `vy -3` is then one token. The merge happens before truncation, so every window counts merged tokens ([`crates/sky-train/src/s2/data.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/data.rs)). The embedding of token *i*, whose id is id<sub>i</sub>, whose value is v<sub>i</sub> and whose flag χ<sub>i</sub> is 1 when it carries a value, is
 
@@ -96,7 +84,9 @@ The signed logarithm compresses magnitudes, and the eight frequencies give perio
 
 ### 3.3 Two streams, a cache and isolated options
 
-The **static stream** holds the question and its options. Its tokens are Q = `[CLS]` `{t} question: {ins}` `[SEP]`, followed for each option *i* by O<sub>i</sub> = `[MASK]` ` {option}`, with no final separator. The attention mask lets Q attend to Q and each O<sub>i</sub> attend to Q and to itself only. Positions for the rotary embedding are 0 to |Q| − 1 for Q, and every option starts again at |Q|, so each option's `[MASK]` marker sits at the same position. Each option is cut to its marker and 48 tokens; if the options leave less than 16 tokens of the head window, every option is cut to max(4, (max_head − 16) / n) tokens, and the question keeps at least 8 ([`crates/sky-infer/src/s2/prompt.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/prompt.rs)). The static encoder's output at each marker is the option's marker vector m<sub>i</sub>, and its outputs at all |Q| question positions, `[CLS]` and `[SEP]` included, are the question tokens.
+**In short.** The question and its options are encoded once and cached, so a new frame or a new request about the same options encodes only the state (section 7 gives what the cache saves), and since no option sees another, the answer cannot depend on the options' order.
+
+The **static stream** holds the question and its options. Its tokens are Q = `[CLS]` `{t} question: {ins}` `[SEP]`, followed for each option *i* by O<sub>i</sub> = `[MASK]` ` {option}`, with no final separator. The attention mask lets Q attend to Q and each O<sub>i</sub> attend to Q and to itself only. Positions for the rotary embedding are 0 to |Q| − 1 for Q, and every option starts again at |Q|, so each option's `[MASK]` marker sits at the same position. Long options are cut as Appendix A.2 says. The static encoder's output at each marker is the option's marker vector m<sub>i</sub>, and its outputs at all |Q| question positions, `[CLS]` and `[SEP]` included, are the question tokens.
 
 Since no option attends to another and all sit at the same positions, permuting the options permutes the marker vectors and, through the head of section 3.5, the probabilities. This holds by construction, as in the prior work of section 2; on the s2 models, permuting the options moved no probability by more than 3e-6 on the CPU ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s2 training runs").
 
@@ -106,11 +96,15 @@ The engine keeps an LRU **cache** of 16 static streams, keyed by type, instructi
 
 ### 3.4 Shared blocks, loops and exits
 
+**In short.** A few shared blocks looped with an exit after each pass give depth without more parameters and an answer after every pass, so an easy decision can stop early: s3-pico answers Flappy in 1.44 of its 4 passes at the threshold chosen by playing (section 5.3); a looped block was never compared with a stack of distinct blocks of the same size.
+
 Both encoders are built from one kind of block. It applies a LayerNorm without bias (ε = 1e-5), a fused query, key and value projection without bias, rotary embeddings [[39]](#ref-39) in the rotate-half form with base 10,000 on queries and keys, scaled dot-product attention and an output projection without bias; then a second LayerNorm and a GeGLU feed-forward: W<sub>up</sub> LN(x), with W<sub>up</sub> of shape 2ff × d, is split into a gate half and a value half, and x ← x + W<sub>down</sub> (gelu(gate) ⊙ value). As in ModernBERT [[38]](#ref-38), the first block of each encoder has no attention norm on its first application; unlike ModernBERT, there is no norm after the embeddings. The number of heads is set per file (1 for s3-pico, 2 for s6-nano, 4 for s6-micro; Table 1), or d / 64 by default.
 
 The state encoder has B distinct blocks applied in order, and the sequence is repeated L times. From the second loop on, block 0 normalises its input with a norm of its own, and before loop *l* ≥ 1 (counted from 0) a learned loop embedding loop_embd[*l*] is added to every hidden state, so the shared block knows which pass it is in. Exits sit after given numbers of block passes; exit *e* normalises the hidden states with its own LayerNorm and gives H<sub>e</sub>. s3-pico has B = 1, L = 4 and exits after passes 1 to 4; s6-nano B = 2, L = 2 and exits after 1 to 4; s6-micro B = 2, L = 3 and exits after 2, 4 and 6 ([`configs/`](https://github.com/maxgfr/skycmd/tree/main/configs)). The static encoder is a plain stack of 1 or 2 blocks with a final norm.
 
 ### 3.5 Fusion head, scorer and probabilities
+
+**In short.** One fusion head, shared by every exit, scores each option against the state and the question without letting the options see each other, and a temperature per exit, type and bucket of option counts calibrates its probabilities.
 
 The fusion head turns each option's marker into a score, once per exit, with the same weights for every exit. Each option starts from x<sub>i</sub> = m<sub>i</sub> + type_embd[t], its marker plus an embedding of the question's type. Each of the 2 fusion blocks applies a cross-attention whose queries are the options and whose keys and values are [H<sub>e</sub>; question tokens], the state after exit *e* followed by the cached question tokens; then a ReLU feed-forward of width 2d. Every LayerNorm and linear layer of the head has a bias, and there is no rotary embedding. The options attend to the state and the question, never to each other. The scorer gives one logit per option and the probabilities follow:
 
@@ -118,7 +112,7 @@ The fusion head turns each option's marker into a score, once per exit, with the
 <p><em>s<sub>i</sub></em> = <em>w</em><sub>o</sub> · gelu( <em>W</em><sub>c</sub> LN(<em>x<sub>i</sub></em>) + <em>b</em><sub>c</sub> ) + <em>b</em><sub>o</sub>, &nbsp;&nbsp; <em>p</em><sub><em>i</em></sub><sup>(<em>e</em>)</sup> = exp(<em>s<sub>i</sub></em> / <em>T</em>) / Σ<sub><em>j</em></sub> exp(<em>s<sub>j</sub></em> / <em>T</em>), &nbsp;&nbsp; <em>T</em> = <em>T</em><sub><em>e</em>, <em>t</em>, <em>b</em>(<em>n</em>)</sub>. <span class="paper-eq-n">(2)</span></p>
 </div>
 
-The temperature depends on the exit *e*, the type *t* and the bucket *b*(*n*) of the number of options *n*: 2 or fewer, 3 to 5, 6 to 10, or 11 and more (section 5.1). The engine looks up the temperature of (exit, type, bucket), then (exit, type), then (type, bucket), then the type, and uses 1 when none is stored; the training code has only the first two levels ([`crates/sky-infer/src/s2/mod.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/mod.rs), [`crates/sky-train/src/s2/config.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/config.rs)). The answer depends on the type ([`crates/sky-infer/src/engine.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/engine.rs)):
+The temperature depends on the exit *e*, the type *t* and the bucket *b*(*n*) of the number of options *n*: 2 or fewer, 3 to 5, 6 to 10, or 11 and more (section 5.1). Appendix A.2 gives the order in which the engine looks a temperature up. The answer depends on the type ([`crates/sky-infer/src/engine.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/engine.rs)):
 
 <div class="paper-eq">
 <p>choice: argmax<sub><em>i</em></sub> <em>p<sub>i</sub></em>, with confidence max(0, (<em>p</em><sub>max</sub> − 1/<em>n</em>) / (1 − 1/<em>n</em>));</p>
@@ -135,6 +129,8 @@ where N<sub>x</sub> is the last exit and τ<sub>t</sub> is one threshold per que
 
 ### 3.6 Ternary weights, trained in
 
+**In short.** Ternary weights trained in, rather than rounded after training, recover the 6 to 11 points of validation accuracy that rounding cost the s2 models, and store s3-pico's 445,345 parameters in 251,104 bytes.
+
 Every linear layer of the encoders and of the fusion head is ternary, and so is the scorer's hidden layer. For a weight matrix W, output row *o* is quantized with its own scale:
 
 <div class="paper-eq">
@@ -147,13 +143,11 @@ Quantization starts when the training progress, measured in working time over th
 
 In the file, each ternary matrix X becomes `X.tq`, bytes of type I8 holding 4 weights each, 2 bits per weight from the least significant bits up (00 for 0, 01 for +1, 10 for −1; 11 is rejected), each row padded to a multiple of 4 weights, and `X.scale`, one 16-bit float per row. Everything else is stored in 32-bit float. This is how s3-pico's 445,345 parameters take 251,104 bytes, against 1.8 MB in 32-bit float ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "skycmd-s3").
 
-### 3.7 What the published decision files do not use
-
-Some options of the code are in no published decision file. *Temporal carry* adds to each frame's state embedding a learned gate, starting at 0, times the LayerNorm of the previous frame's final latent; on s3-pico it did not reduce the depth used and was not shipped ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "Temporal recursion"). *Parallax* and *exclusive self-attention* change the encoder's attention; the ablation of section 4.4 adopted neither, so every trained s6 file has plain softmax attention, though some configuration files still say `"parallax": true` before the recipe script overwrites it ([`scripts/s6-adopt.py`](https://github.com/maxgfr/skycmd/blob/main/scripts/s6-adopt.py)). The fast-weight memory is in section 6.5.
-
 ## 4. Training
 
 ### 4.1 Data
+
+**In short.** Games labelled by exact oracles, public decision sets, and an open-weight teacher's soft labels kept only where they agree with the gold answer; that filter kept 560,238 of 747,077 labels, and its effect was not measured.
 
 **Game oracles.** Four games are written in Rust: Flappy Drone, Rescue Run, Obstacle Dodge and a Doom-like game ([`crates/sky-games/`](https://github.com/maxgfr/skycmd/tree/main/crates/sky-games)). Each writes its state as short `key value` pairs of small binned integers and computes the useful relations in code: Flappy gives the room above and below the drone rather than absolute heights, so the model maps measurements to a decision ([tutorial, chapter 20](/tutorial/20-dagger-lessons)). An exact oracle gives a target distribution over the options at every decision. The generator draws an exploration rate per episode from 0, 0.05, 0.15 and 0.3, caps Flappy episodes at 12 pipes (DAgger collection included), sends 30% of the records to each game's secondary question, keeps records with a probability that balances the classes, and splits by episode seed. It renders 30% of the records in French, shuffles the options of a `choice` question, replaces an option's key by one of its synonyms with probability 0.5 where it has some, and drops 15% of the option descriptions ([`crates/sky-games/src/gen.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-games/src/gen.rs)).
 
@@ -163,9 +157,13 @@ Some options of the code are in no published decision file. *Temporal carry* add
 
 ### 4.2 Pretraining
 
+**In short.** Masked-language pretraining with a small loss on the masked values, weighted 0.05 rather than the specification's 0.5, because at 0.5 the number error kept the token loss on its unigram plateau.
+
 The state stack is pretrained as a masked language model ([`crates/sky-train/src/s2/model.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/model.rs)). 30% of the tokens are masked, at least one per row: 80% become `[MASK]`, 10% a random token and 10% stay. A masked `[NUM]` keeps its id, its value becomes 0 and a learned mask vector is added; a token carrying a fused value is masked as a number or as a word with probability 0.5 each. The loss is the cross-entropy on the masked words plus λ times the mean squared error of a linear head that predicts the signed logarithm *u* of each masked value, clipped to ±12. The word head is a d × d projection without bias, a GELU, a LayerNorm and a decoder tied to the token embedding W<sub>tok</sub>, with a bias of its own. The specification set λ = 0.5; every training script passes λ = 0.05, because at 0.5 the number error, with |*u*| up to 74 on web text, kept the token loss on its unigram plateau ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s2 training runs"). The s6 runs read 256-token sequences in batches of 64, and s3-pico 128-token sequences in batches of 128, 10% of them numeric rows. At the end, the state encoder starts from the pretrained stack and the static encoder from a copy of its first blocks; the fusion head and the scorer start untrained ([`crates/sky-train/src/s2/train.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/train.rs)).
 
 ### 4.3 Decision training
+
+**In short.** A loss at every exit, the last weighted twice the first, keeps every exit usable; passing loop dropout to one compiled graph as exit weights, with batch shapes rounded up to 32 tokens, made s3-pico's decision step 4 to 5 times faster.
 
 Each exit *e* of the N<sub>x</sub> exits gets a soft-target cross-entropy, −Σ<sub>i</sub> y<sub>i</sub> log p<sub>i</sub><sup>(e)</sup> at temperature 1, with options that are only padding masked out, and the exits are weighted by
 
@@ -173,17 +171,21 @@ Each exit *e* of the N<sub>x</sub> exits gets a soft-target cross-entropy, −Σ
 <p>ℒ = Σ<sub><em>e</em></sub> <em>w<sub>e</sub></em> · CE<sub><em>e</em></sub>, &nbsp;&nbsp; <em>w<sub>e</sub></em> ∝ 0.5 + 0.5 · (<em>e</em> − 1) / (<em>N</em><sub>x</sub> − 1), &nbsp;&nbsp; Σ<sub><em>e</em></sub> <em>w<sub>e</sub></em> = 1, <span class="paper-eq-n">(6)</span></p>
 </div>
 
-so the last exit weighs twice the first ([`crates/sky-train/src/s2/config.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/config.rs)). There is no label smoothing. With probability 0.25 in every script (the *loop dropout*), a batch is supervised only on its first *j* exits, *j* drawn uniformly from 1 to N<sub>x</sub> − 1, the encoder stops at that exit and the weights are renormalised over the exits kept. The draw enters the compiled graph as an input of exit weights, so one graph serves every outcome; this made the s3-pico decision step 4 to 5 times faster than one graph per shape ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "skycmd-s3"). The code also holds a self-distillation of the early exits from the last one and the softened targets of s4; neither is used by the files of this report.
+so the last exit weighs twice the first ([`crates/sky-train/src/s2/config.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/config.rs)). There is no label smoothing. With probability 0.25 in every script (the *loop dropout*), a batch is supervised only on its first *j* exits, *j* drawn uniformly from 1 to N<sub>x</sub> − 1, the encoder stops at that exit and the weights are renormalised over the exits kept. The draw enters the compiled graph as an input of exit weights, so one graph serves every outcome; together with batch shapes rounded up to multiples of 32 tokens, a change made at the same time, this made the s3-pico decision step 4 to 5 times faster than one graph per shape ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "skycmd-s3"). The code also holds a self-distillation of the early exits from the last one and the softened targets of s4; neither is used by the files of this report.
 
 Records are drawn with replacement, a source group by its weight and then an item uniformly, and questions that repeat within a batch share one static stream. The s6 runs also sort batches by state length in pools of 16, round shapes up to multiples of 32 tokens, and split a batch whose step would take more than 3 GB into parts whose gradients are averaged ([`crates/sky-train/src/s2/data.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/data.rs)).
 
 ### 4.4 Optimizer and schedule
 
+**In short.** AdamW on a warm-up, stable, decay schedule counted in working time trains every s6 file; Muon, tested in a pre-registered ablation, gained 0.0051 of validation accuracy where 0.01 was asked, and lost Flappy score.
+
 Every s6 model is trained with AdamW [[42]](#ref-42) only: β<sub>1</sub> = 0.9, β<sub>2</sub> = 0.95, ε = 1e-8, decoupled weight decay 0.01 on the matrices but not on the embeddings, norms and vectors, and the gradient clipped to a global norm of 1 ([`crates/sky-train/src/optim.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/optim.rs)). The schedule is warm-up, stable, decay: the rate rises linearly over the first 2% of the budget, stays flat until 80%, then falls linearly to 0.1 times its peak, where progress is working time over the budget. The peak rate is the phase's default (3e-3 for pretraining, 1e-3 for decision training) times a recipe scale of 2.0, times √(96/d) to move the rate found at width 96 to width *d*, times a per-size pilot scale chosen among 0.5, 1 and 2 (1 for s6-nano, 0.5 for s6-micro) ([`scripts/train-s6.sh`](https://github.com/maxgfr/skycmd/blob/main/scripts/train-s6.sh), [`docs/big-run-report.md`](https://github.com/maxgfr/skycmd/blob/main/docs/big-run-report.md)); Table 1 gives the rates this yields, computed here from that formula. The training seed is 0 unless Table 1 says otherwise.
 
-The code has had two recipes of Muon [[43]](#ref-43) for the encoders' hidden matrices, and only s3-pico was trained with one of them. **Recipe 1**, the code of commit `e678f80` (12 October 2026) that added s3-pico, applies Muon with Nesterov momentum 0.95 (warmed from 0.85 over 300 steps) to the encoders' hidden matrices and AdamW to everything else: an L2 term of 0.01 is added to the gradient, five Newton-Schulz steps with the coefficients (3.4445, −4.7750, 2.0315) orthogonalise the update, and it is scaled by √max(1, n<sub>out</sub> / n<sub>in</sub>) for an n<sub>out</sub> × n<sub>in</sub> matrix. Its peak rates are 3e-3 for AdamW and 0.02 for Muon in pretraining, 1e-3 and 0.01 in decision training and the DAgger rounds, with no width factor. **Recipe 2**, from commit `9191533` (24 October 2026), runs the five steps and then two with (15/8, −10/8, 3/8), scales the update by 0.2 · √max(n<sub>out</sub>, n<sub>in</sub>) and shares AdamW's rate and decoupled decay ([`docs/SPEC-S6.md`](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6.md) §2); the code at the commit this report describes keeps only recipe 2 ([`crates/sky-train/src/optim.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/optim.rs)). Before any s6 size was trained, a pre-registered ablation at the pico size, three seeds per arm, tested Muon (recipe 2) and seven other additions; each needed a validation gain of 0.01 (0.005 for the training options) without losing a game, and none was adopted: Muon gained 0.0051 and lost Flappy score ([`runs/recipe/recipe.json`](https://github.com/maxgfr/skycmd/blob/main/runs/recipe/recipe.json); companion report [[1]](#ref-1), section 4.9). So no s6 file uses Muon, and no published file uses recipe 2.
+The code has had two recipes of Muon [[43]](#ref-43) for the encoders' hidden matrices, and only s3-pico was trained with one of them. Appendix A.4 gives both. Before any s6 size was trained, a pre-registered ablation at the pico size, three seeds per arm, tested Muon (recipe 2) and seven other additions; each needed a validation gain of 0.01 (0.005 for the training options) without losing a game, and none was adopted: Muon gained 0.0051 and lost Flappy score ([`runs/recipe/recipe.json`](https://github.com/maxgfr/skycmd/blob/main/runs/recipe/recipe.json); companion report [[1]](#ref-1), section 6.7). So no s6 file uses Muon, and no published file uses recipe 2.
 
 ### 4.5 DAgger on the games
+
+**In short.** Letting the model play and the oracle label the states it reaches took s3-pico from 145.3 Flappy pipes with 14 crashes in 30 episodes to 200 of 200 with none, after a first round that fell to 5.4 pipes; the number of rounds is fixed in advance.
 
 A model trained on the oracle's play only sees the oracle's states; once it plays, its small mistakes take it where the oracle never goes. DAgger [[12]](#ref-12) lets the model play and asks the oracle to label the states it reaches. Algorithm 1 is what [`scripts/train-s6.sh`](https://github.com/maxgfr/skycmd/blob/main/scripts/train-s6.sh) and [`scripts/specialize-s3.sh`](https://github.com/maxgfr/skycmd/blob/main/scripts/specialize-s3.sh) run, with the collection in [`crates/sky-arena/src/main.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-arena/src/main.rs) and [`crates/sky-games/src/gen.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-games/src/gen.rs).
 
@@ -206,9 +208,13 @@ On s3-pico, round 1 collapsed: Flappy fell from 145.3 pipes with 14 crashes to 5
 
 ### 4.6 Budgets and the brake
 
+**In short.** Budgets count working minutes, so the brake's rests do not change what a run computes; other jobs on the machine still change how many steps a budget buys (section 9).
+
 Every run shares the laptop with its owner. A *brake* lets it run hard when the machine is idle and gently when it is in use, hot or on battery ([`docs/idle-training.md`](https://github.com/maxgfr/skycmd/blob/main/docs/idle-training.md), [`crates/sky-train/src/brake.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/brake.rs)). A daemon writes a duty cycle η and a work and rest cycle to a file that the trainer re-reads every 5 seconds: 0.5 with 45 minutes of work and 15 of rest when the machine is in use, hot or on battery, 0.85 with 50 and 10 when it is left alone, and 0.95 with 55 and 5 at night. Before each step the loop sleeps (1/η − 1) times the time worked since its last rest, and it naps through the rest part of the cycle. Every rest is added to the start of the run's clock, so the clock counts working time only: a budget of 90 minutes computes the same steps in every mode, and only the wall-clock time changes. The last checkpoint is the result, except where a pre-registration named the moving average of the weights (section 6); no checkpoint is chosen by its validation score.
 
 ### 4.7 Recipes
+
+**In short.** Table 1 gives every setting of seven published files, so that each can be trained again from its column.
 
 Table 1 gives the settings of seven published files.
 
@@ -241,13 +247,19 @@ Two cells need a word. s6-micro (v2) kept v1's pretraining and doubled the decis
 
 ### 5.1 Temperatures
 
+**In short.** A temperature per exit, type and bucket of option counts, fitted on validation, calibrates every exit, so that one threshold can be compared with the probabilities of any exit.
+
 After training, a temperature is fitted for each (exit, type) pair and, where a bucket holds at least 50 validation questions, for each (exit, type, bucket), on the validation split, for the float and the ternary weights separately ([`crates/sky-train/src/s2/eval.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/eval.rs)). The bucket is the number of options: 2 or fewer, 3 to 5, 6 to 10, 11 and more. The fit minimises the negative log-likelihood against the soft targets by a golden-section search on ln T over [0.05, 20], 80 iterations ([`crates/sky-train/src/metrics.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/metrics.rs)). The values go into the file under `temperature.e{exit}.{type}[.{bucket}]`. The expected calibration error (ECE) is measured on the top probability with 15 equal-width bins, as in Guo et al. [[40]](#ref-40), per source and over all sources pooled.
 
 ### 5.2 Thresholds fitted on held-out questions
 
-The first rule, in the specification of s2, fits one threshold per type on validation questions: the smallest τ in 0.50, 0.51, …, 0.99 whose early-exit accuracy is within 0.005 of full depth, and 1 if none is ([`crates/sky-train/src/s2/eval.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/eval.rs)). For s2-nano it gave 0.62, 0.62 and 0.69 for choice, score and noul. Played at those thresholds, over 5 arena seeds of 30 episodes, s2-nano crashed in every Flappy episode (15.86 ± 2.30 pipes of 200); the same weights at τ = 0.95 flew 191.94 ± 7.16 pipes ([`loopcal.json`](/results/loopcal.json); companion report [[1]](#ref-1), section 5.1). The held-out questions come from the oracle's play, and the states a model reaches when it plays with early exits are not those. This rule still writes the thresholds of every file that `s2-calibrate` produces, the DAgger rounds' included (section 4.5).
+**In short.** The first rule fits thresholds on held-out questions, and it failed where it matters: at its thresholds s2-nano crashed in every Flappy episode on five seeds.
+
+The first rule, in the specification of s2, fits one threshold per type on validation questions: the smallest τ in 0.50, 0.51, …, 0.99 whose early-exit accuracy is within 0.005 of full depth, and 1 if none is ([`crates/sky-train/src/s2/eval.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/eval.rs)). For s2-nano it gave 0.62, 0.62 and 0.69 for choice, score and noul. Played at those thresholds, over 5 arena seeds of 30 episodes, s2-nano crashed in every Flappy episode (15.86 ± 2.30 pipes of 200); the same weights at τ = 0.95 flew 191.94 ± 7.16 pipes ([`loopcal.json`](/results/loopcal.json); companion report [[1]](#ref-1), section 5.2). The held-out questions come from the oracle's play, and the states a model reaches when it plays with early exits are not those. This rule still writes the thresholds of every file that `s2-calibrate` produces, the DAgger rounds' included (section 4.5).
 
 ### 5.3 Thresholds chosen by playing
+
+**In short.** Thresholds chosen by playing the games keep their scores: s3-pico keeps 200 of 200 Flappy pipes at 1.44 of its 4 passes, and even at τ = 0.5 it answers Flappy in 1.0 pass and still flies 200 of 200, over five seeds ([`loopcal.json`](/results/loopcal.json)).
 
 The closed-loop rule ([`scripts/calibrate-exit.sh`](https://github.com/maxgfr/skycmd/blob/main/scripts/calibrate-exit.sh), Algorithm 2) plays the games at full depth, then at every candidate threshold on the same episodes, and keeps the smallest candidate whose games stay within 2% of full depth with no extra crash or veto. A *veto* is the coded safety reflex of the Dodge game taking over from the model ([tutorial, chapter 20](/tutorial/20-dagger-lessons)).
 
@@ -268,6 +280,8 @@ For s3-pico the rule accepted τ = 0.6 and rejected 0.5 for one extra veto, 5 ag
 
 ### 5.4 A conformal variant, checked by playing
 
+**In short.** Conformal thresholds bound how often an early answer differs from the full-depth one per decision, not per episode, and the check by playing rejected them for s6-nano and for s6-micro v2.
+
 For s6-nano and s6-micro, the thresholds came from conformal risk control [[30]](#ref-30), in the early-exit setting of CALM [[31]](#ref-31) and Fast yet Safe [[32]](#ref-32); the code credits SAFE-KD [[33]](#ref-33), which calibrates per-exit stopping thresholds the same way ([`crates/sky-arena/src/crc.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-arena/src/crc.rs)). The games are played at full depth, and every decision records, for each exit, its top calibrated probability and its answer. For a candidate τ, the loss of a decision is 1 when the answer at the exit that τ selects differs from the full-depth answer, and R̂(τ) is its mean over the n<sub>dec</sub> decisions of a type. For each type, the scan goes down from 1.0 to 0.50 in steps of 0.01 and keeps the smallest τ such that
 
 <div class="paper-eq">
@@ -276,11 +290,13 @@ For s6-nano and s6-micro, the thresholds came from conformal risk control [[30]]
 
 with α = 0.02 in the s6 script. A loss that counts disagreements with the full model is that of CATs [[29]](#ref-29), which calibrate their stopping rule to keep early answers consistent with the full model. The bound holds when new decisions are exchangeable with the calibration decisions. Two things stand against that here: the calibration decisions were made at full depth, and the decisions of one episode follow one another along a trajectory, so they are not exchangeable even at full depth; n<sub>dec</sub> counts decisions, not the 30 episodes per game that produced them.
 
-The pre-registered rule then plays the games at the chosen thresholds, on the same seed and episodes as the reference, with the acceptance test of Algorithm 2, and drops the thresholds if they fail ([`scripts/train-s6.sh`](https://github.com/maxgfr/skycmd/blob/main/scripts/train-s6.sh)). For s6-nano it rejected them: the model used 1.01 to 1.83 of its 4 passes per game, but Rescue fell to 2.80 of 3 and the Dodge vetoes rose from 23 to 1,016. It accepted the thresholds of s6-micro-v1, at which every game kept its mean score; that file then failed its gate on calibration at both depths. It rejected those of s6-micro v2 by one veto, 21 against 20, with the same scores, a difference smaller than the seed-to-seed spread of the Dodge vetoes measured for s3-pico (± 4.1 over five seeds, section 5.3) ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "skycmd-s6", Arena; companion report [[1]](#ref-1), section 5.1). s6-nano and s6-micro ship at full depth, with a threshold of 1 for each type. Why the fitted thresholds failed for s6-nano is a hypothesis, not a measurement: playing with early exits changes the states visited, so a guarantee fitted on full-depth play need not cover them, as section 5.2 found for thresholds fitted on held-out questions.
+The pre-registered rule then plays the games at the chosen thresholds, on the same seed and episodes as the reference, with the acceptance test of Algorithm 2, and drops the thresholds if they fail ([`scripts/train-s6.sh`](https://github.com/maxgfr/skycmd/blob/main/scripts/train-s6.sh)). For s6-nano it rejected them: the model used 1.01 to 1.83 of its 4 passes per game, but Rescue fell to 2.80 of 3 and the Dodge vetoes rose from 23 to 1,016. It accepted the thresholds of s6-micro-v1, at which every game kept its mean score; that file then failed its gate on calibration at both depths. It rejected those of s6-micro v2 by one veto, 21 against 20, with the same scores, within the seed-to-seed spread of section 5.3 ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "skycmd-s6", Arena; companion report [[1]](#ref-1), section 5.2). s6-nano and s6-micro ship at full depth, with a threshold of 1 for each type. Why the fitted thresholds failed for s6-nano is a hypothesis, not a measurement: playing with early exits changes the states visited, so a guarantee fitted on full-depth play need not cover them, as section 5.2 found for thresholds fitted on held-out questions.
 
 ## 6. Task-specific systems
 
 ### 6.1 End of turn
+
+**In short.** A 631,936-byte student of Smart Turn v3.2 that reads 4 s instead of 8; its shape is the first of four sizes whose WebAssembly median was at most 4.0 ms, and its pilot kept distillation over hard labels (validation 0.8715 against 0.8437).
 
 The end-of-turn detector answers one question: has the speaker finished? Its graph, `skycmd-turn`, reads the last 4 seconds of 16 kHz audio ([`crates/sky-infer/src/audio.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/audio.rs), [`crates/sky-infer/src/turn/`](https://github.com/maxgfr/skycmd/tree/main/crates/sky-infer/src/turn), [`docs/s6-ear2-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-ear2-prereg.md)).
 
@@ -290,9 +306,11 @@ The end-of-turn detector answers one question: has the speaker finished? Its gra
 - **Distillation.** The teacher is Smart Turn v3.2 [[61]](#ref-61), which reads 8 s; the student reads 4 s. The loss is 0.5 · BCE(y, σ(z)) + 0.5 · BCE(σ(z<sub>tch</sub>), σ(z)) + 0.25 · (1 − cos(P h̄, LN h̄<sub>tch</sub>)) + 0.5 · (the mean over 25 steps of 1 − cos(P′ h̄<sub>step</sub>, LN H<sub>tch,step</sub>)): the hard label y, the teacher's probability, the teacher's 384-dimensional pooled embedding h̄<sub>tch</sub>, and its encoder states pooled to 25 steps H<sub>tch</sub>, with the student's positions averaged into the same 25 steps; the projections P and P′ exist only in training ([`crates/sky-train/src/turn/model.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/turn/model.rs)). Training also shortens the context at random and masks a few mel bands and hops. The pilot kept distillation over hard labels (validation 0.8715 against 0.8437), and the run exported the moving average of the weights at a decay of 0.999.
 - **Two thresholds.** The file stores δ<sub>0.5</sub> = 0.5, the threshold the accuracy is read at, and δ<sub>85</sub> = 0.724398136, the highest validation threshold whose recall of finished turns reaches 0.85; the detector answers "finished" when σ(z / T<sub>turn</sub>) ≥ δ.
 
-s6-ear2-nano passed its gate on Smart Turn's test clips and is far weaker on real conversational speech; companion report [[1]](#ref-1), section 4.6.
+**Gate, reading and limit.** Accuracy of at least 0.85, and at most 0.08 under its teacher's, on the 31,527 test clips of Smart Turn v3.2: s6-ear2-nano reads 0.8993, in 2.39 ms per decision in WebAssembly, and passed; on eot-bench, real speech addressed to agents, its AUC is 0.7299 against its teacher's 0.7838, and at δ<sub>85</sub> it answers "finished" on 0.5253 of the real ends of turn, so it needs a fallback timer (companion report [[1]](#ref-1), section 6.4). Code and policy: [Use it for real](/use/#end-of-turn).
 
 ### 6.2 Tool routing
+
+**In short.** A trained model that reads the options and each tool's BM25 score, multiplied option by option with a static embedding: alone, the model part reads 0.7926 and the embedding 0.7386 on 945 fresh requests; multiplied, 0.8868 ([`runs/s6-nano3/eval-fresh/results.md`](https://github.com/maxgfr/skycmd/blob/main/runs/s6-nano3/eval-fresh/results.md)).
 
 The router picks one tool from a list given at run time, or *none* ([`crates/sky-infer/src/route.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/route.rs), [`crates/sky-infer/src/embed.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/embed.rs), [`crates/sky-web/src/router.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-web/src/router.rs)).
 
@@ -300,9 +318,16 @@ The router picks one tool from a list given at run time, or *none* ([`crates/sky
 - **The embedding part.** potion-base-2M [[63]](#ref-63), a Model2Vec [[64]](#ref-64) static embedding of dimension 64 and 29,528 tokens, is packed to 4 bits: two codes per byte in −7 to 7 and one 16-bit scale per token, max |v| / 7, in a 1,273,312-byte file with its tokenizer. A text's WordPiece tokens are averaged and the mean is L2-normalised. The request's cosine with each `name: description` is computed, *none* gets the constant c<sub>none</sub> = 0.39611971, and p<sub>embedding</sub> = softmax([cos<sub>1</sub>, …, cos<sub>n</sub>, c<sub>none</sub>] / T<sub>emb</sub>), with T<sub>emb</sub> = 0.0671021167. Both were fitted on the validation slates when this part was a baseline of s6-route-nano: c<sub>none</sub> maximises the validation accuracy, the lowest value among ties, and T<sub>emb</sub> minimises the validation negative log-likelihood, by a grid on ln T<sub>emb</sub> and then a golden-section search ([`scripts/route-baselines.py`](https://github.com/maxgfr/skycmd/blob/main/scripts/route-baselines.py)).
 - **Fusion (s6-route).** No network is trained for the fusion; four scalars of the router were fitted on validation slates, c<sub>none</sub> and T<sub>emb</sub> above, and κ and δ<sub>ask</sub> here. The two distributions are multiplied option by option and renormalised, p(i) ∝ (p<sub>model</sub>(i) · p<sub>embedding</sub>(i))<sup>κ</sup>, with κ = 0.81, the minimum of the validation negative log-likelihood on a grid from 0.01 to 4.00 ([`scripts/s6-route3-fit.py`](https://github.com/maxgfr/skycmd/blob/main/scripts/s6-route3-fit.py)). The router asks the user instead of answering when the fused top probability is below δ<sub>ask</sub> = 0.6710473485 (`tau_ask3` in the code), the smallest threshold at which accuracy among the answered validation slates reaches 0.95. The model part runs at full depth, or stops at its first exit in a fast mode, and the engine caches the static stream and the tool embeddings of the last tool list.
 
-s6-route-nano failed its gate against BM25, and s6-route passed a gate defined after that test was read, on fresh requests; companion report [[1]](#ref-1), section 4.5.
+<figure class="article-figure">
+<!--@include: ../../public/paper/methods/figure-2.svg-->
+<figcaption>Figure 2. The router size map: accuracy on the 945 fresh requests of s6-route's gate against the bytes each router downloads, with the tool names shown (filled) and replaced by numbered placeholders (hollow). Alone, the model part reads 0.7926 and the embedding part 0.7386; multiplied, 0.8868, under the 0.9048 of all-MiniLM-L6-v2, which takes about 25 times the bytes (computed here), and only while the names are shown. BM25 stores no weights and is drawn at its own 0-byte position. The numbers come from <a href="https://github.com/maxgfr/skycmd/blob/main/runs/s6-nano3/eval-fresh/results.md"><code>runs/s6-nano3/eval-fresh/results.md</code></a>; the figure is written by <a href="https://github.com/maxgfr/skycmd/blob/main/scripts/paper-methods-figure.py"><code>scripts/paper-methods-figure.py</code></a>, and its text alternative is in the SVG.</figcaption>
+</figure>
+
+**Gate, reading and limit.** s6-route-nano had to beat BM25 on unseen tools and tied it (0.8395 against 0.8500), and failed; s6-route, a second look read on 945 fresh requests, reads 0.8868 against 0.8169 for BM25 and 0.9048 for all-MiniLM-L6-v2, and passed, but falls to 0.2497 when the tool names are masked (companion report [[1]](#ref-1), section 6.3). Code and policy, and when BM25 is the better choice: [Use it for real](/use/#tool-routing).
 
 ### 6.3 Secrets: a verifier of rule candidates
+
+**In short.** Rules propose, a 249,984-byte model judges each candidate in context, and the filters a rule scanner usually applies become the model's features.
 
 The verifier judges one candidate at a time: a rule proposes a value, and the model says whether it is a real credential ([`crates/sky-infer/src/secret_cand.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/secret_cand.rs), [`crates/sky-web/src/verify.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-web/src/verify.rs), [`docs/s6-secrets2-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-secrets2-prereg.md)). This is the design of CredSweeper [[14]](#ref-14), Credential Digger [[65]](#ref-65) and FP Remover [[15]](#ref-15).
 
@@ -310,9 +335,11 @@ The verifier judges one candidate at a time: a rule proposes a value, and the mo
 - **The state.** One part per line, in this order, since a state is truncated from its end: `rule` and its id; `path` with at most 4 scope words taken from the file path (the 57 words of CredData's `word_in_path.json`, such as test or example) and the extension, not the path itself; `key` and the variable name, at most 40 characters; `value` and the value, whole up to 64 characters, else its first and last 32; the features `len`, `ent` (entropy in hundredths of a bit), `cpt` (characters per token, in hundredths), `dig`, `up`, `low` and `oth` (character counts), `word` (the longest run of letters that is a dictionary word, the dictionary being a word list of 1,706,770 bytes published with the model, [manifest](/models/manifest.json)) and the four filter flags; `line`, the value's line with the value replaced by `<V>`, at most 120 characters centred on it; and `prev` and `next`, one line before and one after, at most 100 characters each. Each feature is a `name value` pair, so with value fusion it costs one token. The state window is 320 tokens.
 - **The question and the thresholds.** The gated question is a `noul`, "Is this value a real credential that should be revoked?", and P(real) is its probability of `true` at full depth. A second question, reported and not gated, is a `choice`, "What kind of value is this?", over `a real credential`, `an example, test value or placeholder` and `not a credential`, CredData's three labels. The model is the s3-pico graph. The file stores three thresholds, each maximising an F-score on the full-depth P(real) of the CredData validation candidates before the test was opened: δ<sub>F1</sub> = 0.2598114610 for F1, δ<sub>F0.5</sub> = 0.4684373736 for F0.5 and δ<sub>F2</sub> = 0.0780794695 for F2 (the keys `tau_f1`, `tau_f05` and `tau_f2`). A candidate is accepted when P(real) ≥ δ.
 
-s6-secrets-verify-pico was above every rule scanner on 221 test repositories and missed its own margin; companion report [[1]](#ref-1), section 4.4.
+**Gate, reading and limit.** A line F1 of at least the best rule scanner's plus 0.15 (0.8832) on 221 test repositories: s6-secrets-verify-pico reads 0.8561, above every rule scanner (0.7332 for the best), and failed its margin (companion report [[1]](#ref-1), section 6.2). Code: [Use it for real](/use/#secrets), where secretgate runs it as an opt-in experiment.
 
 ### 6.4 Forecasting
+
+**In short.** The same blocks on patches of a series, with the period detector of TinyCast as an input and an early exit whose tolerance is set by a conformal bound.
 
 The forecaster, `skycmd-cast`, reuses the state blocks on patches of a time series ([`crates/sky-infer/src/cast/`](https://github.com/maxgfr/skycmd/tree/main/crates/sky-infer/src/cast), [`crates/sky-train/src/cast/`](https://github.com/maxgfr/skycmd/tree/main/crates/sky-train/src/cast), [`docs/SPEC-S6-CAST.md`](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6-CAST.md)).
 
@@ -322,11 +349,7 @@ The forecaster, `skycmd-cast`, reuses the state blocks on patches of a time seri
 - **The periodicity input (s6-cast2-pico).** TinyCast's period detector [[69]](#ref-69), which has no parameters, finds up to 4 significant periods in the context from its periodogram. Each patch gets the sine and cosine of the phase of each period at its last point, 8 channels, and each query gets a seasonal draft, the 32-step lag copy and the 32-step phase-binned mean of the first period, projected and added to it.
 - **Early exit.** A pass stops when the median of an exit differs from the previous exit's by less than a tolerance at every step; the tolerance, 0.012839192 for s6-cast2-pico, is the largest whose early median stays within 0.02 of the full-depth median under a conformal bound at α = 0.05, on 2,000 synthetic windows.
 
-s6-cast2-pico improved on its first version and missed its GIFT-Eval bars [[70]](#ref-70); companion report [[1]](#ref-1), section 4.7.
-
-### 6.5 Fast-weight memory
-
-s6-sleep3-nano adds to s6-nano one fast-weight memory layer after each of its two state blocks: each frame of a game writes a small matrix once, and every later frame reads it. Its write and decay gates are held at their initial values, and a loss used in training only decodes the asked colour from the memory; "sleep" passes replay the last 8 frames ([`docs/s6-sleep3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep3-prereg.md), [`crates/sky-infer/src/s2/memory.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/memory.rs)). The memory was used and sleep added nothing measurable, and the file failed its gate; companion report [[1]](#ref-1), section 4.8.
+**Gate, reading and limit.** GIFT-Eval [[70]](#ref-70) nGMASE of at most 0.838 and nWQL of at most 0.587: s6-cast2-pico reads 0.8847 and 0.6190, and failed, behind the project's port of TinyCast; GIFT-Eval is partly in-sample for its design (companion report [[1]](#ref-1), section 6.5). No forecaster is in [Use it for real](/use/#which-file).
 
 ## 7. The engine
 
@@ -334,7 +357,9 @@ s6-sleep3-nano adds to s6-nano one fast-weight memory layer after each of its tw
 
 **GGUF as a container.** Every file is GGUF version 3, with metadata keys and tensors ([`crates/sky-gguf/`](https://github.com/maxgfr/skycmd/tree/main/crates/sky-gguf)). Only the s1 files, which use llama.cpp's `modern-bert` architecture with the `laya` decision head, also run in llama.cpp and wllama; there, their probabilities agreed with the engine's within 4.7e-4 and 1.1e-4 ([`docs/compat.md`](https://github.com/maxgfr/skycmd/blob/main/docs/compat.md)). Every other architecture is read only by this engine: `skycmd-s2` for s2 to s6, `skycmd-iso` for s5, `skycmd-turn`, `skycmd-cast` and `skycmd-embed`.
 
-**Kernels.** At load, the 2-bit matrices are expanded to 32-bit float: the 2-bit form is what is downloaded and stored, not what is multiplied ([`crates/sky-infer/src/s2/engine.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/engine.rs)). The float matrices are repacked in panels of 8 outputs for an outer-product kernel that keeps 16 to 24 accumulators whatever the number of rows; the first block reads a table of the token embeddings already multiplied by its projection, with a 17-input correction for value tokens; and the fusion keys and values of the state are folded into the option queries ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "Inference"). Three opt-in kernels compute on the ternary codes instead ([`crates/sky-infer/src/s2/engine.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/engine.rs), `TernaryCompute`). Packed add and subtract kernels keep the 2-bit weights in memory, the smallest footprint, and are slower than the float panels: on a 288 × 96 matrix with 9 rows, the shape of s3-pico's attention projection on a 9-token state, 12.23 µs per product natively against 3.99 µs. Lookup tables of the 16 subset sums of each group of 4 inputs, in the style of T-MAC [[71]](#ref-71) and bitnet.cpp [[72]](#ref-72), beat the packed kernels but not the float panels on these small matrices, which stay in the first-level cache, and need two activation passes to stay within 3.5e-4 of the goldens. Int8 dot products are the fastest path natively, 21 against 25 µs per Flappy decision for s3-pico, at up to 5.5e-4 from the goldens. `TernaryCompute::Auto` expands to float everywhere, so the float path is the default; the browser module exposes only the packed kernels, as an option of `withOptions` ([`crates/sky-web/src/lib.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-web/src/lib.rs)), and has no option for the int8 or lookup paths ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "Inference").
+**Kernels.** On these small matrices, float kernels beat packed ternary ones: on a 288 × 96 matrix with 9 rows, the shape of s3-pico's attention projection on a 9-token state, the float panels take 3.99 µs per product natively and the packed add and subtract kernels 12.23 µs, so the 2 bits are a storage format. At load, the 2-bit matrices are expanded to 32-bit float: the 2-bit form is what is downloaded and stored, not what is multiplied ([`crates/sky-infer/src/s2/engine.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/engine.rs)). The float matrices are repacked in panels of 8 outputs for an outer-product kernel that keeps 16 to 24 accumulators whatever the number of rows; the first block reads a table of the token embeddings already multiplied by its projection, with a 17-input correction for value tokens; and the fusion keys and values of the state are folded into the option queries ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "Inference"). Three opt-in kernels compute on the ternary codes instead ([`crates/sky-infer/src/s2/engine.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/engine.rs), `TernaryCompute`). Packed add and subtract kernels keep the 2-bit weights in memory, the smallest footprint, and are slower than the float panels, as measured above. Lookup tables of the 16 subset sums of each group of 4 inputs, in the style of T-MAC [[71]](#ref-71) and bitnet.cpp [[72]](#ref-72), beat the packed kernels but not the float panels on these small matrices, which stay in the first-level cache, and need two activation passes to stay within 3.5e-4 of the goldens. Int8 dot products are the fastest path natively, 21 against 25 µs per Flappy decision for s3-pico, at up to 5.5e-4 from the goldens. `TernaryCompute::Auto` expands to float everywhere, so the float path is the default; the browser module exposes only the packed kernels, as an option of `withOptions` ([`crates/sky-web/src/lib.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-web/src/lib.rs)), and has no option for the int8 or lookup paths ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "Inference").
+
+**What the cache saves.** For s6-route, under the load given in Table 2, the first request on a tool list, which encodes the list, took 45,279 µs in WebAssembly, and the later requests on the cached list 30,879 µs at the median ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "s6-route (s6-nano v3)").
 
 **Two WebAssembly builds.** [`scripts/build-wasm.sh`](https://github.com/maxgfr/skycmd/blob/main/scripts/build-wasm.sh) compiles the module twice, with SIMD128 and with SIMD128 plus relaxed SIMD, whose fused multiply-add the float kernel uses. The page loads the relaxed build when `WebAssembly.validate` accepts a relaxed instruction, and the SIMD128 build otherwise ([`site/.vitepress/theme/lib/wasm.ts`](https://github.com/maxgfr/skycmd/blob/main/site/.vitepress/theme/lib/wasm.ts)).
 
@@ -354,22 +379,46 @@ s6-sleep3-nano adds to s6-nano one fast-weight memory layer after each of its tw
 | s6-route | one request, tool list cached | 200 fresh T2-tools slates (`runs/s6-nano3/eval-fresh/latency/`); the owner at work and a GPU run of another model active | 24,648 (model part) | 30,879; relaxed 23,536 | 1.6e-6 against Python, 200 of 200 |
 | s6-cast2-pico | one 64-step forecast, one core | 1,000 forecasts, after the training had ended | 838 | 1,636 | |
 
-## 8. Limitations
+## 8. Lessons for practitioners
+
+Table 3 gathers what each choice bought where it was measured, how strong that evidence is, and the choices that were never measured. Most rows rest on one model and one training run, and the readings were made under the protocol of the companion report [[1]](#ref-1).
+
+**Table 3.** What each choice bought. The evidence column names the models, seeds and splits; a section number points to the measurement in this report.
+
+| choice | measured effect | evidence |
+|---|---|---|
+| Train the ternary weights in; do not round a float model | rounding cost 6 to 11 points of validation accuracy (pico 0.470 to 0.406, nano 0.542 to 0.432); 30% of the budget in QAT gave 0.482 and 0.556 | the s2 models, two sizes, one run each (section 3.6) |
+| Treat the 2 bits as storage, and benchmark float kernels first | 3.99 µs per product for the float panels against 12.23 µs for the packed ternary kernels | one 288 × 96 shape, one CPU, natively (section 7) |
+| If the model's answer changes its next input, choose the exits by running the loop | at thresholds fitted on held-out questions s2-nano crashed in every Flappy episode (15.86 pipes of 200); chosen by playing, s3-pico kept 200 of 200 at 1.44 of 4 passes | s2-nano and s3-pico on five arena seeds; s6-nano's conformal thresholds (Dodge vetoes 23 to 1,016) on one seed; four friendly games (section 5) |
+| Do not read a per-decision α as an episode guarantee | at α = 0.02, an episode of 21,300 Flappy decisions allows on average 426 early answers that differ from full depth | arithmetic, computed in the companion report [[1]](#ref-1), section 5.2; the decisions of an episode are not exchangeable (section 5.4) |
+| Fix the number of DAgger rounds in advance | round 1 fell to 5.4 pipes with 30 crashes; rounds 2 and 3 reached 200 of 200 with none | s3-pico, one run (section 4.5) |
+| Scale the value loss down when the values are unbounded | at λ = 0.5, with |u| up to 74 on web text, the token loss stayed on its unigram plateau; the runs use 0.05 | one observation in pretraining (section 4.2) |
+| Pass loop dropout to one compiled graph as exit weights | with batch shapes rounded up to 32 tokens, the decision step became 4 to 5 times faster | s3-pico; the two changes were made together (section 4.3) |
+| Choose the shape from the latency budget before training | the first of four sizes whose WebAssembly median was at most 4.0 ms; the trained file takes 2.39 ms per decision | s6-ear2-nano, a probe its pre-registration named (section 6.1) |
+| Distil rather than train on hard labels | validation accuracy 0.8715 against 0.8437 | s6-ear2-nano's pilot, arms of 12 working minutes, validation only (section 6.1) |
+| When a teacher rewrites text, rewrite every option or none | a distractor given the rewritten description is picked on 0.8311 of the validation slates whose names are masked | s6-route-nano, a diagnosis made after its gate, on validation only ([`docs/s6-route4-diagnosis.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-diagnosis.md)) |
+| Pin the exits in the parity test | the browser at the file's stored thresholds of 0.5 against the native engine at full depth read a gap of 4.5e-2, the same answer on 199 of 200; with the same exits on both sides, 9.5e-7 on 200 of 200 | s6-nano, 200 bench questions; the corrected output file is not committed (amendment 13 of [`docs/s6-gen-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-gen-prereg.md)) |
+| A looped block against a stack of distinct blocks of the same size | not measured | (section 9) |
+| Loop dropout against none | not measured | (section 9) |
+| The numeric curriculum against none | not measured | (section 9) |
+| One token per value against a token per digit, for accuracy | not measured; it takes a Flappy frame from 16 tokens to 9 | (section 3.2) |
+| Keeping only the teacher labels that agree with the gold answer | not measured; it kept 560,238 of 747,077 labels | (section 4.1) |
+
+## 9. Limitations
 
 - **One run per recipe.** Every file of Table 1 was trained once, on one seed. The intervals of the result sections are over test items, not over training runs, so nothing here says how much a recipe moves when trained again.
 - **One machine.** Budgets count working minutes on one laptop, often shared with other jobs, so the steps a budget buys depend on the load, as s6-micro v2's DAgger rounds show ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "skycmd-s6").
 - **Little was ablated.** The pico ablation tested eight additions at one size and three seeds. Nothing separates the causes of s6-nano's gain over s4-micro (pretraining, teacher, tokenizer and windows changed together), the looped block against a stack of distinct blocks at equal size, or loop dropout, the numeric curriculum and the value fusion from their absence ([tutorial, chapter 27](/tutorial/27-s6-nano)).
-- **Shortcuts in the data.** Methods that fit the training data can fit its accidents. In the router's training data, the right tool of every renamed slate was the only option whose description the teacher had rewritten, and the model learned to pick that description ([`docs/s6-route4-diagnosis.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-diagnosis.md)); s6-nano answers each question of the bench almost as its most common training answer would (companion report [[1]](#ref-1), section 5.3).
+- **Shortcuts in the data.** Methods that fit the training data can fit its accidents. In the router's training data, the right tool of every renamed slate was the only option whose description the teacher had rewritten, and the model learned to pick that description ([`docs/s6-route4-diagnosis.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-route4-diagnosis.md)); s6-nano answers each question of the bench almost as its most common training answer would (companion report [[1]](#ref-1), section 5.1).
 - **Calibration chosen and checked on the same episodes.** The closed-loop rule and the conformal check choose and check on seed 7; the five-seed evaluation came after, for some models only. The conformal bound was fitted on full-depth play; the decisions of an episode are not exchangeable even at full depth, and still less once exits fire early; and n<sub>dec</sub> counts decisions, not episodes. The one-veto differences that decided s3-pico's 0.5 and s6-micro v2's thresholds are within the seed-to-seed spread of the Dodge vetoes.
 - **DAgger rounds played at thresholds the published file does not use.** The rounds play each file at the thresholds fitted on held-out questions (section 5.2), the rule section 5.2 found unsafe for s2-nano; for s6-nano these were 0.5, so its rounds collected the states that early exits reach, while the file ships at full depth. s3-pico's first round fell to 5.4 Flappy pipes with 30 crashes in 30 episodes before rounds 2 and 3 recovered. No run separates the effect of these thresholds on the collected data.
 - **Friendly games.** The games compute the useful features in code, so they test the decision, not perception.
 - **Two graphs to keep in step.** The training and inference graphs are separate code, tied by golden tests on small random models; a difference the goldens do not exercise would go unseen.
+- **One variant only made a result.** s6-sleep3-nano adds to s6-nano a fast-weight memory layer after each state block, written once per frame and read by every later frame ([`docs/s6-sleep3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-sleep3-prereg.md), [`crates/sky-infer/src/s2/memory.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/memory.rs)); the memory was used, its sleep passes added nothing measurable, and the file failed its gate (companion report [[1]](#ref-1), section 6.6).
 
-## 9. Reproducibility
+## 10. Reproducibility
 
-The code is in [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd), Apache-2.0. This report describes the code at commit `ef6e995` (21 November 2026); its links point to `main`, so a reader of a later version should check out that commit. The README's table "Reproduce a result" gives, for each s6 model, its pre-registration, its script and its result files ([`README.md`](https://github.com/maxgfr/skycmd/blob/main/README.md#reproduce-a-result)); for the files of Table 1: `scripts/train-s3.sh numeric pico`, then `scripts/specialize-s3.sh pico 3 8` and `scripts/calibrate-exit.sh` for s3-pico ([tutorial, chapter 21](/tutorial/21-s3-recursive-tiny)); `scripts/train-all.sh nano` (which runs `scripts/train-s6.sh`) for s6-nano; `SIZE=micro scripts/train-s6.sh` with the environment of `runs/s6-micro2/env.sh` for s6-micro; `scripts/train-turn.sh` for s6-ear2-nano; `scripts/build-route-data.sh`, `scripts/train-route.sh` and `scripts/route-eval.sh` for s6-route-nano, and `scripts/route3-read.sh` for s6-route, which trains nothing; `scripts/train-secrets2.sh` for s6-secrets-verify-pico; and `scripts/train-cast2.sh` for s6-cast2-pico. The scripts read their data from a folder next to the repository, described in [`docs/data-inventory.md`](https://github.com/maxgfr/skycmd/blob/main/docs/data-inventory.md). Every published file is in [`site/public/models/`](https://github.com/maxgfr/skycmd/tree/main/site/public/models), listed in the [manifest](/models/manifest.json) with its sha256. The figure of this report is written by `python3 -I scripts/paper-methods-figure.py`, and its PDF by `scripts/build-paper.sh --methods`.
-
-**Which commit trained which file.** The run folders do not record the commit of the binary that trained a file, so each file is pinned here to the two commits around its run, from the companion report's Table 2: the run used code committed between the commit that froze its pre-registration and the commit that first records its reading, and possibly changes not yet committed. s6-nano: `30e2530` to `dec164e`; s6-micro v2: `aca7f91` to `d3394cf`; s6-ear2-nano: `8f70df8` to `2519daf`; s6-route-nano: `e27a2ab` to `25c5c2d`; s6-secrets-verify-pico: `f842658` to `bc7a1d6`; s6-cast2-pico: `44f1cf2` to `bdea512`. These six use AdamW only, so the recipe of Muon in the code does not affect them; later commits to their training scripts changed paths and error handling, not settings. s3-pico, which had no pre-registration, entered the repository with its scripts in commit `e678f80` (12 October 2026), trained with Muon's recipe 1 (section 4.4). Recipe 2 replaced it in `9191533` (24 October 2026), and the code at `ef6e995` has no recipe 1, so `scripts/train-s3.sh numeric pico` at that commit trains another recipe than the published file's: to retrain s3-pico as published, check out `e678f80`.
+The code is in [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd), Apache-2.0. This report describes the code at commit `ef6e995` (21 November 2026); its links point to `main`, so a reader of a later version should check out that commit. Appendix A.5 pins each published file to the commits around its run. The README's table "Reproduce a result" gives, for each s6 model, its pre-registration, its script and its result files ([`README.md`](https://github.com/maxgfr/skycmd/blob/main/README.md#reproduce-a-result)); for the files of Table 1: `scripts/train-s3.sh numeric pico`, then `scripts/specialize-s3.sh pico 3 8` and `scripts/calibrate-exit.sh` for s3-pico ([tutorial, chapter 21](/tutorial/21-s3-recursive-tiny)); `scripts/train-all.sh nano` (which runs `scripts/train-s6.sh`) for s6-nano; `SIZE=micro scripts/train-s6.sh` with the environment of `runs/s6-micro2/env.sh` for s6-micro; `scripts/train-turn.sh` for s6-ear2-nano; `scripts/build-route-data.sh`, `scripts/train-route.sh` and `scripts/route-eval.sh` for s6-route-nano, and `scripts/route3-read.sh` for s6-route, which trains nothing; `scripts/train-secrets2.sh` for s6-secrets-verify-pico; and `scripts/train-cast2.sh` for s6-cast2-pico. The scripts read their data from a folder next to the repository, described in [`docs/data-inventory.md`](https://github.com/maxgfr/skycmd/blob/main/docs/data-inventory.md). Every published file is in [`site/public/models/`](https://github.com/maxgfr/skycmd/tree/main/site/public/models), listed in the [manifest](/models/manifest.json) with its sha256. The figures of this report are written by `python3 -I scripts/paper-methods-figure.py`, and its PDF by `scripts/build-paper.sh --methods`.
 
 ## Acknowledgements
 
@@ -452,14 +501,56 @@ Generative AI tools assisted with code and editing; the author checked every num
 <li id="ref-72">J. Wang, H. Zhou, T. Song, S. Cao, Y. Xia, T. Cao, J. Wei, S. Ma, et al. <em>Bitnet.cpp: Efficient Edge Inference for Ternary LLMs.</em> 2025. <a href="https://arxiv.org/abs/2502.11880">arXiv:2502.11880</a></li>
 </ol>
 
+## Appendix A. Exact specification
+
+This appendix holds the details a reimplementation needs and a first reading does not.
+
+### A.1 Notation
+
+Each symbol keeps one meaning throughout; the indices i and j are local (options, tokens, columns), and code names are written in `code`.
+
+| symbol | meaning | symbol | meaning |
+|---|---|---|---|
+| d | model width | n | number of options of a question |
+| B, L | distinct state blocks, loops over them | t, b(n) | question type, bucket of n |
+| l | loop index, from 0 | T | a softmax temperature |
+| e, N<sub>x</sub> | exit index, number of exits (the last exit is N<sub>x</sub>) | τ<sub>t</sub> | exit threshold of type t |
+| u(v), φ(v) | signed logarithm of a value v, its 17 features | γ<sub>o</sub> | scale of output row o of a ternary matrix |
+| ω<sub>k</sub> | frequency k of φ, k = 0, …, 7 | q | fraction of a run trained ternary |
+| W<sub>tok</sub>, χ<sub>i</sub> | token embedding table, value flag of token i | ℒ, w<sub>e</sub> | decision loss, weight of exit e |
+| H<sub>e</sub>, m<sub>i</sub> | state after exit e, marker vector of option i | λ | weight of the value loss in pretraining |
+| s<sub>i</sub>, p<sub>i</sub><sup>(e)</sup> | logit and probability of option i at exit e | β<sub>1</sub>, β<sub>2</sub> | AdamW moment decays |
+| R, r | DAgger rounds, round index | μ<sub>r</sub> | oracle share of round r |
+| n<sub>ep</sub> | episodes per game in Algorithm 2 | A<sub>g</sub>(τ) | metrics of game g at threshold τ |
+| n<sub>dec</sub>, R̂(τ), α | decisions, empirical risk and risk level of the conformal rule | η | duty cycle of the brake |
+| ν | quantile level of the forecaster | δ | a decision threshold of a task-specific system |
+| κ | fusion exponent of the router | c<sub>none</sub>, T<sub>emb</sub> | constant of *none*, temperature of the router's embedding part |
+
+### A.2 Truncation and temperature lookup
+
+**Truncation.** Each option is cut to its marker and 48 tokens; if the options leave less than 16 tokens of the head window, every option is cut to max(4, (max_head − 16) / n) tokens, and the question keeps at least 8 ([`crates/sky-infer/src/s2/prompt.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/prompt.rs)).
+
+**Temperature lookup.** The engine looks up the temperature of (exit, type, bucket), then (exit, type), then (type, bucket), then the type, and uses 1 when none is stored; the training code has only the first two levels ([`crates/sky-infer/src/s2/mod.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-infer/src/s2/mod.rs), [`crates/sky-train/src/s2/config.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/s2/config.rs)).
+
+### A.3 What the published decision files do not use
+
+Some options of the code are in no published decision file. *Temporal carry* adds to each frame's state embedding a learned gate, starting at 0, times the LayerNorm of the previous frame's final latent; on s3-pico it did not reduce the depth used and was not shipped ([`BENCH.md`](https://github.com/maxgfr/skycmd/blob/main/BENCH.md), section "Temporal recursion"). *Parallax* and *exclusive self-attention* change the encoder's attention; the ablation of section 4.4 adopted neither, so every trained s6 file has plain softmax attention, though some configuration files still say `"parallax": true` before the recipe script overwrites it ([`scripts/s6-adopt.py`](https://github.com/maxgfr/skycmd/blob/main/scripts/s6-adopt.py)). The fast-weight memory of s6-sleep3-nano failed its gate (section 9).
+
+### A.4 The two recipes of Muon
+
+**Recipe 1**, the code of commit `e678f80` (12 October 2026) that added s3-pico, applies Muon with Nesterov momentum 0.95 (warmed from 0.85 over 300 steps) to the encoders' hidden matrices and AdamW to everything else: an L2 term of 0.01 is added to the gradient, five Newton-Schulz steps with the coefficients (3.4445, −4.7750, 2.0315) orthogonalise the update, and it is scaled by √max(1, n<sub>out</sub> / n<sub>in</sub>) for an n<sub>out</sub> × n<sub>in</sub> matrix. Its peak rates are 3e-3 for AdamW and 0.02 for Muon in pretraining, 1e-3 and 0.01 in decision training and the DAgger rounds, with no width factor. **Recipe 2**, from commit `9191533` (24 October 2026), runs the five steps and then two with (15/8, −10/8, 3/8), scales the update by 0.2 · √max(n<sub>out</sub>, n<sub>in</sub>) and shares AdamW's rate and decoupled decay ([`docs/SPEC-S6.md`](https://github.com/maxgfr/skycmd/blob/main/docs/SPEC-S6.md) §2); the code at the commit this report describes keeps only recipe 2 ([`crates/sky-train/src/optim.rs`](https://github.com/maxgfr/skycmd/blob/main/crates/sky-train/src/optim.rs)).
+
+### A.5 Which commit trained which file
+
+The run folders do not record the commit of the binary that trained a file, so each file is pinned here to the two commits around its run, from the companion report's Table 2: the run used code committed between the commit that froze its pre-registration and the commit that first records its reading, and possibly changes not yet committed. s6-nano: `30e2530` to `dec164e`; s6-micro v2: `aca7f91` to `d3394cf`; s6-ear2-nano: `8f70df8` to `2519daf`; s6-route-nano: `e27a2ab` to `25c5c2d`; s6-secrets-verify-pico: `f842658` to `bc7a1d6`; s6-cast2-pico: `44f1cf2` to `bdea512`. These six use AdamW only, so the recipe of Muon in the code does not affect them; later commits to their training scripts changed paths and error handling, not settings. s3-pico, which had no pre-registration, entered the repository with its scripts in commit `e678f80` (12 October 2026), trained with Muon's recipe 1 (section 4.4). Recipe 2 replaced it in `9191533` (24 October 2026), and the code at `ef6e995` has no recipe 1, so `scripts/train-s3.sh numeric pico` at that commit trains another recipe than the published file's: to retrain s3-pico as published, check out `e678f80`.
+
 ## How to cite
 
 ```bibtex
 @misc{golfier2026skycmdmethods,
   author       = {Golfier, Maxime},
   title        = {Looped ternary encoders for typed decisions:
-                  architecture, training on one laptop, exit thresholds
-                  checked by playing, and a Rust engine for the browser},
+                  a recipe from laptop to browser},
   year         = {2026},
   publisher    = {Zenodo},
   howpublished = {\url{https://maxgfr.github.io/skycmd/paper/methods/}},
