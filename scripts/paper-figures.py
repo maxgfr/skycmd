@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Write the figure of the technical report (site/paper/index.md) as an SVG file.
+"""Write the figure of the technical report as an SVG file and as a TikZ picture.
 
-    python3 -I scripts/paper-figures.py            # writes site/public/paper/figure-1.svg
+    python3 -I scripts/paper-figures.py   # writes site/public/paper/figure-1.svg and paper/figure-1.tex
+
+The SVG is the figure of the web page (site/paper/index.md); the TikZ picture is the same figure,
+drawn from the same ROWS, for the LaTeX source of the PDF (paper/skycmd.tex, built by
+scripts/build-paper.sh).
 
 Standard library only. Every number below is copied from a published page or result file, named
 in the comment next to it; nothing is computed except the positions of the marks. The output is
@@ -20,6 +24,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "site", "public", "paper", "figure-1.svg")
+TEX_OUT = os.path.join(ROOT, "paper", "figure-1.tex")
 
 # One row per line: (name, metric, own label, own value, other label, other value,
 # reference label, reference value). Sources:
@@ -136,13 +141,84 @@ def build():
     return "\n".join(out) + "\n"
 
 
+# The TikZ picture: the same layout as the SVG, in centimetres, for a page of the PDF.
+TEX_W = 12.0      # plot range, 0.4 to 1 on the axis
+TEX_ROW_H = 1.9
+TEX_TOP = -1.25   # top of the first row, under the legend and the note
+
+
+def tx(v):
+    return f"{(v - LO) / (HI - LO) * TEX_W:.3f}"
+
+
+TEX_SPECIAL = {"\\": "\\textbackslash{}", "&": "\\&", "%": "\\%", "$": "\\$", "#": "\\#",
+               "_": "\\_", "{": "\\{", "}": "\\}"}
+
+
+def tex_esc(s):
+    return "".join(TEX_SPECIAL.get(c, c) for c in s)
+
+
+def tex_diamond(cx, cy, r=0.14):
+    return (f"({cx},{cy + r:.3f}) -- ({float(cx) + r:.3f},{cy:.3f}) -- ({cx},{cy - r:.3f}) -- "
+            f"({float(cx) - r:.3f},{cy:.3f}) -- cycle")
+
+
+def build_tex():
+    out = []
+    out.append("% Figure 1 of the technical report, written by scripts/paper-figures.py from the same")
+    out.append("% ROWS as site/public/paper/figure-1.svg. Do not edit: run the script again.")
+    out.append(f"\\definecolor{{paperfigblue}}{{HTML}}{{{BLUE[1:].upper()}}}")
+    out.append(f"\\definecolor{{paperfigorange}}{{HTML}}{{{ORANGE_LIGHT[1:].upper()}}}")
+    out.append("\\begin{tikzpicture}[x=1cm,y=1cm,font=\\small]")
+    # Legend.
+    out.append("\\draw[paperfigblue,line width=1.2pt] (0.11,0) circle (0.11);")
+    out.append("\\node[anchor=west] at (0.3,0) {its own distribution};")
+    out.append(f"\\fill[paperfigorange] {tex_diamond('4.000', 0.0)};")
+    out.append("\\node[anchor=west] at (4.2,0) {other data};")
+    out.append("\\draw[line width=0.8pt] (6.5,-0.2) -- (6.5,0.2);")
+    out.append("\\node[anchor=west] at (6.6,0) {reference, on the other data};")
+    out.append("\\node[anchor=west,inner sep=0pt,text=black!75,font=\\footnotesize] at (0,-0.6) "
+               "{Each row has its own metric; higher is better on all four. The axis starts at 0.4.};")
+    for i, (name, metric, own_l, own, oth_l, oth, ref_l, ref) in enumerate(ROWS):
+        y0 = TEX_TOP - i * TEX_ROW_H
+        cy = y0 - 1.35
+        out.append(f"\\node[anchor=north west,inner sep=0pt] at (0,{y0:.3f}) "
+                   f"{{\\textbf{{{tex_esc(name)}}}\\textcolor{{black!75}}{{~$\\cdot$~{tex_esc(metric)}}}}};")
+        out.append(f"\\node[anchor=north west,inner sep=0pt,text=black!80,font=\\footnotesize] at "
+                   f"(0,{y0 - 0.45:.3f}) {{{tex_esc(own_l)} {own:.4f} $\\rightarrow$ {tex_esc(oth_l)} "
+                   f"{oth:.4f}}};")
+        out.append(f"\\node[anchor=north west,inner sep=0pt,text=black!80,font=\\footnotesize] at "
+                   f"(0,{y0 - 0.8:.3f}) {{{tex_esc(ref_l)} on the other data: {ref:.4f}}};")
+        out.append(f"\\draw[black!18,line width=0.8pt] (0,{cy:.3f}) -- ({TEX_W:.3f},{cy:.3f});")
+        lo, hi = sorted((own, oth))
+        out.append(f"\\draw[black!45,line width=0.8pt] ({tx(lo)},{cy:.3f}) -- ({tx(hi)},{cy:.3f});")
+        out.append(f"\\draw[line width=0.8pt] ({tx(ref)},{cy - 0.2:.3f}) -- ({tx(ref)},{cy + 0.2:.3f});")
+        out.append(f"\\fill[paperfigorange] {tex_diamond(tx(oth), cy)};")
+        out.append(f"\\draw[paperfigblue,line width=1.2pt] ({tx(own)},{cy:.3f}) circle (0.11);")
+    # Axis.
+    ya = TEX_TOP - TEX_ROW_H * len(ROWS) - 0.05
+    out.append(f"\\draw[black!50] (0,{ya:.3f}) -- ({TEX_W:.3f},{ya:.3f});")
+    for t in [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+        label = "1" if t == 1.0 else f"{t:.1f}"
+        out.append(f"\\draw[black!50] ({tx(t)},{ya:.3f}) -- ({tx(t)},{ya - 0.12:.3f}) "
+                   f"node[below,text=black!80,font=\\footnotesize] {{{label}}};")
+    out.append("\\end{tikzpicture}")
+    return "\n".join(out) + "\n"
+
+
+def write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    print(f"wrote {os.path.relpath(path, ROOT)}")
+
+
 def main():
     if len(sys.argv) > 1:
         sys.exit("usage: python3 -I scripts/paper-figures.py")
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(build())
-    print(f"wrote {os.path.relpath(OUT, ROOT)}")
+    write(OUT, build())
+    write(TEX_OUT, build_tex())
 
 
 if __name__ == "__main__":
