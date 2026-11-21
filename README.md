@@ -1,6 +1,6 @@
 # skycmd
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24418316.svg)](https://doi.org/10.5281/zenodo.24418316) [![Site](https://img.shields.io/badge/site-maxgfr.github.io%2Fskycmd-blue)](https://maxgfr.github.io/skycmd/) [![Hugging Face collection](https://img.shields.io/badge/%F0%9F%A4%97%20collection-skycmd-yellow)](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) [![Every demo](https://img.shields.io/badge/%F0%9F%A4%97%20Space-every%20demo-yellow)](https://huggingface.co/spaces/maxgfr/skycmd) [![License](https://img.shields.io/badge/code-Apache--2.0-green)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24418316.svg)](https://doi.org/10.5281/zenodo.24418316) [![Methods DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24420816.svg)](https://doi.org/10.5281/zenodo.24420816) [![Site](https://img.shields.io/badge/site-maxgfr.github.io%2Fskycmd-blue)](https://maxgfr.github.io/skycmd/) [![Hugging Face collection](https://img.shields.io/badge/%F0%9F%A4%97%20collection-skycmd-yellow)](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603) [![Every demo](https://img.shields.io/badge/%F0%9F%A4%97%20Space-every%20demo-yellow)](https://huggingface.co/spaces/maxgfr/skycmd) [![License](https://img.shields.io/badge/code-Apache--2.0-green)](LICENSE)
 
 skycmd trains small decision models and runs them in the browser. A decision model does not generate text: it reads a state (a game frame, a text, a request with a list of tools, a few seconds of audio) and typed questions, and returns a calibrated probability for every allowed option in one forward pass. The models were trained from scratch in Rust on one Apple M5 MacBook, and every demo runs them in WebAssembly from the files their numbers were measured on.
 
@@ -30,6 +30,7 @@ It reports every gated experiment of the project: from s5 on, each one had a pre
 [*Looped ternary encoders for typed decisions: a recipe from laptop to browser*](https://maxgfr.github.io/skycmd/paper/methods/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed), the companion on method.
 
 - Read it on the site: [maxgfr.github.io/skycmd/paper/methods](https://maxgfr.github.io/skycmd/paper/methods/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf).
+- Archived on Zenodo: [DOI 10.5281/zenodo.24420816](https://doi.org/10.5281/zenodo.24420816) (all versions; this version is [10.5281/zenodo.24420817](https://doi.org/10.5281/zenodo.24420817)), with its LaTeX source.
 - The LaTeX source is in [`paper/methods/`](paper/methods/); `scripts/build-paper.sh --methods` builds the PDF.
 
 It describes how the models, their training, their calibration and the engine work, precisely enough to reimplement them: the ternary decision graph with its two streams, cache and looped exits, the training recipe of seven published files, exit thresholds chosen by playing the games, the task-specific systems, and the Rust engine that runs every file natively and in WebAssembly. It cites the first report for the protocol and the verdicts.
@@ -41,6 +42,7 @@ It describes how the models, their training, their calibration and the engine wo
                   a recipe from laptop to browser},
   year         = {2026},
   publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.24420816},
   howpublished = {\url{https://maxgfr.github.io/skycmd/paper/methods/}},
   note         = {Technical report, not peer-reviewed}
 }
