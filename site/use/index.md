@@ -23,6 +23,8 @@ Each model was judged by a **gate**: a bar written down in a pre-registration be
 
 The [Models](/models/) page has a card for every file, with its status and its key number.
 
+Why each file carries the limits above is in the [technical report, section 5](/paper/#_5-lessons-across-lines); how each is built and what each design choice bought is in the [methods paper, section 6](/paper/methods/#_6-task-specific-systems).
+
 ## End of turn in a voice agent: s6-ear2-nano {#end-of-turn}
 
 A voice agent has to know when you have finished speaking. **End of turn** is that moment. Answer too early and the agent cuts you off; answer too late and it feels slow. A **VAD** (voice activity detector) only tells speech from silence: it cannot tell a thinking pause from the end of a sentence. An end-of-turn model listens to the last seconds of audio and gives a probability that the turn is finished.

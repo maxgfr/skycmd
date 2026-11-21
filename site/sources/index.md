@@ -239,7 +239,7 @@ Each was opened on its page before it was cited in the [technical report](/paper
 - **Close work by line:** GitHub's classifier of candidate secrets ([Secret protection must scale with software](https://github.blog/ai-and-ml/github-copilot/secret-protection-must-scale-with-software/), 7 October 2026); [The Importance of Speech Genre for End-of-Turn Detector Training](https://arxiv.org/abs/2610.39742) (Sharon et al., 2026); [ToolRet](https://aclanthology.org/2025.findings-acl.1258/) (Shi et al., Findings of ACL 2025).
 - **Early exits in closed loop:** [Efficient Reductions for Imitation Learning](https://proceedings.mlr.press/v9/ross10a.html) (Ross and Bagnell, AISTATS 2010), on errors that compound with the horizon; [Safe Planning in Interactive Environments via Iterative Policy Updates and Adversarially Robust Conformal Prediction](https://arxiv.org/abs/2511.10586) (Mirzaeedodangeh et al., 2025), on exchangeability broken by interaction.
 - **The protocol:** [Readable Is Not Steerable](https://arxiv.org/abs/2611.05577) (Modgil, 2026), pre-registered tests read once on held-out data; [Misleading Failures of Partial-input Baselines](https://aclanthology.org/P19-1554/) (Feng et al., ACL 2019).
-- **The companion methods report:** [Looped ternary encoders for typed decisions](/paper/methods/) (Golfier, 2026).
+- **The companion methods report:** [Looped ternary encoders for typed decisions: a recipe from laptop to browser](/paper/methods/) (Golfier, 2026).
 
 ### Added with the review of the methods report (21 November 2026)
 Each was opened on its page before it was cited in the [methods report](/paper/methods/); none changes a verdict. The others it cites are listed above.

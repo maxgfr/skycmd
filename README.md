@@ -27,7 +27,7 @@ It reports every gated experiment of the project: from s5 on, each one had a pre
 }
 ```
 
-[*Looped ternary encoders for typed decisions: architecture, training on one laptop, exit thresholds checked by playing, and a Rust engine for the browser*](https://maxgfr.github.io/skycmd/paper/methods/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed), the companion on method.
+[*Looped ternary encoders for typed decisions: a recipe from laptop to browser*](https://maxgfr.github.io/skycmd/paper/methods/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed), the companion on method.
 
 - Read it on the site: [maxgfr.github.io/skycmd/paper/methods](https://maxgfr.github.io/skycmd/paper/methods/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf).
 - The LaTeX source is in [`paper/methods/`](paper/methods/); `scripts/build-paper.sh --methods` builds the PDF.
@@ -38,8 +38,7 @@ It describes how the models, their training, their calibration and the engine wo
 @misc{golfier2026skycmdmethods,
   author       = {Golfier, Maxime},
   title        = {Looped ternary encoders for typed decisions:
-                  architecture, training on one laptop, exit thresholds
-                  checked by playing, and a Rust engine for the browser},
+                  a recipe from laptop to browser},
   year         = {2026},
   publisher    = {Zenodo},
   howpublished = {\url{https://maxgfr.github.io/skycmd/paper/methods/}},
