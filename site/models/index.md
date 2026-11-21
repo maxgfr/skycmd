@@ -16,11 +16,17 @@ Each model also has a demo on Hugging Face, and all of them are gathered in one 
 
 <ModelCatalogue legend />
 
-## Works: use it {#works}
+## Use it in a project {#real}
 
-These models do what their card says, on the tests their card names. Four passed a pre-registered gate. Two, s3-pico and s5-lite, were measured without one, and their status says so.
+Two models can go into a real project outside the games, each with the safety net its card names: s6-ear2-nano, an end-of-turn detector for a voice agent, and s6-route, a tool router. Both passed a pre-registered gate. [Use it for real](/use/) shows how to call them from your own code, and when BM25 or a larger model is the better choice.
 
-<ModelCatalogue group="works" />
+<ModelCatalogue group="real" />
+
+## Games, demos and playground {#demos}
+
+These models do what their card says, on the tests their card names, inside the games and the demos of this site. They are not for free-text questions in a product: their cards say why. Two passed a pre-registered gate, s6-micro on a second look. Two, s3-pico and s5-lite, were measured without one, and their status says so.
+
+<ModelCatalogue group="demos" />
 
 ## Published as results, not for use {#results}
 

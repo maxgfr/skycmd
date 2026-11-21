@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CATALOGUE, GROUPS, STATUS, isExternal } from '../.vitepress/theme/lib/catalogue.ts'
+import { CATALOGUE, GROUPS, STATUS, entriesOf, isExternal } from '../.vitepress/theme/lib/catalogue.ts'
 import { formatSize } from '../.vitepress/theme/lib/size.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -48,11 +48,17 @@ test('ids are unique and every entry has a known group and status', () => {
 })
 
 test('the groups hold the statuses they promise', () => {
+  assert.deepEqual(Object.keys(GROUPS), ['real', 'demos', 'results'])
   for (const e of CATALOGUE) {
-    if (e.group === 'works') assert.ok(['passed', 'second-look', 'ungated'].includes(e.status), e.id)
-    if (e.status === 'passed' || e.status === 'second-look') assert.equal(e.group, 'works', e.id)
+    const usable = e.group === 'real' || e.group === 'demos'
+    if (usable) assert.ok(['passed', 'second-look', 'ungated'].includes(e.status), e.id)
+    if (e.status === 'passed' || e.status === 'second-look') assert.ok(usable, e.id)
     if (e.status === 'failed') assert.equal(e.group, 'results', e.id)
   }
+  // the real-use group is the one the Use page documents
+  assert.deepEqual(entriesOf('real').map((e) => e.id), ['s6-ear2-nano', 's6-route'])
+  const use = readFileSync(join(site, 'use/index.md'), 'utf8')
+  for (const e of entriesOf('real')) assert.ok(use.includes(e.name), `${e.id}: not on /use/`)
 })
 
 test('every status agrees with the gate of the manifest', () => {
@@ -94,11 +100,13 @@ test('every page linked exists', () => {
   }
 })
 
-test('the home page strip shows three or four working models, each with something to try', () => {
+test('the home page strip shows three or four working models, the real-use ones first, each with something to try', () => {
   const home = CATALOGUE.filter((e) => e.home)
   assert.ok(home.length >= 3 && home.length <= 4)
   for (const e of home) {
-    assert.equal(e.group, 'works', e.id)
+    assert.ok(e.group === 'real' || e.group === 'demos', e.id)
     assert.ok(e.try, e.id)
   }
+  const real = entriesOf('real')
+  assert.deepEqual(home.slice(0, real.length), real, 'the strip leads with every model of the real-use group')
 })

@@ -39,7 +39,7 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
 
 <h2 id="works-today">What works</h2>
 
-<p class="home-lead">Four of the models you can use, each with its key number and a demo on this site. Their cards say how each was judged and what to know before using it.</p>
+<p class="home-lead">Four of the models you can use, each with its key number and a demo on this site. The first two, an end-of-turn detector and a tool router, can go into a real project: <a href="./use/">Use it for real</a> shows how, and when not to. The other two are for the games and the playground. Their cards say how each was judged and what to know before using it.</p>
 
 <ModelCatalogue home />
 
@@ -83,6 +83,7 @@ import ModelCatalogue from './.vitepress/theme/components/ModelCatalogue.vue'
   <li><a href="./results/">Results</a><span>Every gate with its numbers, failures included, and the <a href="./bench/">Bench</a> of sizes and latencies.</span></li>
   <li><a href="./paper/">Technical report</a><span>The whole project as a paper: the protocol, every gate as read, and what the readings show across lines. Not peer-reviewed.</span></li>
   <li><a href="./tutorial/">Tutorial</a><span>28 chapters: setup, data, training, export to WebAssembly, and the story of each model.</span></li>
+  <li><a href="./use/">Use it for real</a><span>Which files fit a real project, the code to call the end-of-turn detector and the tool router, and their limits.</span></li>
   <li><a href="./install/">Install</a><span>The files, and the engine for the browser, Node, Python, the command line and an HTTP server.</span></li>
   <li><a href="https://github.com/maxgfr/skycmd">GitHub</a><span>The code, the pre-registrations and the result files.</span></li>
 </ul>

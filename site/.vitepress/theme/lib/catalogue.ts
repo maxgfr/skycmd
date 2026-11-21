@@ -1,5 +1,5 @@
 // The Models catalogue: one entry per model family, grouped by what a visitor can do with it.
-// It drives /models/ and the "What works" strip of the home page.
+// It drives /models/, the "What works" strip of the home page and the groups of the global Space.
 //
 // Update it with every new result, like site/novelty/index.md ("What we bring"). Every number
 // here is copied from site/results/index.md, site/novelty/index.md, hf/cards/*.md or
@@ -10,7 +10,7 @@
 
 export type Status = 'passed' | 'second-look' | 'ungated' | 'bench-only' | 'failed'
 
-export type GroupId = 'works' | 'results'
+export type GroupId = 'real' | 'demos' | 'results'
 
 export interface Link {
   /** A path of this site (without the base), or an absolute URL. */
@@ -37,7 +37,8 @@ export interface CatalogueEntry {
   brings: string
   /** The limit a visitor must know before using it. */
   caveat?: string
-  /** On the home page: the key number of the "What works" strip. */
+  /** On the home page: the key number of the "What works" strip (3 or 4 entries, the real-use
+   * group first). */
   home?: string
   /** On the home page: one of the lessons of "What failed, and what it taught". */
   lesson?: string
@@ -80,18 +81,19 @@ export const STATUS: Record<Status, { label: string; tone: 'success' | 'neutral'
 }
 
 export const GROUPS: Record<GroupId, { title: string; verb: string }> = {
-  works: { title: 'Works: use it', verb: 'What it brings' },
+  real: { title: 'Use it in a project', verb: 'What it brings' },
+  demos: { title: 'Games, demos and playground', verb: 'What it brings' },
   results: { title: 'Published as results, not for use', verb: 'What it taught' },
 }
 
 const HF = 'https://huggingface.co/maxgfr/'
 
 export const CATALOGUE: CatalogueEntry[] = [
-  // Works: use it
+  // Use it in a project (site/use/index.md shows how)
   {
     id: 's6-ear2-nano',
     name: 's6-ear2-nano',
-    group: 'works',
+    group: 'real',
     status: 'passed',
     purpose: "Detects the end of a speaker's turn for a voice agent: give it the audio, ask it once when the VAD reports a pause.",
     size: '632 KB',
@@ -100,6 +102,7 @@ export const CATALOGUE: CatalogueEntry[] = [
       'The right answer on 0.8993 of the 31,527 test clips of Smart Turn v3.2 (bar 0.85; the teacher measured 0.9260 there, s6-ear-nano 0.5681, the silence timer 0.4979), at 2.4 ms per decision in WASM and 632 KB, where its teacher is 8.7 MB and about 32 ms natively.',
     caveat:
       'On real conversations (eot-bench) it and its teacher are far weaker than on the test clips, and at its threshold it answers "finished" on about half of the real ends of turn. It is weakest on Vietnamese, Marathi and Bengali. Its successor, trained on real conversations, failed its gate, so this stays the file to take.',
+    home: 'Right on 0.8993 of the test clips of Smart Turn v3.2, 632 KB, 2.4 ms per decision',
     try: { link: '/ear/', label: 'the Listen page' },
     get: HF + 's6-ear2-nano',
     read: { link: '/results/#s6-ear2-nano-passed', label: 'its section of Results' },
@@ -108,7 +111,7 @@ export const CATALOGUE: CatalogueEntry[] = [
   {
     id: 's6-route',
     name: 's6-route',
-    group: 'works',
+    group: 'real',
     status: 'passed',
     statusNote: "Passed on fresh requests; the system was defined after its predecessor's test was read.",
     purpose: 'Picks the tool that fits a request from a list of tools you write at run time, or says that none fits.',
@@ -124,10 +127,12 @@ export const CATALOGUE: CatalogueEntry[] = [
     read: { link: '/articles/a-3-7-mb-tool-router', label: 'the article on the tool router' },
     source: ['site/results/index.md#s6-route-passed', 'site/results/index.md#s6-route7-nano-failed', 'site/public/models/manifest.json'],
   },
+
+  // Games, demos and playground
   {
     id: 's6-micro',
     name: 's6-micro',
-    group: 'works',
+    group: 'demos',
     status: 'second-look',
     statusNote: 'Its first version failed its calibration guard; this one was designed after that reading and judged on the same test records.',
     purpose: 'Plays four browser games and answers typed questions written in free text, in one file.',
@@ -144,7 +149,7 @@ export const CATALOGUE: CatalogueEntry[] = [
   {
     id: 's6-nano',
     name: 's6-nano',
-    group: 'works',
+    group: 'demos',
     status: 'passed',
     purpose: 'Plays the four browser games and answers typed questions written in free text, in under 1 MB.',
     size: '715 KB',
@@ -153,7 +158,6 @@ export const CATALOGUE: CatalogueEntry[] = [
       "The four games at the oracle's level, and 0.480 on typed_decisions_bench, above the majority class (0.398) where s3-pico (0.382) stayed below.",
     caveat:
       'A constant answer per task passes its gate too: answering each question with its most common training answer scores 0.4815.',
-    home: "The four games at the oracle's level, and 0.480 on typed questions",
     try: { link: '/live/#s6-nano-the-questions-it-was-trained-for', label: 'the Live page' },
     get: HF + 's6-nano',
     read: { link: '/results/#s6-nano-passed-published-at-full-depth', label: 'its section of Results' },
@@ -162,7 +166,7 @@ export const CATALOGUE: CatalogueEntry[] = [
   {
     id: 's3-pico',
     name: 's3-pico',
-    group: 'works',
+    group: 'demos',
     status: 'ungated',
     statusNote: 'Its run had no pre-registered gate; the scores are 30 seeded episodes per game with the shipped file.',
     purpose: 'Plays four browser games (Flappy Drone, Rescue Run, Obstacle Dodge and a Doom-like) from the game state.',
@@ -179,7 +183,7 @@ export const CATALOGUE: CatalogueEntry[] = [
   {
     id: 's5-lite',
     name: 's5-lite',
-    group: 'works',
+    group: 'demos',
     status: 'ungated',
     statusNote:
       'The pre-registered s5 bets failed; this checkpoint is a longer run added for the demo outside them, so its numbers are reported, not claimed.',

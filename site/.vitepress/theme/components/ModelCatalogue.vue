@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Views of the Models catalogue (lib/catalogue.ts):
-//   <ModelCatalogue group="works" />   the cards of one group (/models/)
+//   <ModelCatalogue group="real" />    the cards of one group (/models/: real, demos, results)
 //   <ModelCatalogue legend />          what each status means (/models/)
 //   <ModelCatalogue home />            "What works" on the home page
 //   <ModelCatalogue lessons />         the lessons of failed gates on the home page
