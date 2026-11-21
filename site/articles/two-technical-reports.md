@@ -40,13 +40,13 @@ Both are dated 21 November 2026, archived on Zenodo with a DOI, and written so t
 
 The first report holds the protocol and every gate as it was read. It covers the 20 models, the 15 gates with their measurements and caveats side by side, the experiments that stopped before producing a model, and four lessons that cut across lines of work. It ends with a twelve-rule checklist for pre-registering a small-model experiment, each rule paired with the reading that taught it.
 
-[Read it on the web](/paper/) · [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf) · [Zenodo](https://zenodo.org/records/24421273)
+[Read it on the web](/paper/) · [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf) · DOI [10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316)
 
 ### Looped ternary encoders for typed decisions: a recipe from laptop to browser
 
 The second report is the companion on method: how to build a 251,104-byte decision model, train it on one laptop and run the same file in a browser. The model encodes the question and its options once and caches them, gives each measured value a single token (9 tokens instead of 16 for a Flappy frame), loops shared blocks with a possible exit after each pass, and stores its ternary weights at 2 bits. The same blocks give a 631,936-byte end-of-turn detector and a tool router, and a table states what each design choice bought and which choices were never measured.
 
-[Read it on the web](/paper/methods/) · [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf) · [Zenodo](https://zenodo.org/records/24420817)
+[Read it on the web](/paper/methods/) · [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf) · DOI [10.5281/zenodo.24420816](https://doi.org/10.5281/zenodo.24420816)
 
 ## Four lessons
 
