@@ -44,6 +44,8 @@ Applied to every model whose gate has been read, passed or failed.
   - its card in the Models catalogue (`site/.vitepress/theme/lib/catalogue.ts`), checked by
     `npm --prefix site test`;
   - its tutorial chapter, where it has one;
+  - `site/use/index.md` ("Use it for real") when the model is in the real-use group of the
+    catalogue (`real`: s6-ear2-nano, s6-route) or replaces one: its tier, its numbers and its code;
   - the GGUF in `site/public/models/` and its entry in `site/public/models/manifest.json`, with
     its sha256 and `gate: passed` or `gate: failed`: **never left at a default when the model
     failed**. A forecaster also gets its line in `site/public/models/forecast.json` and the

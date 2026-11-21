@@ -43,9 +43,13 @@ Sizes are the files of [`site/public/models/manifest.json`](site/public/models/m
 
 Every number behind these verdicts is on [Results](https://maxgfr.github.io/skycmd/results/) and in [`BENCH.md`](BENCH.md); what each model is for and where to try it is on [Models](https://maxgfr.github.io/skycmd/models/).
 
+### Which model for a real project
+
+Two files can go into a project outside the games: **s6-ear2-nano**, the end of a speaker's turn for a voice agent, used with a fallback timer, and **s6-route**, a tool router for tool lists with distinctive names (on tools of a new family it does not beat BM25, and all-MiniLM-L6-v2 does better). **s6-secrets-verify-pico** failed its gate and runs only as an opt-in experiment inside [secretgate](https://github.com/maxgfr/secretgate). The other files are for the games, the demos and the playground, or are published as results. [Use it for real](https://maxgfr.github.io/skycmd/use/) gives the code and the limits of each.
+
 ## Try it
 
-Nothing to install for the demos: [Play](https://maxgfr.github.io/skycmd/play/) four games, ask your own questions on [Live](https://maxgfr.github.io/skycmd/live/), pick a tool on [Router](https://maxgfr.github.io/skycmd/router/), forecast a series on [Forecast](https://maxgfr.github.io/skycmd/forecast/), test end-of-turn detection on [Listen](https://maxgfr.github.io/skycmd/ear/). The two failed models with a page of their own are on [Secrets verifier](https://maxgfr.github.io/skycmd/secrets-verify/) and [Memory](https://maxgfr.github.io/skycmd/memory/). In the games the model only advises, and coded rules (geofence, ceiling, battery, collision reflex) keep a veto: a demo and a tutorial, not flight software.
+Nothing to install for the demos: [Play](https://maxgfr.github.io/skycmd/play/) four games, ask your own questions on [Live](https://maxgfr.github.io/skycmd/live/), pick a tool on [Router](https://maxgfr.github.io/skycmd/router/), forecast a series on [Forecast](https://maxgfr.github.io/skycmd/forecast/), test end-of-turn detection on [Listen](https://maxgfr.github.io/skycmd/ear/). The two failed models with a page of their own are on [Secrets verifier](https://maxgfr.github.io/skycmd/secrets-verify/) and [Memory](https://maxgfr.github.io/skycmd/memory/). To call the end-of-turn detector or the tool router from your own code, see [Use it for real](https://maxgfr.github.io/skycmd/use/). In the games the model only advises, and coded rules (geofence, ceiling, battery, collision reflex) keep a veto: a demo and a tutorial, not flight software.
 
 To run a model yourself, a `.gguf` file and the `skycmd` command line are enough:
 

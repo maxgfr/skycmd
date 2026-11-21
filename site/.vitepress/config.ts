@@ -179,6 +179,7 @@ export default defineConfig({
           { text: 'Sources', link: '/sources/' },
         ],
       },
+      { text: 'Use it for real', link: '/use/', activeMatch: '^/use/' },
       { text: 'Install', link: '/install/', activeMatch: '^/install/' },
     ],
     socialLinks: [{ icon: 'github', link: 'https://github.com/maxgfr/skycmd' }],

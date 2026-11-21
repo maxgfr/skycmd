@@ -10,6 +10,10 @@ returns a probability for every allowed answer in one forward pass. The same JSO
 everywhere on this page: in the browser, in Node, Deno and Bun, in Python, on the command line
 and over HTTP.
 
+The end-of-turn detector (s6-ear2-nano) and the tool router (s6-route) have their own APIs,
+`TurnDetector` and `ToolRouter`, in the WebAssembly modules: [Use it for real](/use/) shows how to
+call them, and which files fit a real project.
+
 | where | package | s1 (`modern-bert`) | s2 and s3 (`skycmd-s2`) |
 |---|---|:-:|:-:|
 | browser, Deno | `https://maxgfr.github.io/skycmd/lib/skycmd.js` | yes | yes |

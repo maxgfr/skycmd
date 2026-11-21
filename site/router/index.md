@@ -34,6 +34,8 @@ On 945 fresh requests about tools never seen in training, **s6-route** picks the
 - **MiniLM is more accurate on every test file.** With 91.6 MB to spend, all-MiniLM-L6-v2 with cosine is the better router on these tests.
 - **Outside the tool lists of its training families** (MetaTool, CLINC150 intents, MASSIVE held-out scenarios) it stays near its embedding part: 0.5175 against 0.5340, 0.8040 against 0.7855 and 0.5340 against 0.4755.
 
+To call the router from your own code, and to choose between it, BM25 and MiniLM for your tools, see [Use it for real: s6-route or BM25?](/use/#s6-route-or-bm25)
+
 The pre-registration, with the system, the gate and the reading: [`docs/s6-nano3-prereg.md`](https://github.com/maxgfr/skycmd/blob/main/docs/s6-nano3-prereg.md). The engine: `ToolRouter` in `crates/sky-web/src/router.rs`, and natively `sky-route fuse` ([install](/install/)).
 
 The story of the line, two failures, then this pass, then four versions that tried to retrain its model part and closed the line, is told in an article: [A 3.7 MB tool router built on a MacBook](/articles/a-3-7-mb-tool-router).
