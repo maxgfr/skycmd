@@ -1,24 +1,52 @@
 % References of the technical report, in the order of the page's References section
 % (site/paper/index.md), which is the order of first citation (unsrtnat keeps it).
 
-@misc{oscar,
-  author       = {{mgoeckel}},
-  title        = {{oscar-1-17m}, a decision model on {Ettin-17M}},
+@misc{jev,
+  author       = {D. Almeida},
+  title        = {{Introducing System One Models \& Jev}},
+  howpublished = {TypeSafe blog},
+  month        = sep,
+  year         = {2026},
+  url          = {https://typesafe.ai/blog/introducing-system-one-models-and-jev}
+}
+
+@misc{cua,
+  author       = {{cua-ai}},
+  title        = {{cua-s1-forms}, a form-filling option scorer ({MIT})},
   howpublished = {Hugging Face model card},
-  url          = {https://huggingface.co/mgoeckel/oscar-1-17m}
+  year         = {2026},
+  url          = {https://huggingface.co/cua-ai/cua-s1-forms}
+}
+
+@misc{tinydecide,
+  author       = {{TheREZOR}},
+  title        = {{TinyDecide} ({Apache-2.0})},
+  howpublished = {Hugging Face model card},
+  year         = {2026},
+  url          = {https://huggingface.co/TheREZOR/TinyDecide}
 }
 
 @misc{laya,
   author       = {{Convai Innovations}},
   title        = {{Laya}},
   howpublished = {Hugging Face model card},
+  year         = {2026},
   url          = {https://huggingface.co/convaiinnovations/laya}
+}
+
+@misc{oscar,
+  author       = {{mgoeckel}},
+  title        = {{oscar-1-17m}, a decision model on {Ettin-17M}},
+  howpublished = {Hugging Face model card},
+  year         = {2026},
+  url          = {https://huggingface.co/mgoeckel/oscar-1-17m}
 }
 
 @misc{julia,
   author       = {{Supersonic Labs}},
   title        = {{Julia-1}},
   howpublished = {Hugging Face model card},
+  year         = {2026},
   url          = {https://huggingface.co/SupersonicLabs/Julia-1}
 }
 
@@ -40,6 +68,33 @@
   note          = {\href{https://arxiv.org/abs/2610.01601}{arXiv:2610.01601}}
 }
 
+@misc{egressy2025setllm,
+  author        = {B. Egressy and J. St{\"u}hmer},
+  title         = {{Set-LLM: A Permutation-Invariant LLM}},
+  year          = {2025},
+  eprint        = {2505.15433},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2505.15433}{arXiv:2505.15433}}
+}
+
+@misc{li2026jeva,
+  author        = {Q. Li and X. Wang},
+  title         = {{Jeva: System One Models from First Principles}},
+  year          = {2026},
+  eprint        = {2610.18773},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2610.18773}{arXiv:2610.18773}}
+}
+
+@misc{huang2026runoff,
+  author        = {J. Huang and Y. L. Teng and Y. Deng and B. An},
+  title         = {{Consider, Then Choose: Order-Invariant Decisions in System One Models}},
+  year          = {2026},
+  eprint        = {2610.18233},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2610.18233}{arXiv:2610.18233}}
+}
+
 @misc{jolicoeur2025trm,
   author        = {A. Jolicoeur-Martineau},
   title         = {{Less is More: Recursive Reasoning with Tiny Networks}},
@@ -58,9 +113,56 @@
   note          = {\href{https://arxiv.org/abs/2510.25741}{arXiv:2510.25741}}
 }
 
-@misc{gorishniy2021ftt,
+@inproceedings{dehghani2019ut,
+  author        = {M. Dehghani and S. Gouws and O. Vinyals and J. Uszkoreit and {\L}. Kaiser},
+  title         = {{Universal Transformers}},
+  booktitle     = {ICLR},
+  year          = {2019},
+  eprint        = {1807.03819},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/1807.03819}{arXiv:1807.03819}}
+}
+
+@misc{graves2016act,
+  author        = {A. Graves},
+  title         = {{Adaptive Computation Time for Recurrent Neural Networks}},
+  year          = {2016},
+  eprint        = {1603.08983},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/1603.08983}{arXiv:1603.08983}}
+}
+
+@misc{banino2021pondernet,
+  author        = {A. Banino and J. Balaguer and C. Blundell},
+  title         = {{PonderNet: Learning to Ponder}},
+  year          = {2021},
+  eprint        = {2107.05407},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2107.05407}{arXiv:2107.05407}}
+}
+
+@misc{lee2014dsn,
+  author        = {C.-Y. Lee and S. Xie and P. Gallagher and Z. Zhang and Z. Tu},
+  title         = {{Deeply-Supervised Nets}},
+  year          = {2014},
+  eprint        = {1409.5185},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/1409.5185}{arXiv:1409.5185}}
+}
+
+@misc{huang2016stochastic,
+  author        = {G. Huang and Y. Sun and Z. Liu and D. Sedra and K. Weinberger},
+  title         = {{Deep Networks with Stochastic Depth}},
+  year          = {2016},
+  eprint        = {1603.09382},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/1603.09382}{arXiv:1603.09382}}
+}
+
+@inproceedings{gorishniy2021ftt,
   author        = {Y. Gorishniy and I. Rubachev and V. Khrulkov and A. Babenko},
   title         = {{Revisiting Deep Learning Models for Tabular Data}},
+  booktitle     = {NeurIPS},
   year          = {2021},
   eprint        = {2106.11959},
   archivePrefix = {arXiv},
@@ -94,6 +196,33 @@
   note          = {\href{https://arxiv.org/abs/2411.05882}{arXiv:2411.05882}}
 }
 
+@inproceedings{weller2025ettin,
+  author        = {O. Weller and K. Ricci and M. Marone and A. Chaffin and D. Lawrie and B. {Van Durme}},
+  title         = {{Seq vs Seq: An Open Suite of Paired Encoders and Decoders}},
+  booktitle     = {ICLR},
+  year          = {2026},
+  eprint        = {2507.11412},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2507.11412}{arXiv:2507.11412}}
+}
+
+@misc{warner2024modernbert,
+  author        = {B. Warner and A. Chaffin and B. Clavi{\'e} and O. Weller and others},
+  title         = {{Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Memory Efficient, and Long Context Finetuning and Inference}},
+  year          = {2024},
+  eprint        = {2412.13663},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2412.13663}{arXiv:2412.13663}}
+}
+
+@misc{burn,
+  author       = {{Tracel AI}},
+  title        = {{Burn}, a deep learning framework in {Rust}},
+  howpublished = {GitHub repository},
+  year         = {2022},
+  url          = {https://github.com/tracel-ai/burn}
+}
+
 @inproceedings{guo2017calibration,
   author        = {C. Guo and G. Pleiss and Y. Sun and K. Q. Weinberger},
   title         = {{On Calibration of Modern Neural Networks}},
@@ -104,13 +233,52 @@
   note          = {\href{https://arxiv.org/abs/1706.04599}{arXiv:1706.04599}}
 }
 
-@misc{angelopoulos2022crc,
+@misc{teerapittayanon2017branchynet,
+  author        = {S. Teerapittayanon and B. McDanel and H. T. Kung},
+  title         = {{BranchyNet: Fast Inference via Early Exiting from Deep Neural Networks}},
+  year          = {2017},
+  eprint        = {1709.01686},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/1709.01686}{arXiv:1709.01686}}
+}
+
+@inproceedings{xin2020deebert,
+  author        = {J. Xin and R. Tang and J. Lee and Y. Yu and J. Lin},
+  title         = {{DeeBERT: Dynamic Early Exiting for Accelerating BERT Inference}},
+  booktitle     = {ACL},
+  year          = {2020},
+  eprint        = {2004.12993},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2004.12993}{arXiv:2004.12993}}
+}
+
+@inproceedings{liu2020fastbert,
+  author        = {W. Liu and P. Zhou and Z. Zhao and Z. Wang and H. Deng and Q. Ju},
+  title         = {{FastBERT: a Self-distilling BERT with Adaptive Inference Time}},
+  booktitle     = {ACL},
+  year          = {2020},
+  eprint        = {2004.02178},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2004.02178}{arXiv:2004.02178}}
+}
+
+@inproceedings{angelopoulos2022crc,
   author        = {A. N. Angelopoulos and S. Bates and A. Fisch and L. Lei and T. Schuster},
   title         = {{Conformal Risk Control}},
-  year          = {2022},
+  booktitle     = {ICLR},
+  year          = {2024},
   eprint        = {2208.02814},
   archivePrefix = {arXiv},
   note          = {\href{https://arxiv.org/abs/2208.02814}{arXiv:2208.02814}}
+}
+
+@misc{angelopoulos2021gentle,
+  author        = {A. N. Angelopoulos and S. Bates},
+  title         = {{A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification}},
+  year          = {2021},
+  eprint        = {2107.07511},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2107.07511}{arXiv:2107.07511}}
 }
 
 @inproceedings{schuster2022calm,
@@ -123,9 +291,10 @@
   note          = {\href{https://arxiv.org/abs/2207.07061}{arXiv:2207.07061}}
 }
 
-@misc{jazbec2024fastyetsafe,
+@inproceedings{jazbec2024fastyetsafe,
   author        = {M. Jazbec and A. Timans and T. {Had\v{z}i Veljkovi\'{c}} and K. Sakmann and D. Zhang and C. A. Naesseth and E. Nalisnick},
   title         = {{Fast yet Safe: Early-Exiting with Risk Control}},
+  booktitle     = {NeurIPS},
   year          = {2024},
   eprint        = {2405.20915},
   archivePrefix = {arXiv},
@@ -141,6 +310,16 @@
   note          = {\href{https://arxiv.org/abs/2110.01052}{arXiv:2110.01052}}
 }
 
+@inproceedings{yue2024deer,
+  author        = {Y. Yue and Y. Wang and B. Kang and Y. Han and S. Wang and S. Song and J. Feng and G. Huang},
+  title         = {{DeeR-VLA: Dynamic Inference of Multimodal Large Language Models for Efficient Robot Execution}},
+  booktitle     = {NeurIPS},
+  year          = {2024},
+  eprint        = {2411.02359},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2411.02359}{arXiv:2411.02359}}
+}
+
 @inproceedings{ross2011dagger,
   author        = {S. Ross and G. J. Gordon and J. A. Bagnell},
   title         = {{A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning}},
@@ -149,6 +328,25 @@
   eprint        = {1011.0686},
   archivePrefix = {arXiv},
   note          = {\href{https://arxiv.org/abs/1011.0686}{arXiv:1011.0686}}
+}
+
+@misc{hinton2015distilling,
+  author        = {G. Hinton and O. Vinyals and J. Dean},
+  title         = {{Distilling the Knowledge in a Neural Network}},
+  howpublished  = {NIPS 2014 Deep Learning Workshop},
+  year          = {2015},
+  eprint        = {1503.02531},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/1503.02531}{arXiv:1503.02531}}
+}
+
+@misc{jordan2024muon,
+  author       = {K. Jordan and Y. Jin and V. Boza and J. You and F. Cesista and L. Newhouse and J. Bernstein},
+  title        = {{Muon: An optimizer for hidden layers in neural networks}},
+  howpublished = {Blog post},
+  month        = dec,
+  year         = {2024},
+  url          = {https://kellerjordan.github.io/posts/muon/}
 }
 
 @misc{wen2025optimizers,
@@ -169,6 +367,14 @@
   note          = {\href{https://arxiv.org/abs/2610.21555}{arXiv:2610.21555}}
 }
 
+@misc{glm53flash,
+  author       = {{zai-org}},
+  title        = {{GLM-5.3-Flash}, an open-weight model ({MIT})},
+  howpublished = {Hugging Face model card},
+  year         = {2026},
+  url          = {https://huggingface.co/zai-org/GLM-5.3-Flash}
+}
+
 @misc{smartturn,
   author       = {{Pipecat}},
   title        = {{Smart Turn v3.2}, an open end-of-turn model ({BSD-2-Clause})},
@@ -178,14 +384,18 @@
 @misc{eotbench,
   author       = {{LiveKit}},
   title        = {{eot-bench}, an end-of-turn benchmark in 14 languages ({CC BY 4.0})},
+  howpublished = {Hugging Face data set},
+  year         = {2026},
   url          = {https://huggingface.co/datasets/livekit/eot-bench-data}
 }
 
 @misc{aksu2024gifteval,
-  author       = {T. Aksu and G. Woo and J. Liu and X. Liu and C. Liu and S. Savarese and C. Xiong and D. Sahoo},
-  title        = {{GIFT-Eval: A Benchmark For General Time Series Forecasting Model Evaluation}},
-  year         = {2024},
-  note         = {Data: \url{https://huggingface.co/datasets/Salesforce/GiftEval}}
+  author        = {T. Aksu and G. Woo and J. Liu and X. Liu and C. Liu and S. Savarese and C. Xiong and D. Sahoo},
+  title         = {{GIFT-Eval: A Benchmark For General Time Series Forecasting Model Evaluation}},
+  year          = {2024},
+  eprint        = {2410.10393},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2410.10393}{arXiv:2410.10393}; data: \url{https://huggingface.co/datasets/Salesforce/GiftEval}}
 }
 
 @misc{ansari2024chronos,
@@ -201,18 +411,40 @@
   author       = {{RAWS Labs}},
   title        = {{TinyCast}, a 146,505-parameter forecaster ({Apache-2.0})},
   howpublished = {Hugging Face model card},
+  year         = {2026},
   url          = {https://huggingface.co/raws-labs/tinycast}
 }
 
 @misc{creddata,
   author       = {{Samsung}},
   title        = {{CredData}, a credential data set of open-source repositories},
+  howpublished = {GitHub repository},
+  year         = {2021},
   url          = {https://github.com/Samsung/CredData}
+}
+
+@article{robertson2009bm25,
+  author       = {S. Robertson and H. Zaragoza},
+  title        = {{The Probabilistic Relevance Framework: BM25 and Beyond}},
+  journal      = {Foundations and Trends in Information Retrieval},
+  year         = {2009},
+  note         = {\href{https://doi.org/10.1561/1500000019}{doi:10.1561/1500000019}}
+}
+
+@misc{lu2024bm25s,
+  author        = {X. H. L{\`u}},
+  title         = {{BM25S: Orders of magnitude faster lexical search via eager sparse scoring}},
+  year          = {2024},
+  eprint        = {2407.03618},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2407.03618}{arXiv:2407.03618}}
 }
 
 @misc{potion,
   author       = {{Minish Lab}},
   title        = {{potion-base-2M}, a {Model2Vec} static embedding ({MIT})},
+  howpublished = {Hugging Face model card},
+  year         = {2024},
   url          = {https://huggingface.co/minishlab/potion-base-2M}
 }
 
@@ -224,15 +456,20 @@
 }
 
 @misc{toucan,
-  author       = {{Agent-Ark}},
-  title        = {{Toucan-1.5M}, tool-agent trajectories over real {MCP} servers ({Apache-2.0})},
-  url          = {https://huggingface.co/datasets/Agent-Ark/Toucan-1.5M}
+  author        = {Z. Xu and A. {Meza Soria} and S. Tan and A. Roy and A. S. Agrawal and R. Poovendran and R. Panda},
+  title         = {{TOUCAN: Synthesizing 1.5M Tool-Agentic Data from Real-World MCP Environments}},
+  year          = {2025},
+  eprint        = {2510.01179},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2510.01179}{arXiv:2510.01179}; data: \url{https://huggingface.co/datasets/Agent-Ark/Toucan-1.5M}}
 }
 
-@misc{when2call,
-  author       = {{NVIDIA}},
-  title        = {{When2Call} ({CC BY 4.0})},
-  url          = {https://huggingface.co/datasets/nvidia/When2Call}
+@inproceedings{when2call,
+  author       = {H. Ross and A. S. Mahabaleshwarkar and Y. Suhara},
+  title        = {{When2Call: When (not) to Call Tools}},
+  booktitle    = {NAACL},
+  year         = {2025},
+  note         = {\url{https://aclanthology.org/2025.naacl-long.174/}; data (CC BY 4.0): \url{https://huggingface.co/datasets/nvidia/When2Call}}
 }
 
 @misc{lee2026sleep,
@@ -242,4 +479,137 @@
   eprint        = {2605.26099},
   archivePrefix = {arXiv},
   note          = {\href{https://arxiv.org/abs/2605.26099}{arXiv:2605.26099}}
+}
+
+@misc{credsweeper,
+  author       = {{Samsung}},
+  title        = {{CredSweeper}, a credential scanner with an optional {ML} validator ({MIT})},
+  howpublished = {GitHub repository},
+  year         = {2021},
+  url          = {https://github.com/Samsung/CredSweeper}
+}
+
+@misc{digger,
+  author       = {{SAP}},
+  title        = {{Credential Digger} ({Apache-2.0})},
+  howpublished = {GitHub repository, now archived},
+  year         = {2020},
+  note         = {Method in S. Lounici, M. Rosa, C. M. Negri, S. Trabelsi, M. {\"O}nen, \emph{Optimizing Leak Detection in Open-Source Platforms with Machine Learning Techniques}, ICISSP 2021},
+  url          = {https://github.com/SAP-archive/credential-digger}
+}
+
+@misc{fpremover,
+  author       = {F. Boas},
+  title        = {{ML-powered feature FP Remover cuts 50\% of False Positives}},
+  howpublished = {GitGuardian blog},
+  month        = jun,
+  year         = {2024},
+  url          = {https://blog.gitguardian.com/fp-remover-cuts-false-positives-by-half/}
+}
+
+@misc{helwani2026eot,
+  author        = {K. Helwani and H. Do and J. Luan and S. Srinivasan},
+  title         = {{A Hierarchical End-of-Turn Model with Primary Speaker Segmentation for Real-Time Conversational AI}},
+  year          = {2026},
+  eprint        = {2603.13379},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2603.13379}{arXiv:2603.13379}}
+}
+
+@misc{turn1mini,
+  author       = {{p99lab}},
+  title        = {{turn-1-mini: a small streaming system for turn-taking detection}},
+  howpublished = {GitHub repository},
+  year         = {2026},
+  url          = {https://github.com/P99Lab/turn-1-mini}
+}
+
+@misc{semrouter,
+  author       = {{aurelio-labs}},
+  title        = {{semantic-router} ({MIT})},
+  howpublished = {GitHub repository},
+  year         = {2023},
+  url          = {https://github.com/aurelio-labs/semantic-router}
+}
+
+@misc{chen2026oats,
+  author        = {H. Chen and X. Liu and J. Jiang and B. He and X. Liu},
+  title         = {{Outcome-Aware Tool Selection for Semantic Routers: Latency-Constrained Learning Without LLM Inference}},
+  year          = {2026},
+  eprint        = {2603.13426},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2603.13426}{arXiv:2603.13426}}
+}
+
+@misc{zhan2026fracast,
+  author        = {T. Zhan and H. Zhang and Y. He},
+  title         = {{Fracast-0: Fractal Weight Sharing for a Time Series Foundation Model with Only 85K Parameters}},
+  year          = {2026},
+  eprint        = {2609.32209},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2609.32209}{arXiv:2609.32209}}
+}
+
+@proceedings{prereg2020,
+  editor       = {L. Bertinetto and J. F. Henriques and S. Albanie and M. Paganini and G. Varol},
+  title        = {{NeurIPS 2020 Workshop on Pre-registration in Machine Learning}},
+  series       = {PMLR},
+  volume       = {148},
+  year         = {2020},
+  note         = {\url{https://proceedings.mlr.press/v148/}}
+}
+
+@proceedings{prereg2021,
+  editor       = {S. Albanie and J. F. Henriques and L. Bertinetto and A. Hern{\'a}ndez-Garc{\'i}a and H. Doughty and G. Varol},
+  title        = {{NeurIPS 2021 Workshop on Pre-registration in Machine Learning}},
+  series       = {PMLR},
+  volume       = {181},
+  year         = {2021},
+  note         = {\url{https://proceedings.mlr.press/v181/}}
+}
+
+@misc{hofman2023prereg,
+  author        = {J. M. Hofman and A. Chatzimparmpas and A. Sharma and D. J. Watts and J. Hullman},
+  title         = {{Pre-registration for Predictive Modeling}},
+  year          = {2023},
+  eprint        = {2311.18807},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2311.18807}{arXiv:2311.18807}}
+}
+
+@misc{lu2026prereg,
+  author        = {{J.-q.} Lu},
+  title         = {{Pre-registered tests of solid-state-physics-inspired LLM compression: a cluster-level negative result at small-language-model scale}},
+  year          = {2026},
+  eprint        = {2609.34292},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2609.34292}{arXiv:2609.34292}}
+}
+
+@misc{rsijev,
+  author       = {{longzhenren}},
+  title        = {{RSI-Jev}, typed-decision models trained by a self-improving loop of {AI} agents ({MIT})},
+  howpublished = {GitHub repository},
+  year         = {2026},
+  url          = {https://github.com/longzhenren/RSI-Jev}
+}
+
+@inproceedings{gururangan2018artifacts,
+  author        = {S. Gururangan and S. Swayamdipta and O. Levy and R. Schwartz and S. R. Bowman and N. A. Smith},
+  title         = {{Annotation Artifacts in Natural Language Inference Data}},
+  booktitle     = {NAACL},
+  year          = {2018},
+  eprint        = {1803.02324},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/1803.02324}{arXiv:1803.02324}}
+}
+
+@inproceedings{balepur2024artifacts,
+  author        = {N. Balepur and A. Ravichander and R. Rudinger},
+  title         = {{Artifacts or Abduction: How Do LLMs Answer Multiple-Choice Questions Without the Question?}},
+  booktitle     = {ACL},
+  year          = {2024},
+  eprint        = {2402.12483},
+  archivePrefix = {arXiv},
+  note          = {\href{https://arxiv.org/abs/2402.12483}{arXiv:2402.12483}}
 }

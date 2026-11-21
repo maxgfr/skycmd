@@ -3,7 +3,9 @@ message: "If you use skycmd or its results, please cite its technical report (pr
 title: skycmd
 type: software
 authors:
-  - alias: maxgfr
+  - given-names: Maxime
+    family-names: Golfier
+    alias: maxgfr
 repository-code: "https://github.com/maxgfr/skycmd"
 url: "https://maxgfr.github.io/skycmd/"
 license: Apache-2.0
@@ -12,7 +14,9 @@ preferred-citation:
   type: report
   title: "Pre-registered gates for small models trained on one laptop: what passed, what failed, and what the readings show"
   authors:
-    - alias: maxgfr
+    - given-names: Maxime
+      family-names: Golfier
+      alias: maxgfr
   year: 2026
   month: 11
   url: "https://maxgfr.github.io/skycmd/paper/"
