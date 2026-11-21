@@ -612,6 +612,7 @@
     "notes": [
       "{models} models, each with the demo of its own Space: {passed} passed their gate, {failed} failed it and are published as results, and {ungated} were published without a gate.",
       "Each demo opens with its model's verdict, as in its own Space. The badges of this list are those of the site's Models page, which also mark a pass on a second look or on a generated bench only.",
+      "The first group, Use it in a project, holds the two files that fit a real project outside the games: the end-of-turn detector and the tool router. How to call them from your own code, and when not to: maxgfr.github.io/skycmd/use.",
       "Everything runs in your browser: a Rust inference engine compiled to WebAssembly reads the model files of this Space, and a model's files are downloaded only when its demo is opened. Nothing is sent to a server.",
       "Each demo links to its model's own Space. The project site, maxgfr.github.io/skycmd, has the same demos with the results behind them."
     ]

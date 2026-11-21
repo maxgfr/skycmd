@@ -32,6 +32,10 @@ tags:
 > last minutes, its DAgger rounds and its evaluation ran on a loaded machine, and its trainer
 > binary is not v1's.
 
+**What it is good for:** the skycmd games and the typed questions of the demos, not free-text
+questions in a product: expect mistakes there, 0.401 on When2Call and 0.092 on NOTAM subjects.
+For the models that fit a real project (end of turn, tool routing), see [Use it for real](https://maxgfr.github.io/skycmd/use/).
+
 **One 2.4 MB ternary model for four games and for typed questions in free text: the larger
 sibling of [s6-nano](https://huggingface.co/{{USER}}/s6-nano).** 5,587,201 parameters. It reads a
 state as text and answers typed questions (`choice`, `score`, `noul`) with probabilities

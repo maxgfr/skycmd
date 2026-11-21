@@ -79,6 +79,29 @@ trained for 240 working minutes on one Apple M5 as a student of Smart Turn v3.2,
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust; the model is `sky_infer::turn`, the front end `crates/sky-infer/src/audio.rs`)
 {{LINKS}}
 
+## Use it in your project
+
+An end-of-turn detector for a voice agent, **with a fallback timer next to it**. Push 16 kHz mono
+audio into the detector as it arrives. When your VAD (Silero, WebRTC VAD) reports 200 ms of
+silence after at least 150 ms of speech, ask the model; answer at or above τ₈₅, else ask again
+every 200 ms while the pause lasts; end the turn after 2,500 ms of silence whatever the model
+says, because on real conversations, at τ₈₅, it answers "finished" on only 0.5253 of the real ends
+of turn. Call `reset()` when a turn ends. The whole policy as the Listen demo runs it, with code
+for the browser, Deno and Node: [Use it for real](https://maxgfr.github.io/skycmd/use/#end-of-turn).
+
+```js
+import init, { TurnDetector } from 'https://maxgfr.github.io/skycmd/lib/sky_infer.js'
+const SITE = 'https://maxgfr.github.io/skycmd'
+await init({ module_or_path: `${SITE}/lib/sky_infer_bg.wasm` })
+const det = new TurnDetector(new Uint8Array(await (await fetch(`${SITE}/models/s6-ear2-nano.gguf`)).arrayBuffer()))
+det.push(frame)                                // every 10 ms frame: Float32Array, 16 kHz mono
+const finished = det.probEnd() >= det.tau85()  // at a pause your VAD reports
+det.reset()                                    // when the turn ends
+```
+
+In production, host the `.js`, `.wasm` and `.gguf` files yourself and check the `.gguf` against
+its sha256 ([Files](#files)).
+
 ## The gate, as read
 
 The 31,527 clips of `pipecat-ai/smart-turn-data-v3.2-test`, the ternary GGUF as exported

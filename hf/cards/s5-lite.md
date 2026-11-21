@@ -27,6 +27,11 @@ datasets:
 > reaches 0.696 on the bench (bar 0.65) but answers 21 of the 30 English demo cases (bar 90 %) and
 > stays below the majority class on four test sets: its numbers below are reported, not claimed.
 
+**What it is good for:** a playground for questions you write yourself, not a product: 26 % of
+its answers flip when the definitions are paraphrased, and four test sets fall below their
+majority class. For the models that fit a real project (end of turn, tool routing), see
+[Use it for real](https://maxgfr.github.io/skycmd/use/).
+
 **A 17M-parameter decision model whose options cannot see each other.** You give it a state, a
 question and options (each with a one-line definition); one forward pass returns calibrated
 probabilities over the options. It ships as a single 20.7 MB GGUF file (q8_0) and runs in the

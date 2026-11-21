@@ -22,6 +22,11 @@ tags:
 > **Published without a gate.** Its numbers below are measured and published, but no gate was
 > fixed for this file before it was tested.
 
+**What it is good for:** the skycmd games and demos, where coded rules keep a veto over its
+choices; it is not flight software, and not a free-text classifier (0.382 on
+`typed_decisions_bench`, below the majority class, 0.398). For the models that fit a real project
+(end of turn, tool routing), see [Use it for real](https://maxgfr.github.io/skycmd/use/).
+
 **A 251 KB decision model that plays four games in your browser.** 445,345 ternary parameters: one
 weight-shared state block applied up to 4 times, with an exit after each pass. It reads the game
 state as text, answers typed questions (`choice`, `score`, `noul`) in one forward pass each, and a

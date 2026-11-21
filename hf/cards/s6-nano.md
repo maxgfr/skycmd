@@ -36,6 +36,11 @@ tags:
 > against 0.8500 for BM25 and 38.9 ms per request in WASM against 2 ms
 > ([result](https://github.com/maxgfr/skycmd/blob/main/BENCH.md#s6-route-nano-s6-nano-v2-a-tool-router-pre-registered-gate-failed)).
 
+**What it is good for:** the skycmd games and the typed questions of the demos, not free-text
+questions in a product: answering each question with its most common training answer scores
+0.4815, against 0.4805 for this model. For the models that fit a real project (end of turn, tool
+routing), see [Use it for real](https://maxgfr.github.io/skycmd/use/).
+
 **One 715 KB ternary model for four games and for typed questions in free text.** 1,486,225
 parameters. It reads a state as text and answers typed questions (`choice`, `score`, `noul`) with
 calibrated probabilities, one forward pass per question. It plays the four skycmd games at the

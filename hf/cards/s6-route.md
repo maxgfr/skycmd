@@ -58,6 +58,40 @@ validation, and the gate was read once on fresh files.
   is `crates/sky-web/src/router.rs` and `crates/sky-infer/src/embed.rs`)
 {{LINKS}}
 
+## Use it in your project
+
+For a tool list written at run time, **when the tools have distinctive names and are of familiar
+kinds** (lights, weather, email…), and you want "none" and "ask the user". The code, the
+decision rule and the comparison with BM25: [Use it for real](https://maxgfr.github.io/skycmd/use/#tool-routing).
+
+```js
+import init, { ToolRouter } from 'https://maxgfr.github.io/skycmd/pkg/sky_web.js'
+const SITE = 'https://maxgfr.github.io/skycmd'
+await init({ module_or_path: `${SITE}/pkg/sky_web_bg.wasm` })
+const bytes = async (f) => new Uint8Array(await (await fetch(`${SITE}/models/${f}`)).arrayBuffer())
+const router = new ToolRouter(await bytes('s6-route-nano.gguf'), await bytes('s6-route-embed.gguf'))
+const tools = JSON.stringify([
+  'lights_on: Turns the lights on in a room.',
+  'get_weather: Gives the weather forecast for a city.',
+  'send_email: Sends an email to a contact.',
+])
+const { decision, answer } = JSON.parse(router.route('turn on the hall lights', tools, false))
+// decision: 'tool', 'none' or 'ask'; here 'tool', answer 'lights_on'
+```
+
+**s6-route or BM25?** BM25 is a classic search score: it counts the words a request shares with
+each tool's name and description, rare words weighing more, and needs no file. In these tests
+its *none* answer is one more score, a threshold fitted on validation. s6-route adds better
+calibrated probabilities (ECE 0.0162 against 0.0779 for BM25), a better *none* answer (F1 0.7732
+against 0.6368) and "ask the user", and it is above BM25 on T2-tools (0.8868 against 0.8169). But
+that advantage leans on the three largest clusters (+0.0202 [−0.0062, +0.0481] without them), it
+falls to 0.2497 with the tool names masked where BM25 keeps 0.8138, and on fresh requests about
+MCP tools, a new family, it reads 0.5530 where BM25 reads 0.5675 and all-MiniLM-L6-v2 0.6630.
+all-MiniLM-L6-v2 is itself a small sentence encoder (91.6 MB), not a large model. **The rule:**
+s6-route for distinctive names and familiar kinds of tools; BM25 for generic or numbered names,
+or tools of a new family (MCP servers, for example); all-MiniLM-L6-v2 when accuracy matters most
+and about 92 MB are fine; and keep BM25 as a cross-check.
+
 ## The gate, as read
 
 | | condition | measured | verdict |

@@ -59,6 +59,25 @@ best result on real data, and it is a failed gate.
 - **Code:** [github.com/maxgfr/skycmd](https://github.com/maxgfr/skycmd) (100 % Rust)
 {{LINKS}}
 
+## Use it in your project
+
+Not on its own: it judges only the candidates that rules propose, and it failed its gate. The
+one supported way is [secretgate](https://github.com/maxgfr/secretgate) from version 1.9.0, where
+it is an experimental option, **off by default**, that can only add redactions to what the rules
+find:
+
+```sh
+secretgate verifier fetch     # download the four data files (pinned, sha256-checked)
+secretgate verifier on        # threshold f1 (default); or --threshold f05 | f2
+secretgate verifier           # status
+secretgate verifier off
+```
+
+What that option costs (on 8,825 clean real files, a redaction in 0.46% of them without a path
+and 0.27% with one; at most about 1.25 s added to a hook) is on
+[secretgate's verifier page](https://github.com/maxgfr/secretgate/blob/main/docs/verifier.md).
+Which skycmd files fit a real project: [Use it for real](https://maxgfr.github.io/skycmd/use/#secrets).
+
 ## The seven gates, as read
 
 | gate | condition | measured | verdict |
