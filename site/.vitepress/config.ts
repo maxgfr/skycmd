@@ -175,6 +175,7 @@ export default defineConfig({
           { text: 'Bench', link: '/bench/' },
           { text: 'What we bring', link: '/novelty/' },
           { text: 'Technical report', link: '/paper/' },
+          { text: 'Methods paper', link: '/paper/methods/' },
         ],
       },
       {

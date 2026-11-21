@@ -8,7 +8,7 @@ outline: [2, 3]
 
 # Pre-registered gates for small models trained on one laptop: what passed, what failed, and what the readings show
 
-<p class="paper-meta"><strong>Maxime Golfier</strong> · 21 November 2026 · <a href="/skycmd/paper/skycmd-technical-report.pdf">PDF (LaTeX)</a> · <a href="https://github.com/maxgfr/skycmd/tree/main/paper">LaTeX source</a> · <a href="https://doi.org/10.5281/zenodo.24418316">DOI 10.5281/zenodo.24418316</a> (Zenodo) · <a href="#how-to-cite">How to cite</a></p>
+<p class="paper-meta"><strong>Maxime Golfier</strong> · 21 November 2026 · <a href="/skycmd/paper/skycmd-technical-report.pdf">PDF (LaTeX)</a> · <a href="https://github.com/maxgfr/skycmd/tree/main/paper">LaTeX source</a> · <a href="https://doi.org/10.5281/zenodo.24418316">DOI 10.5281/zenodo.24418316</a> (Zenodo) · <a href="/skycmd/paper/methods/">Methods paper</a> · <a href="#how-to-cite">How to cite</a></p>
 
 ::: warning Technical report, not peer-reviewed
 This report has not been peer-reviewed, nor reviewed by anyone outside the project. Every number in it is copied from a page or a file of the repository, and each one links to its evidence. Where a number is computed here (a count, or the difference of two published numbers), the text says so.

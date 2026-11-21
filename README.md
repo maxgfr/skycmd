@@ -4,7 +4,7 @@
 
 skycmd trains small decision models and runs them in the browser. A decision model does not generate text: it reads a state (a game frame, a text, a request with a list of tools, a few seconds of audio) and typed questions, and returns a calibrated probability for every allowed option in one forward pass. The models were trained from scratch in Rust on one Apple M5 MacBook, and every demo runs them in WebAssembly from the files their numbers were measured on.
 
-## The paper
+## The papers
 
 [*Pre-registered gates for small models trained on one laptop: what passed, what failed, and what the readings show*](https://maxgfr.github.io/skycmd/paper/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed).
 
@@ -27,6 +27,26 @@ It reports every gated experiment of the project: from s5 on, each one had a pre
 }
 ```
 
+[*Small ternary decision models trained on one laptop: architecture, training, closed-loop calibration and a Rust engine for the browser*](https://maxgfr.github.io/skycmd/paper/methods/), Maxime Golfier, technical report, 21 November 2026 (not peer-reviewed), the companion on method.
+
+- Read it on the site: [maxgfr.github.io/skycmd/paper/methods](https://maxgfr.github.io/skycmd/paper/methods/), or as a [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf).
+- The LaTeX source is in [`paper/methods/`](paper/methods/); `scripts/build-paper.sh --methods` builds the PDF.
+
+It describes how the models, their training, their calibration and the engine work, precisely enough to reimplement them: the ternary decision graph with its two streams, cache and looped exits, the training recipe of seven published files, exit thresholds chosen by playing the games, the task-specific systems, and the Rust engine that runs every file natively and in WebAssembly. It cites the first report for the protocol and the verdicts.
+
+```bibtex
+@misc{golfier2026skycmdmethods,
+  author       = {Golfier, Maxime},
+  title        = {Small ternary decision models trained on one laptop:
+                  architecture, training, closed-loop calibration
+                  and a Rust engine for the browser},
+  year         = {2026},
+  publisher    = {Zenodo},
+  howpublished = {\url{https://maxgfr.github.io/skycmd/paper/methods/}},
+  note         = {Technical report, not peer-reviewed}
+}
+```
+
 ## The state of the project
 
 The experiments are finished, as of 20 November 2026. Every line is closed or published: 20 model files (5 passed their pre-registered gate, 10 failed it and are published as results, 5 had no gate), 9 versions closed without a model, 16 data sets and 24 pre-registrations. The repository stays as the record: the models, the data sets, the pre-registrations, the result files and the technical report.
@@ -38,7 +58,7 @@ The experiments are finished, as of 20 November 2026. Every line is closed or pu
   - every demo in one Space: [maxgfr/skycmd](https://huggingface.co/spaces/maxgfr/skycmd);
   - the collection [skycmd](https://huggingface.co/collections/maxgfr/skycmd-6b001dd30a7cb5724995b603): the hub Space, the models by verdict, their Spaces and the 16 data sets;
   - every model, Space and data set: [huggingface.co/maxgfr](https://huggingface.co/maxgfr). Each model card opens with its verdict; each data set gives the licence of each source ([`DATA_LICENSES.md`](DATA_LICENSES.md)).
-- **The paper**: [site](https://maxgfr.github.io/skycmd/paper/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf), [Zenodo DOI 10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316).
+- **The papers**: the technical report ([site](https://maxgfr.github.io/skycmd/paper/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-technical-report.pdf), [Zenodo DOI 10.5281/zenodo.24418316](https://doi.org/10.5281/zenodo.24418316)) and the methods paper ([site](https://maxgfr.github.io/skycmd/paper/methods/), [PDF](https://maxgfr.github.io/skycmd/paper/skycmd-methods.pdf)).
 - **The raw archive**: the release [`archive-2026-11-20`](https://github.com/maxgfr/skycmd/releases/tag/archive-2026-11-20): raw traces of two gates, run logs and intermediate model files ([`docs/data-inventory.md`](docs/data-inventory.md), section 13).
 
 ## The 20 published models

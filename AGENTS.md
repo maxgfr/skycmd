@@ -16,6 +16,9 @@ correction of a page, a card or a result file.
   (Tectonic; `--arxiv` also packs the arXiv sources in `target/paper/`). The page is the reference:
   when it changes, the .tex follows it word for word and the PDF is built again. It is updated
   when a result changes, like What we bring and Results; `CITATION.cff` cites it.
+- **The methods paper lives at `site/paper/methods/`** (<https://maxgfr.github.io/skycmd/paper/methods/>)
+  and follows the same rules: the page is the reference, `paper/methods/skycmd-methods.tex` follows
+  it word for word, and `scripts/build-paper.sh --methods` builds its PDF into `site/public/paper/`.
 - **Never publish skycmd content on the owner's personal site** (the repository
   `maxgfr/maxgfr.github.io`, served at <https://maxgfr.github.io/>). That site is the owner's:
   touch it only when the owner names it in the request.
